@@ -1,9 +1,10 @@
-import { render, useKeyboard, useRenderer } from "@opentui/solid";
-import { createSignal, For, Show } from "solid-js";
+import { useMemo, useRef, useState } from "react";
+import { createCliRenderer } from "@opentui/core";
+import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import type { FileClassification } from "../core/file-classifier.js";
-import type { ScrollBoxRenderable } from "@opentui/core";
 import { dispatchKey } from "./keymap.js";
 
 interface AppProps {
@@ -39,30 +40,20 @@ function reasonLabel(reason?: string): string {
   return ` [${reason}]`;
 }
 
-function fileStat(hunks: DiffFile["hunks"]): { additions: number; deletions: number } {
-  let additions = 0;
-  let deletions = 0;
-  for (const hunk of hunks) {
-    for (const line of hunk.content) {
-      if (line.type === "addition") additions++;
-      else if (line.type === "deletion") deletions++;
-      else if (line.type === "change") { additions++; deletions++; }
-    }
-  }
-  return { additions, deletions };
-}
-
 function App(props: AppProps) {
-  const [selectedFileIdx, setSelectedFileIdx] = createSignal(0);
-  const [sidebarFocused, setSidebarFocused] = createSignal(true);
-  const [collapsedOverrides, setCollapsedOverrides] = createSignal<Record<string, boolean>>({});
+  const [selectedFileIdx, setSelectedFileIdx] = useState(0);
+  const [sidebarFocused, setSidebarFocused] = useState(true);
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const renderer = useRenderer();
-  let diffScrollRef: ScrollBoxRenderable | undefined;
+  const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
-  const files = () => [...props.files].sort((a, b) => a.name.localeCompare(b.name));
+  const files = useMemo(
+    () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
+    [props.files],
+  );
 
   const isFileCollapsed = (fileName: string): boolean => {
-    const override = collapsedOverrides()[fileName];
+    const override = collapsedOverrides[fileName];
     if (override !== undefined) return override;
     const cls = fileClassification(props.classifications, fileName);
     if (!cls.collapsed) return false;
@@ -72,18 +63,17 @@ function App(props: AppProps) {
     return true;
   };
 
-  const fileAnnotations = () => {
-    const f = files()[selectedFileIdx()];
-    if (!f) return [];
-    return props.annotations
-      .filter((a) => a.file === f.name)
-      .sort((a, b) => a.line_start - b.line_start);
-  };
+  const selectedFile = files[selectedFileIdx];
+  const fileAnnotations = selectedFile
+    ? props.annotations
+        .filter((a) => a.file === selectedFile.name)
+        .sort((a, b) => a.line_start - b.line_start)
+    : [];
 
   useKeyboard((key) => {
     const action = dispatchKey(
       { name: key.name, ctrl: key.ctrl, shift: key.shift },
-      { sidebarFocused: sidebarFocused(), fileCount: files().length },
+      { sidebarFocused, fileCount: files.length },
     );
 
     switch (action.type) {
@@ -97,17 +87,17 @@ function App(props: AppProps) {
         setSidebarFocused(true);
         return;
       case "move-file-down":
-        setSelectedFileIdx((i) => Math.min(i + 1, files().length - 1));
+        setSelectedFileIdx((i) => Math.min(i + 1, files.length - 1));
         return;
       case "move-file-up":
         setSelectedFileIdx((i) => Math.max(i - 1, 0));
         return;
       case "select-file":
         setSidebarFocused(false);
-        if (diffScrollRef) diffScrollRef.scrollTo(0);
+        if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
         return;
       case "toggle-collapse": {
-        const f = files()[selectedFileIdx()];
+        const f = files[selectedFileIdx];
         if (!f) return;
         const cls = fileClassification(props.classifications, f.name);
         if (cls.reason === "binary") return;
@@ -129,13 +119,13 @@ function App(props: AppProps) {
         </text>
       </box>
 
-      <Show when={props.snapshotLost}>
+      {props.snapshotLost && (
         <box height={2} width="100%" paddingX={1}>
-          <text color="yellow" bold>
+          <text fg="yellow" bold>
             ⚠ Snapshot lost — annotations preserved but diff cannot be displayed
           </text>
         </box>
-      </Show>
+      )}
 
       {/* Main layout */}
       <box flexGrow={1} width="100%" flexDirection="row">
@@ -143,30 +133,29 @@ function App(props: AppProps) {
         <box
           width={30}
           borderStyle="single"
-          borderColor={sidebarFocused() ? "cyan" : "gray"}
+          borderColor={sidebarFocused ? "cyan" : "gray"}
           title=" Files "
           flexDirection="column"
         >
-          <scrollbox height="100%" scrollY>
-            <For each={files()}>
-              {(file, idx) => {
-                const annCount = () => annotationCountForFile(props.annotations, file.name);
-                const isSelected = () => idx() === selectedFileIdx();
-                const icon = statusIcon(file.type);
-                const badge = () => annCount() > 0 ? ` [${annCount()}]` : "";
-                const cls = () => fileClassification(props.classifications, file.name);
-                const marker = () => cls().reason ? reasonLabel(cls().reason) : "";
-                return (
-                  <text
-                    color={isSelected() ? "black" : "white"}
-                    bg={isSelected() ? "cyan" : undefined}
-                    bold={isSelected()}
-                  >
-                    {` ${icon} ${file.name}${marker()}${badge()} `}
-                  </text>
-                );
-              }}
-            </For>
+          <scrollbox height="100%">
+            {files.map((file, idx) => {
+              const annCount = annotationCountForFile(props.annotations, file.name);
+              const isSelected = idx === selectedFileIdx;
+              const icon = statusIcon(file.type);
+              const badge = annCount > 0 ? ` [${annCount}]` : "";
+              const cls = fileClassification(props.classifications, file.name);
+              const marker = cls.reason ? reasonLabel(cls.reason) : "";
+              return (
+                <text
+                  key={file.name}
+                  fg={isSelected ? "black" : "white"}
+                  bg={isSelected ? "cyan" : undefined}
+                  bold={isSelected}
+                >
+                  {` ${icon} ${file.name}${marker}${badge} `}
+                </text>
+              );
+            })}
           </scrollbox>
         </box>
 
@@ -174,16 +163,15 @@ function App(props: AppProps) {
         <box
           flexGrow={1}
           borderStyle="single"
-          borderColor={!sidebarFocused() ? "cyan" : "gray"}
+          borderColor={!sidebarFocused ? "cyan" : "gray"}
           title=" Diff "
           flexDirection="column"
         >
-          <Show when={!props.snapshotLost && props.diff}>
+          {!props.snapshotLost && props.diff && (
             <scrollbox
-              ref={(el: ScrollBoxRenderable) => { diffScrollRef = el; }}
+              ref={(el: ScrollBoxRenderable | null) => { diffScrollRef.current = el; }}
               height="100%"
-              scrollY
-              focused={!sidebarFocused()}
+              focused={!sidebarFocused}
             >
               <diff
                 diff={props.diff}
@@ -191,36 +179,34 @@ function App(props: AppProps) {
                 showLineNumbers
               />
             </scrollbox>
-          </Show>
+          )}
 
           {/* Annotations panel */}
-          <Show when={fileAnnotations().length > 0}>
+          {fileAnnotations.length > 0 && (
             <box
               borderStyle="single"
               borderColor="yellow"
               title=" Annotations "
-              height={Math.min(fileAnnotations().length * 3 + 2, 12)}
+              height={Math.min(fileAnnotations.length * 3 + 2, 12)}
             >
-              <scrollbox scrollY height="100%">
-                <For each={fileAnnotations()}>
-                  {(ann) => (
-                    <box flexDirection="column" paddingX={1}>
-                      <text color="yellow" bold>
-                        [{ann.side}] {ann.file}:{ann.line_start === ann.line_end ? ann.line_start : `${ann.line_start}-${ann.line_end}`} ({ann.author})
-                      </text>
-                      <text color="white">  {ann.body}</text>
-                    </box>
-                  )}
-                </For>
+              <scrollbox height="100%">
+                {fileAnnotations.map((ann) => (
+                  <box key={ann.id} flexDirection="column" paddingX={1}>
+                    <text fg="yellow" bold>
+                      [{ann.side}] {ann.file}:{ann.line_start === ann.line_end ? ann.line_start : `${ann.line_start}-${ann.line_end}`} ({ann.author})
+                    </text>
+                    <text fg="white">  {ann.body}</text>
+                  </box>
+                ))}
               </scrollbox>
             </box>
-          </Show>
+          )}
         </box>
       </box>
 
       {/* Footer */}
       <box height={1} width="100%" paddingX={1}>
-        <text color="gray">
+        <text fg="gray">
           j/k: navigate  Tab: switch pane  Enter: select file  Space: toggle collapse  q: quit
         </text>
       </box>
@@ -229,5 +215,14 @@ function App(props: AppProps) {
 }
 
 export async function startTui(props: AppProps): Promise<void> {
-  await render(() => <App {...props} />);
+  const renderer = await createCliRenderer({
+    screenMode: "alternate-screen",
+    useMouse: true,
+    exitOnCtrlC: true,
+  });
+  const root = createRoot(renderer);
+  root.render(<App {...props} />);
+  await new Promise<void>((resolve) => {
+    renderer.once("destroy", () => resolve());
+  });
 }
