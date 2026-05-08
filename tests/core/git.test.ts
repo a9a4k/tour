@@ -21,7 +21,7 @@ async function gitCmd(args: string[], cwd: string): Promise<string> {
 }
 
 async function createTempRepo(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "review-git-"));
+  const dir = await mkdtemp(join(tmpdir(), "tour-git-"));
   await gitCmd(["init", dir], dir);
   await gitCmd(["config", "user.email", "test@test.com"], dir);
   await gitCmd(["config", "user.name", "Test"], dir);
@@ -74,14 +74,14 @@ describe("snapshotWorkingTree + releaseSnapshot", () => {
 
   it("creates a ref that resolves to a valid object", async () => {
     await writeFile(join(repo, "wip.txt"), "work in progress\n");
-    const sha = await snapshotWorkingTree("test-review", repo);
+    const sha = await snapshotWorkingTree("test-tour", repo);
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
-    const refSha = await resolveRef("refs/review/test-review", repo);
+    const refSha = await resolveRef("refs/tour/test-tour", repo);
     expect(refSha).toBe(sha);
   });
 
   it("snapshots HEAD when no uncommitted changes", async () => {
-    const sha = await snapshotWorkingTree("clean-review", repo);
+    const sha = await snapshotWorkingTree("clean-tour", repo);
     const headSha = await resolveRef("HEAD", repo);
     expect(sha).toBe(headSha);
   });
@@ -89,9 +89,9 @@ describe("snapshotWorkingTree + releaseSnapshot", () => {
   it("release removes the ref", async () => {
     await writeFile(join(repo, "wip.txt"), "wip\n");
     await snapshotWorkingTree("doomed", repo);
-    expect(await isValidRef("refs/review/doomed", repo)).toBe(true);
+    expect(await isValidRef("refs/tour/doomed", repo)).toBe(true);
     await releaseSnapshot("doomed", repo);
-    expect(await isValidRef("refs/review/doomed", repo)).toBe(false);
+    expect(await isValidRef("refs/tour/doomed", repo)).toBe(false);
   });
 
   it("release on nonexistent ref is a no-op", async () => {

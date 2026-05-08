@@ -48,20 +48,20 @@ function boolFlag(flags: Record<string, string | boolean>, key: string): boolean
   return flags[key] === true;
 }
 
-const USAGE = `review — local code review tool with AI annotations
+const USAGE = `tour — local code review tool with AI annotations
 
 Usage:
-  review                                  (open TUI for most recent review)
-  review tui [<id>]                       (open TUI for a specific review)
-  review serve [--port 7777] [--open] [<id>] (start webapp)
-  review create --head <ref> [--base <ref>] [--title <s>] [--json]
-  review annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--json]
-  review annotate <id> --batch - [--json]
-  review list [--status open|closed|all] [--json]
-  review show <id> [--json]
-  review close <id> [--json]
-  review delete <id> [--json]
-  review prune --older-than <duration> [--json]
+  tour                                  (open TUI for most recent tour)
+  tour tui [<id>]                       (open TUI for a specific tour)
+  tour serve [--port 7777] [--open] [<id>] (start webapp)
+  tour create --head <ref> [--base <ref>] [--title <s>] [--json]
+  tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--json]
+  tour annotate <id> --batch - [--json]
+  tour list [--status open|closed|all] [--json]
+  tour show <id> [--json]
+  tour close <id> [--json]
+  tour delete <id> [--json]
+  tour prune --older-than <duration> [--json]
 `;
 
 async function main(): Promise<void> {
@@ -79,10 +79,10 @@ async function main(): Promise<void> {
       }
 
       case "annotate": {
-        const reviewId = positional[0];
-        if (!reviewId) throw new Error("Usage: review annotate <id> ...");
+        const tourId = positional[0];
+        if (!tourId) throw new Error("Usage: tour annotate <id> ...");
         await annotate({
-          reviewId,
+          tourId,
           file: flag(flags, "file"),
           side: flag(flags, "side"),
           line: flag(flags, "line"),
@@ -104,23 +104,23 @@ async function main(): Promise<void> {
         break;
 
       case "show": {
-        const reviewId = positional[0];
-        if (!reviewId) throw new Error("Usage: review show <id>");
-        await show({ reviewId, json, cwd });
+        const tourId = positional[0];
+        if (!tourId) throw new Error("Usage: tour show <id>");
+        await show({ tourId, json, cwd });
         break;
       }
 
       case "close": {
-        const reviewId = positional[0];
-        if (!reviewId) throw new Error("Usage: review close <id>");
-        await close({ reviewId, json, cwd });
+        const tourId = positional[0];
+        if (!tourId) throw new Error("Usage: tour close <id>");
+        await close({ tourId, json, cwd });
         break;
       }
 
       case "delete": {
-        const reviewId = positional[0];
-        if (!reviewId) throw new Error("Usage: review delete <id>");
-        await del({ reviewId, json, cwd });
+        const tourId = positional[0];
+        if (!tourId) throw new Error("Usage: tour delete <id>");
+        await del({ tourId, json, cwd });
         break;
       }
 
@@ -132,14 +132,14 @@ async function main(): Promise<void> {
       }
 
       case "tui":
-        await tui({ reviewId: positional[0], cwd });
+        await tui({ tourId: positional[0], cwd });
         break;
 
       case "serve":
         await serve({
           port: parseInt(flag(flags, "port") ?? "7777", 10),
           open: boolFlag(flags, "open"),
-          reviewId: positional[0],
+          tourId: positional[0],
           cwd,
         });
         break;

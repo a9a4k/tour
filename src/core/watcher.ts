@@ -3,22 +3,22 @@ import { join } from "node:path";
 
 export type WatchEvent = {
   type: "annotation-changed";
-  reviewId: string;
+  tourId: string;
 };
 
 export type WatchCallback = (event: WatchEvent) => void;
 
-export class ReviewWatcher {
+export class TourWatcher {
   private watcher: FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly debounceMs: number;
-  private readonly reviewId: string;
-  private readonly reviewDir: string;
+  private readonly tourId: string;
+  private readonly tourDir: string;
   private listeners: WatchCallback[] = [];
 
-  constructor(repoRoot: string, reviewId: string, debounceMs = 100) {
-    this.reviewId = reviewId;
-    this.reviewDir = join(repoRoot, ".review", reviewId);
+  constructor(repoRoot: string, tourId: string, debounceMs = 100) {
+    this.tourId = tourId;
+    this.tourDir = join(repoRoot, ".tour", tourId);
     this.debounceMs = debounceMs;
   }
 
@@ -34,7 +34,7 @@ export class ReviewWatcher {
     if (this.watcher) return;
 
     try {
-      this.watcher = watch(this.reviewDir, { recursive: false }, (_eventType, filename) => {
+      this.watcher = watch(this.tourDir, { recursive: false }, (_eventType, filename) => {
         if (filename?.endsWith(".jsonl")) {
           this.scheduleEmit();
         }
@@ -61,7 +61,7 @@ export class ReviewWatcher {
     this.debounceTimer = setTimeout(() => {
       const event: WatchEvent = {
         type: "annotation-changed",
-        reviewId: this.reviewId,
+        tourId: this.tourId,
       };
       for (const listener of this.listeners) {
         listener(event);

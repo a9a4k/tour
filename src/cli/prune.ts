@@ -1,4 +1,4 @@
-import { pruneReviews } from "../core/review-store.js";
+import { pruneTours } from "../core/tour-store.js";
 import { printOutput } from "./output.js";
 
 interface PruneArgs {
@@ -22,13 +22,13 @@ export function parseDuration(input: string): number {
 
 export async function prune(args: PruneArgs): Promise<void> {
   const ms = parseDuration(args.olderThan);
-  const pruned = await pruneReviews(args.cwd, ms);
+  const pruned = await pruneTours(args.cwd, ms);
 
   if (args.json) {
     printOutput({ pruned }, true);
   } else if (pruned.length === 0) {
-    console.log("No reviews to prune.");
+    console.log("No tours to prune.");
   } else {
-    console.log(`Pruned ${pruned.length} review(s): ${pruned.join(", ")}`);
+    console.log(`Pruned ${pruned.length} tour(s): ${pruned.join(", ")}`);
   }
 }

@@ -2,34 +2,34 @@ import { readFile, appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Annotation } from "./types.js";
 
-function annotationsPath(repoRoot: string, reviewId: string): string {
-  return join(repoRoot, ".review", reviewId, "annotations.jsonl");
+function annotationsPath(repoRoot: string, tourId: string): string {
+  return join(repoRoot, ".tour", tourId, "annotations.jsonl");
 }
 
 export async function appendAnnotation(
   repoRoot: string,
-  reviewId: string,
+  tourId: string,
   annotation: Annotation,
 ): Promise<void> {
-  const path = annotationsPath(repoRoot, reviewId);
+  const path = annotationsPath(repoRoot, tourId);
   await appendFile(path, JSON.stringify(annotation) + "\n");
 }
 
 export async function appendAnnotations(
   repoRoot: string,
-  reviewId: string,
+  tourId: string,
   annotations: Annotation[],
 ): Promise<void> {
-  const path = annotationsPath(repoRoot, reviewId);
+  const path = annotationsPath(repoRoot, tourId);
   const lines = annotations.map((a) => JSON.stringify(a)).join("\n") + "\n";
   await appendFile(path, lines);
 }
 
 export async function readAnnotations(
   repoRoot: string,
-  reviewId: string,
+  tourId: string,
 ): Promise<Annotation[]> {
-  const path = annotationsPath(repoRoot, reviewId);
+  const path = annotationsPath(repoRoot, tourId);
   let content: string;
   try {
     content = await readFile(path, "utf-8");

@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ENTRY = ".review/";
+const ENTRY = ".tour/";
 
-export async function ensureReviewIgnored(repoRoot: string): Promise<void> {
+export async function ensureTourIgnored(repoRoot: string): Promise<void> {
   const path = join(repoRoot, ".gitignore");
   let content: string;
   try {

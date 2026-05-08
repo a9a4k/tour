@@ -1,4 +1,4 @@
-import { listReviews } from "../core/review-store.js";
+import { listTours } from "../core/tour-store.js";
 import { readAnnotations } from "../core/annotations-store.js";
 import { printOutput } from "./output.js";
 
@@ -9,24 +9,24 @@ interface ListArgs {
 }
 
 export async function list(args: ListArgs): Promise<void> {
-  const reviews = await listReviews(args.cwd, { status: args.status });
+  const tours = await listTours(args.cwd, { status: args.status });
 
   if (args.json) {
-    printOutput(reviews, true);
+    printOutput(tours, true);
     return;
   }
 
-  if (reviews.length === 0) {
-    console.log("No reviews found.");
+  if (tours.length === 0) {
+    console.log("No tours found.");
     return;
   }
 
-  for (const r of reviews) {
-    const annotations = await readAnnotations(args.cwd, r.id);
+  for (const t of tours) {
+    const annotations = await readAnnotations(args.cwd, t.id);
     const annotCount = annotations.length;
-    const status = r.status === "open" ? "●" : "○";
-    const title = r.title || "(untitled)";
+    const status = t.status === "open" ? "●" : "○";
+    const title = t.title || "(untitled)";
     const annLabel = annotCount > 0 ? ` [${annotCount} annotations]` : "";
-    console.log(`${status} ${r.id}  ${title}${annLabel}`);
+    console.log(`${status} ${t.id}  ${title}${annLabel}`);
   }
 }

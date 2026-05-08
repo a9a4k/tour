@@ -1,31 +1,31 @@
-import { getReview, resolveIdPrefix } from "../core/review-store.js";
+import { getTour, resolveIdPrefix } from "../core/tour-store.js";
 import { readAnnotations } from "../core/annotations-store.js";
 import { printOutput } from "./output.js";
 
 interface ShowArgs {
-  reviewId: string;
+  tourId: string;
   json: boolean;
   cwd: string;
 }
 
 export async function show(args: ShowArgs): Promise<void> {
-  const resolvedId = await resolveIdPrefix(args.cwd, args.reviewId);
-  const review = await getReview(args.cwd, resolvedId);
+  const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
+  const tour = await getTour(args.cwd, resolvedId);
   const annotations = await readAnnotations(args.cwd, resolvedId);
 
   if (args.json) {
-    printOutput({ ...review, annotations }, true);
+    printOutput({ ...tour, annotations }, true);
     return;
   }
 
-  console.log(`Review: ${review.id}`);
-  console.log(`Title:  ${review.title || "(untitled)"}`);
-  console.log(`Status: ${review.status}`);
-  console.log(`Head:   ${review.head_sha.slice(0, 12)} (${review.head_source || "default"})`);
-  console.log(`Base:   ${review.base_sha.slice(0, 12)} (${review.base_source || "default"})`);
-  console.log(`Created: ${review.created_at}`);
-  if (review.closed_at) console.log(`Closed:  ${review.closed_at}`);
-  console.log(`Worktree snapshot: ${review.worktree_snapshot}`);
+  console.log(`Tour: ${tour.id}`);
+  console.log(`Title:  ${tour.title || "(untitled)"}`);
+  console.log(`Status: ${tour.status}`);
+  console.log(`Head:   ${tour.head_sha.slice(0, 12)} (${tour.head_source || "default"})`);
+  console.log(`Base:   ${tour.base_sha.slice(0, 12)} (${tour.base_source || "default"})`);
+  console.log(`Created: ${tour.created_at}`);
+  if (tour.closed_at) console.log(`Closed:  ${tour.closed_at}`);
+  console.log(`Worktree snapshot: ${tour.worktree_snapshot}`);
   console.log(`\nAnnotations (${annotations.length}):`);
   for (const a of annotations) {
     const range =

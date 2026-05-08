@@ -1,9 +1,9 @@
 import { resolveRef, snapshotWorkingTree } from "../core/git.js";
 import { generateId } from "../core/ids.js";
-import { ensureReviewIgnored } from "../core/gitignore.js";
-import { createReview } from "../core/review-store.js";
+import { ensureTourIgnored } from "../core/gitignore.js";
+import { createTour } from "../core/tour-store.js";
 import { printOutput } from "./output.js";
-import type { Review } from "../core/types.js";
+import type { Tour } from "../core/types.js";
 
 interface CreateArgs {
   head: string;
@@ -17,7 +17,7 @@ export async function create(args: CreateArgs): Promise<void> {
   const { head, title, json, cwd } = args;
   const id = generateId();
 
-  await ensureReviewIgnored(cwd);
+  await ensureTourIgnored(cwd);
 
   const isWorktree = head === "WORKTREE";
   let headSha: string;
@@ -35,7 +35,7 @@ export async function create(args: CreateArgs): Promise<void> {
       : await resolveRef(head + "^", cwd);
   }
 
-  const review: Review = {
+  const tour: Tour = {
     id,
     title: title ?? "",
     status: "open",
@@ -48,12 +48,12 @@ export async function create(args: CreateArgs): Promise<void> {
     worktree_snapshot: isWorktree,
   };
 
-  await createReview(cwd, review);
+  await createTour(cwd, tour);
 
   if (json) {
-    printOutput(review, true);
+    printOutput(tour, true);
   } else {
     console.log(id);
-    console.log(`Open with: review tui ${id}`);
+    console.log(`Open with: tour tui ${id}`);
   }
 }

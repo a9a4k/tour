@@ -15,11 +15,11 @@ async function gitCmd(args: string[], cwd: string): Promise<string> {
   return stdout.trimEnd();
 }
 
-async function createTempRepoWithReview(): Promise<{
+async function createTempRepoWithTour(): Promise<{
   dir: string;
-  reviewId: string;
+  tourId: string;
 }> {
-  const dir = await mkdtemp(join(tmpdir(), "review-web-"));
+  const dir = await mkdtemp(join(tmpdir(), "tour-web-"));
   await gitCmd(["init", dir], dir);
   await gitCmd(["config", "user.email", "test@test.com"], dir);
   await gitCmd(["config", "user.name", "Test"], dir);
@@ -31,10 +31,10 @@ async function createTempRepoWithReview(): Promise<{
   await gitCmd(["commit", "-m", "update"], dir);
 
   const { stdout } = await execP(BUN, [CLI, "create", "--head", "HEAD", "--title", "Web Test", "--json"], { cwd: dir });
-  const review = JSON.parse(stdout);
+  const tour = JSON.parse(stdout);
 
   await execP(BUN, [
-    CLI, "annotate", review.id,
+    CLI, "annotate", tour.id,
     "--file", "hello.txt",
     "--side", "additions",
     "--line", "1",
@@ -42,7 +42,7 @@ async function createTempRepoWithReview(): Promise<{
     "--author", "test-agent",
   ], { cwd: dir });
 
-  return { dir, reviewId: review.id };
+  return { dir, tourId: tour.id };
 }
 
 async function waitForServer(url: string, maxAttempts = 20): Promise<void> {
@@ -59,18 +59,18 @@ async function waitForServer(url: string, maxAttempts = 20): Promise<void> {
 
 describe("Webapp integration", () => {
   let dir: string;
-  let reviewId: string;
+  let tourId: string;
   let serverProcess: ChildProcess;
   const port = 10000 + Math.floor(Math.random() * 50000);
   const baseUrl = `http://127.0.0.1:${port}`;
 
   beforeAll(async () => {
-    const setup = await createTempRepoWithReview();
+    const setup = await createTempRepoWithTour();
     dir = setup.dir;
-    reviewId = setup.reviewId;
+    tourId = setup.tourId;
 
     serverProcess = exec(`${BUN} ${CLI} serve --port ${port}`, { cwd: dir });
-    await waitForServer(`${baseUrl}/api/reviews`);
+    await waitForServer(`${baseUrl}/api/tours`);
   }, 30000);
 
   afterAll(() => {
@@ -79,22 +79,22 @@ describe("Webapp integration", () => {
     }
   });
 
-  it("GET /api/reviews returns array of reviews", async () => {
-    const res = await fetch(`${baseUrl}/api/reviews`);
+  it("GET /api/tours returns array of tours", async () => {
+    const res = await fetch(`${baseUrl}/api/tours`);
     expect(res.status).toBe(200);
-    const reviews = await res.json();
-    expect(Array.isArray(reviews)).toBe(true);
-    expect(reviews.length).toBe(1);
-    expect(reviews[0].id).toBe(reviewId);
-    expect(reviews[0].title).toBe("Web Test");
-    expect(reviews[0].status).toBe("open");
+    const tours = await res.json();
+    expect(Array.isArray(tours)).toBe(true);
+    expect(tours.length).toBe(1);
+    expect(tours[0].id).toBe(tourId);
+    expect(tours[0].title).toBe("Web Test");
+    expect(tours[0].status).toBe("open");
   });
 
-  it("GET /api/reviews/:id returns review with diff and annotations", async () => {
-    const res = await fetch(`${baseUrl}/api/reviews/${reviewId}`);
+  it("GET /api/tours/:id returns tour with diff and annotations", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
     const data = await res.json() as Record<string, unknown>;
-    expect(data.id).toBe(reviewId);
+    expect(data.id).toBe(tourId);
     expect(data.snapshotLost).toBe(false);
     expect(typeof data.diff).toBe("string");
     expect((data.diff as string).length).toBeGreaterThan(0);
@@ -103,39 +103,39 @@ describe("Webapp integration", () => {
     expect(data.diffModel).toBeDefined();
   });
 
-  it("GET /api/reviews/:id with prefix returns review", async () => {
-    const prefix = reviewId.slice(0, 11);
-    const res = await fetch(`${baseUrl}/api/reviews/${prefix}`);
+  it("GET /api/tours/:id with prefix returns tour", async () => {
+    const prefix = tourId.slice(0, 11);
+    const res = await fetch(`${baseUrl}/api/tours/${prefix}`);
     expect(res.status).toBe(200);
     const data = await res.json() as Record<string, unknown>;
-    expect(data.id).toBe(reviewId);
+    expect(data.id).toBe(tourId);
   });
 
-  it("GET /api/reviews/:id with unknown id returns 404", async () => {
-    const res = await fetch(`${baseUrl}/api/reviews/nonexistent`);
+  it("GET /api/tours/:id with unknown id returns 404", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/nonexistent`);
     expect(res.status).toBe(404);
     const data = await res.json() as Record<string, unknown>;
     expect(data.error).toBeDefined();
   });
 
-  it("GET / returns HTML with Review title", async () => {
+  it("GET / returns HTML with Tour title", async () => {
     const res = await fetch(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const contentType = res.headers.get("content-type");
     expect(contentType).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("Review");
+    expect(html).toContain("Tour");
   });
 
   it("binds to localhost only", async () => {
-    const res = await fetch(`${baseUrl}/api/reviews`);
+    const res = await fetch(`${baseUrl}/api/tours`);
     expect(res.status).toBe(200);
   });
 
   it("SSE endpoint connects and receives events on annotation change", async () => {
     const controller = new AbortController();
-    const res = await fetch(`${baseUrl}/api/reviews/${reviewId}/events`, {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/events`, {
       signal: controller.signal,
       headers: { Accept: "text/event-stream" },
     });
@@ -150,7 +150,7 @@ describe("Webapp integration", () => {
     expect(firstData).toContain("connected");
 
     await execP(BUN, [
-      CLI, "annotate", reviewId,
+      CLI, "annotate", tourId,
       "--file", "hello.txt",
       "--side", "additions",
       "--line", "1",

@@ -1,6 +1,6 @@
 # CLI-first, not MCP-first
 
-The original framing was "build it for MCP." We pivoted to a CLI-first design: agents drive the system by shelling out (`review create`, `review annotate`, …) with `--json` output. MCP is deferred and would be a thin wrapper over the CLI if added later.
+The original framing was "build it for MCP." We pivoted to a CLI-first design: agents drive the system by shelling out (`tour create`, `tour annotate`, …) with `--json` output. MCP is deferred and would be a thin wrapper over the CLI if added later.
 
 ## Considered Options
 
