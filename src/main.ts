@@ -7,6 +7,7 @@ import { show } from "./cli/show.js";
 import { close } from "./cli/close.js";
 import { del } from "./cli/delete.js";
 import { prune } from "./cli/prune.js";
+import { tui } from "./cli/tui.js";
 
 function parseArgs(argv: string[]): {
   command: string;
@@ -49,6 +50,8 @@ function boolFlag(flags: Record<string, string | boolean>, key: string): boolean
 const USAGE = `review — local code review tool with AI annotations
 
 Usage:
+  review                                  (open TUI for most recent review)
+  review tui [<id>]                       (open TUI for a specific review)
   review create --head <ref> [--base <ref>] [--title <s>] [--json]
   review annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--json]
   review annotate <id> --batch - [--json]
@@ -129,10 +132,17 @@ async function main(): Promise<void> {
         break;
       }
 
+      case "tui":
+        await tui({ reviewId: positional[0], cwd });
+        break;
+
       case "help":
       case "--help":
-      case "":
         console.log(USAGE);
+        break;
+
+      case "":
+        await tui({ cwd });
         break;
 
       default:
