@@ -28,8 +28,8 @@ export function html(initialReviewId?: string): string {
   .review-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #30363d; }
   .review-header h1 { font-size: 20px; margin-bottom: 4px; }
   .review-header .meta { color: #8b949e; font-size: 13px; }
-  .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
-  .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; }
+  .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: clip; }
+  .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; }
   .file-diff-header .collapse-toggle { cursor: pointer; user-select: none; margin-left: auto; color: #8b949e; }
   .file-diff-header .stat { color: #8b949e; font-weight: normal; font-size: 12px; }
   .file-diff-header .stat .add { color: #3fb950; }
