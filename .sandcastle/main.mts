@@ -1,111 +1,176 @@
-// Sequential Reviewer — implement-then-review loop
+// Parallel-planner-with-review — plan, fan out implement→review, then merge.
 //
-// This template drives a two-phase workflow per issue:
-//   Phase 1 (Implement): A sonnet agent picks an open issue, works on it
-//                        on a dedicated branch, commits the changes, and signals
-//                        completion.
-//   Phase 2 (Review):    A second sonnet agent reviews the branch diff and either
-//                        approves it or makes corrections directly on the branch.
+// Adapted from sandcastle's own self-driving config at sandcastle/.sandcastle/run.ts.
 //
-// Both phases share a single sandbox created via createSandbox(), so the
-// implementer and reviewer work on the same explicit branch.
-//
-// The outer loop repeats up to MAX_ITERATIONS times, processing one issue per
-// iteration. This is a middle-complexity option between the simple-loop (no review
-// gate) and the parallel-planner (concurrent execution with a planning phase).
+//   Phase 1 (Plan):    An orchestrator agent reads open issues, builds a dependency
+//                      graph, and emits a <plan> tag with up to N parallelizable
+//                      branches.
+//   Phase 2 (Execute): Up to MAX_PARALLEL sandboxes run concurrently. Each one runs
+//                      an implementer; if it produced commits, a reviewer runs on
+//                      the same branch.
+//   Phase 3 (Merge):   One agent merges every completed branch into the current
+//                      branch and closes the corresponding issues.
 //
 // Usage:
 //   npx tsx .sandcastle/main.mts
-// Or add to package.json:
-//   "scripts": { "sandcastle": "npx tsx .sandcastle/main.mts" }
 
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-// Maximum number of implement→review cycles to run before stopping.
-// Each cycle works on one issue. Raise this to process more issues per run.
+const MODEL = "claude-opus-4-7";
 const MAX_ITERATIONS = 10;
-
-// Hooks run inside the sandbox before the agent starts each iteration.
-// npm install ensures the sandbox always has fresh dependencies.
-const hooks = {
-  sandbox: { onSandboxReady: [{ command: "npm install" }] },
-};
-
-// Copy node_modules from the host into the worktree before each sandbox
-// starts. Avoids a full npm install from scratch; the hook above handles
-// platform-specific binaries and any packages added since the last copy.
-const copyToWorktree = ["node_modules"];
-
-// ---------------------------------------------------------------------------
-// Main loop
-// ---------------------------------------------------------------------------
+const MAX_PARALLEL = 4;
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} ===\n`);
 
-  // Generate a unique branch name for this iteration.
-  const branch = `sandcastle/sequential-reviewer/${Date.now()}`;
-
-  // Create a single sandbox that both the implementer and reviewer share.
-  // This gives both agents a real, named branch that persists across phases.
-  const sandbox = await sandcastle.createSandbox({
-    branch,
+  // Phase 1: Plan
+  const plan = await sandcastle.run({
     sandbox: docker(),
-    hooks,
-    copyToWorktree,
+    name: "Planner",
+    agent: sandcastle.claudeCode(MODEL),
+    promptFile: "./.sandcastle/plan-prompt.md",
   });
 
-  try {
-    // -----------------------------------------------------------------------
-    // Phase 1: Implement
-    //
-    // A sonnet agent picks the next open issue, writes the
-    // implementation (using RGR: Red → Green → Repeat → Refactor), and
-    // commits the result.
-    //
-    // The agent signals completion via <promise>COMPLETE</promise> when done.
-    // -----------------------------------------------------------------------
-    const implement = await sandbox.run({
-      name: "implementer",
-      maxIterations: 100,
-      agent: sandcastle.claudeCode("claude-opus-4-7"),
-      promptFile: "./.sandcastle/implement-prompt.md",
-    });
-
-    if (!implement.commits.length) {
-      console.log("Implementation agent made no commits. Skipping review.");
-      continue;
-    }
-
-    console.log(`\nImplementation complete on branch: ${branch}`);
-    console.log(`Commits: ${implement.commits.length}`);
-
-    // -----------------------------------------------------------------------
-    // Phase 2: Review
-    //
-    // A second sonnet agent reviews the diff of the branch produced by
-    // Phase 1. It uses the {{BRANCH}} prompt argument to inspect the right
-    // branch, and either approves or makes corrections directly on the branch.
-    // -----------------------------------------------------------------------
-    await sandbox.run({
-      name: "reviewer",
-      maxIterations: 1,
-      agent: sandcastle.claudeCode("claude-opus-4-7"),
-      promptFile: "./.sandcastle/review-prompt.md",
-      promptArgs: {
-        BRANCH: branch,
-      },
-    });
-
-    console.log("\nReview complete.");
-  } finally {
-    await sandbox.close();
+  const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/);
+  if (!planMatch) {
+    throw new Error(
+      "Orchestrator did not produce a <plan> tag.\n\n" + plan.stdout,
+    );
   }
+
+  const { issues } = JSON.parse(planMatch[1]) as {
+    issues: { number: number; title: string; branch: string }[];
+  };
+
+  if (issues.length === 0) {
+    console.log("No issues to work on. Exiting.");
+    break;
+  }
+
+  console.log(
+    `Planning complete. ${issues.length} issue(s) to work in parallel:`,
+  );
+  for (const issue of issues) {
+    console.log(`  #${issue.number}: ${issue.title} → ${issue.branch}`);
+  }
+
+  // Phase 2: Implement + Review, up to MAX_PARALLEL concurrent
+  let running = 0;
+  const queue: (() => void)[] = [];
+  const acquire = () =>
+    running < MAX_PARALLEL
+      ? (running++, Promise.resolve())
+      : new Promise<void>((resolve) => queue.push(resolve));
+  const release = () => {
+    running--;
+    const next = queue.shift();
+    if (next) {
+      running++;
+      next();
+    }
+  };
+
+  const settled = await Promise.allSettled(
+    issues.map(async (issue) => {
+      await acquire();
+      try {
+        await using sandbox = await sandcastle.createSandbox({
+          sandbox: docker(),
+          branch: issue.branch,
+          copyToWorktree: ["node_modules"],
+          hooks: {
+            sandbox: {
+              onSandboxReady: [{ command: "npm install" }],
+            },
+          },
+        });
+
+        const result = await sandbox.run({
+          name: "Implementer #" + issue.number,
+          agent: sandcastle.claudeCode(MODEL),
+          promptFile: "./.sandcastle/implement-prompt.md",
+          promptArgs: {
+            ISSUE_NUMBER: String(issue.number),
+            ISSUE_TITLE: issue.title,
+            BRANCH: issue.branch,
+          },
+        });
+
+        if (result.commits.length > 0) {
+          await sandbox.run({
+            name: "Reviewer #" + issue.number,
+            agent: sandcastle.claudeCode(MODEL),
+            promptFile: "./.sandcastle/review-prompt.md",
+            promptArgs: {
+              ISSUE_NUMBER: String(issue.number),
+              ISSUE_TITLE: issue.title,
+              BRANCH: issue.branch,
+            },
+          });
+        }
+
+        return result;
+      } finally {
+        release();
+      }
+    }),
+  );
+
+  for (const [i, outcome] of settled.entries()) {
+    if (outcome.status === "rejected") {
+      console.error(
+        `  ✗ #${issues[i].number} (${issues[i].branch}) failed: ${outcome.reason}`,
+      );
+    }
+  }
+
+  const completedIssues = settled
+    .map((outcome, i) => ({ outcome, issue: issues[i] }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        outcome: PromiseFulfilledResult<
+          Awaited<ReturnType<typeof sandcastle.run>>
+        >;
+        issue: (typeof issues)[number];
+      } =>
+        entry.outcome.status === "fulfilled" &&
+        entry.outcome.value.commits.length > 0,
+    )
+    .map((entry) => entry.issue);
+
+  const completedBranches = completedIssues.map((i) => i.branch);
+
+  console.log(
+    `\nExecution complete. ${completedBranches.length} branch(es) with commits:`,
+  );
+  for (const branch of completedBranches) {
+    console.log(`  ${branch}`);
+  }
+
+  if (completedBranches.length === 0) {
+    console.log("No commits produced. Nothing to merge.");
+    continue;
+  }
+
+  // Phase 3: Merge
+  await sandcastle.run({
+    sandbox: docker(),
+    name: "Merger",
+    maxIterations: 10,
+    agent: sandcastle.claudeCode(MODEL),
+    promptFile: "./.sandcastle/merge-prompt.md",
+    promptArgs: {
+      BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
+      ISSUES: completedIssues
+        .map((i) => `- #${i.number}: ${i.title}`)
+        .join("\n"),
+    },
+  });
+
+  console.log("\nBranches merged.");
 }
 
 console.log("\nAll done.");
