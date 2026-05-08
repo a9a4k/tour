@@ -132,4 +132,48 @@ describe("Webapp integration", () => {
     const res = await fetch(`${baseUrl}/api/reviews`);
     expect(res.status).toBe(200);
   });
+
+  it("SSE endpoint connects and receives events on annotation change", async () => {
+    const controller = new AbortController();
+    const res = await fetch(`${baseUrl}/api/reviews/${reviewId}/events`, {
+      signal: controller.signal,
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+
+    const firstChunk = await reader.read();
+    const firstData = decoder.decode(firstChunk.value);
+    expect(firstData).toContain("connected");
+
+    await execP(BUN, [
+      CLI, "annotate", reviewId,
+      "--file", "hello.txt",
+      "--side", "additions",
+      "--line", "1",
+      "--body", "SSE test annotation",
+      "--author", "test",
+    ], { cwd: dir });
+
+    const readWithTimeout = async (): Promise<string> => {
+      return new Promise(async (resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("SSE timeout")), 3000);
+        try {
+          const chunk = await reader.read();
+          clearTimeout(timeout);
+          resolve(decoder.decode(chunk.value));
+        } catch (e) {
+          clearTimeout(timeout);
+          reject(e);
+        }
+      });
+    };
+
+    const eventData = await readWithTimeout();
+    expect(eventData).toContain("annotation-changed");
+    controller.abort();
+  });
 });

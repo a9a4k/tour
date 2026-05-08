@@ -2,6 +2,7 @@ import { listReviews, getReview, resolveIdPrefix } from "../core/review-store.js
 import { readAnnotations } from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
+import { ReviewWatcher } from "../core/watcher.js";
 import { html } from "./spa.js";
 
 interface ServeArgs {
@@ -13,6 +14,17 @@ interface ServeArgs {
 
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, cwd } = args;
+  const watchers = new Map<string, ReviewWatcher>();
+
+  function getOrCreateWatcher(reviewId: string): ReviewWatcher {
+    let w = watchers.get(reviewId);
+    if (!w) {
+      w = new ReviewWatcher(cwd, reviewId);
+      w.start();
+      watchers.set(reviewId, w);
+    }
+    return w;
+  }
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -24,6 +36,41 @@ export async function startServer(args: ServeArgs): Promise<void> {
         const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
         const reviews = await listReviews(cwd, { status });
         return Response.json(reviews);
+      }
+
+      const eventsMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)\/events$/);
+      if (eventsMatch) {
+        const idOrPrefix = eventsMatch[1];
+        try {
+          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+          const watcher = getOrCreateWatcher(resolvedId);
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue("data: {\"type\":\"connected\"}\n\n");
+              const callback = () => {
+                try {
+                  controller.enqueue(`data: ${JSON.stringify({ type: "annotation-changed", reviewId: resolvedId })}\n\n`);
+                } catch {
+                  watcher.off(callback);
+                }
+              };
+              watcher.on(callback);
+              req.signal.addEventListener("abort", () => {
+                watcher.off(callback);
+              });
+            },
+          });
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive",
+            },
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: message }, { status: 404 });
+        }
       }
 
       if (url.pathname.startsWith("/api/reviews/")) {
@@ -73,13 +120,13 @@ export async function startServer(args: ServeArgs): Promise<void> {
   }
 
   await new Promise<void>((resolve) => {
-    process.on("SIGINT", () => {
+    function cleanup() {
+      for (const w of watchers.values()) w.stop();
+      watchers.clear();
       server.stop();
       resolve();
-    });
-    process.on("SIGTERM", () => {
-      server.stop();
-      resolve();
-    });
+    }
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
   });
 }

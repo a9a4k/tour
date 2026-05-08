@@ -212,6 +212,19 @@ async function init() {
   currentReview = data;
   renderSidebar(data);
   renderDiff(data);
+
+  const evtSource = new EventSource('/api/reviews/' + targetId + '/events');
+  evtSource.onmessage = async function(event) {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'annotation-changed') {
+      const refreshed = await loadReview(targetId);
+      if (!refreshed.error) {
+        currentData = refreshed;
+        renderSidebar(refreshed);
+        renderDiff(refreshed);
+      }
+    }
+  };
 }
 
 init();
