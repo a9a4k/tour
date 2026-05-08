@@ -8,7 +8,7 @@ export interface Tour {
   base_sha: string;
   head_source: string;
   base_source: string;
-  worktree_snapshot: boolean;
+  wip_snapshot: boolean;
 }
 
 export interface Annotation {

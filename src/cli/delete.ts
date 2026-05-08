@@ -16,7 +16,7 @@ export async function del(args: DeleteArgs): Promise<void> {
   const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
   const tour = await getTour(args.cwd, resolvedId);
 
-  if (tour.worktree_snapshot) {
+  if (tour.wip_snapshot) {
     await releaseSnapshot(resolvedId, args.cwd);
   }
 

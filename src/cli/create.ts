@@ -19,11 +19,11 @@ export async function create(args: CreateArgs): Promise<void> {
 
   await ensureTourIgnored(cwd);
 
-  const isWorktree = head === "WORKTREE";
+  const isWip = head === "WIP";
   let headSha: string;
   let baseSha: string;
 
-  if (isWorktree) {
+  if (isWip) {
     headSha = await snapshotWorkingTree(id, cwd);
     baseSha = args.base
       ? await resolveRef(args.base, cwd)
@@ -45,7 +45,7 @@ export async function create(args: CreateArgs): Promise<void> {
     base_sha: baseSha,
     head_source: head,
     base_source: args.base ?? "",
-    worktree_snapshot: isWorktree,
+    wip_snapshot: isWip,
   };
 
   await createTour(cwd, tour);

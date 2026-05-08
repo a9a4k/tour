@@ -104,16 +104,16 @@ describe("CLI integration", () => {
       expect(result.stderr).toContain("--head");
     });
 
-    it("creates worktree tour", async () => {
+    it("creates wip tour", async () => {
       await writeFile(join(repo, "new.txt"), "new file\n");
       const result = await run(
-        ["create", "--head", "WORKTREE", "--json"],
+        ["create", "--head", "WIP", "--json"],
         repo,
       );
       expect(result.exitCode).toBe(0);
       const tour = JSON.parse(result.stdout);
-      expect(tour.worktree_snapshot).toBe(true);
-      expect(tour.head_source).toBe("WORKTREE");
+      expect(tour.wip_snapshot).toBe(true);
+      expect(tour.head_source).toBe("WIP");
     });
   });
 

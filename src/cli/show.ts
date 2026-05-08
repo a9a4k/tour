@@ -25,7 +25,7 @@ export async function show(args: ShowArgs): Promise<void> {
   console.log(`Base:   ${tour.base_sha.slice(0, 12)} (${tour.base_source || "default"})`);
   console.log(`Created: ${tour.created_at}`);
   if (tour.closed_at) console.log(`Closed:  ${tour.closed_at}`);
-  console.log(`Worktree snapshot: ${tour.worktree_snapshot}`);
+  console.log(`WIP snapshot: ${tour.wip_snapshot}`);
   console.log(`\nAnnotations (${annotations.length}):`);
   for (const a of annotations) {
     const range =

@@ -25,7 +25,7 @@ function makeTour(overrides?: Partial<Tour>): Tour {
     base_sha: "bbbb".repeat(10),
     head_source: "HEAD",
     base_source: "HEAD^",
-    worktree_snapshot: false,
+    wip_snapshot: false,
     ...overrides,
   };
 }
@@ -47,7 +47,7 @@ describe("tour-store", () => {
       expect(loaded.status).toBe("open");
       expect(loaded.head_sha).toBe(tour.head_sha);
       expect(loaded.base_sha).toBe(tour.base_sha);
-      expect(loaded.worktree_snapshot).toBe(false);
+      expect(loaded.wip_snapshot).toBe(false);
     });
 
     it("creates .tour/<id>/ folder structure", async () => {
