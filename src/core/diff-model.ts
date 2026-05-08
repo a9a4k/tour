@@ -49,7 +49,7 @@ export function parseDiff(rawDiff: string): DiffModel {
       files.push({
         name: file.name,
         prevName: "prevName" in file ? (file as { prevName: string }).prevName : undefined,
-        type: "type" in file ? String((file as { type: string }).type) : "change",
+        type: "type" in file ? (file as { type: string }).type : "change",
         hunks,
       });
     }

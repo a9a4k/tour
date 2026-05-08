@@ -2,6 +2,7 @@ import { listReviews, getReview, resolveIdPrefix } from "../core/review-store.js
 import { readAnnotations } from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
+import { classifyFile } from "../core/file-classifier.js";
 import { ReviewWatcher } from "../core/watcher.js";
 import { html } from "./spa.js";
 
@@ -73,8 +74,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
         }
       }
 
-      if (url.pathname.startsWith("/api/reviews/")) {
-        const idOrPrefix = url.pathname.split("/")[3];
+      const reviewMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)$/);
+      if (reviewMatch) {
+        const idOrPrefix = reviewMatch[1];
         try {
           const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
           const review = await getReview(cwd, resolvedId);
@@ -91,11 +93,29 @@ export async function startServer(args: ServeArgs): Promise<void> {
             diffModel = parseDiff(diff);
           }
 
+          const classifications = await Promise.all(
+            diffModel.files.map(async (f) => {
+              const isRenamed = f.type === "rename" || (!!f.prevName && f.prevName !== f.name);
+              const hasChanges = f.hunks.length > 0;
+              const isBinary = f.type === "binary";
+              const classification = await classifyFile(f.name, { cwd, isBinary, isRenamed, hasChanges });
+              return { file: f.name, classification };
+            }),
+          );
+          const classificationMap = Object.fromEntries(
+            classifications.map((c) => [c.file, c.classification]),
+          );
+
           return Response.json({
             ...review,
             annotations,
             diff,
-            diffModel,
+            diffModel: {
+              files: diffModel.files.map((f) => ({
+                ...f,
+                classification: classificationMap[f.name] ?? { collapsed: false },
+              })),
+            },
             snapshotLost,
           });
         } catch (err) {
@@ -114,9 +134,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
   console.log(`Review server running at ${url}`);
 
   if (args.open) {
-    const open = (await import("node:child_process")).exec;
+    const { execFile: openExec } = await import("node:child_process");
     const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-    open(`${cmd} ${url}`);
+    openExec(cmd, [url]);
   }
 
   await new Promise<void>((resolve) => {

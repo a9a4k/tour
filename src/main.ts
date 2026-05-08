@@ -71,15 +71,12 @@ async function main(): Promise<void> {
 
   try {
     switch (command) {
-      case "create":
-        await create({
-          head: flag(flags, "head") ?? (() => { throw new Error("--head is required"); })(),
-          base: flag(flags, "base"),
-          title: flag(flags, "title"),
-          json,
-          cwd,
-        });
+      case "create": {
+        const head = flag(flags, "head");
+        if (!head) throw new Error("--head is required");
+        await create({ head, base: flag(flags, "base"), title: flag(flags, "title"), json, cwd });
         break;
+      }
 
       case "annotate": {
         const reviewId = positional[0];

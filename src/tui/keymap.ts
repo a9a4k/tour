@@ -16,6 +16,7 @@ export type KeyAction =
   | { type: "move-file-down" }
   | { type: "move-file-up" }
   | { type: "select-file" }
+  | { type: "toggle-collapse" }
   | { type: "noop" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
@@ -31,6 +32,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "j" || key.name === "down") return { type: "move-file-down" };
     if (key.name === "k" || key.name === "up") return { type: "move-file-up" };
     if (key.name === "return") return { type: "select-file" };
+    if (key.name === "space") return { type: "toggle-collapse" };
   }
 
   return { type: "noop" };
