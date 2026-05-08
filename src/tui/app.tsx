@@ -3,6 +3,7 @@ import { createSignal, For, Show } from "solid-js";
 import type { Review, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import type { ScrollBoxRenderable } from "@opentui/core";
+import { dispatchKey } from "./keymap.js";
 
 interface AppProps {
   review: Review;
@@ -44,33 +45,31 @@ function App(props: AppProps) {
   };
 
   useKeyboard((key) => {
-    if (key.name === "q" || (key.ctrl && key.name === "c")) {
-      renderer.close();
-      return;
-    }
+    const action = dispatchKey(
+      { name: key.name, ctrl: key.ctrl, shift: key.shift },
+      { sidebarFocused: sidebarFocused(), fileCount: files().length },
+    );
 
-    if (key.name === "tab") {
-      if (key.shift) {
-        setSidebarFocused(true);
-      } else {
+    switch (action.type) {
+      case "quit":
+        renderer.close();
+        return;
+      case "toggle-pane":
         setSidebarFocused((v) => !v);
-      }
-      return;
-    }
-
-    if (sidebarFocused()) {
-      const count = files().length;
-      if (count === 0) return;
-      if (key.name === "j" || key.name === "down") {
-        setSelectedFileIdx((i) => Math.min(i + 1, count - 1));
-      } else if (key.name === "k" || key.name === "up") {
+        return;
+      case "focus-sidebar":
+        setSidebarFocused(true);
+        return;
+      case "move-file-down":
+        setSelectedFileIdx((i) => Math.min(i + 1, files().length - 1));
+        return;
+      case "move-file-up":
         setSelectedFileIdx((i) => Math.max(i - 1, 0));
-      } else if (key.name === "return") {
+        return;
+      case "select-file":
         setSidebarFocused(false);
-        if (diffScrollRef) {
-          diffScrollRef.scrollTo(0);
-        }
-      }
+        if (diffScrollRef) diffScrollRef.scrollTo(0);
+        return;
     }
   });
 
