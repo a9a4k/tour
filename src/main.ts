@@ -8,6 +8,7 @@ import { close } from "./cli/close.js";
 import { del } from "./cli/delete.js";
 import { prune } from "./cli/prune.js";
 import { tui } from "./cli/tui.js";
+import { serve } from "./cli/serve.js";
 
 function parseArgs(argv: string[]): {
   command: string;
@@ -52,6 +53,7 @@ const USAGE = `review — local code review tool with AI annotations
 Usage:
   review                                  (open TUI for most recent review)
   review tui [<id>]                       (open TUI for a specific review)
+  review serve [--port 7777] [--open] [<id>] (start webapp)
   review create --head <ref> [--base <ref>] [--title <s>] [--json]
   review annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--json]
   review annotate <id> --batch - [--json]
@@ -134,6 +136,15 @@ async function main(): Promise<void> {
 
       case "tui":
         await tui({ reviewId: positional[0], cwd });
+        break;
+
+      case "serve":
+        await serve({
+          port: parseInt(flag(flags, "port") ?? "7777", 10),
+          open: boolFlag(flags, "open"),
+          reviewId: positional[0],
+          cwd,
+        });
         break;
 
       case "help":
