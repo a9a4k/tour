@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 
 const execP = promisify(execFile);
 
-const BUN = join(process.env.HOME ?? "", ".bun", "bin", "bun");
+const BUN = "bun";
 const CLI = join(import.meta.dirname, "../../src/main.ts");
 
 async function gitCmd(args: string[], cwd: string): Promise<string> {
