@@ -1,13 +1,13 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
 import { createSignal, For, Show } from "solid-js";
-import type { Review, Annotation } from "../core/types.js";
+import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { dispatchKey } from "./keymap.js";
 
 interface AppProps {
-  review: Review;
+  tour: Tour;
   diff: string;
   files: DiffFile[];
   annotations: Annotation[];
@@ -125,7 +125,7 @@ function App(props: AppProps) {
       {/* Header */}
       <box height={1} width="100%" paddingX={1}>
         <text bold>
-          Review: {props.review.title || props.review.id} [{props.review.status}]
+          Tour: {props.tour.title || props.tour.id} [{props.tour.status}]
         </text>
       </box>
 

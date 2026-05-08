@@ -1,4 +1,4 @@
-export interface Review {
+export interface Tour {
   id: string;
   title: string;
   status: "open" | "closed";

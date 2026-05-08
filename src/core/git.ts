@@ -25,7 +25,7 @@ export async function isValidRef(ref: string, cwd: string): Promise<boolean> {
 }
 
 export async function snapshotWorkingTree(
-  reviewId: string,
+  tourId: string,
   cwd: string,
 ): Promise<string> {
   const stashSha = await git(
@@ -34,18 +34,18 @@ export async function snapshotWorkingTree(
   );
   const sha = stashSha || await resolveRef("HEAD", cwd);
   await git(
-    ["update-ref", `refs/review/${reviewId}`, sha],
+    ["update-ref", `refs/tour/${tourId}`, sha],
     cwd,
   );
   return sha;
 }
 
 export async function releaseSnapshot(
-  reviewId: string,
+  tourId: string,
   cwd: string,
 ): Promise<void> {
   try {
-    await git(["update-ref", "-d", `refs/review/${reviewId}`], cwd);
+    await git(["update-ref", "-d", `refs/tour/${tourId}`], cwd);
   } catch {
     // ref may already be gone
   }

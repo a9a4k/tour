@@ -1,29 +1,29 @@
-import { listReviews, getReview, resolveIdPrefix } from "../core/review-store.js";
+import { listTours, getTour, resolveIdPrefix } from "../core/tour-store.js";
 import { readAnnotations } from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile } from "../core/file-classifier.js";
-import { ReviewWatcher } from "../core/watcher.js";
+import { TourWatcher } from "../core/watcher.js";
 import { html } from "./spa.js";
 import { highlightDiffLines } from "./highlight.js";
 
 interface ServeArgs {
   port: number;
   open: boolean;
-  reviewId?: string;
+  tourId?: string;
   cwd: string;
 }
 
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, cwd } = args;
-  const watchers = new Map<string, ReviewWatcher>();
+  const watchers = new Map<string, TourWatcher>();
 
-  function getOrCreateWatcher(reviewId: string): ReviewWatcher {
-    let w = watchers.get(reviewId);
+  function getOrCreateWatcher(tourId: string): TourWatcher {
+    let w = watchers.get(tourId);
     if (!w) {
-      w = new ReviewWatcher(cwd, reviewId);
+      w = new TourWatcher(cwd, tourId);
       w.start();
-      watchers.set(reviewId, w);
+      watchers.set(tourId, w);
     }
     return w;
   }
@@ -34,13 +34,13 @@ export async function startServer(args: ServeArgs): Promise<void> {
     async fetch(req) {
       const url = new URL(req.url);
 
-      if (url.pathname === "/api/reviews") {
+      if (url.pathname === "/api/tours") {
         const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
-        const reviews = await listReviews(cwd, { status });
-        return Response.json(reviews);
+        const tours = await listTours(cwd, { status });
+        return Response.json(tours);
       }
 
-      const eventsMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)\/events$/);
+      const eventsMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/events$/);
       if (eventsMatch) {
         const idOrPrefix = eventsMatch[1];
         try {
@@ -51,7 +51,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
               controller.enqueue("data: {\"type\":\"connected\"}\n\n");
               const callback = () => {
                 try {
-                  controller.enqueue(`data: ${JSON.stringify({ type: "annotation-changed", reviewId: resolvedId })}\n\n`);
+                  controller.enqueue(`data: ${JSON.stringify({ type: "annotation-changed", tourId: resolvedId })}\n\n`);
                 } catch {
                   watcher.off(callback);
                 }
@@ -75,23 +75,23 @@ export async function startServer(args: ServeArgs): Promise<void> {
         }
       }
 
-      const reviewMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)$/);
-      if (reviewMatch) {
-        const idOrPrefix = reviewMatch[1];
+      const tourMatch = url.pathname.match(/^\/api\/tours\/([^/]+)$/);
+      if (tourMatch) {
+        const idOrPrefix = tourMatch[1];
         try {
           const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-          const review = await getReview(cwd, resolvedId);
+          const tour = await getTour(cwd, resolvedId);
           const annotations = await readAnnotations(cwd, resolvedId);
 
-          const headOk = await isShaResolvable(review.head_sha, cwd);
-          const baseOk = await isShaResolvable(review.base_sha, cwd);
+          const headOk = await isShaResolvable(tour.head_sha, cwd);
+          const baseOk = await isShaResolvable(tour.base_sha, cwd);
           const snapshotLost = !headOk || !baseOk;
 
           let diff = "";
           let highlightedLines: (string | null)[] = [];
           let diffModel = { files: [] as ReturnType<typeof parseDiff>["files"] };
           if (!snapshotLost) {
-            diff = await getDiff(review.base_sha, review.head_sha, cwd);
+            diff = await getDiff(tour.base_sha, tour.head_sha, cwd);
             diffModel = parseDiff(diff);
             highlightedLines = highlightDiffLines(diff);
           }
@@ -110,7 +110,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           );
 
           return Response.json({
-            ...review,
+            ...tour,
             annotations,
             diff,
             highlightedLines,
@@ -128,14 +128,14 @@ export async function startServer(args: ServeArgs): Promise<void> {
         }
       }
 
-      return new Response(html(args.reviewId), {
+      return new Response(html(args.tourId), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     },
   });
 
   const url = `http://127.0.0.1:${server.port}`;
-  console.log(`Review server running at ${url}`);
+  console.log(`Tour server running at ${url}`);
 
   if (args.open) {
     const { execFile: openExec } = await import("node:child_process");

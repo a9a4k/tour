@@ -1,7 +1,7 @@
 interface ServeArgs {
   port: number;
   open: boolean;
-  reviewId?: string;
+  tourId?: string;
   cwd: string;
 }
 

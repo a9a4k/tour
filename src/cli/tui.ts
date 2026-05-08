@@ -1,32 +1,32 @@
-import { getReview, listReviews, resolveIdPrefix } from "../core/review-store.js";
+import { getTour, listTours, resolveIdPrefix } from "../core/tour-store.js";
 import { readAnnotations } from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile, type FileClassification } from "../core/file-classifier.js";
 
 interface TuiArgs {
-  reviewId?: string;
+  tourId?: string;
   cwd: string;
 }
 
 export async function tui(args: TuiArgs): Promise<void> {
-  let reviewId: string;
+  let tourId: string;
 
-  if (args.reviewId) {
-    reviewId = await resolveIdPrefix(args.cwd, args.reviewId);
+  if (args.tourId) {
+    tourId = await resolveIdPrefix(args.cwd, args.tourId);
   } else {
-    const reviews = await listReviews(args.cwd, { status: "open" });
-    if (reviews.length === 0) {
-      throw new Error("No open reviews. Create one with: review create --head HEAD");
+    const tours = await listTours(args.cwd, { status: "open" });
+    if (tours.length === 0) {
+      throw new Error("No open tours. Create one with: tour create --head HEAD");
     }
-    reviewId = reviews[reviews.length - 1].id;
+    tourId = tours[tours.length - 1].id;
   }
 
-  const review = await getReview(args.cwd, reviewId);
-  const annotations = await readAnnotations(args.cwd, reviewId);
+  const tour = await getTour(args.cwd, tourId);
+  const annotations = await readAnnotations(args.cwd, tourId);
 
-  const headResolvable = await isShaResolvable(review.head_sha, args.cwd);
-  const baseResolvable = await isShaResolvable(review.base_sha, args.cwd);
+  const headResolvable = await isShaResolvable(tour.head_sha, args.cwd);
+  const baseResolvable = await isShaResolvable(tour.base_sha, args.cwd);
   const snapshotLost = !headResolvable || !baseResolvable;
 
   let rawDiff = "";
@@ -34,7 +34,7 @@ export async function tui(args: TuiArgs): Promise<void> {
   let classifications: Record<string, FileClassification> = {};
 
   if (!snapshotLost) {
-    rawDiff = await getDiff(review.base_sha, review.head_sha, args.cwd);
+    rawDiff = await getDiff(tour.base_sha, tour.head_sha, args.cwd);
     const model = parseDiff(rawDiff);
     files = model.files;
 
@@ -53,7 +53,7 @@ export async function tui(args: TuiArgs): Promise<void> {
   const tuiModule = "../tui/app.js";
   const { startTui } = await import(/* @vite-ignore */ tuiModule) as {
     startTui: (props: {
-      review: typeof review;
+      tour: typeof tour;
       diff: string;
       files: typeof files;
       annotations: typeof annotations;
@@ -61,5 +61,5 @@ export async function tui(args: TuiArgs): Promise<void> {
       classifications: Record<string, FileClassification>;
     }) => Promise<void>;
   };
-  await startTui({ review, diff: rawDiff, files, annotations, snapshotLost, classifications });
+  await startTui({ tour, diff: rawDiff, files, annotations, snapshotLost, classifications });
 }

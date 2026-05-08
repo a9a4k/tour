@@ -1,9 +1,9 @@
 {
-  "name": "review",
+  "name": "tour",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "review": "./src/main.ts"
+    "tour": "./src/main.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

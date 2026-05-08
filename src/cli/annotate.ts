@@ -2,13 +2,13 @@ import {
   appendAnnotation,
   appendAnnotations,
 } from "../core/annotations-store.js";
-import { resolveIdPrefix } from "../core/review-store.js";
+import { resolveIdPrefix } from "../core/tour-store.js";
 import { generateId } from "../core/ids.js";
 import { printOutput } from "./output.js";
 import type { Annotation } from "../core/types.js";
 
 interface AnnotateArgs {
-  reviewId: string;
+  tourId: string;
   file?: string;
   side?: string;
   line?: string;
@@ -29,7 +29,7 @@ function parseLine(line: string): { start: number; end: number } {
 }
 
 export async function annotate(args: AnnotateArgs): Promise<void> {
-  const resolvedId = await resolveIdPrefix(args.cwd, args.reviewId);
+  const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
 
   if (args.batch) {
     const stdin = await readStdin();

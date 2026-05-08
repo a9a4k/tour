@@ -1,30 +1,30 @@
 import {
-  deleteReview,
+  deleteTour,
   resolveIdPrefix,
-  getReview,
-} from "../core/review-store.js";
+  getTour,
+} from "../core/tour-store.js";
 import { releaseSnapshot } from "../core/git.js";
 import { printOutput } from "./output.js";
 
 interface DeleteArgs {
-  reviewId: string;
+  tourId: string;
   json: boolean;
   cwd: string;
 }
 
 export async function del(args: DeleteArgs): Promise<void> {
-  const resolvedId = await resolveIdPrefix(args.cwd, args.reviewId);
-  const review = await getReview(args.cwd, resolvedId);
+  const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
+  const tour = await getTour(args.cwd, resolvedId);
 
-  if (review.worktree_snapshot) {
+  if (tour.worktree_snapshot) {
     await releaseSnapshot(resolvedId, args.cwd);
   }
 
-  await deleteReview(args.cwd, resolvedId);
+  await deleteTour(args.cwd, resolvedId);
 
   if (args.json) {
     printOutput({ deleted: resolvedId }, true);
   } else {
-    console.log(`Deleted review ${resolvedId}`);
+    console.log(`Deleted tour ${resolvedId}`);
   }
 }

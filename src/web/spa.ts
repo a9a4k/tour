@@ -1,12 +1,12 @@
 import { hljsThemeCSS } from "./highlight.js";
 
-export function html(initialReviewId?: string): string {
+export function html(initialTourId?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Review</title>
+<title>Tour</title>
 <style>${hljsThemeCSS()}</style>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,9 +25,9 @@ export function html(initialReviewId?: string): string {
   .badge { background: #30363d; color: #8b949e; border-radius: 10px; padding: 1px 6px; font-size: 11px; margin-left: auto; }
   #main { flex: 1; overflow-y: auto; padding: 16px; }
   .banner { background: #d292221a; border: 1px solid #d29922; color: #d29922; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
-  .review-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #30363d; }
-  .review-header h1 { font-size: 20px; margin-bottom: 4px; }
-  .review-header .meta { color: #8b949e; font-size: 13px; }
+  .tour-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #30363d; }
+  .tour-header h1 { font-size: 20px; margin-bottom: 4px; }
+  .tour-header .meta { color: #8b949e; font-size: 13px; }
   .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: clip; }
   .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; }
   .file-diff-header .collapse-toggle { cursor: pointer; user-select: none; margin-left: auto; color: #8b949e; }
@@ -51,13 +51,13 @@ export function html(initialReviewId?: string): string {
   .annotation-block .ann-header { color: #58a6ff; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
   .annotation-block .ann-body { color: #c9d1d9; }
   .diff-table td .hljs-addition, .diff-table td .hljs-deletion { background: transparent; color: inherit; }
-  .no-reviews { text-align: center; padding: 48px; color: #8b949e; }
-  #review-list { display: none; }
-  #review-list.visible { display: block; }
-  .review-item { padding: 12px 16px; border-bottom: 1px solid #30363d; cursor: pointer; }
-  .review-item:hover { background: #161b22; }
-  .review-item .title { font-weight: 600; }
-  .review-item .id { color: #8b949e; font-size: 12px; }
+  .no-tours { text-align: center; padding: 48px; color: #8b949e; }
+  #tour-list { display: none; }
+  #tour-list.visible { display: block; }
+  .tour-item { padding: 12px 16px; border-bottom: 1px solid #30363d; cursor: pointer; }
+  .tour-item:hover { background: #161b22; }
+  .tour-item .title { font-weight: 600; }
+  .tour-item .id { color: #8b949e; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -69,18 +69,18 @@ export function html(initialReviewId?: string): string {
   <div id="content"></div>
 </div>
 <script>
-const INITIAL_ID = ${initialReviewId ? JSON.stringify(initialReviewId) : "null"};
-let currentReview = null;
+const INITIAL_ID = ${initialTourId ? JSON.stringify(initialTourId) : "null"};
+let currentTour = null;
 let currentData = null;
 let collapsedFiles = {};
 
-async function loadReviews() {
-  const res = await fetch('/api/reviews?status=all');
+async function loadTours() {
+  const res = await fetch('/api/tours?status=all');
   return res.json();
 }
 
-async function loadReview(id) {
-  const res = await fetch('/api/reviews/' + id);
+async function loadTour(id) {
+  const res = await fetch('/api/tours/' + id);
   return res.json();
 }
 
@@ -122,7 +122,7 @@ function handleCopyPath(btn, e) {
 function renderSidebar(data) {
   const fileList = document.getElementById('file-list');
   if (!data.diffModel || !data.diffModel.files) {
-    fileList.innerHTML = '<div class="no-reviews">No files</div>';
+    fileList.innerHTML = '<div class="no-tours">No files</div>';
     return;
   }
   const files = [...data.diffModel.files].sort((a, b) => a.name.localeCompare(b.name));
@@ -176,7 +176,7 @@ function renderDiff(data) {
   const content = document.getElementById('content');
   let html = '';
 
-  html += '<div class="review-header">';
+  html += '<div class="tour-header">';
   html += '<h1>' + escapeHtml(data.title || data.id) + '</h1>';
   html += '<div class="meta">' + data.status + ' &middot; ' + data.id + ' &middot; ' + data.created_at + '</div>';
   html += '</div>';
@@ -299,34 +299,34 @@ function scrollToFile(idx) {
 }
 
 async function init() {
-  const reviews = await loadReviews();
-  if (reviews.length === 0) {
-    document.getElementById('content').innerHTML = '<div class="no-reviews">No reviews found. Create one with: review create --head HEAD</div>';
+  const tours = await loadTours();
+  if (tours.length === 0) {
+    document.getElementById('content').innerHTML = '<div class="no-tours">No tours found. Create one with: tour create --head HEAD</div>';
     return;
   }
 
   let targetId = INITIAL_ID;
   if (!targetId) {
-    const open = reviews.filter(r => r.status === 'open');
-    targetId = open.length > 0 ? open[open.length - 1].id : reviews[reviews.length - 1].id;
+    const open = tours.filter(t => t.status === 'open');
+    targetId = open.length > 0 ? open[open.length - 1].id : tours[tours.length - 1].id;
   }
 
-  const data = await loadReview(targetId);
+  const data = await loadTour(targetId);
   if (data.error) {
-    document.getElementById('content').innerHTML = '<div class="no-reviews">Error: ' + data.error + '</div>';
+    document.getElementById('content').innerHTML = '<div class="no-tours">Error: ' + data.error + '</div>';
     return;
   }
   collapsedFiles = {};
   currentData = data;
-  currentReview = data;
+  currentTour = data;
   renderSidebar(data);
   renderDiff(data);
 
-  const evtSource = new EventSource('/api/reviews/' + targetId + '/events');
+  const evtSource = new EventSource('/api/tours/' + targetId + '/events');
   evtSource.onmessage = async function(event) {
     const msg = JSON.parse(event.data);
     if (msg.type === 'annotation-changed') {
-      const refreshed = await loadReview(targetId);
+      const refreshed = await loadTour(targetId);
       if (!refreshed.error) {
         currentData = refreshed;
         renderSidebar(refreshed);
