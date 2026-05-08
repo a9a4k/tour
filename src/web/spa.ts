@@ -40,6 +40,7 @@ export function html(initialReviewId?: string): string {
   .diff-table tr.deletion { background: #2d1214; }
   .diff-table tr.deletion .line-num { background: #3c1618; }
   .diff-table tr.context { background: transparent; }
+  .diff-table .ann-range-ln { box-shadow: inset 3px 0 0 #58a6ff; }
   .annotation-block { background: #1c2128; border-left: 3px solid #58a6ff; margin: 4px 16px 4px 60px; padding: 8px 12px; border-radius: 4px; font-size: 12px; }
   .annotation-block .ann-header { color: #58a6ff; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
   .annotation-block .ann-body { color: #c9d1d9; }
@@ -213,9 +214,11 @@ function renderDiff(data) {
       if (!currentFile) continue;
 
       if (line.startsWith('+')) {
-        html += '<tr class="addition"><td class="line-num"></td><td class="line-num">' + rightNum + '</td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
-        const fileAnns = annotations.filter(a => a.file === currentFile && a.side === 'additions' && rightNum >= a.line_start && rightNum <= a.line_end);
-        for (const ann of fileAnns) {
+        const inRange = annotations.some(a => a.file === currentFile && a.side === 'additions' && rightNum >= a.line_start && rightNum <= a.line_end);
+        const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
+        html += '<tr class="addition"><td class="line-num"></td><td class="' + numCls + '">' + rightNum + '</td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'additions' && rightNum === a.line_end);
+        for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
             escapeHtml(ann.author) + ' &middot; ' + ann.file + ':' + ann.line_start +
             (ann.line_start !== ann.line_end ? '-' + ann.line_end : '') +
@@ -223,9 +226,11 @@ function renderDiff(data) {
         }
         rightNum++;
       } else if (line.startsWith('-')) {
-        html += '<tr class="deletion"><td class="line-num">' + leftNum + '</td><td class="line-num"></td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
-        const fileAnns = annotations.filter(a => a.file === currentFile && a.side === 'deletions' && leftNum >= a.line_start && leftNum <= a.line_end);
-        for (const ann of fileAnns) {
+        const inRange = annotations.some(a => a.file === currentFile && a.side === 'deletions' && leftNum >= a.line_start && leftNum <= a.line_end);
+        const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
+        html += '<tr class="deletion"><td class="' + numCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'deletions' && leftNum === a.line_end);
+        for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
             escapeHtml(ann.author) + ' &middot; ' + ann.file + ':' + ann.line_start +
             (ann.line_start !== ann.line_end ? '-' + ann.line_end : '') +
