@@ -1,0 +1,26 @@
+{
+  "name": "review",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "review": "./src/main.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.1"
+  },
+  "dependencies": {
+    "@opentui/solid": "^0.2.5",
+    "@pierre/diffs": "^1.1.21",
+    "hunkdiff": "^0.10.0",
+    "smol-toml": "^1.6.1",
+    "solid-js": "^1.9.12"
+  }
+}
