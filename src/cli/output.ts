@@ -1,6 +1,5 @@
 export function formatOutput(data: unknown, json: boolean): string {
-  if (json) return JSON.stringify(data, null, 2);
-  if (typeof data === "string") return data;
+  if (!json && typeof data === "string") return data;
   return JSON.stringify(data, null, 2);
 }
 

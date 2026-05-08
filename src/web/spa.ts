@@ -86,7 +86,7 @@ function fileTypeIcon(type) {
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function renderSidebar(data) {
@@ -188,15 +188,15 @@ function renderDiff(data) {
         }
 
         if (collapsed) {
-          const chevron = '<span class="collapse-toggle" onclick="toggleCollapse(\\'' + escapeHtml(name).replace(/'/g, "\\\\'") + '\\')">&#x25BE;</span>';
-          html += '<div class="file-diff-header" style="cursor:pointer" onclick="toggleCollapse(\\'' + escapeHtml(name).replace(/'/g, "\\\\'") + '\\')">';
+          const chevron = '<span class="collapse-toggle" data-collapse-file="' + escapeHtml(name) + '">&#x25BE;</span>';
+          html += '<div class="file-diff-header" style="cursor:pointer" data-collapse-file="' + escapeHtml(name) + '">';
           html += '<span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron;
           html += '</div></div>';
           skipUntilNextFile = true;
           continue;
         }
 
-        const chevron = cls && cls.collapsed ? '<span class="collapse-toggle" onclick="event.stopPropagation();toggleCollapse(\\'' + escapeHtml(name).replace(/'/g, "\\\\'") + '\\')">&#x25B4;</span>' : '';
+        const chevron = cls && cls.collapsed ? '<span class="collapse-toggle" data-collapse-file="' + escapeHtml(name) + '">&#x25B4;</span>' : '';
         html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron + '</div>';
         html += '<table class="diff-table">';
         skipUntilNextFile = false;
@@ -300,6 +300,14 @@ async function init() {
     }
   };
 }
+
+document.addEventListener('click', function(e) {
+  const el = e.target.closest('[data-collapse-file]');
+  if (el) {
+    e.stopPropagation();
+    toggleCollapse(el.getAttribute('data-collapse-file'));
+  }
+});
 
 init();
 <\/script>

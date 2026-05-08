@@ -20,22 +20,22 @@ export function parseIdTimestamp(id: string): Date {
   return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}Z`);
 }
 
+const SUFFIX_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+
 function randomSuffix(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
   for (let i = 0; i < 4; i++) {
-    result += chars[Math.floor(Math.random() * chars.length)];
+    result += SUFFIX_CHARS[Math.floor(Math.random() * SUFFIX_CHARS.length)];
   }
   return result;
 }
 
 function seededRandom(seed: number): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let s = seed;
   let result = "";
   for (let i = 0; i < 4; i++) {
     s = (s * 1103515245 + 12345) & 0x7fffffff;
-    result += chars[s % chars.length];
+    result += SUFFIX_CHARS[s % SUFFIX_CHARS.length];
   }
   return result;
 }

@@ -114,17 +114,10 @@ export function classifyFile(path: string, opts: ClassifyOptions): FileClassific
   }
 
   return checkGitAttrs(path, opts.cwd).then((attrs) => {
-    if (attrs.generated === "true" || attrs.generated === "set") {
-      return { collapsed: true, reason: "generated" } as FileClassification;
-    }
-    if (attrs.generated === "false" || attrs.generated === "unset") {
-      return { collapsed: false };
-    }
-    if (attrs.vendored === "true" || attrs.vendored === "set") {
-      return { collapsed: true, reason: "vendored" } as FileClassification;
-    }
-    if (attrs.vendored === "false" || attrs.vendored === "unset") {
-      return { collapsed: false };
+    for (const [attr, reason] of [["generated", "generated"], ["vendored", "vendored"]] as const) {
+      const val = attrs[attr];
+      if (val === "true" || val === "set") return { collapsed: true, reason } as FileClassification;
+      if (val === "false" || val === "unset") return { collapsed: false };
     }
     return classifyByHeuristic(path);
   });

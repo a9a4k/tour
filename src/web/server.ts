@@ -74,8 +74,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
         }
       }
 
-      if (url.pathname.startsWith("/api/reviews/")) {
-        const idOrPrefix = url.pathname.split("/")[3];
+      const reviewMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)$/);
+      if (reviewMatch) {
+        const idOrPrefix = reviewMatch[1];
         try {
           const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
           const review = await getReview(cwd, resolvedId);
@@ -133,9 +134,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
   console.log(`Review server running at ${url}`);
 
   if (args.open) {
-    const open = (await import("node:child_process")).exec;
+    const { execFile: openExec } = await import("node:child_process");
     const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-    open(`${cmd} ${url}`);
+    openExec(cmd, [url]);
   }
 
   await new Promise<void>((resolve) => {
