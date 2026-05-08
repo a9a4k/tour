@@ -13,10 +13,6 @@ const DIFF_OPTIONS = {
   hunkSeparators: "metadata" as const,
 };
 
-function fileSlug(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_-]/g, "-");
-}
-
 interface AppProps {
   initialTourId: string | null;
 }
@@ -88,12 +84,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
     if (!tour || !tour.diff) return [];
-    const patches = parsePatchFiles(tour.diff, `${tour.id}`);
-    const files: FileDiffMetadata[] = [];
-    for (const patch of patches) {
-      for (const f of patch.files) files.push(f);
-    }
-    return files;
+    return parsePatchFiles(tour.diff, tour.id).flatMap((p) => p.files);
   }, [tour?.diff, tour?.id]);
 
   if (!state.loaded && !tourList) {
@@ -185,15 +176,11 @@ interface FileBlockProps {
 }
 
 function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockProps): React.JSX.Element {
-  const isBinaryByClassification = modelFile?.classification?.reason === "binary";
-  const startCollapsed = (() => {
-    if (isBinaryByClassification) return true;
-    if (modelFile?.classification?.collapsed) {
-      const hasAnn = annotations.some((a) => a.file === fileDiff.name);
-      if (!hasAnn) return true;
-    }
-    return false;
-  })();
+  const isBinary = modelFile?.classification?.reason === "binary";
+  const startCollapsed =
+    isBinary ||
+    (modelFile?.classification?.collapsed === true &&
+      !annotations.some((a) => a.file === fileDiff.name));
   const [collapsed, setCollapsed] = useState(startCollapsed);
 
   const lineAnns = useMemo<DiffLineAnnotation<AnnotationMetadata>[]>(
@@ -204,14 +191,12 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
   const stat = fileStat(modelFile?.hunks ?? []);
 
   return (
-    <div
-      className="file-block"
-      id={`file-${fileSlug(fileDiff.name)}`}
-      ref={registerRef}
-    >
-      <div className="file-block-header" style={isBinaryByClassification ? undefined : { cursor: "pointer" }}
+    <div className="file-block" ref={registerRef}>
+      <div
+        className="file-block-header"
+        style={isBinary ? undefined : { cursor: "pointer" }}
         onClick={() => {
-          if (!isBinaryByClassification) setCollapsed((c) => !c);
+          if (!isBinary) setCollapsed((c) => !c);
         }}
       >
         <span>{fileDiff.name}</span>
@@ -219,7 +204,7 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
         {modelFile?.classification?.reason ? (
           <span className="reason">{modelFile.classification.reason}</span>
         ) : null}
-        {isBinaryByClassification ? (
+        {isBinary ? (
           <span className="stat">Binary file changed</span>
         ) : (
           <span className="stat">
@@ -227,7 +212,7 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
           </span>
         )}
       </div>
-      {isBinaryByClassification || collapsed ? null : (
+      {isBinary || collapsed ? null : (
         <FileDiff<AnnotationMetadata>
           fileDiff={fileDiff}
           options={DIFF_OPTIONS}
@@ -240,13 +225,11 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
   );
 }
 
-function renderAnnotationContent(ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode {
-  if (!ann.metadata?.isAnchor) return null;
-  const { annotation } = ann.metadata;
+function AnnotationCard({ annotation }: { annotation: Annotation }): React.JSX.Element {
   const range =
-    annotation.line_start !== annotation.line_end
-      ? `${annotation.line_start}-${annotation.line_end}`
-      : `${annotation.line_start}`;
+    annotation.line_start === annotation.line_end
+      ? `${annotation.line_start}`
+      : `${annotation.line_start}-${annotation.line_end}`;
   return (
     <div className="annotation-block">
       <div className="ann-header">
@@ -257,18 +240,17 @@ function renderAnnotationContent(ann: DiffLineAnnotation<AnnotationMetadata>): R
   );
 }
 
+function renderAnnotationContent(ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode {
+  if (!ann.metadata?.isAnchor) return null;
+  return <AnnotationCard annotation={ann.metadata.annotation} />;
+}
+
 function AnnotationList({ annotations }: { annotations: Annotation[] }): React.JSX.Element {
   if (annotations.length === 0) return <div className="empty">No annotations</div>;
   return (
     <>
       {annotations.map((a) => (
-        <div key={a.id} className="annotation-block">
-          <div className="ann-header">
-            {a.author} · {a.file}:{a.line_start}
-            {a.line_start !== a.line_end ? `-${a.line_end}` : ""}
-          </div>
-          <div className="ann-body">{a.body}</div>
-        </div>
+        <AnnotationCard key={a.id} annotation={a} />
       ))}
     </>
   );
@@ -276,22 +258,19 @@ function AnnotationList({ annotations }: { annotations: Annotation[] }): React.J
 
 function CopyPathButton({ path }: { path: string }): React.JSX.Element {
   const [glyph, setGlyph] = useState("⎘");
+  const flash = (next: string) => {
+    setGlyph(next);
+    setTimeout(() => setGlyph("⎘"), 1200);
+  };
   const click = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!navigator.clipboard) {
-      setGlyph("✗");
-      setTimeout(() => setGlyph("⎘"), 1200);
+      flash("✗");
       return;
     }
     navigator.clipboard.writeText(path).then(
-      () => {
-        setGlyph("✓");
-        setTimeout(() => setGlyph("⎘"), 1200);
-      },
-      () => {
-        setGlyph("✗");
-        setTimeout(() => setGlyph("⎘"), 1200);
-      },
+      () => flash("✓"),
+      () => flash("✗"),
     );
   };
   return (

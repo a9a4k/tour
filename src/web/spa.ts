@@ -133,7 +133,6 @@ export function html(initialTourId?: string): string {
     padding: 48px;
     color: #8b949e;
   }
-  .binary-note { padding: 8px 16px; color: #8b949e; font-size: 12px; }
 </style>
 </head>
 <body>
