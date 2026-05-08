@@ -18,6 +18,7 @@ export function html(initialReviewId?: string): string {
   .file-icon.M { color: #d29922; }
   .file-icon.D { color: #f85149; }
   .file-icon.R { color: #a371f7; }
+  .reason-tag { color: #8b949e; font-size: 11px; font-style: italic; }
   .badge { background: #30363d; color: #8b949e; border-radius: 10px; padding: 1px 6px; font-size: 11px; margin-left: auto; }
   #main { flex: 1; overflow-y: auto; padding: 16px; }
   .banner { background: #d292221a; border: 1px solid #d29922; color: #d29922; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
@@ -25,7 +26,12 @@ export function html(initialReviewId?: string): string {
   .review-header h1 { font-size: 20px; margin-bottom: 4px; }
   .review-header .meta { color: #8b949e; font-size: 13px; }
   .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
-  .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; }
+  .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; }
+  .file-diff-header .collapse-toggle { cursor: pointer; user-select: none; margin-left: auto; color: #8b949e; }
+  .file-diff-header .stat { color: #8b949e; font-weight: normal; font-size: 12px; }
+  .file-diff-header .stat .add { color: #3fb950; }
+  .file-diff-header .stat .del { color: #f85149; }
+  .file-diff-header .reason { color: #8b949e; font-style: italic; font-size: 12px; }
   .diff-table { width: 100%; border-collapse: collapse; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 20px; }
   .diff-table td { padding: 0 12px; white-space: pre-wrap; word-break: break-all; vertical-align: top; }
   .diff-table .line-num { color: #484f58; text-align: right; width: 50px; user-select: none; border-right: 1px solid #30363d; padding-right: 8px; }
@@ -58,6 +64,7 @@ export function html(initialReviewId?: string): string {
 const INITIAL_ID = ${initialReviewId ? JSON.stringify(initialReviewId) : "null"};
 let currentReview = null;
 let currentData = null;
+let collapsedFiles = {};
 
 async function loadReviews() {
   const res = await fetch('/api/reviews?status=all');
@@ -93,10 +100,46 @@ function renderSidebar(data) {
     const icon = fileTypeIcon(f.type);
     const annCount = (data.annotations || []).filter(a => a.file === f.name).length;
     const badge = annCount > 0 ? '<span class="badge">' + annCount + '</span>' : '';
+    const cls = f.classification;
+    const reasonTag = cls && cls.reason ? '<span class="reason-tag">' + escapeHtml(cls.reason) + '</span>' : '';
     return '<div class="file-entry" data-idx="' + i + '" onclick="scrollToFile(' + i + ')">' +
       '<span class="file-icon ' + icon + '">' + icon + '</span>' +
-      '<span>' + escapeHtml(f.name) + '</span>' + badge + '</div>';
+      '<span>' + escapeHtml(f.name) + '</span>' + reasonTag + badge + '</div>';
   }).join('');
+}
+
+function isFileCollapsed(fileName, data) {
+  if (collapsedFiles[fileName] !== undefined) return collapsedFiles[fileName];
+  const files = data.diffModel ? data.diffModel.files : [];
+  const file = files.find(f => f.name === fileName);
+  if (!file || !file.classification || !file.classification.collapsed) return false;
+  if (file.classification.reason === 'binary') return true;
+  const hasAnnotations = (data.annotations || []).some(a => a.file === fileName);
+  if (hasAnnotations) return false;
+  return true;
+}
+
+function toggleCollapse(fileName) {
+  const current = isFileCollapsed(fileName, currentData);
+  const file = currentData.diffModel.files.find(f => f.name === fileName);
+  if (file && file.classification && file.classification.reason === 'binary') return;
+  collapsedFiles[fileName] = !current;
+  renderDiff(currentData);
+}
+
+function fileStat(fileName, data) {
+  const files = data.diffModel ? data.diffModel.files : [];
+  const file = files.find(f => f.name === fileName);
+  if (!file) return { add: 0, del: 0 };
+  let add = 0, del = 0;
+  for (const hunk of file.hunks) {
+    for (const line of hunk.content) {
+      if (line.type === 'addition') add++;
+      else if (line.type === 'deletion') del++;
+      else if (line.type === 'change') { add++; del++; }
+    }
+  }
+  return { add, del };
 }
 
 function renderDiff(data) {
@@ -118,6 +161,7 @@ function renderDiff(data) {
     const lines = data.diff.split('\\n');
     let currentFile = null;
     let leftNum = 0, rightNum = 0;
+    let skipUntilNextFile = false;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -126,11 +170,39 @@ function renderDiff(data) {
         const match = line.match(/b\\/(.+)$/);
         const name = match ? match[1] : 'unknown';
         currentFile = name;
+        const collapsed = isFileCollapsed(name, data);
+        const stat = fileStat(name, data);
+        const fileObj = (data.diffModel.files || []).find(f => f.name === name);
+        const cls = fileObj && fileObj.classification;
+        const isBinary = cls && cls.reason === 'binary';
+        const reasonStr = cls && cls.reason ? '<span class="reason">' + escapeHtml(cls.reason) + '</span>' : '';
+        const statStr = '<span class="stat"><span class="add">+' + stat.add + '</span> <span class="del">-' + stat.del + '</span></span>';
+
         html += '<div class="file-diff" id="file-' + escapeHtml(name) + '">';
-        html += '<div class="file-diff-header">' + escapeHtml(name) + '</div>';
+
+        if (isBinary) {
+          html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + reasonStr + '<span class="stat">Binary file changed</span></div>';
+          html += '</div>';
+          skipUntilNextFile = true;
+          continue;
+        }
+
+        if (collapsed) {
+          const chevron = '<span class="collapse-toggle" onclick="toggleCollapse(\\'' + escapeHtml(name).replace(/'/g, "\\\\'") + '\\')">&#x25BE;</span>';
+          html += '<div class="file-diff-header" style="cursor:pointer" onclick="toggleCollapse(\\'' + escapeHtml(name).replace(/'/g, "\\\\'") + '\\')">';
+          html += '<span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron;
+          html += '</div></div>';
+          skipUntilNextFile = true;
+          continue;
+        }
+
+        const chevron = cls && cls.collapsed ? '<span class="collapse-toggle" onclick="event.stopPropagation();toggleCollapse(\\'' + escapeHtml(name).replace(/'/g, "\\\\'") + '\\')">&#x25B4;</span>' : '';
+        html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron + '</div>';
         html += '<table class="diff-table">';
+        skipUntilNextFile = false;
         continue;
       }
+      if (skipUntilNextFile) continue;
       if (line.startsWith('@@')) {
         const hunkMatch = line.match(/@@ -(\\d+),?\\d* \\+(\\d+),?\\d* @@/);
         if (hunkMatch) { leftNum = parseInt(hunkMatch[1]); rightNum = parseInt(hunkMatch[2]); }
@@ -165,7 +237,7 @@ function renderDiff(data) {
         leftNum++; rightNum++;
       }
     }
-    if (currentFile) html += '</table></div>';
+    if (currentFile && !skipUntilNextFile) html += '</table></div>';
   }
 
   if (!data.diff && annotations.length > 0) {
@@ -209,6 +281,7 @@ async function init() {
     document.getElementById('content').innerHTML = '<div class="no-reviews">Error: ' + data.error + '</div>';
     return;
   }
+  collapsedFiles = {};
   currentData = data;
   currentReview = data;
   renderSidebar(data);

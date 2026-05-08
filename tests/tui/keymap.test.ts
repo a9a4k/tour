@@ -53,6 +53,14 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("j"), { sidebarFocused: true, fileCount: 0 }).type).toBe("noop");
   });
 
+  it("space toggles collapse when sidebar focused with files", () => {
+    expect(dispatchKey(k("space"), sidebar).type).toBe("toggle-collapse");
+  });
+
+  it("space is a no-op when sidebar is not focused", () => {
+    expect(dispatchKey(k("space"), diffPane).type).toBe("noop");
+  });
+
   // Regression: opentui's KeyEvent uses .name (lowercase node-readline style),
   // not the browser KeyboardEvent's .key (TitleCase like "Tab", "ArrowDown").
   // If someone re-introduces the browser shape, this test catches it.

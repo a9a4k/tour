@@ -2,6 +2,7 @@ import { render, useKeyboard, useRenderer } from "@opentui/solid";
 import { createSignal, For, Show } from "solid-js";
 import type { Review, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
+import type { FileClassification } from "../core/file-classifier.js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { dispatchKey } from "./keymap.js";
 
@@ -11,6 +12,7 @@ interface AppProps {
   files: DiffFile[];
   annotations: Annotation[];
   snapshotLost: boolean;
+  classifications?: Record<string, FileClassification>;
 }
 
 function statusIcon(type: string): string {
@@ -28,13 +30,47 @@ function annotationCountForFile(annotations: Annotation[], fileName: string): nu
   return annotations.filter((a) => a.file === fileName).length;
 }
 
+function fileClassification(classifications: Record<string, FileClassification> | undefined, fileName: string): FileClassification {
+  return classifications?.[fileName] ?? { collapsed: false };
+}
+
+function reasonLabel(reason?: string): string {
+  if (!reason) return "";
+  return ` [${reason}]`;
+}
+
+function fileStat(hunks: DiffFile["hunks"]): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const hunk of hunks) {
+    for (const line of hunk.content) {
+      if (line.type === "addition") additions++;
+      else if (line.type === "deletion") deletions++;
+      else if (line.type === "change") { additions++; deletions++; }
+    }
+  }
+  return { additions, deletions };
+}
+
 function App(props: AppProps) {
   const [selectedFileIdx, setSelectedFileIdx] = createSignal(0);
   const [sidebarFocused, setSidebarFocused] = createSignal(true);
+  const [collapsedOverrides, setCollapsedOverrides] = createSignal<Record<string, boolean>>({});
   const renderer = useRenderer();
   let diffScrollRef: ScrollBoxRenderable | undefined;
 
   const files = () => [...props.files].sort((a, b) => a.name.localeCompare(b.name));
+
+  const isFileCollapsed = (fileName: string): boolean => {
+    const override = collapsedOverrides()[fileName];
+    if (override !== undefined) return override;
+    const cls = fileClassification(props.classifications, fileName);
+    if (!cls.collapsed) return false;
+    if (cls.reason === "binary") return true;
+    const hasAnnotations = props.annotations.some((a) => a.file === fileName);
+    if (hasAnnotations) return false;
+    return true;
+  };
 
   const fileAnnotations = () => {
     const f = files()[selectedFileIdx()];
@@ -70,6 +106,17 @@ function App(props: AppProps) {
         setSidebarFocused(false);
         if (diffScrollRef) diffScrollRef.scrollTo(0);
         return;
+      case "toggle-collapse": {
+        const f = files()[selectedFileIdx()];
+        if (!f) return;
+        const cls = fileClassification(props.classifications, f.name);
+        if (cls.reason === "binary") return;
+        setCollapsedOverrides((prev) => ({
+          ...prev,
+          [f.name]: !isFileCollapsed(f.name),
+        }));
+        return;
+      }
     }
   });
 
@@ -107,13 +154,15 @@ function App(props: AppProps) {
                 const isSelected = () => idx() === selectedFileIdx();
                 const icon = statusIcon(file.type);
                 const badge = () => annCount() > 0 ? ` [${annCount()}]` : "";
+                const cls = () => fileClassification(props.classifications, file.name);
+                const marker = () => cls().reason ? reasonLabel(cls().reason) : "";
                 return (
                   <text
                     color={isSelected() ? "black" : "white"}
                     bg={isSelected() ? "cyan" : undefined}
                     bold={isSelected()}
                   >
-                    {` ${icon} ${file.name}${badge()} `}
+                    {` ${icon} ${file.name}${marker()}${badge()} `}
                   </text>
                 );
               }}
@@ -172,7 +221,7 @@ function App(props: AppProps) {
       {/* Footer */}
       <box height={1} width="100%" paddingX={1}>
         <text color="gray">
-          j/k: navigate  Tab: switch pane  Enter: select file  q: quit
+          j/k: navigate  Tab: switch pane  Enter: select file  Space: toggle collapse  q: quit
         </text>
       </box>
     </box>

@@ -2,6 +2,7 @@ import { getReview, listReviews, resolveIdPrefix } from "../core/review-store.js
 import { readAnnotations } from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
+import { classifyFile, type FileClassification } from "../core/file-classifier.js";
 
 interface TuiArgs {
   reviewId?: string;
@@ -30,11 +31,23 @@ export async function tui(args: TuiArgs): Promise<void> {
 
   let rawDiff = "";
   let files: { name: string; prevName?: string; type: string; hunks: unknown[] }[] = [];
+  let classifications: Record<string, FileClassification> = {};
 
   if (!snapshotLost) {
     rawDiff = await getDiff(review.base_sha, review.head_sha, args.cwd);
     const model = parseDiff(rawDiff);
     files = model.files;
+
+    const entries = await Promise.all(
+      model.files.map(async (f) => {
+        const isRenamed = f.type === "rename" || (!!f.prevName && f.prevName !== f.name);
+        const hasChanges = f.hunks.length > 0;
+        const isBinary = f.type === "binary";
+        const cls = await classifyFile(f.name, { cwd: args.cwd, isBinary, isRenamed, hasChanges });
+        return [f.name, cls] as const;
+      }),
+    );
+    classifications = Object.fromEntries(entries);
   }
 
   const tuiModule = "../tui/app.js";
@@ -45,7 +58,8 @@ export async function tui(args: TuiArgs): Promise<void> {
       files: typeof files;
       annotations: typeof annotations;
       snapshotLost: boolean;
+      classifications: Record<string, FileClassification>;
     }) => Promise<void>;
   };
-  await startTui({ review, diff: rawDiff, files, annotations, snapshotLost });
+  await startTui({ review, diff: rawDiff, files, annotations, snapshotLost, classifications });
 }
