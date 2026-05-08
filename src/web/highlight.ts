@@ -87,11 +87,12 @@ export function highlightDiffLines(rawDiff: string): (string | null)[] {
       const match = line.match(/b\/(.+)$/);
       currentLang = match ? langFromPath(match[1]) : null;
       result.push(null);
-    } else if (currentLang && line.startsWith("+") && !line.startsWith("+++")) {
-      result.push(highlightLine(line.slice(1), currentLang));
-    } else if (currentLang && line.startsWith("-") && !line.startsWith("---")) {
-      result.push(highlightLine(line.slice(1), currentLang));
-    } else if (currentLang && line.startsWith(" ")) {
+    } else if (
+      currentLang &&
+      ((line.startsWith("+") && !line.startsWith("+++")) ||
+        (line.startsWith("-") && !line.startsWith("---")) ||
+        line.startsWith(" "))
+    ) {
       result.push(highlightLine(line.slice(1), currentLang));
     } else {
       result.push(null);

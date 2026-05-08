@@ -102,9 +102,7 @@ function copyPathBtn(name) {
     '\\u2398</button>';
 }
 
-function handleCopyPath(e) {
-  const btn = e.target.closest('.copy-path');
-  if (!btn) return;
+function handleCopyPath(btn, e) {
   e.stopPropagation();
   const path = btn.getAttribute('data-copy-path');
   if (!navigator.clipboard) {
@@ -341,7 +339,7 @@ async function init() {
 document.addEventListener('click', function(e) {
   const copyBtn = e.target.closest('.copy-path');
   if (copyBtn) {
-    handleCopyPath(e);
+    handleCopyPath(copyBtn, e);
     return;
   }
   const el = e.target.closest('[data-collapse-file]');
