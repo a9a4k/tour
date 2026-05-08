@@ -5,6 +5,7 @@ import { parseDiff } from "../core/diff-model.js";
 import { classifyFile } from "../core/file-classifier.js";
 import { ReviewWatcher } from "../core/watcher.js";
 import { html } from "./spa.js";
+import { highlightDiffLines } from "./highlight.js";
 
 interface ServeArgs {
   port: number;
@@ -87,10 +88,12 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const snapshotLost = !headOk || !baseOk;
 
           let diff = "";
+          let highlightedLines: (string | null)[] = [];
           let diffModel = { files: [] as ReturnType<typeof parseDiff>["files"] };
           if (!snapshotLost) {
             diff = await getDiff(review.base_sha, review.head_sha, cwd);
             diffModel = parseDiff(diff);
+            highlightedLines = highlightDiffLines(diff);
           }
 
           const classifications = await Promise.all(
@@ -110,6 +113,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
             ...review,
             annotations,
             diff,
+            highlightedLines,
             diffModel: {
               files: diffModel.files.map((f) => ({
                 ...f,

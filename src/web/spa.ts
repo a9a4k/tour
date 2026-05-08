@@ -1,3 +1,5 @@
+import { hljsThemeCSS } from "./highlight.js";
+
 export function html(initialReviewId?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -5,6 +7,7 @@ export function html(initialReviewId?: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review</title>
+<style>${hljsThemeCSS()}</style>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: #0d1117; color: #c9d1d9; display: flex; height: 100vh; }
@@ -25,9 +28,12 @@ export function html(initialReviewId?: string): string {
   .review-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #30363d; }
   .review-header h1 { font-size: 20px; margin-bottom: 4px; }
   .review-header .meta { color: #8b949e; font-size: 13px; }
-  .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
-  .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; }
+  .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: clip; }
+  .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; }
   .file-diff-header .collapse-toggle { cursor: pointer; user-select: none; margin-left: auto; color: #8b949e; }
+  .copy-path { background: transparent; border: none; cursor: pointer; color: #8b949e; font-size: 14px; line-height: 1; padding: 0; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .copy-path:hover { color: #c9d1d9; }
+  .copy-path:focus-visible { outline: 1px solid #58a6ff; outline-offset: 2px; border-radius: 2px; }
   .file-diff-header .stat { color: #8b949e; font-weight: normal; font-size: 12px; }
   .file-diff-header .stat .add { color: #3fb950; }
   .file-diff-header .stat .del { color: #f85149; }
@@ -44,6 +50,7 @@ export function html(initialReviewId?: string): string {
   .annotation-block { background: #1c2128; border-left: 3px solid #58a6ff; margin: 4px 16px 4px 60px; padding: 8px 12px; border-radius: 4px; font-size: 12px; }
   .annotation-block .ann-header { color: #58a6ff; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
   .annotation-block .ann-body { color: #c9d1d9; }
+  .diff-table td .hljs-addition, .diff-table td .hljs-deletion { background: transparent; color: inherit; }
   .no-reviews { text-align: center; padding: 48px; color: #8b949e; }
   #review-list { display: none; }
   #review-list.visible { display: block; }
@@ -88,6 +95,28 @@ function fileTypeIcon(type) {
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function copyPathBtn(name) {
+  return '<button class="copy-path" title="Copy path" aria-label="Copy path" data-copy-path="' + escapeHtml(name) + '">' +
+    '\\u2398</button>';
+}
+
+function handleCopyPath(btn, e) {
+  e.stopPropagation();
+  const path = btn.getAttribute('data-copy-path');
+  if (!navigator.clipboard) {
+    btn.textContent = '\\u2717';
+    setTimeout(function() { btn.textContent = '\\u2398'; }, 1200);
+    return;
+  }
+  navigator.clipboard.writeText(path).then(function() {
+    btn.textContent = '\\u2713';
+    setTimeout(function() { btn.textContent = '\\u2398'; }, 1200);
+  }, function() {
+    btn.textContent = '\\u2717';
+    setTimeout(function() { btn.textContent = '\\u2398'; }, 1200);
+  });
 }
 
 function renderSidebar(data) {
@@ -160,6 +189,7 @@ function renderDiff(data) {
 
   if (data.diff) {
     const lines = data.diff.split('\\n');
+    const hl = data.highlightedLines || [];
     let currentFile = null;
     let leftNum = 0, rightNum = 0;
     let skipUntilNextFile = false;
@@ -182,7 +212,7 @@ function renderDiff(data) {
         html += '<div class="file-diff" id="file-' + escapeHtml(name) + '">';
 
         if (isBinary) {
-          html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + reasonStr + '<span class="stat">Binary file changed</span></div>';
+          html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + copyPathBtn(name) + reasonStr + '<span class="stat">Binary file changed</span></div>';
           html += '</div>';
           skipUntilNextFile = true;
           continue;
@@ -191,14 +221,14 @@ function renderDiff(data) {
         if (collapsed) {
           const chevron = '<span class="collapse-toggle" data-collapse-file="' + escapeHtml(name) + '">&#x25BE;</span>';
           html += '<div class="file-diff-header" style="cursor:pointer" data-collapse-file="' + escapeHtml(name) + '">';
-          html += '<span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron;
+          html += '<span>' + escapeHtml(name) + '</span>' + copyPathBtn(name) + statStr + reasonStr + chevron;
           html += '</div></div>';
           skipUntilNextFile = true;
           continue;
         }
 
         const chevron = cls && cls.collapsed ? '<span class="collapse-toggle" data-collapse-file="' + escapeHtml(name) + '">&#x25B4;</span>' : '';
-        html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron + '</div>';
+        html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + copyPathBtn(name) + statStr + reasonStr + chevron + '</div>';
         html += '<table class="diff-table">';
         skipUntilNextFile = false;
         continue;
@@ -216,7 +246,7 @@ function renderDiff(data) {
       if (line.startsWith('+')) {
         const inRange = annotations.some(a => a.file === currentFile && a.side === 'additions' && rightNum >= a.line_start && rightNum <= a.line_end);
         const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
-        html += '<tr class="addition"><td class="line-num"></td><td class="' + numCls + '">' + rightNum + '</td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        html += '<tr class="addition"><td class="line-num"></td><td class="' + numCls + '">' + rightNum + '</td><td>' + (hl[i] != null ? hl[i] : escapeHtml(line.slice(1))) + '</td></tr>';
         const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'additions' && rightNum === a.line_end);
         for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
@@ -228,7 +258,7 @@ function renderDiff(data) {
       } else if (line.startsWith('-')) {
         const inRange = annotations.some(a => a.file === currentFile && a.side === 'deletions' && leftNum >= a.line_start && leftNum <= a.line_end);
         const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
-        html += '<tr class="deletion"><td class="' + numCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        html += '<tr class="deletion"><td class="' + numCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + (hl[i] != null ? hl[i] : escapeHtml(line.slice(1))) + '</td></tr>';
         const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'deletions' && leftNum === a.line_end);
         for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
@@ -238,7 +268,7 @@ function renderDiff(data) {
         }
         leftNum++;
       } else {
-        html += '<tr class="context"><td class="line-num">' + leftNum + '</td><td class="line-num">' + rightNum + '</td><td>' + escapeHtml(line.startsWith(' ') ? line.slice(1) : line) + '</td></tr>';
+        html += '<tr class="context"><td class="line-num">' + leftNum + '</td><td class="line-num">' + rightNum + '</td><td>' + (hl[i] != null ? hl[i] : escapeHtml(line.startsWith(' ') ? line.slice(1) : line)) + '</td></tr>';
         leftNum++; rightNum++;
       }
     }
@@ -307,6 +337,11 @@ async function init() {
 }
 
 document.addEventListener('click', function(e) {
+  const copyBtn = e.target.closest('.copy-path');
+  if (copyBtn) {
+    handleCopyPath(copyBtn, e);
+    return;
+  }
   const el = e.target.closest('[data-collapse-file]');
   if (el) {
     e.stopPropagation();
