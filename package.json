@@ -13,16 +13,19 @@
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.5.10",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-reconciler": "^0.33.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "@opentui/solid": "^0.2.5",
+    "@opentui/react": "^0.2.5",
     "@pierre/diffs": "^1.1.21",
     "highlight.js": "^11.11.1",
     "hunkdiff": "^0.10.0",
-    "smol-toml": "^1.6.1",
-    "solid-js": "^1.9.12"
+    "react": "^19.2.0",
+    "react-reconciler": "^0.33.0",
+    "smol-toml": "^1.6.1"
   }
 }
