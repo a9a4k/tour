@@ -1,5 +1,5 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
-import { createSignal, For, Show, createEffect } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import type { Review, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import type { ScrollBoxRenderable } from "@opentui/core";
@@ -33,7 +33,7 @@ function App(props: AppProps) {
   const renderer = useRenderer();
   let diffScrollRef: ScrollBoxRenderable | undefined;
 
-  const files = () => props.files.sort((a, b) => a.name.localeCompare(b.name));
+  const files = () => [...props.files].sort((a, b) => a.name.localeCompare(b.name));
 
   const fileAnnotations = () => {
     const f = files()[selectedFileIdx()];

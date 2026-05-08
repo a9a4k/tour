@@ -112,11 +112,12 @@ function renderDiff(data) {
     html += '<div class="banner">Snapshot lost — annotations preserved but diff cannot be displayed</div>';
   }
 
+  const annotations = data.annotations || [];
+
   if (data.diff) {
     const lines = data.diff.split('\\n');
     let currentFile = null;
     let leftNum = 0, rightNum = 0;
-    const annotations = data.annotations || [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];

@@ -35,7 +35,7 @@ export class ReviewWatcher {
 
     try {
       this.watcher = watch(this.reviewDir, { recursive: false }, (_eventType, filename) => {
-        if (filename === "annotations.jsonl" || filename?.endsWith(".jsonl")) {
+        if (filename?.endsWith(".jsonl")) {
           this.scheduleEmit();
         }
       });

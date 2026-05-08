@@ -41,9 +41,7 @@ export async function readAnnotations(
     if (!line.trim()) continue;
     try {
       annotations.push(JSON.parse(line) as Annotation);
-    } catch {
-      // skip malformed lines
-    }
+    } catch {}
   }
   return annotations;
 }

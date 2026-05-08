@@ -44,9 +44,7 @@ export async function listReviews(
     try {
       const review = await getReview(repoRoot, entry);
       reviews.push(review);
-    } catch {
-      // skip malformed
-    }
+    } catch {}
   }
   const status = opts?.status ?? "open";
   const filtered =
