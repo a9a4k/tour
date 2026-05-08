@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "review": "./dist/main.js"
+    "review": "./src/main.ts"
   },
   "scripts": {
-    "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

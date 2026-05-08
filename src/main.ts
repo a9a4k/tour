@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { create } from "./cli/create.js";
 import { annotate } from "./cli/annotate.js";
