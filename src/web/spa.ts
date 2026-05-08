@@ -215,8 +215,8 @@ function renderDiff(data) {
 
       if (line.startsWith('+')) {
         const inRange = annotations.some(a => a.file === currentFile && a.side === 'additions' && rightNum >= a.line_start && rightNum <= a.line_end);
-        const rnCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
-        html += '<tr class="addition"><td class="line-num"></td><td class="' + rnCls + '">' + rightNum + '</td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
+        html += '<tr class="addition"><td class="line-num"></td><td class="' + numCls + '">' + rightNum + '</td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
         const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'additions' && rightNum === a.line_end);
         for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
@@ -227,8 +227,8 @@ function renderDiff(data) {
         rightNum++;
       } else if (line.startsWith('-')) {
         const inRange = annotations.some(a => a.file === currentFile && a.side === 'deletions' && leftNum >= a.line_start && leftNum <= a.line_end);
-        const lnCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
-        html += '<tr class="deletion"><td class="' + lnCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
+        html += '<tr class="deletion"><td class="' + numCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
         const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'deletions' && leftNum === a.line_end);
         for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
