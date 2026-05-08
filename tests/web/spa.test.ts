@@ -1,19 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { html } from "../../src/web/spa";
+import { html } from "../../src/web/spa.js";
 
-describe("spa html()", () => {
-  const output = html();
-
-  it("defines ann-range-ln CSS class for range indicators", () => {
-    expect(output).toContain(".ann-range-ln");
+describe("spa shell html()", () => {
+  it("renders a #root mount point for the React app", () => {
+    expect(html()).toContain('<div id="root">');
   });
 
-  it("only renders annotation block at line_end, not every line in range", () => {
-    expect(output).toContain("=== a.line_end");
+  it("loads the client bundle as an ES module", () => {
+    expect(html()).toMatch(/<script\s+type="module"\s+src="\/client\.js">/);
   });
 
-  it("does not regress single-line annotations", () => {
-    expect(output).toContain(">= a.line_start");
-    expect(output).toContain("<= a.line_end");
+  it("threads the initial tour id into a window global", () => {
+    expect(html("abc123")).toContain('window.__INITIAL_TOUR_ID__ = "abc123"');
+    expect(html()).toContain("window.__INITIAL_TOUR_ID__ = null");
+  });
+
+  it("declares the dark canvas color and sidebar layout", () => {
+    const out = html();
+    expect(out).toContain("#0d1117");
+    expect(out).toMatch(/\.app-sidebar\s*\{[^}]*width:\s*280px/);
+  });
+
+  it("keeps file-block-header sticky for in-flow file headers", () => {
+    expect(html()).toMatch(/\.file-block-header\s*\{[^}]*position:\s*sticky/);
+  });
+
+  it("does not inline highlight.js theme css anymore", () => {
+    expect(html()).not.toContain("hljs-keyword");
+    expect(html()).not.toContain("highlight.js");
+  });
+
+  it("does not embed a vanilla render loop", () => {
+    expect(html()).not.toContain("function renderDiff");
+    expect(html()).not.toContain("highlightedLines");
   });
 });

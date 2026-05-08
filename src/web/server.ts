@@ -5,13 +5,62 @@ import { parseDiff } from "../core/diff-model.js";
 import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
 import { html } from "./spa.js";
-import { highlightDiffLines } from "./highlight.js";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface ServeArgs {
   port: number;
   open: boolean;
   tourId?: string;
   cwd: string;
+}
+
+declare const Bun: {
+  serve: (opts: {
+    hostname: string;
+    port: number;
+    fetch: (req: Request) => Response | Promise<Response>;
+  }) => { port: number; stop: () => void };
+  build: (opts: {
+    entrypoints: string[];
+    target?: "browser" | "bun" | "node";
+    minify?: boolean;
+    define?: Record<string, string>;
+    sourcemap?: "none" | "inline" | "external" | "linked";
+  }) => Promise<{
+    success: boolean;
+    logs: unknown[];
+    outputs: { text: () => Promise<string> }[];
+  }>;
+};
+
+let cachedClientBundle: string | null = null;
+let cachedClientBundleError: string | null = null;
+
+async function getClientBundle(): Promise<{ js: string | null; error: string | null }> {
+  if (cachedClientBundle !== null) return { js: cachedClientBundle, error: null };
+  if (cachedClientBundleError !== null) return { js: null, error: cachedClientBundleError };
+  const here = dirname(fileURLToPath(import.meta.url));
+  const entry = resolve(here, "client/main.tsx");
+  try {
+    const result = await Bun.build({
+      entrypoints: [entry],
+      target: "browser",
+      minify: false,
+      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+      sourcemap: "none",
+    });
+    if (!result.success) {
+      cachedClientBundleError = `client bundle failed: ${JSON.stringify(result.logs)}`;
+      return { js: null, error: cachedClientBundleError };
+    }
+    cachedClientBundle = await result.outputs[0].text();
+    return { js: cachedClientBundle, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    cachedClientBundleError = `client bundle threw: ${message}`;
+    return { js: null, error: cachedClientBundleError };
+  }
 }
 
 export async function startServer(args: ServeArgs): Promise<void> {
@@ -33,6 +82,22 @@ export async function startServer(args: ServeArgs): Promise<void> {
     port,
     async fetch(req) {
       const url = new URL(req.url);
+
+      if (url.pathname === "/client.js") {
+        const { js, error } = await getClientBundle();
+        if (js === null) {
+          return new Response(`/* ${error} */`, {
+            status: 500,
+            headers: { "Content-Type": "application/javascript" },
+          });
+        }
+        return new Response(js, {
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache",
+          },
+        });
+      }
 
       if (url.pathname === "/api/tours") {
         const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
@@ -88,12 +153,10 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const snapshotLost = !headOk || !baseOk;
 
           let diff = "";
-          let highlightedLines: (string | null)[] = [];
           let diffModel = { files: [] as ReturnType<typeof parseDiff>["files"] };
           if (!snapshotLost) {
             diff = await getDiff(tour.base_sha, tour.head_sha, cwd);
             diffModel = parseDiff(diff);
-            highlightedLines = highlightDiffLines(diff);
           }
 
           const classifications = await Promise.all(
@@ -113,7 +176,6 @@ export async function startServer(args: ServeArgs): Promise<void> {
             ...tour,
             annotations,
             diff,
-            highlightedLines,
             diffModel: {
               files: diffModel.files.map((f) => ({
                 ...f,
