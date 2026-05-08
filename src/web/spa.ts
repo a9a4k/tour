@@ -31,6 +31,9 @@ export function html(initialReviewId?: string): string {
   .file-diff { margin-bottom: 24px; border: 1px solid #30363d; border-radius: 6px; overflow: clip; }
   .file-diff-header { background: #161b22; padding: 8px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; }
   .file-diff-header .collapse-toggle { cursor: pointer; user-select: none; margin-left: auto; color: #8b949e; }
+  .copy-path { background: transparent; border: none; cursor: pointer; color: #8b949e; font-size: 14px; line-height: 1; padding: 0; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .copy-path:hover { color: #c9d1d9; }
+  .copy-path:focus-visible { outline: 1px solid #58a6ff; outline-offset: 2px; border-radius: 2px; }
   .file-diff-header .stat { color: #8b949e; font-weight: normal; font-size: 12px; }
   .file-diff-header .stat .add { color: #3fb950; }
   .file-diff-header .stat .del { color: #f85149; }
@@ -92,6 +95,30 @@ function fileTypeIcon(type) {
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function copyPathBtn(name) {
+  return '<button class="copy-path" title="Copy path" aria-label="Copy path" data-copy-path="' + escapeHtml(name) + '">' +
+    '\\u2398</button>';
+}
+
+function handleCopyPath(e) {
+  const btn = e.target.closest('.copy-path');
+  if (!btn) return;
+  e.stopPropagation();
+  const path = btn.getAttribute('data-copy-path');
+  if (!navigator.clipboard) {
+    btn.textContent = '\\u2717';
+    setTimeout(function() { btn.textContent = '\\u2398'; }, 1200);
+    return;
+  }
+  navigator.clipboard.writeText(path).then(function() {
+    btn.textContent = '\\u2713';
+    setTimeout(function() { btn.textContent = '\\u2398'; }, 1200);
+  }, function() {
+    btn.textContent = '\\u2717';
+    setTimeout(function() { btn.textContent = '\\u2398'; }, 1200);
+  });
 }
 
 function renderSidebar(data) {
@@ -187,7 +214,7 @@ function renderDiff(data) {
         html += '<div class="file-diff" id="file-' + escapeHtml(name) + '">';
 
         if (isBinary) {
-          html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + reasonStr + '<span class="stat">Binary file changed</span></div>';
+          html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + copyPathBtn(name) + reasonStr + '<span class="stat">Binary file changed</span></div>';
           html += '</div>';
           skipUntilNextFile = true;
           continue;
@@ -196,14 +223,14 @@ function renderDiff(data) {
         if (collapsed) {
           const chevron = '<span class="collapse-toggle" data-collapse-file="' + escapeHtml(name) + '">&#x25BE;</span>';
           html += '<div class="file-diff-header" style="cursor:pointer" data-collapse-file="' + escapeHtml(name) + '">';
-          html += '<span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron;
+          html += '<span>' + escapeHtml(name) + '</span>' + copyPathBtn(name) + statStr + reasonStr + chevron;
           html += '</div></div>';
           skipUntilNextFile = true;
           continue;
         }
 
         const chevron = cls && cls.collapsed ? '<span class="collapse-toggle" data-collapse-file="' + escapeHtml(name) + '">&#x25B4;</span>' : '';
-        html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + statStr + reasonStr + chevron + '</div>';
+        html += '<div class="file-diff-header"><span>' + escapeHtml(name) + '</span>' + copyPathBtn(name) + statStr + reasonStr + chevron + '</div>';
         html += '<table class="diff-table">';
         skipUntilNextFile = false;
         continue;
@@ -312,6 +339,11 @@ async function init() {
 }
 
 document.addEventListener('click', function(e) {
+  const copyBtn = e.target.closest('.copy-path');
+  if (copyBtn) {
+    handleCopyPath(e);
+    return;
+  }
   const el = e.target.closest('[data-collapse-file]');
   if (el) {
     e.stopPropagation();

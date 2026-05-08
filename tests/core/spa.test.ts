@@ -20,4 +20,25 @@ describe("spa html", () => {
   it("file-diff-header has z-index for stacking over scrolled content", () => {
     expect(output).toMatch(/\.file-diff-header\s*\{[^}]*z-index:\s*1/);
   });
+
+  it("has copy-path button styling", () => {
+    expect(output).toMatch(/\.copy-path\s*\{/);
+  });
+
+  it("copy-path button handler uses stopPropagation", () => {
+    expect(output).toContain("stopPropagation");
+  });
+
+  it("copy-path button uses navigator.clipboard.writeText", () => {
+    expect(output).toContain("navigator.clipboard.writeText");
+  });
+
+  it("copy-path button has aria-label", () => {
+    expect(output).toContain('aria-label');
+  });
+
+  it("copy-path button is a real button element", () => {
+    expect(output).toContain("<button");
+    expect(output).toContain("copy-path");
+  });
 });
