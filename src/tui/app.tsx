@@ -169,7 +169,7 @@ function App(props: AppProps) {
         >
           {!props.snapshotLost && props.diff && (
             <scrollbox
-              ref={(el: ScrollBoxRenderable | null) => { diffScrollRef.current = el; }}
+              ref={diffScrollRef}
               height="100%"
               focused={!sidebarFocused}
             >
