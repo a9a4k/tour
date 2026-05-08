@@ -1,3 +1,5 @@
+import { hljsThemeCSS } from "./highlight.js";
+
 export function html(initialReviewId?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -5,6 +7,7 @@ export function html(initialReviewId?: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review</title>
+<style>${hljsThemeCSS()}</style>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: #0d1117; color: #c9d1d9; display: flex; height: 100vh; }
@@ -44,6 +47,7 @@ export function html(initialReviewId?: string): string {
   .annotation-block { background: #1c2128; border-left: 3px solid #58a6ff; margin: 4px 16px 4px 60px; padding: 8px 12px; border-radius: 4px; font-size: 12px; }
   .annotation-block .ann-header { color: #58a6ff; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
   .annotation-block .ann-body { color: #c9d1d9; }
+  .diff-table td .hljs-addition, .diff-table td .hljs-deletion { background: transparent; color: inherit; }
   .no-reviews { text-align: center; padding: 48px; color: #8b949e; }
   #review-list { display: none; }
   #review-list.visible { display: block; }
@@ -160,6 +164,7 @@ function renderDiff(data) {
 
   if (data.diff) {
     const lines = data.diff.split('\\n');
+    const hl = data.highlightedLines || [];
     let currentFile = null;
     let leftNum = 0, rightNum = 0;
     let skipUntilNextFile = false;
@@ -216,7 +221,7 @@ function renderDiff(data) {
       if (line.startsWith('+')) {
         const inRange = annotations.some(a => a.file === currentFile && a.side === 'additions' && rightNum >= a.line_start && rightNum <= a.line_end);
         const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
-        html += '<tr class="addition"><td class="line-num"></td><td class="' + numCls + '">' + rightNum + '</td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        html += '<tr class="addition"><td class="line-num"></td><td class="' + numCls + '">' + rightNum + '</td><td>' + (hl[i] != null ? hl[i] : escapeHtml(line.slice(1))) + '</td></tr>';
         const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'additions' && rightNum === a.line_end);
         for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
@@ -228,7 +233,7 @@ function renderDiff(data) {
       } else if (line.startsWith('-')) {
         const inRange = annotations.some(a => a.file === currentFile && a.side === 'deletions' && leftNum >= a.line_start && leftNum <= a.line_end);
         const numCls = 'line-num' + (inRange ? ' ann-range-ln' : '');
-        html += '<tr class="deletion"><td class="' + numCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + escapeHtml(line.slice(1)) + '</td></tr>';
+        html += '<tr class="deletion"><td class="' + numCls + '">' + leftNum + '</td><td class="line-num"></td><td>' + (hl[i] != null ? hl[i] : escapeHtml(line.slice(1))) + '</td></tr>';
         const endAnns = annotations.filter(a => a.file === currentFile && a.side === 'deletions' && leftNum === a.line_end);
         for (const ann of endAnns) {
           html += '<tr><td colspan="3"><div class="annotation-block"><div class="ann-header">' +
@@ -238,7 +243,7 @@ function renderDiff(data) {
         }
         leftNum++;
       } else {
-        html += '<tr class="context"><td class="line-num">' + leftNum + '</td><td class="line-num">' + rightNum + '</td><td>' + escapeHtml(line.startsWith(' ') ? line.slice(1) : line) + '</td></tr>';
+        html += '<tr class="context"><td class="line-num">' + leftNum + '</td><td class="line-num">' + rightNum + '</td><td>' + (hl[i] != null ? hl[i] : escapeHtml(line.startsWith(' ') ? line.slice(1) : line)) + '</td></tr>';
         leftNum++; rightNum++;
       }
     }
