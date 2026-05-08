@@ -44,12 +44,12 @@ function App(props: AppProps) {
   };
 
   useKeyboard((key) => {
-    if (key.key === "q" || (key.ctrl && key.key === "c")) {
+    if (key.name === "q" || (key.ctrl && key.name === "c")) {
       renderer.close();
       return;
     }
 
-    if (key.key === "Tab") {
+    if (key.name === "tab") {
       if (key.shift) {
         setSidebarFocused(true);
       } else {
@@ -61,11 +61,11 @@ function App(props: AppProps) {
     if (sidebarFocused()) {
       const count = files().length;
       if (count === 0) return;
-      if (key.key === "j" || key.key === "ArrowDown") {
+      if (key.name === "j" || key.name === "down") {
         setSelectedFileIdx((i) => Math.min(i + 1, count - 1));
-      } else if (key.key === "k" || key.key === "ArrowUp") {
+      } else if (key.name === "k" || key.name === "up") {
         setSelectedFileIdx((i) => Math.max(i - 1, 0));
-      } else if (key.key === "Return") {
+      } else if (key.name === "return") {
         setSidebarFocused(false);
         if (diffScrollRef) {
           diffScrollRef.scrollTo(0);
