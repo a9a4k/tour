@@ -11,7 +11,11 @@ interface DiffLineProps {
   // Empty string when this side has no content (e.g. left side of a pure
   // addition row in split view). Code highlighting is skipped in that case.
   text: string;
-  tinted: boolean;
+  // Annotation tint cues (ADR 0008). Gutter tints whenever the row falls
+  // inside an annotation range; content only tints on context-paired rows
+  // so the diff +/- signal survives on change rows.
+  gutterTinted: boolean;
+  contentTinted: boolean;
   gutterAccent: boolean;
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
@@ -21,32 +25,34 @@ interface DiffLineProps {
 export function DiffLine({
   gutter,
   text,
-  tinted,
+  gutterTinted,
+  contentTinted,
   gutterAccent,
   filetype,
   syntaxStyle,
   width,
 }: DiffLineProps) {
-  const bg = tinted ? TINT_BG : undefined;
+  const gutterBg = gutterTinted ? TINT_BG : undefined;
+  const contentBg = contentTinted ? TINT_BG : undefined;
   const showCode = !!filetype && text.length > 0;
 
   return (
     <box flexDirection="row" width={width} minHeight={1}>
       <text fg={ACCENT_FG}>{gutterAccent ? GUTTER_CHAR : " "}</text>
-      <text bg={bg}>{gutter}</text>
+      <text bg={gutterBg}>{gutter}</text>
       {showCode ? (
         <code
           content={text}
           filetype={filetype}
           syntaxStyle={syntaxStyle}
-          bg={bg}
+          bg={contentBg}
           drawUnstyledText
           wrapMode="word"
           flexGrow={1}
           width="100%"
         />
       ) : (
-        <text bg={bg} wrapMode="word" flexGrow={1}>
+        <text bg={contentBg} wrapMode="word" flexGrow={1}>
           {text}
         </text>
       )}

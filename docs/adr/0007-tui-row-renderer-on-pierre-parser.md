@@ -15,6 +15,6 @@ We render the diff ourselves by walking `@pierre/diffs`'s `FileDiffMetadata` row
 ## Consequences
 
 - The row planner lives in `core/` (likely `core/diff-rows.ts`) so both TUI and any future renderer can share it. The webapp continues to use Pierre's `FileDiff` directly — only the TUI consumes the row planner.
-- Loss of `<diff>`'s built-in syntax highlighting in v1. Recoverable later by integrating shiki or tree-sitter at the row level.
+- ~~Loss of `<diff>`'s built-in syntax highlighting in v1. Recoverable later by integrating shiki or tree-sitter at the row level.~~ Recovered in ADR 0009 by rendering each row's content cell through OpenTUI's `<code>` renderable (per-line `tree-sitter`).
 - Maintenance burden moves from "track upstream Hunk" to "own a small renderer". The renderer's scope is intentionally narrow (line text, line numbers, +/- bg, gutter mark, range tint, annotation card insertion).
 - ADR 0001's "renderer swap is bounded to that surface" property is preserved: `core/` still depends only on Pierre's parsed model.
