@@ -8,6 +8,7 @@ export function html(initialTourId?: string): string {
 <title>Tour</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { color-scheme: dark; }
   html, body { height: 100%; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

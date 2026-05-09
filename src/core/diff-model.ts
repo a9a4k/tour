@@ -26,6 +26,37 @@ export interface DiffModel {
   files: DiffFile[];
 }
 
+export function splitRawDiffByFile(rawDiff: string): Map<string, string> {
+  const result = new Map<string, string>();
+  if (!rawDiff.trim()) return result;
+
+  const headerRe = /^diff --git a\/(.+) b\/(.+)$/;
+  const lines = rawDiff.split("\n");
+
+  let currentName: string | null = null;
+  let currentLines: string[] = [];
+
+  const flush = () => {
+    if (currentName !== null) {
+      result.set(currentName, currentLines.join("\n"));
+    }
+  };
+
+  for (const line of lines) {
+    const m = line.match(headerRe);
+    if (m) {
+      flush();
+      currentName = m[2];
+      currentLines = [line];
+    } else if (currentName !== null) {
+      currentLines.push(line);
+    }
+  }
+  flush();
+
+  return result;
+}
+
 export function parseDiff(rawDiff: string): DiffModel {
   if (!rawDiff.trim()) return { files: [] };
 

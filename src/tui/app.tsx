@@ -4,6 +4,7 @@ import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
+import { splitRawDiffByFile } from "../core/diff-model.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { dispatchKey } from "./keymap.js";
 
@@ -40,6 +41,25 @@ function reasonLabel(reason?: string): string {
   return ` [${reason}]`;
 }
 
+function fileEntryLabel(
+  file: DiffFile,
+  classifications: Record<string, FileClassification> | undefined,
+  annotations: Annotation[],
+): string {
+  const annCount = annotationCountForFile(annotations, file.name);
+  const cls = fileClassification(classifications, file.name);
+  const icon = statusIcon(file.type);
+  const badge = annCount > 0 ? ` [${annCount}]` : "";
+  const marker = cls.reason ? reasonLabel(cls.reason) : "";
+  return ` ${icon} ${file.name}${marker}${badge} `;
+}
+
+function fileCardBody(collapsed: boolean, hasHunks: boolean, segment: string) {
+  if (collapsed) return <text fg="gray">{"[collapsed — Space to expand]"}</text>;
+  if (!hasHunks) return <text fg="gray">{"[no textual changes]"}</text>;
+  return <diff diff={segment} view="split" showLineNumbers />;
+}
+
 function App(props: AppProps) {
   const [selectedFileIdx, setSelectedFileIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
@@ -52,6 +72,8 @@ function App(props: AppProps) {
     () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
     [props.files],
   );
+
+  const rawSegments = useMemo(() => splitRawDiffByFile(props.diff), [props.diff]);
 
   // Re-anchor the cursor by id across annotation reloads.
   useEffect(() => {
@@ -128,10 +150,14 @@ function App(props: AppProps) {
       case "move-file-up":
         setSelectedFileIdx((i) => Math.max(i - 1, 0));
         return;
-      case "select-file":
+      case "select-file": {
         setSidebarFocused(false);
-        if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
+        const f = files[selectedFileIdx];
+        if (f && diffScrollRef.current) {
+          diffScrollRef.current.scrollChildIntoView(`file-card-${f.name}`);
+        }
         return;
+      }
       case "toggle-collapse": {
         const f = files[selectedFileIdx];
         if (!f) return;
@@ -186,12 +212,7 @@ function App(props: AppProps) {
         >
           <scrollbox height="100%">
             {files.map((file, idx) => {
-              const annCount = annotationCountForFile(props.annotations, file.name);
               const isSelected = idx === selectedFileIdx;
-              const icon = statusIcon(file.type);
-              const badge = annCount > 0 ? ` [${annCount}]` : "";
-              const cls = fileClassification(props.classifications, file.name);
-              const marker = cls.reason ? reasonLabel(cls.reason) : "";
               return (
                 <text
                   key={file.name}
@@ -199,7 +220,7 @@ function App(props: AppProps) {
                   bg={isSelected ? "cyan" : undefined}
                   bold={isSelected}
                 >
-                  {` ${icon} ${file.name}${marker}${badge} `}
+                  {fileEntryLabel(file, props.classifications, props.annotations)}
                 </text>
               );
             })}
@@ -220,11 +241,23 @@ function App(props: AppProps) {
               height="100%"
               focused={!sidebarFocused}
             >
-              <diff
-                diff={props.diff}
-                view="split"
-                showLineNumbers
-              />
+              {files.map((file) => {
+                const collapsed = isFileCollapsed(file.name);
+                const segment = rawSegments.get(file.name) ?? "";
+                return (
+                  <box
+                    key={file.name}
+                    id={`file-card-${file.name}`}
+                    borderStyle="single"
+                    borderColor="gray"
+                    flexDirection="column"
+                    marginBottom={1}
+                  >
+                    <text>{fileEntryLabel(file, props.classifications, props.annotations)}</text>
+                    {fileCardBody(collapsed, file.hunks.length > 0, segment)}
+                  </box>
+                );
+              })}
             </scrollbox>
           )}
 
