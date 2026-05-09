@@ -23,21 +23,3 @@ export function countAnnotationsForFile<T extends { file: string }>(
 ): number {
   return annotations.filter((a) => a.file === fileName).length;
 }
-
-export function fileStat(
-  hunks: { content: { type: "context" | "addition" | "deletion" | "change" }[] }[],
-): { add: number; del: number } {
-  let add = 0;
-  let del = 0;
-  for (const hunk of hunks) {
-    for (const line of hunk.content) {
-      if (line.type === "addition") add++;
-      else if (line.type === "deletion") del++;
-      else if (line.type === "change") {
-        add++;
-        del++;
-      }
-    }
-  }
-  return { add, del };
-}

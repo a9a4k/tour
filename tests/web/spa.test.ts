@@ -21,8 +21,12 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.app-sidebar\s*\{[^}]*width:\s*280px/);
   });
 
-  it("keeps file-block-header sticky for in-flow file headers", () => {
-    expect(html()).toMatch(/\.file-block-header\s*\{[^}]*position:\s*sticky/);
+  it("does not declare a .file-block-header rule (Pierre owns the header now)", () => {
+    expect(html()).not.toContain(".file-block-header");
+  });
+
+  it("still styles the sidebar reason tag", () => {
+    expect(html()).toMatch(/\.reason-tag\s*\{[^}]*font-style:\s*italic/);
   });
 
   it("does not inline highlight.js theme css anymore", () => {
