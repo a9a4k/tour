@@ -31,13 +31,20 @@ export function toPierreLineAnnotations(annotations: Annotation[], file: string)
 }
 
 const RANGE_TINT = "rgba(88, 166, 255, 0.12)";
+const RANGE_ACCENT = "#58a6ff";
 
 /**
  * Build a CSS string targeting Pierre's per-line `[data-line]` markers for
- * every line in every multi-line annotation range, painting a subtle blue
- * tint over the row background. Single-line annotations are skipped — they
- * already render with just the gutter indicator + anchor body, no range
- * background needed.
+ * every line in every multi-line annotation range, painting two cues over
+ * each annotated row: the existing subtle blue tint as the row background,
+ * plus a 3px accent-coloured gutter stripe at the left edge — matching the
+ * annotation card's `border-left: 3px solid #58a6ff` so card and range
+ * read as one column-aligned bracket (ADR 0008's two-cue rule).
+ *
+ * Single-line annotations are skipped: Pierre's built-in `lineAnnotations`
+ * already paints its own gutter marker for the anchor row, and stacking
+ * our 3px stripe on top would visually double up. Multi-line ranges have
+ * no such built-in marker on the non-anchor rows, so they need both cues.
  *
  * Pierre renders each diff inside a shadow root, so this CSS must be
  * injected via the FileDiff `unsafeCSS` option (which Pierre slots into
@@ -65,7 +72,7 @@ export function buildRangeBackgroundCSS(annotations: Annotation[], file: string)
 function rangeRule(lines: Set<number>, types: string[]): string {
   const lineSel = [...lines].sort((a, b) => a - b).map((n) => `[data-line="${n}"]`).join(", ");
   const typeSel = types.map((t) => `[data-line-type="${t}"]`).join(", ");
-  return `:is(${lineSel}):is(${typeSel}) { background-image: linear-gradient(${RANGE_TINT}, ${RANGE_TINT}); }`;
+  return `:is(${lineSel}):is(${typeSel}) { background-image: linear-gradient(${RANGE_TINT}, ${RANGE_TINT}); box-shadow: inset 3px 0 0 ${RANGE_ACCENT}; }`;
 }
 
 /**
