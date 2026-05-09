@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues in `a9a4k/review`. Use the `gh` CLI for all operations.
+Issues and PRDs for this repo live as GitHub issues in `a9a4k/tour`. Use the `gh` CLI for all operations.
 
 ## Conventions
 
