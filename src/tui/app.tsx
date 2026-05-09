@@ -537,6 +537,7 @@ function App(props: AppProps) {
               ref={diffScrollRef}
               height="100%"
               focused={!sidebarFocused}
+              viewportCulling={false}
             >
               {files.map((file) => {
                 const collapsed = isFileCollapsed(file.name);
