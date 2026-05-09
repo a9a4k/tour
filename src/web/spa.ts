@@ -305,6 +305,82 @@ export function html(initialTourId?: string): string {
     padding-top: 16px;
     color: #8b949e;
   }
+  .tour-title-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+  }
+  .tour-title-btn:focus-visible {
+    outline: 1px solid #58a6ff;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .picker-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(1, 4, 9, 0.7);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 10vh;
+    z-index: 30;
+  }
+  .picker-card {
+    width: min(560px, 90vw);
+    max-height: 70vh;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .picker-card:focus { outline: none; }
+  .picker-list {
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .picker-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: #c9d1d9;
+    text-align: left;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .picker-row.current { background: #1f6feb22; }
+  .picker-row.cursor { background: #1f6feb33; border-left-color: #58a6ff; }
+  .picker-row.current.cursor { background: #1f6feb33; border-left-color: #58a6ff; }
+  .picker-glyph { width: 12px; flex-shrink: 0; font-size: 11px; }
+  .picker-glyph.open { color: #3fb950; }
+  .picker-glyph.closed { color: #8b949e; }
+  .picker-age {
+    color: #8b949e;
+    font-size: 11px;
+    width: 64px;
+    flex-shrink: 0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .picker-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
