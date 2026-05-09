@@ -151,4 +151,19 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.mermaid-loading\s*\{/);
     expect(out).toMatch(/\.mermaid-failed\s+\.mermaid-error-header\s*\{/);
   });
+
+  it("styles the tour picker overlay (scrim, card, rows, current, cursor)", () => {
+    const out = html();
+    expect(out).toMatch(/\.picker-scrim\s*\{[^}]*position:\s*fixed/);
+    expect(out).toMatch(/\.picker-card\s*\{/);
+    expect(out).toMatch(/\.picker-row\s*\{/);
+    expect(out).toMatch(/\.picker-row\.current\s*\{[^}]*background:\s*#1f6feb22/);
+    expect(out).toMatch(/\.picker-row\.cursor\s*\{[^}]*#1f6feb33/);
+  });
+
+  it("styles the clickable tour-title button as text-only (no chrome)", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-title-btn\s*\{[^}]*background:\s*transparent/);
+    expect(out).toMatch(/\.tour-title-btn\s*\{[^}]*cursor:\s*pointer/);
+  });
 });

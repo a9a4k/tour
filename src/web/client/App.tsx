@@ -10,6 +10,8 @@ import {
 } from "./annotations.js";
 import { fileStatusIcon } from "./file-status.js";
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
+import { TourPicker } from "./TourPicker.js";
+import { buildPickerRows } from "../../core/tour-list.js";
 import {
   buildTree,
   compress,
@@ -54,8 +56,15 @@ function defaultCollapsedFor(file: DiffFileInfo, annotations: Annotation[]): boo
   return false;
 }
 
+function readTourFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get("tour");
+  return v && v.length > 0 ? v : null;
+}
+
 export function App({ initialTourId }: AppProps): React.JSX.Element {
-  const [tourId, setTourId] = useState<string | null>(initialTourId);
+  const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl() ?? initialTourId);
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
   const [state, setState] = useState<LoadState>({ tour: null, error: null, loaded: false });
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -63,8 +72,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [layout, setLayout] = useState<Layout>("split");
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const titleButtonRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,8 +97,21 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    const onPop = () => {
+      const fromUrl = readTourFromUrl();
+      if (fromUrl !== null) setTourId(fromUrl);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
     if (!tourId) return;
     let cancelled = false;
+    setSelectedFile(null);
+    setCurrentAnnotationId(null);
+    setCollapsedOverrides({});
+    setCollapsedFolders(new Set());
     (async () => {
       const res = await fetch(`/api/tours/${tourId}`);
       const data = (await res.json()) as TourData | { error: string };
@@ -209,20 +234,38 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (!found) setCurrentAnnotationId(annotations[0].id);
   }, [annotations, currentAnnotationId, scrollAnnotationIntoView]);
 
-  // Global keydown: n / p step the sequence cursor; l flips diff layout.
-  // No-op when focus is in an editable element so the shortcuts never steal
-  // text input.
+  const openPicker = useCallback(() => {
+    triggerRef.current = (document.activeElement as HTMLElement) ?? null;
+    setPickerOpen(true);
+  }, []);
+
+  const closePicker = useCallback(() => {
+    setPickerOpen(false);
+    const back = triggerRef.current ?? titleButtonRef.current;
+    requestAnimationFrame(() => back?.focus());
+  }, []);
+
+  // Global keydown: n / p step the sequence cursor; l flips diff layout;
+  // t toggles the tour picker. While the picker is open, n / p / l are inert
+  // (the picker owns input). No-op when focus is in an editable element so
+  // the shortcuts never steal text input.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== "n" && e.key !== "p" && e.key !== "l") return;
+      if (e.key !== "n" && e.key !== "p" && e.key !== "l" && e.key !== "t") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t) {
         const tag = t.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
       }
+      if (pickerOpen) {
+        // Picker handles its own keys (including `t` to close). Block n/p/l.
+        return;
+      }
       e.preventDefault();
-      if (e.key === "l") {
+      if (e.key === "t") {
+        openPicker();
+      } else if (e.key === "l") {
         setLayout((prev) => (prev === "split" ? "unified" : "split"));
       } else {
         navigateBy(e.key === "n" ? 1 : -1);
@@ -230,7 +273,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [navigateBy]);
+  }, [navigateBy, pickerOpen, openPicker]);
 
   const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) annotationRefs.current.set(id, el);
@@ -253,6 +296,32 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     [isCollapsed],
   );
 
+  const commitTour = useCallback(
+    (id: string) => {
+      setPickerOpen(false);
+      if (id !== tourId) {
+        if (typeof window !== "undefined" && window.history) {
+          window.history.pushState(
+            { tourId: id },
+            "",
+            `/?tour=${encodeURIComponent(id)}`,
+          );
+        }
+        setTourId(id);
+      }
+      const back = triggerRef.current ?? titleButtonRef.current;
+      requestAnimationFrame(() => back?.focus());
+    },
+    [tourId],
+  );
+
+  const pickerRows = useMemo(() => {
+    if (!tourList) return [];
+    const counts: Record<string, number> = {};
+    if (tour) counts[tour.id] = tour.annotations.length;
+    return buildPickerRows({ tours: tourList, annotationCounts: counts, now: Date.now() });
+  }, [tourList, tour]);
+
   if (!state.loaded && !tourList) {
     return <div className="empty">Loading…</div>;
   }
@@ -273,10 +342,18 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     <>
       <div className="tour-header">
         <div className="tour-header-text">
-          <h1>{tour.title || tour.id}</h1>
-          <div className="meta">
-            {tour.status} · {tour.id} · {tour.created_at}
-          </div>
+          <button
+            ref={titleButtonRef}
+            type="button"
+            className="tour-title-btn"
+            aria-label="Open tour picker"
+            onClick={openPicker}
+          >
+            <h1>{tour.title || tour.id}</h1>
+            <div className="meta">
+              {tour.status} · {tour.id} · {tour.created_at}
+            </div>
+          </button>
         </div>
         <LayoutToggle layout={layout} onChange={setLayout} />
       </div>
@@ -339,6 +416,14 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         onPrev={() => navigateBy(-1)}
         onNext={() => navigateBy(1)}
       />
+      {pickerOpen ? (
+        <TourPicker
+          rows={pickerRows}
+          currentTourId={tourId}
+          onSelect={commitTour}
+          onClose={closePicker}
+        />
+      ) : null}
     </>
   );
 }
