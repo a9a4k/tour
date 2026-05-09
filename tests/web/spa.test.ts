@@ -100,4 +100,17 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.folder-icon\s*\{/);
     expect(out).toMatch(/\.folder-name\s*\{/);
   });
+
+  it("lays out the tour-header as a row so the layout toggle can sit on the right", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-header\s*\{[^}]*display:\s*flex/);
+    expect(out).toMatch(/\.tour-header\s*\{[^}]*align-items:\s*center/);
+  });
+
+  it("styles the segmented layout toggle and highlights the active button", () => {
+    const out = html();
+    expect(out).toMatch(/\.layout-toggle\s*\{/);
+    expect(out).toMatch(/\.layout-toggle-btn\s*\{/);
+    expect(out).toMatch(/\.layout-toggle-btn\.active\s*\{/);
+  });
 });
