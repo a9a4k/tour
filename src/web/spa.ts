@@ -65,13 +65,13 @@ export function html(initialTourId?: string): string {
     font-family: inherit;
   }
   .folder-entry:hover { background: var(--canvas-subtle); }
-  .folder-icon { width: 12px; color: var(--fg-muted); font-size: 10px; flex-shrink: 0; }
   .folder-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--fg-muted);
   }
+  .tree-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--fg-muted); }
   .status-icon { width: 16px; height: 16px; flex-shrink: 0; color: currentColor; }
   .status-icon.added { color: #3fb950; }
   .status-icon.modified { color: #d29922; }

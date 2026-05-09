@@ -9,6 +9,7 @@ import {
   resolveCursorById,
 } from "./annotations.js";
 import { fileIcon } from "./file-icon.js";
+import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
@@ -489,15 +490,16 @@ interface FolderRowProps {
 }
 
 function FolderRow({ row, onToggle }: FolderRowProps): React.JSX.Element {
-  const caret = row.collapsed ? "▸" : "▾";
+  const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
   return (
     <button
       type="button"
       className="folder-entry"
-      style={{ paddingLeft: 16 + row.depth * 12 }}
+      style={{ paddingLeft: 16 + row.depth * 16 }}
       onClick={() => onToggle(row.path)}
     >
-      <span className="folder-icon">{caret}</span>
+      <Chevron className="tree-icon" />
+      <FileDirectoryFillIcon className="tree-icon" />
       <span className="folder-name">{row.displayName}</span>
     </button>
   );
@@ -517,7 +519,7 @@ function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.
       ref={registerRef}
       type="button"
       className={`file-entry${selected ? " selected" : ""}`}
-      style={{ paddingLeft: 16 + row.depth * 12 }}
+      style={{ paddingLeft: 16 + row.depth * 16 }}
       onClick={() => onSelect(row.path)}
     >
       <Icon className={`status-icon ${statusClass}`} />

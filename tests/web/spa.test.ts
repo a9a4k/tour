@@ -132,11 +132,17 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tour-header\s*\{[^}]*padding-right:\s*16px/);
   });
 
-  it("styles folder rows in the tree sidebar", () => {
+  it("styles folder rows in the tree sidebar (Issue #63)", () => {
     const out = html();
     expect(out).toMatch(/\.folder-entry\s*\{/);
-    expect(out).toMatch(/\.folder-icon\s*\{/);
     expect(out).toMatch(/\.folder-name\s*\{/);
+    // The caret-only `.folder-icon` rule is gone — replaced by chevron +
+    // folder Octicons sized 16x16 via the new `.tree-icon` rule.
+    expect(out).not.toMatch(/\.folder-icon\s*\{/);
+    expect(out).toMatch(/\.tree-icon\s*\{[^}]*width:\s*16px/);
+    expect(out).toMatch(/\.tree-icon\s*\{[^}]*height:\s*16px/);
+    expect(out).toMatch(/\.tree-icon\s*\{[^}]*flex-shrink:\s*0/);
+    expect(out).toMatch(/\.tree-icon\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
   it("lays out the tour-header as a row so the layout toggle can sit on the right", () => {
