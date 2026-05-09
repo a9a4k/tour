@@ -38,16 +38,26 @@ export function DiffLine({
   const showCode = !!filetype && text.length > 0;
 
   return (
-    // alignItems="flex-start" + explicit height={1} on the gutter siblings
-    // anchors them to the top of the row when the content cell wraps to
-    // multiple visual lines. Without these, Yoga's default
-    // alignItems="stretch" makes the 1-line gutter <text> grow to the row's
-    // full multi-line height and the rendered text drifts off the first
-    // visual line — line number ends up next to a wrap continuation instead
-    // of the row's start.
+    // alignItems="flex-start" pins the line-number text to visual-line 1 when
+    // the content cell wraps to multiple visual lines (commit 7ee3e85). The
+    // accent stripe and gutter-tint background must escape that pin and
+    // extend down through the wraps — they're row-edge cues, not anchored
+    // text. Each is wrapped in its own 1-cell-or-content-wide <box> with
+    // alignSelf="stretch" overriding the parent's flex-start, so the box
+    // grows to the row's full visual height and paints its bg across every
+    // wrapped line. The line-number <text> stays height={1} inside its
+    // wrapper so the anchor behavior holds. ADR 0008's continuous accent +
+    // ADR 0009's wrapped-row anchor coexist this way.
     <box flexDirection="row" width={width} minHeight={1} alignItems="flex-start">
-      <text fg={ACCENT_FG} height={1} flexShrink={0}>{gutterAccent ? GUTTER_CHAR : " "}</text>
-      <text bg={gutterBg} height={1} flexShrink={0}>{gutter}</text>
+      <box
+        width={1}
+        alignSelf="stretch"
+        flexShrink={0}
+        backgroundColor={gutterAccent ? ACCENT_FG : undefined}
+      />
+      <box alignSelf="stretch" flexShrink={0} backgroundColor={gutterBg}>
+        <text height={1} flexShrink={0}>{gutter}</text>
+      </box>
       {showCode ? (
         // <code> as a direct flex child reports a measure that includes a
         // phantom extra row, doubling the diff row's terminal height. Wrap
