@@ -1,6 +1,6 @@
 {
   "name": "tourdiff",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local code review tool with AI annotations: TUI + webapp over a pinned git diff.",
   "type": "module",
   "license": "MIT",
@@ -46,11 +46,11 @@
     "assemble": "bun scripts/assemble-packages.ts"
   },
   "optionalDependencies": {
-    "tourdiff-darwin-arm64": "0.1.1",
-    "tourdiff-darwin-x64": "0.1.1",
-    "tourdiff-linux-arm64": "0.1.1",
-    "tourdiff-linux-x64": "0.1.1",
-    "tourdiff-windows-x64": "0.1.1"
+    "tourdiff-darwin-arm64": "0.1.2",
+    "tourdiff-darwin-x64": "0.1.2",
+    "tourdiff-linux-arm64": "0.1.2",
+    "tourdiff-linux-x64": "0.1.2",
+    "tourdiff-windows-x64": "0.1.2"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.5.10",

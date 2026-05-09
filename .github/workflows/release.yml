@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - { runner: macos-14,         target: bun-darwin-arm64,  os: darwin,  cpu: arm64, binary: tour     }
-          - { runner: macos-13,         target: bun-darwin-x64,    os: darwin,  cpu: x64,   binary: tour     }
+          - { runner: macos-15-intel,   target: bun-darwin-x64,    os: darwin,  cpu: x64,   binary: tour     }
           - { runner: ubuntu-22.04-arm, target: bun-linux-arm64,   os: linux,   cpu: arm64, binary: tour     }
           - { runner: ubuntu-22.04,     target: bun-linux-x64,     os: linux,   cpu: x64,   binary: tour     }
           - { runner: windows-2022,     target: bun-windows-x64,   os: windows, cpu: x64,   binary: tour.exe }
@@ -33,7 +33,8 @@ jobs:
             dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }}
       - name: Smoke test
         shell: bash
-        if: matrix.os != 'windows' && !(matrix.os == 'linux' && matrix.cpu == 'arm64' && runner.arch == 'X64')
+        # Run only when the runner architecture matches the target binary architecture (no cross-compile execution).
+        if: matrix.os != 'windows' && ((matrix.cpu == 'arm64' && runner.arch == 'ARM64') || (matrix.cpu == 'x64' && runner.arch == 'X64'))
         run: ./dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }} --version
       - uses: actions/upload-artifact@v5
         with:
