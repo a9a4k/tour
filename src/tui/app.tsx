@@ -332,6 +332,17 @@ function App(props: AppProps) {
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
   };
 
+  const gotoPrevAnnotation = () => {
+    if (currentAnnotationIdx <= 0) return;
+    jumpToAnnotation(liveAnnotations[currentAnnotationIdx - 1]);
+  };
+
+  const gotoNextAnnotation = () => {
+    if (currentAnnotationIdx < 0) return;
+    if (currentAnnotationIdx >= liveAnnotations.length - 1) return;
+    jumpToAnnotation(liveAnnotations[currentAnnotationIdx + 1]);
+  };
+
   useKeyboard((key) => {
     if (pickerOpen) {
       if (key.ctrl || key.shift) return;
@@ -445,17 +456,12 @@ function App(props: AppProps) {
         if (newIdx >= 0) setSelectedRowIdx(newIdx);
         return;
       }
-      case "next-annotation": {
-        if (currentAnnotationIdx < 0) return;
-        if (currentAnnotationIdx >= liveAnnotations.length - 1) return;
-        jumpToAnnotation(liveAnnotations[currentAnnotationIdx + 1]);
+      case "next-annotation":
+        gotoNextAnnotation();
         return;
-      }
-      case "prev-annotation": {
-        if (currentAnnotationIdx <= 0) return;
-        jumpToAnnotation(liveAnnotations[currentAnnotationIdx - 1]);
+      case "prev-annotation":
+        gotoPrevAnnotation();
         return;
-      }
       case "toggle-layout":
         setLayout((v) => (v === "split" ? "unified" : "split"));
         return;
@@ -504,18 +510,8 @@ function App(props: AppProps) {
           <SequencePillTui
             idx={currentAnnotationIdx}
             total={liveAnnotations.length}
-            onPrev={() => {
-              if (currentAnnotationIdx <= 0) return;
-              jumpToAnnotation(liveAnnotations[currentAnnotationIdx - 1]);
-            }}
-            onNext={() => {
-              if (
-                currentAnnotationIdx < 0 ||
-                currentAnnotationIdx >= liveAnnotations.length - 1
-              )
-                return;
-              jumpToAnnotation(liveAnnotations[currentAnnotationIdx + 1]);
-            }}
+            onPrev={gotoPrevAnnotation}
+            onNext={gotoNextAnnotation}
           />
         </box>
       </box>
