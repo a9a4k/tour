@@ -107,6 +107,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const tour = state.tour;
   const annotations = useMemo(() => tour?.annotations ?? [], [tour?.annotations]);
+  const currentIdx = useMemo(
+    () => resolveCursorById(annotations, currentAnnotationId),
+    [annotations, currentAnnotationId],
+  );
 
   const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
     if (!tour || !tour.diff) return [];
@@ -121,8 +125,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const navigateBy = useCallback(
     (delta: number) => {
-      if (annotations.length === 0) return;
-      const currentIdx = resolveCursorById(annotations, currentAnnotationId);
+      if (currentIdx === -1) return;
       const newIdx = Math.max(0, Math.min(annotations.length - 1, currentIdx + delta));
       if (newIdx === currentIdx) return;
       const target = annotations[newIdx];
@@ -133,7 +136,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       );
       scrollAnnotationIntoView(target.id);
     },
-    [annotations, currentAnnotationId, scrollAnnotationIntoView],
+    [annotations, currentIdx, scrollAnnotationIntoView],
   );
 
   // Re-anchor cursor by id whenever annotations change. On first sight of a
@@ -280,7 +283,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         )}
       </main>
       <SequencePill
-        idx={resolveCursorById(annotations, currentAnnotationId)}
+        idx={currentIdx}
         total={annotations.length}
         onPrev={() => navigateBy(-1)}
         onNext={() => navigateBy(1)}
