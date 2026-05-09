@@ -10,6 +10,10 @@ export interface DiffRow {
   rightLineNumber: number | null;
   leftText: string;
   rightText: string;
+  leftTinted?: boolean;
+  rightTinted?: boolean;
+  leftGutter?: boolean;
+  rightGutter?: boolean;
 }
 
 export interface HunkHeaderRow {
@@ -30,6 +34,7 @@ export function planRows(
   layout: "split" | "unified",
 ): PlannedRow[] {
   const diffRows = walkHunks(file, layout);
+  applyAnnotationFlags(diffRows, annotations, layout);
   return interleaveAnnotations(diffRows, annotations);
 }
 
@@ -109,6 +114,33 @@ function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): Planned
   }
 
   return rows;
+}
+
+function applyAnnotationFlags(
+  rows: PlannedRow[],
+  annotations: Annotation[],
+  layout: "split" | "unified",
+): void {
+  if (annotations.length === 0) return;
+  for (const ann of annotations) {
+    for (const row of rows) {
+      if (row.kind !== "diff-row") continue;
+      const lineOnAnnSide =
+        ann.side === "additions" ? row.rightLineNumber : row.leftLineNumber;
+      if (lineOnAnnSide === null) continue;
+      if (lineOnAnnSide < ann.line_start || lineOnAnnSide > ann.line_end) continue;
+      if (layout === "unified") {
+        row.rightTinted = true;
+        row.rightGutter = true;
+      } else if (ann.side === "additions") {
+        row.rightTinted = true;
+        row.rightGutter = true;
+      } else {
+        row.leftTinted = true;
+        row.leftGutter = true;
+      }
+    }
+  }
 }
 
 function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): PlannedRow[] {
