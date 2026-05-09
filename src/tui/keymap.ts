@@ -26,6 +26,8 @@ export type KeyAction =
   | { type: "prev-annotation" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
+  | { type: "page-diff-down" }
+  | { type: "page-diff-up" }
   | { type: "noop" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
@@ -35,6 +37,10 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
 
   if (key.name === "tab") {
     return key.shift ? { type: "focus-sidebar" } : { type: "toggle-pane" };
+  }
+
+  if (!key.ctrl && key.name === "space") {
+    return key.shift ? { type: "page-diff-up" } : { type: "page-diff-down" };
   }
 
   if (!key.ctrl && !key.shift) {
@@ -48,7 +54,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "j" || key.name === "down") return { type: "move-file-down" };
     if (key.name === "k" || key.name === "up") return { type: "move-file-up" };
     if (key.name === "return") return { type: "select-file" };
-    if (key.name === "space") {
+    if (!key.ctrl && !key.shift && key.name === "c") {
       if (ctx.selectedRowKind === "folder") return { type: "toggle-folder" };
       if (ctx.selectedRowKind === "file") return { type: "toggle-collapse" };
     }

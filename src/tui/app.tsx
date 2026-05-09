@@ -94,7 +94,7 @@ function fileCardBody(
   layout: "split" | "unified",
   currentAnnotationId: string | null,
 ) {
-  if (collapsed) return <text fg={theme.fg.muted}>{"[collapsed — Space to expand]"}</text>;
+  if (collapsed) return <text fg={theme.fg.muted}>{"[collapsed — c to expand]"}</text>;
   if (!hasHunks) return <text fg={theme.fg.muted}>{"[no textual changes]"}</text>;
   return (
     <DiffRows
@@ -256,7 +256,7 @@ function App(props: AppProps) {
   };
 
   const footerHints =
-    "n/p: navigate  ·  j/k: rows  ·  Space: toggle  ·  ←→: fold/expand  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
+    "n/p: navigate  ·  j/k: rows  ·  c: collapse  ·  Space: page diff  ·  ←→: fold/expand  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
   const footer =
     liveAnnotations.length > 0
       ? `Annotation ${currentAnnotationIdx + 1}/${liveAnnotations.length}  ·  ${footerHints}`
@@ -460,6 +460,12 @@ function App(props: AppProps) {
         return;
       case "open-picker":
         void openPicker();
+        return;
+      case "page-diff-down":
+        diffScrollRef.current?.scrollBy(1, "viewport");
+        return;
+      case "page-diff-up":
+        diffScrollRef.current?.scrollBy(-1, "viewport");
         return;
     }
   });

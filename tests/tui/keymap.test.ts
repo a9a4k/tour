@@ -21,7 +21,7 @@ describe("dispatchKey", () => {
   });
 
   it("plain c does not quit", () => {
-    expect(dispatchKey(k("c"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("c"), sidebar).type).not.toBe("quit");
   });
 
   it("Tab toggles pane", () => {
@@ -54,16 +54,39 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type).toBe("noop");
   });
 
-  it("space on a file row toggles per-file diff collapse", () => {
-    expect(dispatchKey(k("space"), sidebar).type).toBe("toggle-collapse");
+  it("c on a file row toggles per-file diff collapse", () => {
+    expect(dispatchKey(k("c"), sidebar).type).toBe("toggle-collapse");
   });
 
-  it("space on a folder row toggles folder expand/collapse", () => {
-    expect(dispatchKey(k("space"), sidebarFolder).type).toBe("toggle-folder");
+  it("c on a folder row toggles folder expand/collapse", () => {
+    expect(dispatchKey(k("c"), sidebarFolder).type).toBe("toggle-folder");
   });
 
-  it("space is a no-op when sidebar is not focused", () => {
-    expect(dispatchKey(k("space"), diffPane).type).toBe("noop");
+  it("c is a no-op when sidebar is not focused", () => {
+    expect(dispatchKey(k("c"), diffPane).type).toBe("noop");
+  });
+
+  it("c is a no-op when no row is selected", () => {
+    expect(
+      dispatchKey(k("c"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type,
+    ).toBe("noop");
+  });
+
+  it("Space pages the diff pane down regardless of focus", () => {
+    expect(dispatchKey(k("space"), sidebar).type).toBe("page-diff-down");
+    expect(dispatchKey(k("space"), sidebarFolder).type).toBe("page-diff-down");
+    expect(dispatchKey(k("space"), diffPane).type).toBe("page-diff-down");
+  });
+
+  it("Shift+Space pages the diff pane up regardless of focus", () => {
+    expect(dispatchKey(k("space", { shift: true }), sidebar).type).toBe("page-diff-up");
+    expect(dispatchKey(k("space", { shift: true }), sidebarFolder).type).toBe("page-diff-up");
+    expect(dispatchKey(k("space", { shift: true }), diffPane).type).toBe("page-diff-up");
+  });
+
+  it("Ctrl+Space is not consumed as page-diff", () => {
+    expect(dispatchKey(k("space", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("space", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
   it("right on a folder row expands the folder", () => {
