@@ -1,7 +1,8 @@
 import type { SyntaxStyle } from "@opentui/core";
+import { theme } from "../core/theme.js";
 
-export const TINT_BG = "#1e2a44";
-export const ACCENT_FG = "#58a6ff";
+export const TINT_BG = theme.bg.accentRange.tui;
+export const ACCENT_FG = theme.fg.accent;
 export const GUTTER_CHAR = "▎";
 
 interface DiffLineProps {

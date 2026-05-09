@@ -1,3 +1,4 @@
+import { theme } from "../../core/theme.js";
 import type { Annotation, AnnotationMetadata } from "./types.js";
 
 export interface PierreLineAnnotation {
@@ -30,16 +31,17 @@ export function toPierreLineAnnotations(annotations: Annotation[], file: string)
   return result;
 }
 
-const RANGE_TINT = "rgba(88, 166, 255, 0.12)";
-const RANGE_ACCENT = "#58a6ff";
+const RANGE_TINT = theme.bg.accentRange.web;
+const RANGE_ACCENT = theme.fg.accent;
 
 /**
  * Build a CSS string targeting Pierre's per-line `[data-line]` markers for
  * every line in every multi-line annotation range, painting two cues over
- * each annotated row: the existing subtle blue tint as the row background,
- * plus a 3px accent-coloured gutter stripe at the left edge — matching the
- * annotation card's `border-left: 3px solid #58a6ff` so card and range
- * read as one column-aligned bracket (ADR 0008's two-cue rule).
+ * each annotated row: the subtle blue tint as the row background, plus a
+ * 3px accent-coloured gutter stripe at the left edge — matching the
+ * annotation card's accent border so card and range read as one
+ * column-aligned bracket (ADR 0008's two-cue rule). Tint and accent are
+ * sourced from the shared theme module so TUI and SPA stay in lockstep.
  *
  * Single-line annotations are skipped: Pierre's built-in `lineAnnotations`
  * already paints its own gutter marker for the anchor row, and stacking

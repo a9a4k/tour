@@ -1,3 +1,5 @@
+import { themeCSSVars } from "../core/theme.js";
+
 export function html(initialTourId?: string): string {
   const initialId = initialTourId ? JSON.stringify(initialTourId) : "null";
   return `<!DOCTYPE html>
@@ -7,13 +9,14 @@ export function html(initialTourId?: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tour</title>
 <style>
+  ${themeCSSVars()}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { color-scheme: dark; }
   html, body { height: 100%; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0d1117;
-    color: #c9d1d9;
+    background: var(--canvas-default);
+    color: var(--fg-default);
     height: 100vh;
     overflow: hidden;
   }
@@ -21,15 +24,15 @@ export function html(initialTourId?: string): string {
   .app-body { display: flex; flex: 1; min-height: 0; }
   .app-sidebar {
     width: 280px;
-    border-right: 1px solid #30363d;
+    border-right: 1px solid var(--border-default);
     overflow-y: auto;
     flex-shrink: 0;
   }
   .app-sidebar h2 {
     padding: 12px 16px;
     font-size: 14px;
-    color: #8b949e;
-    border-bottom: 1px solid #30363d;
+    color: var(--fg-muted);
+    border-bottom: 1px solid var(--border-default);
   }
   .file-entry {
     padding: 8px 16px;
@@ -45,8 +48,8 @@ export function html(initialTourId?: string): string {
     text-align: left;
     font-family: inherit;
   }
-  .file-entry:hover { background: #161b22; }
-  .file-entry.selected { background: #1f6feb33; border-left: 2px solid #58a6ff; }
+  .file-entry:hover { background: var(--canvas-subtle); }
+  .file-entry.selected { background: var(--bg-accent-cursor); border-left: 2px solid var(--border-accent); }
   .folder-entry {
     padding: 6px 16px;
     cursor: pointer;
@@ -56,29 +59,29 @@ export function html(initialTourId?: string): string {
     gap: 6px;
     border: none;
     background: transparent;
-    color: #c9d1d9;
+    color: var(--fg-default);
     width: 100%;
     text-align: left;
     font-family: inherit;
   }
-  .folder-entry:hover { background: #161b22; }
-  .folder-icon { width: 12px; color: #8b949e; font-size: 10px; flex-shrink: 0; }
+  .folder-entry:hover { background: var(--canvas-subtle); }
+  .folder-icon { width: 12px; color: var(--fg-muted); font-size: 10px; flex-shrink: 0; }
   .folder-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #8b949e;
+    color: var(--fg-muted);
   }
   .file-icon { width: 16px; text-align: center; font-weight: bold; font-size: 11px; }
-  .file-icon.A { color: #3fb950; }
-  .file-icon.M { color: #d29922; }
-  .file-icon.D { color: #f85149; }
-  .file-icon.R { color: #a371f7; }
+  .file-icon.A { color: var(--fg-success); }
+  .file-icon.M { color: var(--fg-attention); }
+  .file-icon.D { color: var(--fg-danger); }
+  .file-icon.R { color: var(--fg-done); }
   .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reason-tag { color: #8b949e; font-size: 11px; font-style: italic; }
+  .reason-tag { color: var(--fg-muted); font-size: 11px; font-style: italic; }
   .badge {
-    background: #30363d;
-    color: #8b949e;
+    background: var(--canvas-emphasis);
+    color: var(--fg-muted);
     border-radius: 10px;
     padding: 1px 6px;
     font-size: 11px;
@@ -86,9 +89,9 @@ export function html(initialTourId?: string): string {
   }
   .app-main { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
   .banner {
-    background: #d292221a;
-    border: 1px solid #d29922;
-    color: #d29922;
+    background: var(--bg-attention-subtle);
+    border: 1px solid var(--fg-attention);
+    color: var(--fg-attention);
     padding: 12px 16px;
     border-radius: 6px;
     margin-bottom: 16px;
@@ -98,17 +101,17 @@ export function html(initialTourId?: string): string {
     padding-bottom: 12px;
     padding-left: 16px;
     padding-right: 16px;
-    border-bottom: 1px solid #30363d;
+    border-bottom: 1px solid var(--border-default);
     display: flex;
     align-items: center;
     gap: 16px;
   }
   .tour-header-text { flex: 1; min-width: 0; }
   .tour-header h1 { font-size: 20px; margin-bottom: 4px; }
-  .tour-header .meta { color: #8b949e; font-size: 13px; }
+  .tour-header .meta { color: var(--fg-muted); font-size: 13px; }
   .layout-toggle {
     display: inline-flex;
-    border: 1px solid #30363d;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     overflow: hidden;
     flex-shrink: 0;
@@ -116,21 +119,21 @@ export function html(initialTourId?: string): string {
   .layout-toggle-btn {
     background: transparent;
     border: none;
-    color: #c9d1d9;
+    color: var(--fg-default);
     font-family: inherit;
     font-size: 12px;
     padding: 6px 12px;
     cursor: pointer;
   }
-  .layout-toggle-btn:hover { background: #161b22; }
+  .layout-toggle-btn:hover { background: var(--canvas-subtle); }
   .layout-toggle-btn.active {
-    background: #1f6feb33;
-    color: #58a6ff;
+    background: var(--bg-accent-emphasis);
+    color: var(--fg-on-emphasis);
   }
-  .layout-toggle-btn + .layout-toggle-btn { border-left: 1px solid #30363d; }
+  .layout-toggle-btn + .layout-toggle-btn { border-left: 1px solid var(--border-default); }
   .file-block {
     margin-bottom: 24px;
-    border: 1px solid #30363d;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     scroll-margin-top: 16px;
     position: relative;
@@ -139,7 +142,7 @@ export function html(initialTourId?: string): string {
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #8b949e;
+    color: var(--fg-muted);
     font-size: 14px;
     line-height: 1;
     padding: 0;
@@ -150,12 +153,11 @@ export function html(initialTourId?: string): string {
     justify-content: center;
     flex-shrink: 0;
   }
-  .copy-path:hover { color: #c9d1d9; }
-  .copy-path:focus-visible { outline: 1px solid #58a6ff; outline-offset: 2px; border-radius: 2px; }
+  .copy-path:hover { color: var(--fg-default); }
+  .copy-path:focus-visible { outline: 1px solid var(--border-accent); outline-offset: 2px; border-radius: 2px; }
   .annotation-block {
-    background: #1c2128;
     border: 2px solid transparent;
-    border-left: 3px solid #58a6ff;
+    border-left: 3px solid var(--border-accent);
     margin: 4px 16px;
     padding: 8px 12px;
     border-radius: 4px;
@@ -165,17 +167,17 @@ export function html(initialTourId?: string): string {
     max-width: 100%;
   }
   .annotation-block.current {
-    border-color: #58a6ff;
-    background: #1f6feb22;
+    border-color: var(--border-accent);
+    background: var(--bg-accent-current);
   }
   .annotation-block .ann-header {
-    color: #58a6ff;
+    color: var(--fg-accent);
     font-weight: 600;
     margin-bottom: 4px;
     font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', monospace;
   }
-  .annotation-block .ann-body { color: #c9d1d9; overflow-wrap: anywhere; }
+  .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }
   .annotation-block .ann-body h1,
@@ -187,7 +189,7 @@ export function html(initialTourId?: string): string {
     font-weight: 600;
     line-height: 1.25;
     margin: 12px 0 6px;
-    color: #f0f6fc;
+    color: var(--fg-default);
   }
   .annotation-block .ann-body h1 { font-size: 1.4em; }
   .annotation-block .ann-body h2 { font-size: 1.25em; }
@@ -204,23 +206,23 @@ export function html(initialTourId?: string): string {
     vertical-align: middle;
   }
   .annotation-block .ann-body blockquote {
-    border-left: 3px solid #30363d;
+    border-left: 3px solid var(--border-muted);
     padding: 0 12px;
-    color: #8b949e;
+    color: var(--fg-muted);
     margin: 8px 0;
   }
-  .annotation-block .ann-body a { color: #58a6ff; text-decoration: none; }
+  .annotation-block .ann-body a { color: var(--fg-accent); text-decoration: none; }
   .annotation-block .ann-body a:hover { text-decoration: underline; }
   .annotation-block .ann-body code {
-    background: #6e768133;
+    background: var(--bg-neutral-subtle);
     border-radius: 3px;
     padding: 0.15em 0.35em;
     font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 0.9em;
   }
   .annotation-block .ann-body pre {
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 10px 12px;
     overflow-x: auto;
@@ -241,15 +243,15 @@ export function html(initialTourId?: string): string {
   }
   .annotation-block .ann-body th,
   .annotation-block .ann-body td {
-    border: 1px solid #30363d;
+    border: 1px solid var(--border-default);
     padding: 4px 10px;
     text-align: left;
   }
-  .annotation-block .ann-body th { background: #161b22; font-weight: 600; }
-  .annotation-block .ann-body del { color: #8b949e; }
+  .annotation-block .ann-body th { background: var(--canvas-subtle); font-weight: 600; }
+  .annotation-block .ann-body del { color: var(--fg-muted); }
   .annotation-block .ann-body hr {
     border: none;
-    border-top: 1px solid #30363d;
+    border-top: 1px solid var(--border-muted);
     margin: 12px 0;
   }
   .annotation-block .ann-body .mermaid-block {
@@ -261,13 +263,13 @@ export function html(initialTourId?: string): string {
     display: block;
   }
   .annotation-block .ann-body .mermaid-loading {
-    color: #8b949e;
+    color: var(--fg-muted);
     font-style: italic;
     font-size: 12px;
     padding: 8px 0;
   }
   .annotation-block .ann-body .mermaid-failed .mermaid-error-header {
-    color: #f85149;
+    color: var(--fg-danger);
     font-weight: 600;
     margin-bottom: 4px;
   }
@@ -278,34 +280,34 @@ export function html(initialTourId?: string): string {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
     border-radius: 999px;
     padding: 4px 8px;
-    color: #c9d1d9;
+    color: var(--fg-default);
     font-size: 12px;
     font-family: 'SF Mono', 'Fira Code', monospace;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 2px 8px var(--shadow-medium);
     z-index: 20;
   }
   .sequence-pill .pill-chevron {
     background: transparent;
     border: none;
-    color: #c9d1d9;
+    color: var(--fg-default);
     font-size: 16px;
     line-height: 1;
     padding: 2px 6px;
     cursor: pointer;
     border-radius: 4px;
   }
-  .sequence-pill .pill-chevron:hover:not(:disabled) { background: #1f6feb33; }
-  .sequence-pill .pill-chevron:disabled { color: #484f58; cursor: default; }
+  .sequence-pill .pill-chevron:hover:not(:disabled) { background: var(--bg-accent-cursor); }
+  .sequence-pill .pill-chevron:disabled { color: var(--fg-subtle); cursor: default; }
   .sequence-pill .pill-position { padding: 0 4px; min-width: 40px; text-align: center; }
   .empty {
     text-align: center;
     padding: 48px;
     padding-top: 16px;
-    color: #8b949e;
+    color: var(--fg-muted);
   }
   .tour-title-btn {
     background: transparent;
@@ -319,14 +321,14 @@ export function html(initialTourId?: string): string {
     width: 100%;
   }
   .tour-title-btn:focus-visible {
-    outline: 1px solid #58a6ff;
+    outline: 1px solid var(--border-accent);
     outline-offset: 2px;
     border-radius: 4px;
   }
   .picker-scrim {
     position: fixed;
     inset: 0;
-    background: rgba(1, 4, 9, 0.7);
+    background: var(--shadow-scrim);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -336,10 +338,10 @@ export function html(initialTourId?: string): string {
   .picker-card {
     width: min(560px, 90vw);
     max-height: 70vh;
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px var(--shadow-large);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -357,21 +359,21 @@ export function html(initialTourId?: string): string {
     width: 100%;
     border: none;
     background: transparent;
-    color: #c9d1d9;
+    color: var(--fg-default);
     text-align: left;
     font-family: inherit;
     font-size: 13px;
     cursor: pointer;
     border-left: 3px solid transparent;
   }
-  .picker-row.current { background: #1f6feb22; }
-  .picker-row.cursor { background: #1f6feb33; border-left-color: #58a6ff; }
-  .picker-row.current.cursor { background: #1f6feb33; border-left-color: #58a6ff; }
+  .picker-row.current { background: var(--bg-accent-current); }
+  .picker-row.cursor { background: var(--bg-accent-cursor); border-left-color: var(--border-accent); }
+  .picker-row.current.cursor { background: var(--bg-accent-cursor); border-left-color: var(--border-accent); }
   .picker-glyph { width: 12px; flex-shrink: 0; font-size: 11px; }
-  .picker-glyph.open { color: #3fb950; }
-  .picker-glyph.closed { color: #8b949e; }
+  .picker-glyph.open { color: var(--fg-success); }
+  .picker-glyph.closed { color: var(--fg-muted); }
   .picker-age {
-    color: #8b949e;
+    color: var(--fg-muted);
     font-size: 11px;
     width: 64px;
     flex-shrink: 0;

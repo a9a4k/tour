@@ -1,4 +1,5 @@
 import type { PlannedRow, DiffRow } from "../core/diff-rows.js";
+import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
 import { DiffLine, ACCENT_FG, GUTTER_CHAR, TINT_BG } from "./DiffLine.js";
 import { getSyntaxStyle, inferFiletype } from "./syntax.js";
@@ -48,7 +49,7 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
           return (
-            <text key={key} fg="gray">
+            <text key={key} fg={theme.fg.muted}>
               {row.header}
             </text>
           );
