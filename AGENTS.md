@@ -90,4 +90,4 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Issue tracker: `docs/agents/issue-tracker.md`
 - Triage labels: `docs/agents/triage-labels.md`
 - Domain docs: `docs/agents/domain.md`
-- Releasing: `docs/agents/releasing.md`
+- Releasing: `docs/releasing.md`
