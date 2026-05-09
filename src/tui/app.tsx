@@ -4,6 +4,7 @@ import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
+import { splitRawDiffByFile } from "../core/diff-model.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { dispatchKey } from "./keymap.js";
 
@@ -52,6 +53,8 @@ function App(props: AppProps) {
     () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
     [props.files],
   );
+
+  const rawSegments = useMemo(() => splitRawDiffByFile(props.diff), [props.diff]);
 
   // Re-anchor the cursor by id across annotation reloads.
   useEffect(() => {
@@ -128,10 +131,14 @@ function App(props: AppProps) {
       case "move-file-up":
         setSelectedFileIdx((i) => Math.max(i - 1, 0));
         return;
-      case "select-file":
+      case "select-file": {
         setSidebarFocused(false);
-        if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
+        const f = files[selectedFileIdx];
+        if (f && diffScrollRef.current) {
+          diffScrollRef.current.scrollChildIntoView(`file-card-${f.name}`);
+        }
         return;
+      }
       case "toggle-collapse": {
         const f = files[selectedFileIdx];
         if (!f) return;
@@ -220,11 +227,34 @@ function App(props: AppProps) {
               height="100%"
               focused={!sidebarFocused}
             >
-              <diff
-                diff={props.diff}
-                view="split"
-                showLineNumbers
-              />
+              {files.map((file) => {
+                const annCount = annotationCountForFile(props.annotations, file.name);
+                const cls = fileClassification(props.classifications, file.name);
+                const icon = statusIcon(file.type);
+                const badge = annCount > 0 ? ` [${annCount}]` : "";
+                const marker = cls.reason ? reasonLabel(cls.reason) : "";
+                const collapsed = isFileCollapsed(file.name);
+                const segment = rawSegments.get(file.name) ?? "";
+                return (
+                  <box
+                    key={file.name}
+                    id={`file-card-${file.name}`}
+                    borderStyle="single"
+                    borderColor="gray"
+                    flexDirection="column"
+                    marginBottom={1}
+                  >
+                    <text>{` ${icon} ${file.name}${marker}${badge} `}</text>
+                    {collapsed ? (
+                      <text fg="gray">{"[collapsed — Space to expand]"}</text>
+                    ) : file.hunks.length === 0 ? (
+                      <text fg="gray">{"[no textual changes]"}</text>
+                    ) : (
+                      <diff diff={segment} view="split" showLineNumbers />
+                    )}
+                  </box>
+                );
+              })}
             </scrollbox>
           )}
 
