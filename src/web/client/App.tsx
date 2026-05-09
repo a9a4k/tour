@@ -26,8 +26,9 @@ const STICKY_HEADER_CSS = `
   }
 `;
 
+type Layout = "split" | "unified";
+
 const BASE_DIFF_OPTIONS = {
-  diffStyle: "unified" as const,
   theme: { dark: "github-dark-default", light: "github-light-default" } as const,
   themeType: "dark" as const,
   hunkSeparators: "metadata" as const,
@@ -60,6 +61,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
+  const [layout, setLayout] = useState<Layout>("split");
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -206,11 +208,12 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (!found) setCurrentAnnotationId(annotations[0].id);
   }, [annotations, currentAnnotationId, scrollAnnotationIntoView]);
 
-  // Global keydown: n / p step the sequence cursor. No-op when focus is in an
-  // editable element so the shortcuts never steal text input.
+  // Global keydown: n / p step the sequence cursor; l flips diff layout.
+  // No-op when focus is in an editable element so the shortcuts never steal
+  // text input.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== "n" && e.key !== "p") return;
+      if (e.key !== "n" && e.key !== "p" && e.key !== "l") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t) {
@@ -218,7 +221,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
       }
       e.preventDefault();
-      navigateBy(e.key === "n" ? 1 : -1);
+      if (e.key === "l") {
+        setLayout((prev) => (prev === "split" ? "unified" : "split"));
+      } else {
+        navigateBy(e.key === "n" ? 1 : -1);
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -264,10 +271,13 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   return (
     <>
       <div className="tour-header">
-        <h1>{tour.title || tour.id}</h1>
-        <div className="meta">
-          {tour.status} · {tour.id} · {tour.created_at}
+        <div className="tour-header-text">
+          <h1>{tour.title || tour.id}</h1>
+          <div className="meta">
+            {tour.status} · {tour.id} · {tour.created_at}
+          </div>
         </div>
+        <LayoutToggle layout={layout} onChange={setLayout} />
       </div>
       <div className="app-body">
         <aside className="app-sidebar">
@@ -316,6 +326,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 onToggleCollapsed={() => toggleCollapsed(f.name)}
                 currentAnnotationId={currentAnnotationId}
                 registerAnnotationRef={registerAnnotationRef}
+                layout={layout}
               />
             ))
           )}
@@ -328,6 +339,34 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         onNext={() => navigateBy(1)}
       />
     </>
+  );
+}
+
+interface LayoutToggleProps {
+  layout: Layout;
+  onChange: (next: Layout) => void;
+}
+
+function LayoutToggle({ layout, onChange }: LayoutToggleProps): React.JSX.Element {
+  return (
+    <div className="layout-toggle" role="group" aria-label="Diff layout">
+      <button
+        type="button"
+        className={`layout-toggle-btn${layout === "split" ? " active" : ""}`}
+        aria-pressed={layout === "split"}
+        onClick={() => onChange("split")}
+      >
+        Split
+      </button>
+      <button
+        type="button"
+        className={`layout-toggle-btn${layout === "unified" ? " active" : ""}`}
+        aria-pressed={layout === "unified"}
+        onClick={() => onChange("unified")}
+      >
+        Unified
+      </button>
+    </div>
   );
 }
 
@@ -386,6 +425,7 @@ interface FileBlockProps {
   onToggleCollapsed: () => void;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
+  layout: Layout;
 }
 
 function FileBlock({
@@ -397,6 +437,7 @@ function FileBlock({
   onToggleCollapsed,
   currentAnnotationId,
   registerAnnotationRef,
+  layout,
 }: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
 
@@ -408,8 +449,8 @@ function FileBlock({
   const options = useMemo(() => {
     const rangeCSS = buildRangeBackgroundCSS(annotations, fileDiff.name);
     const unsafeCSS = rangeCSS ? `${STICKY_HEADER_CSS}\n${rangeCSS}` : STICKY_HEADER_CSS;
-    return { ...BASE_DIFF_OPTIONS, unsafeCSS, collapsed };
-  }, [annotations, fileDiff.name, collapsed]);
+    return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
+  }, [annotations, fileDiff.name, collapsed, layout]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {

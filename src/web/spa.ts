@@ -99,9 +99,35 @@ export function html(initialTourId?: string): string {
     padding-left: 16px;
     padding-right: 16px;
     border-bottom: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    gap: 16px;
   }
+  .tour-header-text { flex: 1; min-width: 0; }
   .tour-header h1 { font-size: 20px; margin-bottom: 4px; }
   .tour-header .meta { color: #8b949e; font-size: 13px; }
+  .layout-toggle {
+    display: inline-flex;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .layout-toggle-btn {
+    background: transparent;
+    border: none;
+    color: #c9d1d9;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .layout-toggle-btn:hover { background: #161b22; }
+  .layout-toggle-btn.active {
+    background: #1f6feb33;
+    color: #58a6ff;
+  }
+  .layout-toggle-btn + .layout-toggle-btn { border-left: 1px solid #30363d; }
   .file-block {
     margin-bottom: 24px;
     border: 1px solid #30363d;
