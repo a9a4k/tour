@@ -12,6 +12,13 @@ export function generateId(opts?: { seed?: number; now?: Date }): string {
   return `${date}-${time}-${suffix}`;
 }
 
+export function shortId(id: string): string {
+  if (id.length === 0) return "";
+  const dash = id.lastIndexOf("-");
+  if (dash >= 0 && dash < id.length - 1) return id.slice(dash + 1);
+  return id.slice(-4);
+}
+
 export function parseIdTimestamp(id: string): Date {
   const [y, m, d, time] = id.split("-");
   const hh = time.slice(0, 2);

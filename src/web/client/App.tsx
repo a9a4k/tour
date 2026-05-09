@@ -13,6 +13,7 @@ import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icon
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
+import { shortId } from "../../core/ids.js";
 import {
   buildTree,
   compress,
@@ -78,7 +79,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const titleButtonRef = useRef<HTMLButtonElement | null>(null);
+  const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
@@ -265,7 +266,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const closePicker = useCallback(() => {
     setPickerOpen(false);
-    const back = triggerRef.current ?? titleButtonRef.current;
+    const back = triggerRef.current ?? pickerButtonRef.current;
     requestAnimationFrame(() => back?.focus());
   }, []);
 
@@ -333,7 +334,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         }
         setTourId(id);
       }
-      const back = triggerRef.current ?? titleButtonRef.current;
+      const back = triggerRef.current ?? pickerButtonRef.current;
       requestAnimationFrame(() => back?.focus());
     },
     [tourId],
@@ -362,24 +363,42 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     return <div className="empty">Loading…</div>;
   }
 
+  const titleIsEmpty = !tour.title;
+  const headerShortId = shortId(tour.id);
+
   return (
     <>
       <div className="tour-header">
-        <div className="tour-header-text">
-          <button
-            ref={titleButtonRef}
-            type="button"
-            className="tour-title-btn"
-            aria-label="Open tour picker"
-            onClick={openPicker}
-          >
-            <h1>{tour.title || tour.id}</h1>
-            <div className="meta">
-              {tour.status} · {tour.id} · {tour.created_at}
-            </div>
-          </button>
+        <button
+          ref={pickerButtonRef}
+          type="button"
+          className="picker-button"
+          aria-label="Switch tour"
+          title="Switch tour"
+          onClick={openPicker}
+        >
+          ☰
+        </button>
+        <div className="tour-header-content">
+          <div className="tour-header-line1">
+            <h1 className={titleIsEmpty ? "untitled" : undefined}>
+              {tour.title || "(untitled)"}
+            </h1>
+            <span className="tour-id">#{headerShortId}</span>
+          </div>
+          <span className="tour-refs">
+            {tour.base_source} ← {tour.head_source}
+          </span>
         </div>
-        <LayoutToggle layout={layout} onChange={setLayout} />
+        <div className="tour-header-controls">
+          <LayoutToggle layout={layout} onChange={setLayout} />
+          <SequencePill
+            idx={currentIdx}
+            total={annotations.length}
+            onPrev={() => navigateBy(-1)}
+            onNext={() => navigateBy(1)}
+          />
+        </div>
       </div>
       <div className="app-body">
         <aside className="app-sidebar">
@@ -438,12 +457,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           )}
         </main>
       </div>
-      <SequencePill
-        idx={currentIdx}
-        total={annotations.length}
-        onPrev={() => navigateBy(-1)}
-        onNext={() => navigateBy(1)}
-      />
       {pickerOpen ? (
         <TourPicker
           rows={pickerRows}

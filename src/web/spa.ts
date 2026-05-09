@@ -103,12 +103,74 @@ export function html(initialTourId?: string): string {
     padding-right: 16px;
     border-bottom: 1px solid var(--border-default);
     display: flex;
-    align-items: center;
-    gap: 16px;
+    align-items: stretch;
+    gap: 12px;
   }
-  .tour-header-text { flex: 1; min-width: 0; }
-  .tour-header h1 { font-size: 20px; margin-bottom: 4px; }
-  .tour-header .meta { color: var(--fg-muted); font-size: 13px; }
+  .tour-header-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .tour-header-line1 {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+  .tour-header h1 {
+    font-size: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .tour-header h1.untitled { color: var(--fg-muted); font-weight: 400; }
+  .tour-id {
+    color: var(--fg-muted);
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    flex-shrink: 0;
+  }
+  .tour-refs {
+    color: var(--fg-muted);
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tour-header-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .picker-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    align-self: stretch;
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--fg-default);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+  .picker-button:hover { background: var(--canvas-subtle); }
+  .picker-button:focus-visible {
+    outline: 1px solid var(--border-accent);
+    outline-offset: 2px;
+  }
   .layout-toggle {
     display: inline-flex;
     border: 1px solid var(--border-default);
@@ -274,10 +336,7 @@ export function html(initialTourId?: string): string {
     margin-bottom: 4px;
   }
   .sequence-pill {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 4px;
     background: var(--canvas-subtle);
@@ -287,8 +346,6 @@ export function html(initialTourId?: string): string {
     color: var(--fg-default);
     font-size: 12px;
     font-family: 'SF Mono', 'Fira Code', monospace;
-    box-shadow: 0 2px 8px var(--shadow-medium);
-    z-index: 20;
   }
   .sequence-pill .pill-chevron {
     background: transparent;
@@ -308,22 +365,6 @@ export function html(initialTourId?: string): string {
     padding: 48px;
     padding-top: 16px;
     color: var(--fg-muted);
-  }
-  .tour-title-btn {
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin: 0;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    font-family: inherit;
-    width: 100%;
-  }
-  .tour-title-btn:focus-visible {
-    outline: 1px solid var(--border-accent);
-    outline-offset: 2px;
-    border-radius: 4px;
   }
   .picker-scrim {
     position: fixed;

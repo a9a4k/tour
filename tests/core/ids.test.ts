@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateId, parseIdTimestamp } from "../../src/core/ids.js";
+import { generateId, parseIdTimestamp, shortId } from "../../src/core/ids.js";
 
 describe("generateId", () => {
   it("produces format YYYY-MM-DD-HHMMSS-xxxx", () => {
@@ -42,5 +42,35 @@ describe("parseIdTimestamp", () => {
     const ts = parseIdTimestamp(id);
     expect(ts).toBeInstanceOf(Date);
     expect(ts.getTime()).not.toBeNaN();
+  });
+});
+
+describe("shortId", () => {
+  it("returns the 4-char random suffix of a canonical Tour id", () => {
+    expect(shortId("2026-05-09-113738-u35e")).toBe("u35e");
+  });
+
+  it("returns the trailing chars after the last `-` for canonical ids regardless of date drift", () => {
+    expect(shortId("2030-12-31-235959-abcd")).toBe("abcd");
+  });
+
+  it("falls back to the last 4 chars when the input is non-canonical", () => {
+    expect(shortId("abcdef")).toBe("cdef");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(shortId("")).toBe("");
+  });
+
+  it("returns the whole string when shorter than 4 chars and uncontaining `-`", () => {
+    expect(shortId("ab")).toBe("ab");
+  });
+
+  it("round-trips with generateId — every generated id yields a 4-char shortId", () => {
+    for (let i = 0; i < 50; i++) {
+      const id = generateId();
+      const s = shortId(id);
+      expect(s).toMatch(/^[a-z0-9]{4}$/);
+    }
   });
 });

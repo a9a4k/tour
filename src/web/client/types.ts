@@ -36,6 +36,8 @@ export interface TourData {
   created_at: string;
   base_sha: string;
   head_sha: string;
+  base_source: string;
+  head_source: string;
   annotations: Annotation[];
   diff: string;
   diffModel: { files: DiffFileInfo[] };

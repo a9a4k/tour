@@ -96,11 +96,14 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*border-color/);
   });
 
-  it("pins the sequence pill bottom-right with fixed positioning", () => {
+  it("relocates the sequence pill into the header — no longer fixed-positioned (Issue #69)", () => {
     const out = html();
-    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*position:\s*fixed/);
-    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*bottom:\s*16px/);
-    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*right:\s*16px/);
+    expect(out).not.toMatch(/\.sequence-pill\s*\{[^}]*position:\s*fixed/);
+    expect(out).not.toMatch(/\.sequence-pill\s*\{[^}]*bottom:\s*16px/);
+    expect(out).not.toMatch(/\.sequence-pill\s*\{[^}]*right:\s*16px/);
+    expect(out).not.toMatch(/\.sequence-pill\s*\{[^}]*box-shadow/);
+    expect(out).not.toMatch(/\.sequence-pill\s*\{[^}]*z-index/);
+    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*display:\s*inline-flex/);
   });
 
   it("dims disabled pill chevrons so boundary state is visible", () => {
@@ -145,10 +148,11 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tree-icon\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
-  it("lays out the tour-header as a row so the layout toggle can sit on the right", () => {
+  it("lays out the tour-header as a row so the hamburger / content / controls sit side-by-side (Issue #69)", () => {
     const out = html();
     expect(out).toMatch(/\.tour-header\s*\{[^}]*display:\s*flex/);
-    expect(out).toMatch(/\.tour-header\s*\{[^}]*align-items:\s*center/);
+    // align-items: stretch lets the hamburger button span both lines.
+    expect(out).toMatch(/\.tour-header\s*\{[^}]*align-items:\s*stretch/);
   });
 
   it("styles the segmented layout toggle and highlights the active button", () => {
@@ -223,9 +227,29 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.annotation-block\s+\.ann-body\s+pre\s*\{[^}]*overflow-x:\s*auto/);
   });
 
-  it("styles the clickable tour-title button as text-only (no chrome)", () => {
+  it("removes the .tour-title-btn rule — title is plain text, hamburger owns picker (Issue #69)", () => {
+    expect(html()).not.toMatch(/\.tour-title-btn\b/);
+  });
+
+  it("styles the bordered hamburger picker button (Issue #69)", () => {
     const out = html();
-    expect(out).toMatch(/\.tour-title-btn\s*\{[^}]*background:\s*transparent/);
-    expect(out).toMatch(/\.tour-title-btn\s*\{[^}]*cursor:\s*pointer/);
+    expect(out).toMatch(/\.picker-button\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
+    expect(out).toMatch(/\.picker-button\s*\{[^}]*cursor:\s*pointer/);
+    expect(out).toMatch(/\.picker-button:hover\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
+    expect(out).toMatch(/\.picker-button:focus-visible\s*\{[^}]*outline:\s*1px solid var\(--border-accent\)/);
+  });
+
+  it("declares two-column header layout: content left, controls right (Issue #69)", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-header-content\s*\{[^}]*flex:\s*1/);
+    expect(out).toMatch(/\.tour-header-content\s*\{[^}]*flex-direction:\s*column/);
+    expect(out).toMatch(/\.tour-header-controls\s*\{[^}]*flex-direction:\s*column/);
+    expect(out).toMatch(/\.tour-header-controls\s*\{[^}]*align-items:\s*flex-end/);
+  });
+
+  it("styles the muted #shortId and base ← head refs (Issue #69)", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-id\s*\{[^}]*color:\s*var\(--fg-muted\)/);
+    expect(out).toMatch(/\.tour-refs\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 });

@@ -22,6 +22,7 @@ import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
+import { shortId } from "../core/ids.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -472,11 +473,51 @@ function App(props: AppProps) {
 
   return (
     <box width="100%" height="100%" flexDirection="column">
-      {/* Header */}
-      <box height={1} width="100%" paddingX={1}>
-        <text bold>
-          Tour: {liveTour.title || liveTour.id} [{liveTour.status}]
-        </text>
+      {/* Header — GitHub PR-style 2-line: hamburger | title+#shortId / refs | toggle / pill */}
+      <box width="100%" flexDirection="row" paddingX={1}>
+        <box
+          borderStyle="single"
+          borderColor={theme.border.default}
+          width={5}
+          height={4}
+          onMouseDown={() => void openPicker()}
+        >
+          <text fg={theme.fg.default}>{" ☰ "}</text>
+        </box>
+        <box flexDirection="column" flexGrow={1} paddingX={1} paddingTop={1}>
+          <box flexDirection="row">
+            <text bold fg={liveTour.title ? theme.fg.default : theme.fg.muted}>
+              {liveTour.title || "(untitled)"}
+            </text>
+            <text fg={theme.fg.muted}>{` #${shortId(liveTour.id)}`}</text>
+          </box>
+          <text fg={theme.fg.muted}>
+            {`${liveTour.base_source} ← ${liveTour.head_source}`}
+          </text>
+        </box>
+        <box flexDirection="column" alignItems="flex-end" paddingTop={1}>
+          <LayoutToggleTui
+            layout={layout}
+            onSplit={() => setLayout("split")}
+            onUnified={() => setLayout("unified")}
+          />
+          <SequencePillTui
+            idx={currentAnnotationIdx}
+            total={liveAnnotations.length}
+            onPrev={() => {
+              if (currentAnnotationIdx <= 0) return;
+              jumpToAnnotation(liveAnnotations[currentAnnotationIdx - 1]);
+            }}
+            onNext={() => {
+              if (
+                currentAnnotationIdx < 0 ||
+                currentAnnotationIdx >= liveAnnotations.length - 1
+              )
+                return;
+              jumpToAnnotation(liveAnnotations[currentAnnotationIdx + 1]);
+            }}
+          />
+        </box>
       </box>
 
       {liveSnapshotLost && (
@@ -598,6 +639,68 @@ function App(props: AppProps) {
           cursor={pickerCursor}
         />
       )}
+    </box>
+  );
+}
+
+interface LayoutToggleTuiProps {
+  layout: "split" | "unified";
+  onSplit: () => void;
+  onUnified: () => void;
+}
+
+function LayoutToggleTui({ layout, onSplit, onUnified }: LayoutToggleTuiProps) {
+  return (
+    <box flexDirection="row">
+      <text fg={theme.fg.muted}>{"["}</text>
+      <text
+        fg={layout === "split" ? theme.fg.accent : theme.fg.muted}
+        bold={layout === "split"}
+        onMouseDown={onSplit}
+      >
+        {"Split"}
+      </text>
+      <text fg={theme.fg.muted}>{" | "}</text>
+      <text
+        fg={layout === "unified" ? theme.fg.accent : theme.fg.muted}
+        bold={layout === "unified"}
+        onMouseDown={onUnified}
+      >
+        {"Unified"}
+      </text>
+      <text fg={theme.fg.muted}>{"]"}</text>
+    </box>
+  );
+}
+
+interface SequencePillTuiProps {
+  idx: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {
+  if (total === 0) return null;
+  const prevDisabled = idx <= 0;
+  const nextDisabled = idx >= total - 1;
+  return (
+    <box flexDirection="row">
+      <text fg={theme.fg.muted}>{"["}</text>
+      <text
+        fg={prevDisabled ? theme.fg.subtle : theme.fg.default}
+        onMouseDown={prevDisabled ? undefined : onPrev}
+      >
+        {"←"}
+      </text>
+      <text fg={theme.fg.default}>{` ${idx + 1}/${total} `}</text>
+      <text
+        fg={nextDisabled ? theme.fg.subtle : theme.fg.default}
+        onMouseDown={nextDisabled ? undefined : onNext}
+      >
+        {"→"}
+      </text>
+      <text fg={theme.fg.muted}>{"]"}</text>
     </box>
   );
 }
