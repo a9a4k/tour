@@ -20,6 +20,7 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 const MODEL = "claude-opus-4-7";
 const MAX_ITERATIONS = 10;
 const MAX_PARALLEL = 4;
+const IDLE_TIMEOUT_SECONDS = 1800;
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} ===\n`);
@@ -30,6 +31,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     name: "Planner",
     agent: sandcastle.claudeCode(MODEL),
     promptFile: "./.sandcastle/plan-prompt.md",
+    idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
   });
 
   const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/);
@@ -79,6 +81,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           sandbox: docker(),
           branch: issue.branch,
           copyToWorktree: ["node_modules"],
+          idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
           hooks: {
             sandbox: {
               onSandboxReady: [{ command: "npm install" }],
@@ -90,6 +93,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           name: "Implementer #" + issue.number,
           agent: sandcastle.claudeCode(MODEL),
           promptFile: "./.sandcastle/implement-prompt.md",
+          idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
           promptArgs: {
             ISSUE_NUMBER: String(issue.number),
             ISSUE_TITLE: issue.title,
@@ -102,6 +106,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
             name: "Reviewer #" + issue.number,
             agent: sandcastle.claudeCode(MODEL),
             promptFile: "./.sandcastle/review-prompt.md",
+            idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
             promptArgs: {
               ISSUE_NUMBER: String(issue.number),
               ISSUE_TITLE: issue.title,
@@ -162,6 +167,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     maxIterations: 10,
     agent: sandcastle.claudeCode(MODEL),
     promptFile: "./.sandcastle/merge-prompt.md",
+    idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
     promptArgs: {
       BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
       ISSUES: completedIssues
