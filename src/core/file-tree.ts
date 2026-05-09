@@ -101,6 +101,21 @@ function compareSiblings<F extends FileEntry>(a: TreeNode<F>, b: TreeNode<F>): n
   return a.displayName.localeCompare(b.displayName);
 }
 
+export function sortFilesForStream<F extends FileEntry>(files: F[]): F[] {
+  if (files.length <= 1) return [...files];
+  const out: F[] = [];
+  const visit = (node: TreeNode<F>): void => {
+    if (node.kind === "file") {
+      out.push(node.file);
+      return;
+    }
+    const sorted = [...node.children].sort(compareSiblings);
+    for (const child of sorted) visit(child);
+  };
+  visit(buildTree(files));
+  return out;
+}
+
 function rollupAnnotations<F extends FileEntry>(
   node: TreeNode<F>,
   counts: Record<string, number>,

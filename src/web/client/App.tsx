@@ -17,6 +17,7 @@ import {
   compress,
   flatten,
   revealAncestors,
+  sortFilesForStream,
   type VisibleRow,
 } from "../../core/file-tree.js";
 
@@ -152,7 +153,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
     if (!tour || !tour.diff) return [];
-    return parsePatchFiles(tour.diff, tour.id).flatMap((p) => p.files);
+    const raw = parsePatchFiles(tour.diff, tour.id).flatMap((p) => p.files);
+    return sortFilesForStream(raw);
   }, [tour?.diff, tour?.id]);
 
   const modelFiles = useMemo(() => tour?.diffModel?.files ?? [], [tour?.diffModel?.files]);

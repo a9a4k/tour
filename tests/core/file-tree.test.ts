@@ -5,6 +5,7 @@ import {
   flatten,
   revealAncestors,
   revealAndLocate,
+  sortFilesForStream,
 } from "../../src/core/file-tree.js";
 
 interface F {
@@ -143,6 +144,93 @@ describe("file-tree", () => {
     const a = rows([f("b/x.ts"), f("a/y.ts"), f("README.md"), f("a/x.ts")]);
     const b = rows([f("README.md"), f("a/x.ts"), f("b/x.ts"), f("a/y.ts")]);
     expect(a.map((r) => r.path)).toEqual(b.map((r) => r.path));
+  });
+
+  describe("sortFilesForStream", () => {
+    it("returns an empty array for empty input", () => {
+      expect(sortFilesForStream<F>([])).toEqual([]);
+    });
+
+    it("orders a sibling folder's files before a root-level file", () => {
+      const files = [f("README.md"), f("src/main.ts")];
+      expect(sortFilesForStream(files).map((x) => x.name)).toEqual([
+        "src/main.ts",
+        "README.md",
+      ]);
+    });
+
+    it("orders a sibling folder's files before a same-level file inside a shared folder", () => {
+      const files = [f("src/a.ts"), f("src/b/c.ts")];
+      expect(sortFilesForStream(files).map((x) => x.name)).toEqual([
+        "src/b/c.ts",
+        "src/a.ts",
+      ]);
+    });
+
+    it("sorts deeply nested folders alphabetically by each segment", () => {
+      const files = [
+        f("z/x/file.ts"),
+        f("a/b/file.ts"),
+        f("a/a/file.ts"),
+        f("m/n/file.ts"),
+      ];
+      expect(sortFilesForStream(files).map((x) => x.name)).toEqual([
+        "a/a/file.ts",
+        "a/b/file.ts",
+        "m/n/file.ts",
+        "z/x/file.ts",
+      ]);
+    });
+
+    it("returns an equivalent order for input that is already in correct order", () => {
+      const files = [f("a/a.ts"), f("a/b.ts"), f("README.md")];
+      expect(sortFilesForStream(files).map((x) => x.name)).toEqual(
+        files.map((x) => x.name),
+      );
+    });
+
+    it("produces a stable order regardless of input order", () => {
+      const a = sortFilesForStream([
+        f("b/x.ts"),
+        f("a/y.ts"),
+        f("README.md"),
+        f("a/x.ts"),
+      ]);
+      const b = sortFilesForStream([
+        f("README.md"),
+        f("a/x.ts"),
+        f("b/x.ts"),
+        f("a/y.ts"),
+      ]);
+      expect(a.map((x) => x.name)).toEqual(b.map((x) => x.name));
+    });
+
+    it("matches the sidebar's file-visit order even when the sidebar path-compresses chains", () => {
+      const files = [
+        f("README.md"),
+        f("src/main.ts"),
+        f("packages/app/src/a.ts"),
+        f("packages/app/src/b.ts"),
+      ];
+      const sidebarFiles = flatten(compress(buildTree(files)), new Set(), {})
+        .filter((r) => r.kind === "file")
+        .map((r) => r.path);
+      const streamFiles = sortFilesForStream(files).map((x) => x.name);
+      expect(streamFiles).toEqual(sidebarFiles);
+    });
+
+    it("preserves the file objects (not just names)", () => {
+      interface TaggedFile extends F {
+        tag: number;
+      }
+      const files: TaggedFile[] = [
+        { name: "README.md", tag: 1 },
+        { name: "src/main.ts", tag: 2 },
+      ];
+      const sorted = sortFilesForStream(files);
+      expect(sorted[0]).toEqual({ name: "src/main.ts", tag: 2 });
+      expect(sorted[1]).toEqual({ name: "README.md", tag: 1 });
+    });
   });
 
   describe("revealAndLocate", () => {

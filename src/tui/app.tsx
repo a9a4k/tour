@@ -15,6 +15,7 @@ import {
   flatten,
   revealAncestors,
   revealAndLocate,
+  sortFilesForStream,
   type VisibleRow,
 } from "../core/file-tree.js";
 import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
@@ -151,7 +152,7 @@ function App(props: AppProps) {
   const liveClassifications = bundle.classifications;
 
   const files = useMemo(
-    () => [...bundle.files].sort((a, b) => a.name.localeCompare(b.name)),
+    () => sortFilesForStream(bundle.files),
     [bundle.files],
   );
 
