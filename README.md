@@ -10,13 +10,13 @@ Homebrew (macOS, Linux):
 brew install a9a4k/tap/tour
 ```
 
-npm / bun:
+npm:
 
 ```sh
 npm i -g tourdiff
-# or
-bun add -g tourdiff
 ```
+
+Or any other Node package manager: `pnpm add -g tourdiff` · `bun add -g tourdiff` · `yarn global add tourdiff`.
 
 Verify:
 
