@@ -103,6 +103,7 @@ export function html(initialTourId?: string): string {
   .copy-path:focus-visible { outline: 1px solid #58a6ff; outline-offset: 2px; border-radius: 2px; }
   .annotation-block {
     background: #1c2128;
+    border: 2px solid transparent;
     border-left: 3px solid #58a6ff;
     margin: 4px 16px;
     padding: 8px 12px;
@@ -110,8 +111,42 @@ export function html(initialTourId?: string): string {
     font-size: 12px;
     font-family: 'SF Mono', 'Fira Code', monospace;
   }
+  .annotation-block.current {
+    border-color: #58a6ff;
+    background: #1f6feb22;
+  }
   .annotation-block .ann-header { color: #58a6ff; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
   .annotation-block .ann-body { color: #c9d1d9; white-space: pre-wrap; }
+  .sequence-pill {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 999px;
+    padding: 4px 8px;
+    color: #c9d1d9;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    z-index: 20;
+  }
+  .sequence-pill .pill-chevron {
+    background: transparent;
+    border: none;
+    color: #c9d1d9;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .sequence-pill .pill-chevron:hover:not(:disabled) { background: #1f6feb33; }
+  .sequence-pill .pill-chevron:disabled { color: #484f58; cursor: default; }
+  .sequence-pill .pill-position { padding: 0 4px; min-width: 40px; text-align: center; }
   .empty {
     text-align: center;
     padding: 48px;

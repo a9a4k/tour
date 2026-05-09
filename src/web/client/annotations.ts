@@ -67,3 +67,21 @@ function rangeRule(lines: Set<number>, types: string[]): string {
   const typeSel = types.map((t) => `[data-line-type="${t}"]`).join(", ");
   return `:is(${lineSel}):is(${typeSel}) { background-image: linear-gradient(${RANGE_TINT}, ${RANGE_TINT}); }`;
 }
+
+/**
+ * Resolve the sequence cursor to an index in the current annotations list,
+ * anchored by id. The reviewer's cursor is the *annotation* they're reading,
+ * not its position — when the agent appends or removes entries, we re-locate
+ * the same id rather than blindly preserving the index.
+ *
+ * - Empty list: -1 (no cursor).
+ * - prevId is null (initial state): 0.
+ * - prevId still present: its new index.
+ * - prevId no longer present: 0 (sensible default rather than getting stuck).
+ */
+export function resolveCursorById(annotations: Annotation[], prevId: string | null): number {
+  if (annotations.length === 0) return -1;
+  if (prevId === null) return 0;
+  const idx = annotations.findIndex((a) => a.id === prevId);
+  return idx === -1 ? 0 : idx;
+}
