@@ -61,10 +61,15 @@ function fileEntryLabel(
   return ` ${icon} ${file.name}${marker}${badge} `;
 }
 
-function fileCardBody(collapsed: boolean, hasHunks: boolean, segment: string) {
+function fileCardBody(
+  collapsed: boolean,
+  hasHunks: boolean,
+  segment: string,
+  layout: "split" | "unified",
+) {
   if (collapsed) return <text fg="gray">{"[collapsed — Space to expand]"}</text>;
   if (!hasHunks) return <text fg="gray">{"[no textual changes]"}</text>;
-  return <diff diff={segment} view="split" showLineNumbers />;
+  return <diff diff={segment} view={layout} showLineNumbers />;
 }
 
 function folderRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "folder" }>): string {
@@ -92,6 +97,7 @@ function App(props: AppProps) {
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<"split" | "unified">("split");
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
@@ -160,7 +166,7 @@ function App(props: AppProps) {
     : [];
 
   const footerHints =
-    "n/p: navigate  ·  j/k: rows  ·  Space: toggle  ·  ←→: fold/expand  ·  Tab: switch pane  ·  q: quit";
+    "n/p: navigate  ·  j/k: rows  ·  Space: toggle  ·  ←→: fold/expand  ·  l: layout  ·  Tab: switch pane  ·  q: quit";
   const footer =
     props.annotations.length > 0
       ? `Annotation ${currentAnnotationIdx + 1}/${props.annotations.length}  ·  ${footerHints}`
@@ -289,6 +295,9 @@ function App(props: AppProps) {
         jumpToAnnotation(props.annotations[currentAnnotationIdx - 1]);
         return;
       }
+      case "toggle-layout":
+        setLayout((v) => (v === "split" ? "unified" : "split"));
+        return;
     }
   });
 
@@ -375,7 +384,7 @@ function App(props: AppProps) {
                     marginBottom={1}
                   >
                     <text>{fileEntryLabel(file, props.classifications, props.annotations)}</text>
-                    {fileCardBody(collapsed, file.hunks.length > 0, segment)}
+                    {fileCardBody(collapsed, file.hunks.length > 0, segment, layout)}
                   </box>
                 );
               })}
