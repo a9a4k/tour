@@ -133,6 +133,46 @@ describe("Webapp integration", () => {
     expect(res.status).toBe(200);
   });
 
+  it("preserves a markdown annotation body verbatim through GET /api/tours/:id", async () => {
+    const body = [
+      "## Heading",
+      "",
+      "Paragraph with `inline` code.",
+      "",
+      "```ts",
+      "const x: number = 1;",
+      "```",
+      "",
+      "| a | b |",
+      "| - | - |",
+      "| 1 | 2 |",
+      "",
+    ].join("\n");
+    await execP(BUN, [
+      CLI, "annotate", tourId,
+      "--file", "hello.txt",
+      "--side", "additions",
+      "--line", "1",
+      "--body", body,
+      "--author", "test-agent",
+    ], { cwd: dir });
+
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as { annotations: { body: string }[] };
+    const found = data.annotations.find((a) => a.body === body);
+    expect(found).toBeDefined();
+    expect(found!.body).toBe(body);
+  });
+
+  it("serves a /client.js bundle that builds successfully (markdown deps included)", async () => {
+    const res = await fetch(`${baseUrl}/client.js`);
+    expect(res.status).toBe(200);
+    const js = await res.text();
+    expect(js.length).toBeGreaterThan(0);
+    expect(res.headers.get("content-type")).toContain("application/javascript");
+  });
+
   it("SSE endpoint connects and receives events on annotation change", async () => {
     const controller = new AbortController();
     const res = await fetch(`${baseUrl}/api/tours/${tourId}/events`, {

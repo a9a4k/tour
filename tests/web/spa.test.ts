@@ -113,4 +113,29 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.layout-toggle-btn\s*\{/);
     expect(out).toMatch(/\.layout-toggle-btn\.active\s*\{/);
   });
+
+  it("drops the monospace pre-wrap body styling now that annotation body is rich markdown", () => {
+    const out = html();
+    expect(out).not.toMatch(/\.annotation-block\s+\.ann-body\s*\{[^}]*white-space:\s*pre-wrap/);
+    expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*font-family:\s*'SF Mono'/);
+  });
+
+  it("uses a proportional system font for the annotation card body", () => {
+    expect(html()).toMatch(/\.annotation-block\s*\{[^}]*font-family:[^}]*-apple-system/);
+  });
+
+  it("preserves the blue left accent on the annotation card", () => {
+    expect(html()).toMatch(/\.annotation-block\s*\{[^}]*border-left:\s*3px solid #58a6ff/);
+  });
+
+  it("styles inner markdown elements (headings, lists, tables, blockquotes, links, code, pre)", () => {
+    const out = html();
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+h2\b/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+ul\b/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+table\b/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+blockquote\b/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+a\b/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+code\b/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+pre\b/);
+  });
 });

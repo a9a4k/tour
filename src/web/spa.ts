@@ -159,15 +159,105 @@ export function html(initialTourId?: string): string {
     margin: 4px 16px;
     padding: 8px 12px;
     border-radius: 4px;
-    font-size: 12px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   .annotation-block.current {
     border-color: #58a6ff;
     background: #1f6feb22;
   }
-  .annotation-block .ann-header { color: #58a6ff; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
-  .annotation-block .ann-body { color: #c9d1d9; white-space: pre-wrap; }
+  .annotation-block .ann-header {
+    color: #58a6ff;
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .annotation-block .ann-body { color: #c9d1d9; }
+  .annotation-block .ann-body > * { margin: 0 0 8px; }
+  .annotation-block .ann-body > *:last-child { margin-bottom: 0; }
+  .annotation-block .ann-body h1,
+  .annotation-block .ann-body h2,
+  .annotation-block .ann-body h3,
+  .annotation-block .ann-body h4,
+  .annotation-block .ann-body h5,
+  .annotation-block .ann-body h6 {
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 12px 0 6px;
+    color: #f0f6fc;
+  }
+  .annotation-block .ann-body h1 { font-size: 1.4em; }
+  .annotation-block .ann-body h2 { font-size: 1.25em; }
+  .annotation-block .ann-body h3 { font-size: 1.1em; }
+  .annotation-block .ann-body h4,
+  .annotation-block .ann-body h5,
+  .annotation-block .ann-body h6 { font-size: 1em; }
+  .annotation-block .ann-body p { line-height: 1.5; }
+  .annotation-block .ann-body ul,
+  .annotation-block .ann-body ol { padding-left: 24px; line-height: 1.5; }
+  .annotation-block .ann-body li { margin: 2px 0; }
+  .annotation-block .ann-body li input[type="checkbox"] {
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .annotation-block .ann-body blockquote {
+    border-left: 3px solid #30363d;
+    padding: 0 12px;
+    color: #8b949e;
+    margin: 8px 0;
+  }
+  .annotation-block .ann-body a { color: #58a6ff; text-decoration: none; }
+  .annotation-block .ann-body a:hover { text-decoration: underline; }
+  .annotation-block .ann-body code {
+    background: #6e768133;
+    border-radius: 3px;
+    padding: 0.15em 0.35em;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.9em;
+  }
+  .annotation-block .ann-body pre {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 12px;
+  }
+  .annotation-block .ann-body pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+  }
+  .annotation-block .ann-body .shiki-block pre {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 12px;
+  }
+  .annotation-block .ann-body table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+    overflow-x: auto;
+    display: block;
+  }
+  .annotation-block .ann-body th,
+  .annotation-block .ann-body td {
+    border: 1px solid #30363d;
+    padding: 4px 10px;
+    text-align: left;
+  }
+  .annotation-block .ann-body th { background: #161b22; font-weight: 600; }
+  .annotation-block .ann-body del { color: #8b949e; }
+  .annotation-block .ann-body hr {
+    border: none;
+    border-top: 1px solid #30363d;
+    margin: 12px 0;
+  }
   .sequence-pill {
     position: fixed;
     bottom: 16px;

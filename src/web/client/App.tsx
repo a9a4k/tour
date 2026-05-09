@@ -9,6 +9,7 @@ import {
   resolveCursorById,
 } from "./annotations.js";
 import { fileStatusIcon } from "./file-status.js";
+import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import {
   buildTree,
   compress,
@@ -512,7 +513,9 @@ function AnnotationCard({ annotation, isCurrent, registerRef }: AnnotationCardPr
       <div className="ann-header">
         {annotation.author} · {annotation.file}:{range}
       </div>
-      <div className="ann-body">{annotation.body}</div>
+      <div className="ann-body">
+        <AnnotationMarkdown body={annotation.body} />
+      </div>
     </div>
   );
 }
