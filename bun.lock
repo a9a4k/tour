@@ -8,6 +8,7 @@
         "@ai-hero/sandcastle": "^0.5.10",
         "@opentui/react": "^0.2.5",
         "@pierre/diffs": "^1.1.21",
+        "@primer/octicons-react": "^19.25.0",
         "@types/node": "^22.0.0",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.0.0",

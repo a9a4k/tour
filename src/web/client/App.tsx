@@ -8,7 +8,7 @@ import {
   buildRangeBackgroundCSS,
   resolveCursorById,
 } from "./annotations.js";
-import { fileStatusIcon } from "./file-status.js";
+import { fileIcon } from "./file-icon.js";
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
@@ -512,7 +512,7 @@ interface FileRowProps {
 }
 
 function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.JSX.Element {
-  const icon = fileStatusIcon(row.file.type);
+  const { Icon, statusClass } = fileIcon(row.file.type);
   return (
     <button
       ref={registerRef}
@@ -521,7 +521,7 @@ function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.
       style={{ paddingLeft: 16 + row.depth * 12 }}
       onClick={() => onSelect(row.path)}
     >
-      <span className={`file-icon ${icon}`}>{icon}</span>
+      <Icon className={`status-icon ${statusClass}`} />
       <span className="file-name">{row.displayName}</span>
       {row.file.classification?.reason ? (
         <span className="reason-tag">{row.file.classification.reason}</span>
