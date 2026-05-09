@@ -14,9 +14,15 @@ import {
   revealAndLocate,
   type VisibleRow,
 } from "../core/file-tree.js";
-import { buildPickerRows } from "../core/tour-list.js";
+import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
+
+function initialPickerCursor(rows: PickerRow[], currentId: string): number {
+  if (rows.length === 0) return 0;
+  const idx = rows.findIndex((r) => r.id !== currentId);
+  return idx === -1 ? 0 : idx;
+}
 
 export interface TourBundle {
   tour: Tour;
@@ -237,12 +243,6 @@ function App(props: AppProps) {
       }),
     [pickerTours, pickerCounts],
   );
-
-  const initialPickerCursor = (rows: typeof pickerRows, currentId: string): number => {
-    if (rows.length === 0) return 0;
-    const idx = rows.findIndex((r) => r.id !== currentId);
-    return idx === -1 ? 0 : idx;
-  };
 
   const openPicker = async () => {
     if (pickerOpen) return;

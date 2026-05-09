@@ -34,10 +34,16 @@ export function TourPicker({ rows, currentTourId, cursor }: TourPickerProps) {
           rows.map((r, i) => {
             const isCurrent = r.id === currentTourId;
             const isCursor = i === cursor;
-            const bg = isCursor ? "cyan" : isCurrent ? "blue" : undefined;
-            const fg = isCursor ? "black" : "white";
+            let bg: string | undefined;
+            if (isCursor) bg = "cyan";
+            else if (isCurrent) bg = "blue";
             return (
-              <text key={r.id} fg={fg} bg={bg} bold={isCursor}>
+              <text
+                key={r.id}
+                fg={isCursor ? "black" : "white"}
+                bg={bg}
+                bold={isCursor}
+              >
                 {rowLabel(r)}
               </text>
             );

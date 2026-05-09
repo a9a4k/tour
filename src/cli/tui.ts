@@ -1,4 +1,4 @@
-import type { Tour } from "../core/types.js";
+import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import { getTour, listTours, resolveIdPrefix } from "../core/tour-store.js";
 import { readAnnotations } from "../core/annotations-store.js";
@@ -15,7 +15,7 @@ interface LoadedBundle {
   tour: Tour;
   diff: string;
   files: DiffFile[];
-  annotations: Awaited<ReturnType<typeof readAnnotations>>;
+  annotations: Annotation[];
   snapshotLost: boolean;
   classifications: Record<string, FileClassification>;
 }
@@ -69,13 +69,7 @@ export async function tui(args: TuiArgs): Promise<void> {
 
   const tuiModule = "../tui/app.js";
   const { startTui } = await import(/* @vite-ignore */ tuiModule) as {
-    startTui: (props: {
-      tour: Tour;
-      diff: string;
-      files: DiffFile[];
-      annotations: Awaited<ReturnType<typeof readAnnotations>>;
-      snapshotLost: boolean;
-      classifications: Record<string, FileClassification>;
+    startTui: (props: LoadedBundle & {
       loadTour: (id: string) => Promise<LoadedBundle>;
       loadTours: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
     }) => Promise<void>;
