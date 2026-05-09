@@ -90,6 +90,12 @@ function App(props: AppProps) {
     ? props.annotations.filter((a) => a.file === selectedFile.name)
     : [];
 
+  const footerHints = "n/p: navigate  ·  j/k: files  ·  Tab: switch pane  ·  Space: toggle collapse  ·  q: quit";
+  const footer =
+    props.annotations.length > 0
+      ? `Annotation ${currentAnnotationIdx + 1}/${props.annotations.length}  ·  ${footerHints}`
+      : footerHints;
+
   const jumpToAnnotation = (ann: Annotation) => {
     setCurrentAnnotationId(ann.id);
     const fileIdx = files.findIndex((f) => f.name === ann.file);
@@ -254,11 +260,7 @@ function App(props: AppProps) {
 
       {/* Footer */}
       <box height={1} width="100%" paddingX={1}>
-        <text fg="gray">
-          {props.annotations.length > 0
-            ? `Annotation ${currentAnnotationIdx + 1}/${props.annotations.length}  ·  n/p: navigate  ·  j/k: files  ·  Tab: switch pane  ·  Space: toggle collapse  ·  q: quit`
-            : `n/p: navigate  ·  j/k: files  ·  Tab: switch pane  ·  Space: toggle collapse  ·  q: quit`}
-        </text>
+        <text fg="gray">{footer}</text>
       </box>
     </box>
   );
