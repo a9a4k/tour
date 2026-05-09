@@ -5,9 +5,13 @@
 //         bun scripts/release.ts <version> --push    # also push commit + tag
 //
 // Refuses to run if package.json or bun.lock have uncommitted changes,
-// off the main branch, or if the tag already exists. Other dirty state
-// (untracked files, modifications outside the release files) is allowed
-// — the release commit only stages package.json and bun.lock.
+// off the main branch, if the tag already exists, if the new version is
+// not greater than the current version, or if typecheck/tests fail.
+// Other dirty state (untracked files, modifications outside the release
+// files) is allowed — the release commit only stages package.json and
+// bun.lock.
+//
+// Pass --skip-checks to bypass typecheck + test (use sparingly).
 
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,9 +22,10 @@ const ROOT = resolve(HERE, "..");
 const args = process.argv.slice(2);
 const version = args[0];
 const push = args.includes("--push");
+const skipChecks = args.includes("--skip-checks");
 
 if (!version || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
-  console.error("usage: bun scripts/release.ts <version> [--push]");
+  console.error("usage: bun scripts/release.ts <version> [--push] [--skip-checks]");
   console.error("       version must be semver, e.g. 0.1.4 or 1.0.0-rc.1");
   process.exit(1);
 }
@@ -71,7 +76,35 @@ if (tagExists) {
 
 const pkgPath = join(ROOT, "package.json");
 const pkg = JSON.parse(await Bun.file(pkgPath).text());
-const previous = pkg.version;
+const previous: string = pkg.version;
+
+function compareMain(a: string, b: string): number {
+  const [aMain] = a.split("-");
+  const [bMain] = b.split("-");
+  const ap = aMain.split(".").map(Number);
+  const bp = bMain.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (ap[i] !== bp[i]) return ap[i] - bp[i];
+  }
+  return 0;
+}
+
+const cmp = compareMain(version, previous);
+if (cmp < 0) {
+  console.error(`refuse to release: ${version} is not greater than current ${previous}`);
+  process.exit(1);
+}
+if (cmp === 0 && version !== previous) {
+  console.warn(`note: ${version} has the same main version as ${previous} (prerelease iteration?)`);
+}
+
+if (!skipChecks) {
+  console.log("running typecheck...");
+  await sh(["bun", "run", "typecheck"]);
+  console.log("running tests...");
+  await sh(["bun", "run", "test"]);
+}
+
 pkg.version = version;
 for (const dep of Object.keys(pkg.optionalDependencies ?? {})) {
   pkg.optionalDependencies[dep] = version;
