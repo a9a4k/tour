@@ -109,20 +109,14 @@ function fileCardBody(
 function folderRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "folder" }>): string {
   const indent = "  ".repeat(row.depth);
   const caret = row.collapsed ? "▸" : "▾";
-  const badge = row.annotationCount > 0 ? ` [${row.annotationCount}]` : "";
-  return ` ${indent}${caret} ${row.displayName}${badge} `;
+  return ` ${indent}${caret} ${row.displayName} `;
 }
 
-function fileRowLabel(
-  row: Extract<VisibleRow<DiffFile>, { kind: "file" }>,
-  classifications: Record<string, FileClassification> | undefined,
-): string {
+function fileRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "file" }>): string {
   const indent = "  ".repeat(row.depth);
-  const cls = fileClassification(classifications, row.file.name);
   const icon = statusIcon(row.file.type);
   const badge = row.annotationCount > 0 ? ` [${row.annotationCount}]` : "";
-  const marker = cls.reason ? reasonLabel(cls.reason) : "";
-  return ` ${indent}${icon} ${row.displayName}${marker}${badge} `;
+  return ` ${indent}${icon} ${row.displayName}${badge} `;
 }
 
 function App(props: AppProps) {
@@ -534,7 +528,7 @@ function App(props: AppProps) {
                   selectable={false}
                   onMouseDown={onRowMouseDown}
                 >
-                  {fileRowLabel(row, liveClassifications)}
+                  {fileRowLabel(row)}
                 </text>
               );
             })}
