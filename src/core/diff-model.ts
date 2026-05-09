@@ -1,4 +1,5 @@
 import { parsePatchFiles } from "@pierre/diffs";
+import type { Annotation } from "./types.js";
 
 export interface DiffFile {
   name: string;
@@ -51,7 +52,7 @@ export function splitFileDiffByHunk(fileSegment: string): string[] {
 
 export function resolveAnnotationToHunkIndex(
   file: DiffFile,
-  ann: { side: "additions" | "deletions"; line_start: number; line_end: number },
+  ann: Pick<Annotation, "side" | "line_start" | "line_end">,
 ): number | null {
   for (let i = 0; i < file.hunks.length; i++) {
     const h = file.hunks[i];
