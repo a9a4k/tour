@@ -7,8 +7,9 @@ const k = (name: string, mods: { ctrl?: boolean; shift?: boolean } = {}): KeyInp
   shift: mods.shift ?? false,
 });
 
-const sidebar: KeymapContext = { sidebarFocused: true, fileCount: 3 };
-const diffPane: KeymapContext = { sidebarFocused: false, fileCount: 3 };
+const sidebar: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "file" };
+const sidebarFolder: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "folder" };
+const diffPane: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file" };
 
 describe("dispatchKey", () => {
   it("q quits", () => {
@@ -49,16 +50,41 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("j"), diffPane).type).toBe("noop");
   });
 
-  it("j is a no-op when there are no files", () => {
-    expect(dispatchKey(k("j"), { sidebarFocused: true, fileCount: 0 }).type).toBe("noop");
+  it("j is a no-op when there are no rows", () => {
+    expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type).toBe("noop");
   });
 
-  it("space toggles collapse when sidebar focused with files", () => {
+  it("space on a file row toggles per-file diff collapse", () => {
     expect(dispatchKey(k("space"), sidebar).type).toBe("toggle-collapse");
+  });
+
+  it("space on a folder row toggles folder expand/collapse", () => {
+    expect(dispatchKey(k("space"), sidebarFolder).type).toBe("toggle-folder");
   });
 
   it("space is a no-op when sidebar is not focused", () => {
     expect(dispatchKey(k("space"), diffPane).type).toBe("noop");
+  });
+
+  it("right on a folder row expands the folder", () => {
+    expect(dispatchKey(k("right"), sidebarFolder).type).toBe("expand-folder");
+  });
+
+  it("right on a file row is a no-op", () => {
+    expect(dispatchKey(k("right"), sidebar).type).toBe("noop");
+  });
+
+  it("left on a folder row collapses the folder", () => {
+    expect(dispatchKey(k("left"), sidebarFolder).type).toBe("collapse-folder");
+  });
+
+  it("left on a file row collapses its parent folder", () => {
+    expect(dispatchKey(k("left"), sidebar).type).toBe("collapse-parent");
+  });
+
+  it("right and left are no-ops when sidebar is not focused", () => {
+    expect(dispatchKey(k("right"), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("left"), diffPane).type).toBe("noop");
   });
 
   it("n returns next-annotation regardless of pane focus", () => {

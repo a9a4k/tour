@@ -6,6 +6,13 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import { splitRawDiffByFile } from "../core/diff-model.js";
 import type { FileClassification } from "../core/file-classifier.js";
+import {
+  buildTree,
+  compress,
+  flatten,
+  revealAncestors,
+  type VisibleRow,
+} from "../core/file-tree.js";
 import { dispatchKey } from "./keymap.js";
 
 interface AppProps {
@@ -60,10 +67,30 @@ function fileCardBody(collapsed: boolean, hasHunks: boolean, segment: string) {
   return <diff diff={segment} view="split" showLineNumbers />;
 }
 
+function folderRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "folder" }>): string {
+  const indent = "  ".repeat(row.depth);
+  const caret = row.collapsed ? "▸" : "▾";
+  const badge = row.annotationCount > 0 ? ` [${row.annotationCount}]` : "";
+  return ` ${indent}${caret} ${row.displayName}${badge} `;
+}
+
+function fileRowLabel(
+  row: Extract<VisibleRow<DiffFile>, { kind: "file" }>,
+  classifications: Record<string, FileClassification> | undefined,
+): string {
+  const indent = "  ".repeat(row.depth);
+  const cls = fileClassification(classifications, row.file.name);
+  const icon = statusIcon(row.file.type);
+  const badge = row.annotationCount > 0 ? ` [${row.annotationCount}]` : "";
+  const marker = cls.reason ? reasonLabel(cls.reason) : "";
+  return ` ${indent}${icon} ${row.displayName}${marker}${badge} `;
+}
+
 function App(props: AppProps) {
-  const [selectedFileIdx, setSelectedFileIdx] = useState(0);
+  const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -72,6 +99,26 @@ function App(props: AppProps) {
     () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
     [props.files],
   );
+
+  const tree = useMemo(() => compress(buildTree(props.files)), [props.files]);
+
+  const annotationCounts = useMemo<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    for (const a of props.annotations) {
+      out[a.file] = (out[a.file] ?? 0) + 1;
+    }
+    return out;
+  }, [props.annotations]);
+
+  const visibleRows = useMemo<VisibleRow<DiffFile>[]>(
+    () => flatten(tree, collapsedFolders, annotationCounts),
+    [tree, collapsedFolders, annotationCounts],
+  );
+
+  const safeRowIdx = visibleRows.length === 0
+    ? 0
+    : Math.min(Math.max(0, selectedRowIdx), visibleRows.length - 1);
+  const selectedRow: VisibleRow<DiffFile> | undefined = visibleRows[safeRowIdx];
 
   const rawSegments = useMemo(() => splitRawDiffByFile(props.diff), [props.diff]);
 
@@ -107,12 +154,16 @@ function App(props: AppProps) {
     return true;
   };
 
-  const selectedFile = files[selectedFileIdx];
+  const selectedFile =
+    selectedRow?.kind === "file"
+      ? props.files.find((f) => f.name === selectedRow.path) ?? null
+      : null;
   const fileAnnotations = selectedFile
     ? props.annotations.filter((a) => a.file === selectedFile.name)
     : [];
 
-  const footerHints = "n/p: navigate  ·  j/k: files  ·  Tab: switch pane  ·  Space: toggle collapse  ·  q: quit";
+  const footerHints =
+    "n/p: navigate  ·  j/k: rows  ·  Space: toggle  ·  ←→: fold/expand  ·  Tab: switch pane  ·  q: quit";
   const footer =
     props.annotations.length > 0
       ? `Annotation ${currentAnnotationIdx + 1}/${props.annotations.length}  ·  ${footerHints}`
@@ -120,9 +171,22 @@ function App(props: AppProps) {
 
   const jumpToAnnotation = (ann: Annotation) => {
     setCurrentAnnotationId(ann.id);
-    const fileIdx = files.findIndex((f) => f.name === ann.file);
-    if (fileIdx >= 0 && fileIdx !== selectedFileIdx) {
-      setSelectedFileIdx(fileIdx);
+    const ancestors = revealAncestors(tree, ann.file);
+    let nextCollapsed = collapsedFolders;
+    if (ancestors.some((a) => collapsedFolders.has(a))) {
+      nextCollapsed = new Set(collapsedFolders);
+      for (const a of ancestors) nextCollapsed.delete(a);
+      setCollapsedFolders(nextCollapsed);
+    }
+    const nextRows =
+      nextCollapsed === collapsedFolders
+        ? visibleRows
+        : flatten(tree, nextCollapsed, annotationCounts);
+    const newIdx = nextRows.findIndex(
+      (r) => r.kind === "file" && r.path === ann.file,
+    );
+    if (newIdx >= 0 && newIdx !== safeRowIdx) {
+      setSelectedRowIdx(newIdx);
       if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
@@ -131,7 +195,11 @@ function App(props: AppProps) {
   useKeyboard((key) => {
     const action = dispatchKey(
       { name: key.name, ctrl: key.ctrl, shift: key.shift },
-      { sidebarFocused, fileCount: files.length },
+      {
+        sidebarFocused,
+        rowCount: visibleRows.length,
+        selectedRowKind: selectedRow?.kind ?? null,
+      },
     );
 
     switch (action.type) {
@@ -145,28 +213,74 @@ function App(props: AppProps) {
         setSidebarFocused(true);
         return;
       case "move-file-down":
-        setSelectedFileIdx((i) => Math.min(i + 1, files.length - 1));
+        setSelectedRowIdx((i) => Math.min(i + 1, visibleRows.length - 1));
         return;
       case "move-file-up":
-        setSelectedFileIdx((i) => Math.max(i - 1, 0));
+        setSelectedRowIdx((i) => Math.max(i - 1, 0));
         return;
       case "select-file": {
+        if (selectedRow?.kind !== "file") return;
         setSidebarFocused(false);
-        const f = files[selectedFileIdx];
-        if (f && diffScrollRef.current) {
-          diffScrollRef.current.scrollChildIntoView(`file-card-${f.name}`);
+        if (diffScrollRef.current) {
+          diffScrollRef.current.scrollChildIntoView(`file-card-${selectedRow.path}`);
         }
         return;
       }
       case "toggle-collapse": {
-        const f = files[selectedFileIdx];
-        if (!f) return;
+        if (selectedRow?.kind !== "file") return;
+        const f = selectedRow.file;
         const cls = fileClassification(props.classifications, f.name);
         if (cls.reason === "binary") return;
         setCollapsedOverrides((prev) => ({
           ...prev,
           [f.name]: !isFileCollapsed(f.name),
         }));
+        return;
+      }
+      case "toggle-folder": {
+        if (selectedRow?.kind !== "folder") return;
+        const path = selectedRow.path;
+        setCollapsedFolders((prev) => {
+          const next = new Set(prev);
+          if (next.has(path)) next.delete(path);
+          else next.add(path);
+          return next;
+        });
+        return;
+      }
+      case "expand-folder": {
+        if (selectedRow?.kind !== "folder") return;
+        const path = selectedRow.path;
+        setCollapsedFolders((prev) => {
+          if (!prev.has(path)) return prev;
+          const next = new Set(prev);
+          next.delete(path);
+          return next;
+        });
+        return;
+      }
+      case "collapse-folder": {
+        if (selectedRow?.kind !== "folder") return;
+        const path = selectedRow.path;
+        setCollapsedFolders((prev) => {
+          if (prev.has(path)) return prev;
+          const next = new Set(prev);
+          next.add(path);
+          return next;
+        });
+        return;
+      }
+      case "collapse-parent": {
+        if (selectedRow?.kind !== "file") return;
+        const ancestors = revealAncestors(tree, selectedRow.path);
+        if (ancestors.length === 0) return;
+        const parentPath = ancestors[ancestors.length - 1];
+        const nextCollapsed = new Set(collapsedFolders);
+        nextCollapsed.add(parentPath);
+        const nextRows = flatten(tree, nextCollapsed, annotationCounts);
+        const newIdx = nextRows.findIndex((r) => r.path === parentPath);
+        setCollapsedFolders(nextCollapsed);
+        if (newIdx >= 0) setSelectedRowIdx(newIdx);
         return;
       }
       case "next-annotation": {
@@ -211,16 +325,28 @@ function App(props: AppProps) {
           flexDirection="column"
         >
           <scrollbox height="100%">
-            {files.map((file, idx) => {
-              const isSelected = idx === selectedFileIdx;
+            {visibleRows.map((row, idx) => {
+              const isSelected = idx === safeRowIdx;
+              if (row.kind === "folder") {
+                return (
+                  <text
+                    key={`d:${row.path}`}
+                    fg={isSelected ? "black" : "cyan"}
+                    bg={isSelected ? "cyan" : undefined}
+                    bold={isSelected}
+                  >
+                    {folderRowLabel(row)}
+                  </text>
+                );
+              }
               return (
                 <text
-                  key={file.name}
+                  key={`f:${row.path}`}
                   fg={isSelected ? "black" : "white"}
                   bg={isSelected ? "cyan" : undefined}
                   bold={isSelected}
                 >
-                  {fileEntryLabel(file, props.classifications, props.annotations)}
+                  {fileRowLabel(row, props.classifications)}
                 </text>
               );
             })}
