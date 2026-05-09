@@ -41,16 +41,21 @@ export function DiffLine({
       <text fg={ACCENT_FG}>{gutterAccent ? GUTTER_CHAR : " "}</text>
       <text bg={gutterBg}>{gutter}</text>
       {showCode ? (
-        <code
-          content={text}
-          filetype={filetype}
-          syntaxStyle={syntaxStyle}
-          bg={contentBg}
-          drawUnstyledText
-          wrapMode="word"
-          flexGrow={1}
-          width="100%"
-        />
+        // <code> as a direct flex child reports a phantom extra row in
+        // its measure pass — wrap it in a <box> so flex sizing comes
+        // from the parent box, and <code> just fills it. Same pattern
+        // as PR #621's DiffLineRenderable._contentBox.
+        <box flexGrow={1} minHeight={1}>
+          <code
+            content={text}
+            filetype={filetype}
+            syntaxStyle={syntaxStyle}
+            bg={contentBg}
+            drawUnstyledText
+            wrapMode="word"
+            width="100%"
+          />
+        </box>
       ) : (
         <text bg={contentBg} wrapMode="word" flexGrow={1}>
           {text}
