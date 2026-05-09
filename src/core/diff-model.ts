@@ -26,6 +26,44 @@ export interface DiffModel {
   files: DiffFile[];
 }
 
+export function splitFileDiffByHunk(fileSegment: string): string[] {
+  if (!fileSegment.trim()) return [];
+
+  const lines = fileSegment.split("\n");
+  const headerLines: string[] = [];
+  const hunkLines: string[][] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("@@")) {
+      hunkLines.push([line]);
+    } else if (hunkLines.length > 0) {
+      hunkLines[hunkLines.length - 1].push(line);
+    } else {
+      headerLines.push(line);
+    }
+  }
+
+  if (hunkLines.length === 0) return [];
+
+  const header = headerLines.join("\n");
+  return hunkLines.map((h) => `${header}\n${h.join("\n")}`);
+}
+
+export function resolveAnnotationToHunkIndex(
+  file: DiffFile,
+  ann: { side: "additions" | "deletions"; line_start: number; line_end: number },
+): number | null {
+  for (let i = 0; i < file.hunks.length; i++) {
+    const h = file.hunks[i];
+    const start = ann.side === "additions" ? h.additionStart : h.deletionStart;
+    const count = ann.side === "additions" ? h.additionCount : h.deletionCount;
+    if (count === 0) continue;
+    const end = start + count - 1;
+    if (ann.line_end >= start && ann.line_start <= end) return i;
+  }
+  return null;
+}
+
 export function splitRawDiffByFile(rawDiff: string): Map<string, string> {
   const result = new Map<string, string>();
   if (!rawDiff.trim()) return result;

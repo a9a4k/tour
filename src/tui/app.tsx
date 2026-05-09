@@ -4,7 +4,11 @@ import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
-import { splitRawDiffByFile } from "../core/diff-model.js";
+import {
+  splitRawDiffByFile,
+  splitFileDiffByHunk,
+  resolveAnnotationToHunkIndex,
+} from "../core/diff-model.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import {
   buildTree,
@@ -84,12 +88,21 @@ function fileEntryLabel(
 function fileCardBody(
   collapsed: boolean,
   hasHunks: boolean,
-  segment: string,
+  fileName: string,
+  hunkSegments: string[],
   layout: "split" | "unified",
 ) {
   if (collapsed) return <text fg="gray">{"[collapsed — Space to expand]"}</text>;
   if (!hasHunks) return <text fg="gray">{"[no textual changes]"}</text>;
-  return <diff diff={segment} view={layout} showLineNumbers />;
+  return (
+    <>
+      {hunkSegments.map((seg, i) => (
+        <box key={i} id={`hunk-${fileName}-${i}`} flexDirection="column">
+          <diff diff={seg} view={layout} showLineNumbers />
+        </box>
+      ))}
+    </>
+  );
 }
 
 function folderRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "folder" }>): string {
@@ -165,7 +178,14 @@ function App(props: AppProps) {
     : Math.min(Math.max(0, selectedRowIdx), visibleRows.length - 1);
   const selectedRow: VisibleRow<DiffFile> | undefined = visibleRows[safeRowIdx];
 
-  const rawSegments = useMemo(() => splitRawDiffByFile(liveDiff), [liveDiff]);
+  const hunkSegments = useMemo(() => {
+    const byFile = splitRawDiffByFile(liveDiff);
+    const out = new Map<string, string[]>();
+    for (const [name, segment] of byFile) {
+      out.set(name, splitFileDiffByHunk(segment));
+    }
+    return out;
+  }, [liveDiff]);
 
   // Re-anchor the cursor by id across annotation reloads. On first sight of a
   // non-empty list (or when the previously-current id is gone), pick the first
@@ -203,6 +223,22 @@ function App(props: AppProps) {
     if (!row || !sidebarScrollRef.current) return;
     sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
   }, [safeRowIdx, visibleRows]);
+
+  // Keep the current annotation's hunk in the diff-pane viewport. Fires only
+  // when the current annotation id (or the underlying diff content) changes,
+  // so manual scrolling between transitions is preserved. Falls back to the
+  // file card when the annotation can't be resolved to a hunk.
+  useEffect(() => {
+    if (!diffScrollRef.current || !currentAnnotationId) return;
+    const ann = liveAnnotations.find((a) => a.id === currentAnnotationId);
+    if (!ann) return;
+    const file = bundle.files.find((f) => f.name === ann.file);
+    if (!file) return;
+    const hunkIdx = resolveAnnotationToHunkIndex(file, ann);
+    const target =
+      hunkIdx === null ? `file-card-${ann.file}` : `hunk-${ann.file}-${hunkIdx}`;
+    diffScrollRef.current.scrollChildIntoView(target);
+  }, [currentAnnotationId, liveAnnotations, bundle.files]);
 
   const currentAnnotationIdx = useMemo(() => {
     if (liveAnnotations.length === 0) return -1;
@@ -298,7 +334,6 @@ function App(props: AppProps) {
       }
       if (located.rowIdx !== safeRowIdx) {
         setSelectedRowIdx(located.rowIdx);
-        if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
       }
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
@@ -511,7 +546,7 @@ function App(props: AppProps) {
             >
               {files.map((file) => {
                 const collapsed = isFileCollapsed(file.name);
-                const segment = rawSegments.get(file.name) ?? "";
+                const segs = hunkSegments.get(file.name) ?? [];
                 return (
                   <box
                     key={file.name}
@@ -522,7 +557,7 @@ function App(props: AppProps) {
                     marginBottom={1}
                   >
                     <text>{fileEntryLabel(file, liveClassifications, liveAnnotations)}</text>
-                    {fileCardBody(collapsed, file.hunks.length > 0, segment, layout)}
+                    {fileCardBody(collapsed, file.hunks.length > 0, file.name, segs, layout)}
                   </box>
                 );
               })}

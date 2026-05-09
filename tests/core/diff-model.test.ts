@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseDiff, splitRawDiffByFile } from "../../src/core/diff-model.js";
+import {
+  parseDiff,
+  splitRawDiffByFile,
+  splitFileDiffByHunk,
+  resolveAnnotationToHunkIndex,
+  type DiffFile,
+} from "../../src/core/diff-model.js";
 
 describe("parseDiff", () => {
   it("returns empty model for empty string", () => {
@@ -138,5 +144,162 @@ index 1..2 100644
     const map = splitRawDiffByFile(diff);
     expect(map.size).toBe(1);
     expect(map.get("x.txt")!.startsWith("diff --git")).toBe(true);
+  });
+});
+
+describe("splitFileDiffByHunk", () => {
+  it("returns empty array for empty input", () => {
+    expect(splitFileDiffByHunk("")).toEqual([]);
+    expect(splitFileDiffByHunk("   \n  ")).toEqual([]);
+  });
+
+  it("returns one segment per hunk, each carrying the file header", () => {
+    const segment = `diff --git a/multi.txt b/multi.txt
+index ce01362..94954ab 100644
+--- a/multi.txt
++++ b/multi.txt
+@@ -1,2 +1,2 @@
+-old1
++new1
+ ctx1
+@@ -10,2 +10,2 @@
+-old10
++new10
+ ctx10`;
+    const segs = splitFileDiffByHunk(segment);
+    expect(segs).toHaveLength(2);
+    for (const s of segs) {
+      expect(s.startsWith("diff --git a/multi.txt b/multi.txt")).toBe(true);
+      expect(s).toContain("--- a/multi.txt");
+      expect(s).toContain("+++ b/multi.txt");
+    }
+    expect(segs[0]).toContain("@@ -1,2 +1,2 @@");
+    expect(segs[0]).toContain("+new1");
+    expect(segs[0]).not.toContain("@@ -10,2 +10,2 @@");
+    expect(segs[1]).toContain("@@ -10,2 +10,2 @@");
+    expect(segs[1]).toContain("+new10");
+    expect(segs[1]).not.toContain("@@ -1,2 +1,2 @@");
+  });
+
+  it("returns segments that re-parse as a single hunk each", () => {
+    const segment = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,1 +1,1 @@
+-a
++b
+@@ -5,1 +5,1 @@
+-c
++d`;
+    const segs = splitFileDiffByHunk(segment);
+    expect(segs).toHaveLength(2);
+    const m0 = parseDiff(segs[0]);
+    expect(m0.files).toHaveLength(1);
+    expect(m0.files[0].hunks).toHaveLength(1);
+    expect(m0.files[0].hunks[0].additionStart).toBe(1);
+    const m1 = parseDiff(segs[1]);
+    expect(m1.files[0].hunks[0].additionStart).toBe(5);
+  });
+
+  it("returns empty array when there are no hunks (file header only)", () => {
+    const segment = `diff --git a/empty.txt b/empty.txt
+new file mode 100644
+index 0000000..e69de29`;
+    expect(splitFileDiffByHunk(segment)).toEqual([]);
+  });
+});
+
+describe("resolveAnnotationToHunkIndex", () => {
+  const file: DiffFile = {
+    name: "x.txt",
+    type: "change",
+    hunks: [
+      {
+        additionStart: 1,
+        additionCount: 3,
+        deletionStart: 1,
+        deletionCount: 2,
+        content: [],
+      },
+      {
+        additionStart: 20,
+        additionCount: 5,
+        deletionStart: 19,
+        deletionCount: 4,
+        content: [],
+      },
+      {
+        additionStart: 40,
+        additionCount: 0,
+        deletionStart: 38,
+        deletionCount: 3,
+        content: [],
+      },
+    ],
+  };
+
+  it("finds the hunk on the additions side", () => {
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "additions",
+        line_start: 2,
+        line_end: 2,
+      }),
+    ).toBe(0);
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "additions",
+        line_start: 22,
+        line_end: 22,
+      }),
+    ).toBe(1);
+  });
+
+  it("finds the hunk on the deletions side", () => {
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "deletions",
+        line_start: 1,
+        line_end: 2,
+      }),
+    ).toBe(0);
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "deletions",
+        line_start: 39,
+        line_end: 40,
+      }),
+    ).toBe(2);
+  });
+
+  it("matches a multi-line annotation that overlaps a hunk's range", () => {
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "additions",
+        line_start: 2,
+        line_end: 4,
+      }),
+    ).toBe(0);
+  });
+
+  it("returns null when no hunk contains the annotation's lines", () => {
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "additions",
+        line_start: 100,
+        line_end: 100,
+      }),
+    ).toBeNull();
+  });
+
+  it("skips hunks with zero count on the annotation's side", () => {
+    expect(
+      resolveAnnotationToHunkIndex(file, {
+        side: "additions",
+        line_start: 40,
+        line_end: 40,
+      }),
+    ).toBeNull();
   });
 });
