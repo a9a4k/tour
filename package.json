@@ -1,28 +1,65 @@
 {
-  "name": "tour",
-  "version": "0.1.0",
+  "name": "tourdiff",
+  "version": "0.1.1",
+  "description": "Local code review tool with AI annotations: TUI + webapp over a pinned git diff.",
   "type": "module",
-  "bin": {
-    "tour": "./src/main.ts"
+  "license": "MIT",
+  "author": "Almas Akchabayev",
+  "homepage": "https://github.com/a9a4k/tour#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/a9a4k/tour.git"
   },
+  "bugs": {
+    "url": "https://github.com/a9a4k/tour/issues"
+  },
+  "keywords": [
+    "code-review",
+    "diff",
+    "git",
+    "annotations",
+    "ai",
+    "agents",
+    "tui",
+    "cli"
+  ],
+  "bin": {
+    "tour": "scripts/cli.cjs"
+  },
+  "files": [
+    "scripts/cli.cjs",
+    "scripts/resolveBinary.cjs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "cli": "bun src/main.ts",
+    "build:darwin-arm64": "bun scripts/build-binary.ts bun-darwin-arm64 dist/binaries/darwin-arm64/tour",
+    "build:darwin-x64":   "bun scripts/build-binary.ts bun-darwin-x64   dist/binaries/darwin-x64/tour",
+    "build:linux-arm64":  "bun scripts/build-binary.ts bun-linux-arm64  dist/binaries/linux-arm64/tour",
+    "build:linux-x64":    "bun scripts/build-binary.ts bun-linux-x64    dist/binaries/linux-x64/tour",
+    "build:windows-x64":  "bun scripts/build-binary.ts bun-windows-x64  dist/binaries/windows-x64/tour.exe",
+    "build:all": "bun run build:darwin-arm64 && bun run build:darwin-x64 && bun run build:linux-arm64 && bun run build:linux-x64 && bun run build:windows-x64",
+    "assemble": "bun scripts/assemble-packages.ts"
+  },
+  "optionalDependencies": {
+    "tourdiff-darwin-arm64": "0.1.1",
+    "tourdiff-darwin-x64": "0.1.1",
+    "tourdiff-linux-arm64": "0.1.1",
+    "tourdiff-linux-x64": "0.1.1",
+    "tourdiff-windows-x64": "0.1.1"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.5.10",
+    "@opentui/react": "^0.2.5",
+    "@pierre/diffs": "^1.1.21",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.0.0",
     "@types/react-reconciler": "^0.33.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.8.0",
-    "vitest": "^3.2.1"
-  },
-  "dependencies": {
-    "@opentui/react": "^0.2.5",
-    "@pierre/diffs": "^1.1.21",
     "hunkdiff": "^0.10.0",
     "mermaid": "^11.14.0",
     "react": "^19.2.0",
@@ -30,6 +67,9 @@
     "react-markdown": "^10.1.0",
     "react-reconciler": "^0.33.0",
     "remark-gfm": "^4.0.1",
-    "smol-toml": "^1.6.1"
+    "smol-toml": "^1.6.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.1"
   }
 }

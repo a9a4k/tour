@@ -4,9 +4,14 @@
   "workspaces": {
     "": {
       "name": "review",
-      "dependencies": {
+      "devDependencies": {
+        "@ai-hero/sandcastle": "^0.5.10",
         "@opentui/react": "^0.2.5",
         "@pierre/diffs": "^1.1.21",
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.0.0",
+        "@types/react-reconciler": "^0.33.0",
         "hunkdiff": "^0.10.0",
         "mermaid": "^11.14.0",
         "react": "^19.2.0",
@@ -15,16 +20,16 @@
         "react-reconciler": "^0.33.0",
         "remark-gfm": "^4.0.1",
         "smol-toml": "^1.6.1",
-      },
-      "devDependencies": {
-        "@ai-hero/sandcastle": "^0.5.10",
-        "@types/node": "^22.0.0",
-        "@types/react": "^19.2.0",
-        "@types/react-dom": "^19.0.0",
-        "@types/react-reconciler": "^0.33.0",
         "tsx": "^4.19.0",
         "typescript": "^5.8.0",
         "vitest": "^3.2.1",
+      },
+      "optionalDependencies": {
+        "tourdiff-darwin-arm64": "0.1.1",
+        "tourdiff-darwin-x64": "0.1.1",
+        "tourdiff-linux-arm64": "0.1.1",
+        "tourdiff-linux-x64": "0.1.1",
+        "tourdiff-windows-x64": "0.1.1",
       },
     },
   },

@@ -9,6 +9,11 @@ import { del } from "./cli/delete.js";
 import { prune } from "./cli/prune.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
+import { listTours } from "./core/tour-store.js";
+
+declare const __EMBEDDED_VERSION__: string;
+const VERSION =
+  typeof __EMBEDDED_VERSION__ !== "undefined" ? __EMBEDDED_VERSION__ : "dev";
 
 function parseArgs(argv: string[]): {
   command: string;
@@ -62,7 +67,26 @@ Usage:
   tour close <id> [--json]
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
+  tour --version
+  tour --help
 `;
+
+function firstRunBanner(): string {
+  return `tour ${VERSION} — local code review with AI annotations.
+
+  No tours found in this repo.
+
+  Create one:
+    tour create --head HEAD              # tour the latest commit
+    tour create --head WIP                # tour your uncommitted changes
+    tour create --head HEAD --base main   # tour a branch
+
+  Then open:
+    tour                                  # TUI
+    tour serve                            # webapp at http://127.0.0.1:7777
+
+  Docs: https://github.com/a9a4k/tour`;
+}
 
 async function main(): Promise<void> {
   const { command, positional, flags } = parseArgs(process.argv);
@@ -146,12 +170,25 @@ async function main(): Promise<void> {
 
       case "help":
       case "--help":
+      case "-h":
         console.log(USAGE);
         break;
 
-      case "":
+      case "version":
+      case "--version":
+      case "-v":
+        console.log(`tour ${VERSION}`);
+        break;
+
+      case "": {
+        const tours = await listTours(cwd, { status: "all" }).catch(() => []);
+        if (tours.length === 0) {
+          console.log(firstRunBanner());
+          break;
+        }
         await tui({ cwd });
         break;
+      }
 
       default:
         console.error(`Unknown command: ${command}\n`);

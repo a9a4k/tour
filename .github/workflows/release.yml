@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write     # create GitHub Release + upload assets
+  id-token: write     # npm provenance via Sigstore
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { runner: macos-14,         target: bun-darwin-arm64,  os: darwin,  cpu: arm64, binary: tour     }
+          - { runner: macos-13,         target: bun-darwin-x64,    os: darwin,  cpu: x64,   binary: tour     }
+          - { runner: ubuntu-22.04-arm, target: bun-linux-arm64,   os: linux,   cpu: arm64, binary: tour     }
+          - { runner: ubuntu-22.04,     target: bun-linux-x64,     os: linux,   cpu: x64,   binary: tour     }
+          - { runner: windows-2022,     target: bun-windows-x64,   os: windows, cpu: x64,   binary: tour.exe }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Compile binary
+        shell: bash
+        run: |
+          mkdir -p dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}
+          bun scripts/build-binary.ts \
+            ${{ matrix.target }} \
+            dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }}
+      - name: Smoke test
+        shell: bash
+        if: matrix.os != 'windows' && !(matrix.os == 'linux' && matrix.cpu == 'arm64' && runner.arch == 'X64')
+        run: ./dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }} --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.cpu }}
+          path: dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/artifacts
+      - name: Stage binaries
+        run: |
+          mkdir -p dist/binaries
+          for d in dist/artifacts/binary-*; do
+            name=$(basename "$d" | sed 's/^binary-//')
+            mkdir -p "dist/binaries/$name"
+            cp "$d"/* "dist/binaries/$name/"
+            chmod +x "dist/binaries/$name"/* || true
+          done
+      - run: bun scripts/assemble-packages.ts
+      - name: Publish sub-packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in dist/packages/*; do
+            (cd "$pkg" && npm publish --access public --provenance)
+          done
+      - name: Publish parent
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+      - name: Stage release assets
+        run: |
+          mkdir -p dist/release
+          for d in dist/binaries/*/; do
+            name=$(basename "$d")
+            for f in "$d"*; do
+              ext=""
+              case "$f" in *.exe) ext=".exe" ;; esac
+              cp "$f" "dist/release/tour-$name$ext"
+            done
+          done
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/release/*
+          generate_release_notes: true
