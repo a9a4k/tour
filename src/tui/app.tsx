@@ -205,7 +205,7 @@ function App(props: AppProps) {
 
     switch (action.type) {
       case "quit":
-        renderer.close();
+        renderer.destroy();
         return;
       case "toggle-pane":
         setSidebarFocused((v) => !v);
