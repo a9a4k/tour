@@ -195,11 +195,13 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // non-empty list, set cursor to first, anchor the tree highlight to its
   // file, reveal ancestors, and scroll its card into view. On SSE reload with
   // the same id present, do nothing. If the id is gone, re-anchor to the new
-  // first annotation (and re-anchor the tree to it too).
+  // first annotation (and re-anchor the tree to it too). Functional setState
+  // for the empty-list branch keeps `selectedFile` out of the dep array so a
+  // user click while annotations is empty is not clobbered by this effect.
   useEffect(() => {
     if (annotations.length === 0) {
-      if (currentAnnotationId !== null) setCurrentAnnotationId(null);
-      if (selectedFile !== null) setSelectedFile(null);
+      setCurrentAnnotationId((curr) => (curr === null ? curr : null));
+      setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
     if (currentAnnotationId === null) {
@@ -217,7 +219,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
     }
-  }, [annotations, currentAnnotationId, selectedFile, revealFileAncestors, scrollAnnotationIntoView]);
+  }, [annotations, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
