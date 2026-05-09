@@ -17,7 +17,8 @@ export function html(initialTourId?: string): string {
     height: 100vh;
     overflow: hidden;
   }
-  #root { display: flex; height: 100%; }
+  #root { display: flex; flex-direction: column; height: 100%; }
+  .app-body { display: flex; flex: 1; min-height: 0; }
   .app-sidebar {
     width: 280px;
     border-right: 1px solid #30363d;
@@ -71,9 +72,10 @@ export function html(initialTourId?: string): string {
     margin-bottom: 16px;
   }
   .tour-header {
-    margin-bottom: 16px;
     padding-top: 16px;
     padding-bottom: 12px;
+    padding-left: 16px;
+    padding-right: 16px;
     border-bottom: 1px solid #30363d;
   }
   .tour-header h1 { font-size: 20px; margin-bottom: 4px; }

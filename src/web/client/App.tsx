@@ -219,69 +219,71 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   return (
     <>
-      <aside className="app-sidebar">
-        <h2>Files</h2>
-        {sortedFiles.map((f) => {
-          const icon = fileStatusIcon(f.type);
-          const annCount = countAnnotationsForFile(tour.annotations, f.name);
-          return (
-            <button
-              key={f.name}
-              type="button"
-              className={`file-entry${selectedFile === f.name ? " selected" : ""}`}
-              onClick={() => {
-                setSelectedFile(f.name);
-                const el = fileRefs.current.get(f.name);
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-            >
-              <span className={`file-icon ${icon}`}>{icon}</span>
-              <span className="file-name">{f.name}</span>
-              {f.classification?.reason ? (
-                <span className="reason-tag">{f.classification.reason}</span>
-              ) : null}
-              {annCount > 0 ? <span className="badge">{annCount}</span> : null}
-            </button>
-          );
-        })}
-      </aside>
-      <main className="app-main">
-        <div className="tour-header">
-          <h1>{tour.title || tour.id}</h1>
-          <div className="meta">
-            {tour.status} · {tour.id} · {tour.created_at}
-          </div>
+      <div className="tour-header">
+        <h1>{tour.title || tour.id}</h1>
+        <div className="meta">
+          {tour.status} · {tour.id} · {tour.created_at}
         </div>
-        {tour.snapshotLost ? (
-          <div className="banner">
-            Snapshot lost — annotations preserved but diff cannot be displayed
-          </div>
-        ) : null}
-        {tour.snapshotLost ? (
-          <AnnotationList
-            annotations={tour.annotations}
-            currentAnnotationId={currentAnnotationId}
-            registerAnnotationRef={registerAnnotationRef}
-          />
-        ) : (
-          parsedFiles.map((f) => (
-            <FileBlock
-              key={f.name}
-              fileDiff={f}
+      </div>
+      <div className="app-body">
+        <aside className="app-sidebar">
+          <h2>Files</h2>
+          {sortedFiles.map((f) => {
+            const icon = fileStatusIcon(f.type);
+            const annCount = countAnnotationsForFile(tour.annotations, f.name);
+            return (
+              <button
+                key={f.name}
+                type="button"
+                className={`file-entry${selectedFile === f.name ? " selected" : ""}`}
+                onClick={() => {
+                  setSelectedFile(f.name);
+                  const el = fileRefs.current.get(f.name);
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                <span className={`file-icon ${icon}`}>{icon}</span>
+                <span className="file-name">{f.name}</span>
+                {f.classification?.reason ? (
+                  <span className="reason-tag">{f.classification.reason}</span>
+                ) : null}
+                {annCount > 0 ? <span className="badge">{annCount}</span> : null}
+              </button>
+            );
+          })}
+        </aside>
+        <main className="app-main">
+          {tour.snapshotLost ? (
+            <div className="banner">
+              Snapshot lost — annotations preserved but diff cannot be displayed
+            </div>
+          ) : null}
+          {tour.snapshotLost ? (
+            <AnnotationList
               annotations={tour.annotations}
-              modelFile={tour.diffModel?.files.find((m) => m.name === f.name)}
-              registerRef={(el) => {
-                if (el) fileRefs.current.set(f.name, el);
-                else fileRefs.current.delete(f.name);
-              }}
-              collapsed={isCollapsed(f.name)}
-              onToggleCollapsed={() => toggleCollapsed(f.name)}
               currentAnnotationId={currentAnnotationId}
               registerAnnotationRef={registerAnnotationRef}
             />
-          ))
-        )}
-      </main>
+          ) : (
+            parsedFiles.map((f) => (
+              <FileBlock
+                key={f.name}
+                fileDiff={f}
+                annotations={tour.annotations}
+                modelFile={tour.diffModel?.files.find((m) => m.name === f.name)}
+                registerRef={(el) => {
+                  if (el) fileRefs.current.set(f.name, el);
+                  else fileRefs.current.delete(f.name);
+                }}
+                collapsed={isCollapsed(f.name)}
+                onToggleCollapsed={() => toggleCollapsed(f.name)}
+                currentAnnotationId={currentAnnotationId}
+                registerAnnotationRef={registerAnnotationRef}
+              />
+            ))
+          )}
+        </main>
+      </div>
       <SequencePill
         idx={currentIdx}
         total={annotations.length}

@@ -72,4 +72,25 @@ describe("spa shell html()", () => {
   it("declares color-scheme: dark so native scrollbars render in dark", () => {
     expect(html()).toMatch(/html\s*\{[^}]*color-scheme:\s*dark/);
   });
+
+  it("stacks #root vertically so the tour-header can sit above the columns", () => {
+    expect(html()).toMatch(/#root\s*\{[^}]*flex-direction:\s*column/);
+  });
+
+  it("declares an .app-body row that hosts the two scroll columns", () => {
+    const out = html();
+    expect(out).toMatch(/\.app-body\s*\{[^}]*display:\s*flex/);
+    expect(out).toMatch(/\.app-body\s*\{[^}]*min-height:\s*0/);
+  });
+
+  it("drops .tour-header margin-bottom now that it sits outside .app-main", () => {
+    const out = html();
+    expect(out).not.toMatch(/\.tour-header\s*\{[^}]*margin-bottom/);
+  });
+
+  it("pads .tour-header horizontally so it lines up with the columns", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-header\s*\{[^}]*padding-left:\s*16px/);
+    expect(out).toMatch(/\.tour-header\s*\{[^}]*padding-right:\s*16px/);
+  });
 });
