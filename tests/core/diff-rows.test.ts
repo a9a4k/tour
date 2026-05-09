@@ -37,6 +37,26 @@ index 1..2 100644
 `;
 
 describe("planRows", () => {
+  it("strips trailing newlines from leftText/rightText", () => {
+    // @pierre/diffs returns each line with its trailing "\n" intact; the TUI
+    // <text> renderable honours embedded newlines and emits a phantom empty
+    // visual line per row, doubling the diff's vertical footprint. Strip at
+    // the planner so every TUI consumer of PlannedRow gets clean text.
+    const file = parseFile(SIMPLE_DIFF);
+    const split = planRows(file, [], "split").filter((r) => r.kind === "diff-row");
+    for (const row of split) {
+      if (row.kind !== "diff-row") continue;
+      expect(row.leftText.endsWith("\n")).toBe(false);
+      expect(row.rightText.endsWith("\n")).toBe(false);
+    }
+    const unified = planRows(file, [], "unified").filter((r) => r.kind === "diff-row");
+    for (const row of unified) {
+      if (row.kind !== "diff-row") continue;
+      expect(row.leftText.endsWith("\n")).toBe(false);
+      expect(row.rightText.endsWith("\n")).toBe(false);
+    }
+  });
+
   it("returns rows with no annotations when annotations list is empty", () => {
     const file = parseFile(SIMPLE_DIFF);
     const rows = planRows(file, [], "split");

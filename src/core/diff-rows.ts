@@ -38,6 +38,16 @@ export function planRows(
   return interleaveAnnotations(diffRows, annotations);
 }
 
+// @pierre/diffs returns each line in additionLines/deletionLines with its
+// trailing "\n" intact. That's fine for HTML rendering (the webapp consumes
+// the raw FileDiff), but in OpenTUI a <text> element honours embedded
+// newlines and renders an extra empty visual line per row — doubling the
+// diff's vertical footprint. Strip the trailing newline at the planner so
+// every TUI consumer of PlannedRow gets clean, single-line text.
+function stripTrailingNewline(s: string): string {
+  return s.endsWith("\n") ? s.slice(0, s.endsWith("\r\n") ? -2 : -1) : s;
+}
+
 function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): PlannedRow[] {
   const rows: PlannedRow[] = [];
 
@@ -55,10 +65,11 @@ function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): Planned
     for (const block of hunk.hunkContent) {
       if (block.type === "context") {
         for (let i = 0; i < block.lines; i++) {
-          const text =
+          const text = stripTrailingNewline(
             file.additionLines[block.additionLineIndex + i] ??
-            file.deletionLines[block.deletionLineIndex + i] ??
-            "";
+              file.deletionLines[block.deletionLineIndex + i] ??
+              "",
+          );
           rows.push({
             kind: "diff-row",
             type: "context",
@@ -81,8 +92,8 @@ function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): Planned
               type: "change",
               leftLineNumber: isDel ? leftLine + i : null,
               rightLineNumber: isAdd ? rightLine + i : null,
-              leftText: isDel ? file.deletionLines[block.deletionLineIndex + i] ?? "" : "",
-              rightText: isAdd ? file.additionLines[block.additionLineIndex + i] ?? "" : "",
+              leftText: isDel ? stripTrailingNewline(file.deletionLines[block.deletionLineIndex + i] ?? "") : "",
+              rightText: isAdd ? stripTrailingNewline(file.additionLines[block.additionLineIndex + i] ?? "") : "",
             });
           }
         } else {
@@ -92,7 +103,7 @@ function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): Planned
               type: "deletion",
               leftLineNumber: leftLine + i,
               rightLineNumber: null,
-              leftText: file.deletionLines[block.deletionLineIndex + i] ?? "",
+              leftText: stripTrailingNewline(file.deletionLines[block.deletionLineIndex + i] ?? ""),
               rightText: "",
             });
           }
@@ -103,7 +114,7 @@ function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): Planned
               leftLineNumber: null,
               rightLineNumber: rightLine + i,
               leftText: "",
-              rightText: file.additionLines[block.additionLineIndex + i] ?? "",
+              rightText: stripTrailingNewline(file.additionLines[block.additionLineIndex + i] ?? ""),
             });
           }
         }
