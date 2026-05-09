@@ -21,7 +21,7 @@ jobs:
           - { runner: windows-2022,     target: bun-windows-x64,   os: windows, cpu: x64,   binary: tour.exe }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - name: Compile binary
@@ -35,7 +35,7 @@ jobs:
         shell: bash
         if: matrix.os != 'windows' && !(matrix.os == 'linux' && matrix.cpu == 'arm64' && runner.arch == 'X64')
         run: ./dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }} --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: binary-${{ matrix.os }}-${{ matrix.cpu }}
           path: dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }}
@@ -45,13 +45,13 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist/artifacts
       - name: Stage binaries
