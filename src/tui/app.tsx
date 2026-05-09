@@ -14,7 +14,18 @@ import {
   revealAndLocate,
   type VisibleRow,
 } from "../core/file-tree.js";
+import { buildPickerRows } from "../core/tour-list.js";
 import { dispatchKey } from "./keymap.js";
+import { TourPicker } from "./TourPicker.js";
+
+export interface TourBundle {
+  tour: Tour;
+  diff: string;
+  files: DiffFile[];
+  annotations: Annotation[];
+  snapshotLost: boolean;
+  classifications: Record<string, FileClassification>;
+}
 
 interface AppProps {
   tour: Tour;
@@ -23,6 +34,8 @@ interface AppProps {
   annotations: Annotation[];
   snapshotLost: boolean;
   classifications?: Record<string, FileClassification>;
+  loadTour?: (id: string) => Promise<TourBundle>;
+  loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
 }
 
 function statusIcon(type: string): string {
@@ -93,30 +106,48 @@ function fileRowLabel(
 }
 
 function App(props: AppProps) {
+  const [bundle, setBundle] = useState<TourBundle>({
+    tour: props.tour,
+    diff: props.diff,
+    files: props.files,
+    annotations: props.annotations,
+    snapshotLost: props.snapshotLost,
+    classifications: props.classifications ?? {},
+  });
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [layout, setLayout] = useState<"split" | "unified">("split");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerCursor, setPickerCursor] = useState(0);
+  const [pickerTours, setPickerTours] = useState<Tour[]>([]);
+  const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
+  const liveTour = bundle.tour;
+  const liveAnnotations = bundle.annotations;
+  const liveDiff = bundle.diff;
+  const liveSnapshotLost = bundle.snapshotLost;
+  const liveClassifications = bundle.classifications;
+
   const files = useMemo(
-    () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
-    [props.files],
+    () => [...bundle.files].sort((a, b) => a.name.localeCompare(b.name)),
+    [bundle.files],
   );
 
-  const tree = useMemo(() => compress(buildTree(props.files)), [props.files]);
+  const tree = useMemo(() => compress(buildTree(bundle.files)), [bundle.files]);
 
   const annotationCounts = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
-    for (const a of props.annotations) {
+    for (const a of liveAnnotations) {
       out[a.file] = (out[a.file] ?? 0) + 1;
     }
     return out;
-  }, [props.annotations]);
+  }, [liveAnnotations]);
 
   const visibleRows = useMemo<VisibleRow<DiffFile>[]>(
     () => flatten(tree, collapsedFolders, annotationCounts),
@@ -128,7 +159,7 @@ function App(props: AppProps) {
     : Math.min(Math.max(0, selectedRowIdx), visibleRows.length - 1);
   const selectedRow: VisibleRow<DiffFile> | undefined = visibleRows[safeRowIdx];
 
-  const rawSegments = useMemo(() => splitRawDiffByFile(props.diff), [props.diff]);
+  const rawSegments = useMemo(() => splitRawDiffByFile(liveDiff), [liveDiff]);
 
   // Re-anchor the cursor by id across annotation reloads. On first sight of a
   // non-empty list (or when the previously-current id is gone), pick the first
@@ -137,17 +168,17 @@ function App(props: AppProps) {
   // shown. Reads of tree/collapsedFolders/etc. are intentionally not in deps
   // so manual fold/expand doesn't re-anchor the cursor.
   useEffect(() => {
-    if (props.annotations.length === 0) {
+    if (liveAnnotations.length === 0) {
       if (currentAnnotationId !== null) setCurrentAnnotationId(null);
       return;
     }
     if (
       currentAnnotationId !== null &&
-      props.annotations.some((a) => a.id === currentAnnotationId)
+      liveAnnotations.some((a) => a.id === currentAnnotationId)
     ) {
       return;
     }
-    const first = props.annotations[0];
+    const first = liveAnnotations[0];
     setCurrentAnnotationId(first.id);
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
     if (!located) return;
@@ -156,7 +187,7 @@ function App(props: AppProps) {
     }
     setSelectedRowIdx(located.rowIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.annotations, currentAnnotationId]);
+  }, [liveAnnotations, currentAnnotationId]);
 
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
@@ -168,34 +199,95 @@ function App(props: AppProps) {
   }, [safeRowIdx, visibleRows]);
 
   const currentAnnotationIdx = useMemo(() => {
-    if (props.annotations.length === 0) return -1;
+    if (liveAnnotations.length === 0) return -1;
     if (currentAnnotationId === null) return 0;
-    const idx = props.annotations.findIndex((a) => a.id === currentAnnotationId);
+    const idx = liveAnnotations.findIndex((a) => a.id === currentAnnotationId);
     return idx === -1 ? 0 : idx;
-  }, [props.annotations, currentAnnotationId]);
+  }, [liveAnnotations, currentAnnotationId]);
 
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
     if (override !== undefined) return override;
-    const cls = fileClassification(props.classifications, fileName);
+    const cls = fileClassification(liveClassifications, fileName);
     if (!cls.collapsed) return false;
     if (cls.reason === "binary") return true;
-    const hasAnnotations = props.annotations.some((a) => a.file === fileName);
+    const hasAnnotations = liveAnnotations.some((a) => a.file === fileName);
     if (hasAnnotations) return false;
     return true;
   };
 
   const selectedFile = selectedRow?.kind === "file" ? selectedRow.file : null;
   const fileAnnotations = selectedFile
-    ? props.annotations.filter((a) => a.file === selectedFile.name)
+    ? liveAnnotations.filter((a) => a.file === selectedFile.name)
     : [];
 
   const footerHints =
-    "n/p: navigate  ·  j/k: rows  ·  Space: toggle  ·  ←→: fold/expand  ·  l: layout  ·  Tab: switch pane  ·  q: quit";
+    "n/p: navigate  ·  j/k: rows  ·  Space: toggle  ·  ←→: fold/expand  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
   const footer =
-    props.annotations.length > 0
-      ? `Annotation ${currentAnnotationIdx + 1}/${props.annotations.length}  ·  ${footerHints}`
+    liveAnnotations.length > 0
+      ? `Annotation ${currentAnnotationIdx + 1}/${liveAnnotations.length}  ·  ${footerHints}`
       : footerHints;
+
+  const pickerRows = useMemo(
+    () =>
+      buildPickerRows({
+        tours: pickerTours,
+        annotationCounts: pickerCounts,
+        now: Date.now(),
+      }),
+    [pickerTours, pickerCounts],
+  );
+
+  const initialPickerCursor = (rows: typeof pickerRows, currentId: string): number => {
+    if (rows.length === 0) return 0;
+    const idx = rows.findIndex((r) => r.id !== currentId);
+    return idx === -1 ? 0 : idx;
+  };
+
+  const openPicker = async () => {
+    if (pickerOpen) return;
+    if (props.loadTours) {
+      try {
+        const { tours, annotationCounts: counts } = await props.loadTours();
+        setPickerTours(tours);
+        setPickerCounts(counts);
+        const rows = buildPickerRows({ tours, annotationCounts: counts, now: Date.now() });
+        setPickerCursor(initialPickerCursor(rows, liveTour.id));
+      } catch {
+        setPickerTours([]);
+        setPickerCounts({});
+        setPickerCursor(0);
+      }
+    } else {
+      setPickerCursor(initialPickerCursor(pickerRows, liveTour.id));
+    }
+    setPickerOpen(true);
+  };
+
+  const closePicker = () => {
+    setPickerOpen(false);
+  };
+
+  const commitTour = async (id: string) => {
+    if (!props.loadTour) {
+      closePicker();
+      return;
+    }
+    if (id === liveTour.id) {
+      closePicker();
+      return;
+    }
+    try {
+      const next = await props.loadTour(id);
+      setBundle(next);
+      setSelectedRowIdx(0);
+      setCurrentAnnotationId(null);
+      setCollapsedOverrides({});
+      setCollapsedFolders(new Set());
+    } finally {
+      closePicker();
+    }
+  };
 
   const jumpToAnnotation = (ann: Annotation) => {
     setCurrentAnnotationId(ann.id);
@@ -213,6 +305,28 @@ function App(props: AppProps) {
   };
 
   useKeyboard((key) => {
+    if (pickerOpen) {
+      if (key.ctrl || key.shift) return;
+      if (key.name === "escape" || key.name === "t") {
+        closePicker();
+        return;
+      }
+      if (key.name === "j" || key.name === "down") {
+        setPickerCursor((c) => Math.min(pickerRows.length - 1, c + 1));
+        return;
+      }
+      if (key.name === "k" || key.name === "up") {
+        setPickerCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.name === "return") {
+        const r = pickerRows[pickerCursor];
+        if (r) void commitTour(r.id);
+        return;
+      }
+      return;
+    }
+
     const action = dispatchKey(
       { name: key.name, ctrl: key.ctrl, shift: key.shift },
       {
@@ -249,7 +363,7 @@ function App(props: AppProps) {
       case "toggle-collapse": {
         if (selectedRow?.kind !== "file") return;
         const f = selectedRow.file;
-        const cls = fileClassification(props.classifications, f.name);
+        const cls = fileClassification(liveClassifications, f.name);
         if (cls.reason === "binary") return;
         setCollapsedOverrides((prev) => ({
           ...prev,
@@ -305,17 +419,20 @@ function App(props: AppProps) {
       }
       case "next-annotation": {
         if (currentAnnotationIdx < 0) return;
-        if (currentAnnotationIdx >= props.annotations.length - 1) return;
-        jumpToAnnotation(props.annotations[currentAnnotationIdx + 1]);
+        if (currentAnnotationIdx >= liveAnnotations.length - 1) return;
+        jumpToAnnotation(liveAnnotations[currentAnnotationIdx + 1]);
         return;
       }
       case "prev-annotation": {
         if (currentAnnotationIdx <= 0) return;
-        jumpToAnnotation(props.annotations[currentAnnotationIdx - 1]);
+        jumpToAnnotation(liveAnnotations[currentAnnotationIdx - 1]);
         return;
       }
       case "toggle-layout":
         setLayout((v) => (v === "split" ? "unified" : "split"));
+        return;
+      case "open-picker":
+        void openPicker();
         return;
     }
   });
@@ -325,11 +442,11 @@ function App(props: AppProps) {
       {/* Header */}
       <box height={1} width="100%" paddingX={1}>
         <text bold>
-          Tour: {props.tour.title || props.tour.id} [{props.tour.status}]
+          Tour: {liveTour.title || liveTour.id} [{liveTour.status}]
         </text>
       </box>
 
-      {props.snapshotLost && (
+      {liveSnapshotLost && (
         <box height={2} width="100%" paddingX={1}>
           <text fg="yellow" bold>
             ⚠ Snapshot lost — annotations preserved but diff cannot be displayed
@@ -371,7 +488,7 @@ function App(props: AppProps) {
                   bg={isSelected ? "cyan" : undefined}
                   bold={isSelected}
                 >
-                  {fileRowLabel(row, props.classifications)}
+                  {fileRowLabel(row, liveClassifications)}
                 </text>
               );
             })}
@@ -386,7 +503,7 @@ function App(props: AppProps) {
           title=" Diff "
           flexDirection="column"
         >
-          {!props.snapshotLost && props.diff && (
+          {!liveSnapshotLost && liveDiff && (
             <scrollbox
               ref={diffScrollRef}
               height="100%"
@@ -404,7 +521,7 @@ function App(props: AppProps) {
                     flexDirection="column"
                     marginBottom={1}
                   >
-                    <text>{fileEntryLabel(file, props.classifications, props.annotations)}</text>
+                    <text>{fileEntryLabel(file, liveClassifications, liveAnnotations)}</text>
                     {fileCardBody(collapsed, file.hunks.length > 0, segment, layout)}
                   </box>
                 );
@@ -446,6 +563,14 @@ function App(props: AppProps) {
       <box height={1} width="100%" paddingX={1}>
         <text fg="gray">{footer}</text>
       </box>
+
+      {pickerOpen && (
+        <TourPicker
+          rows={pickerRows}
+          currentTourId={liveTour.id}
+          cursor={pickerCursor}
+        />
+      )}
     </box>
   );
 }
