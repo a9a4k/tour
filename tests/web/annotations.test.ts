@@ -112,6 +112,34 @@ describe("buildRangeBackgroundCSS", () => {
     );
     expect(css).toBe("");
   });
+
+  it("emits a 3px accent gutter stripe alongside the tint for additions ranges", () => {
+    const css = buildRangeBackgroundCSS(
+      [ann({ side: "additions", line_start: 5, line_end: 7 })],
+      "src/main.ts",
+    );
+    expect(css).toContain("box-shadow: inset 3px 0 0 #58a6ff");
+    expect(css).toContain("addition");
+  });
+
+  it("emits the same accent gutter stripe for deletions ranges", () => {
+    const css = buildRangeBackgroundCSS(
+      [ann({ side: "deletions", line_start: 3, line_end: 4 })],
+      "src/main.ts",
+    );
+    expect(css).toContain("box-shadow: inset 3px 0 0 #58a6ff");
+    expect(css).toContain("deletion");
+  });
+
+  it("preserves the existing tint when emitting the gutter stripe", () => {
+    const css = buildRangeBackgroundCSS(
+      [ann({ side: "additions", line_start: 1, line_end: 2 })],
+      "src/main.ts",
+    );
+    expect(css).toContain("background-image");
+    expect(css).toContain("rgba(88, 166, 255, 0.12)");
+    expect(css).toContain("box-shadow");
+  });
 });
 
 describe("resolveCursorById", () => {
