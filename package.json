@@ -24,6 +24,7 @@
     "@opentui/react": "^0.2.5",
     "@pierre/diffs": "^1.1.21",
     "hunkdiff": "^0.10.0",
+    "mermaid": "^11.14.0",
     "react": "^19.2.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",

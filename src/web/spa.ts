@@ -250,6 +250,25 @@ export function html(initialTourId?: string): string {
     border-top: 1px solid #30363d;
     margin: 12px 0;
   }
+  .annotation-block .ann-body .mermaid-block {
+    margin: 8px 0;
+  }
+  .annotation-block .ann-body .mermaid-block svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+  .annotation-block .ann-body .mermaid-loading {
+    color: #8b949e;
+    font-style: italic;
+    font-size: 12px;
+    padding: 8px 0;
+  }
+  .annotation-block .ann-body .mermaid-failed .mermaid-error-header {
+    color: #f85149;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
   .sequence-pill {
     position: fixed;
     bottom: 16px;

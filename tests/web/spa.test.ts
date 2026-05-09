@@ -138,4 +138,17 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+code\b/);
     expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+pre\b/);
   });
+
+  it("declares a mermaid-block rule whose svg fits the card width without an inner scrollbar", () => {
+    const out = html();
+    expect(out).toMatch(/\.mermaid-block\s+svg\s*\{[^}]*max-width:\s*100%/);
+    expect(out).toMatch(/\.mermaid-block\s+svg\s*\{[^}]*height:\s*auto/);
+    expect(out).not.toMatch(/\.mermaid-block\s*\{[^}]*overflow/);
+  });
+
+  it("styles the mermaid loading placeholder and the failure header", () => {
+    const out = html();
+    expect(out).toMatch(/\.mermaid-loading\s*\{/);
+    expect(out).toMatch(/\.mermaid-failed\s+\.mermaid-error-header\s*\{/);
+  });
 });

@@ -1,6 +1,7 @@
 import { Children, isValidElement, type ReactElement } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MermaidBlock } from "./MermaidBlock.js";
 import { ShikiCode } from "./ShikiCode.js";
 
 interface AnnotationMarkdownProps {
@@ -23,7 +24,10 @@ export function AnnotationMarkdown({ body }: AnnotationMarkdownProps): React.JSX
             const { className, children: codeChildren } = (child as ReactElement<CodeChildProps>).props;
             const match = /language-([\w-]+)/.exec(className ?? "");
             const code = String(codeChildren ?? "").replace(/\n$/, "");
-            if (match && match[1] !== "mermaid") {
+            if (match) {
+              if (match[1] === "mermaid") {
+                return <MermaidBlock source={code} />;
+              }
               return <ShikiCode code={code} lang={match[1]} />;
             }
           }
