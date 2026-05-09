@@ -2,6 +2,8 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
 
+export type { FileDiffMetadata };
+
 export interface DiffFile {
   name: string;
   prevName?: string;

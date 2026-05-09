@@ -3,8 +3,9 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Annotation } from "../core/types.js";
-import type { DiffFile } from "../core/diff-model.js";
+import type { DiffFile, FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
+import type { PlannedRow } from "../core/diff-rows.js";
 import { planRows } from "../core/diff-rows.js";
 import { DiffRows } from "./DiffRows.js";
 import type { FileClassification } from "../core/file-classifier.js";
@@ -86,7 +87,7 @@ function fileEntryLabel(
 function fileCardBody(
   collapsed: boolean,
   hasHunks: boolean,
-  rows: ReturnType<typeof planRows>,
+  rows: PlannedRow[],
   layout: "split" | "unified",
   currentAnnotationId: string | null,
 ) {
@@ -175,13 +176,13 @@ function App(props: AppProps) {
   const selectedRow: VisibleRow<DiffFile> | undefined = visibleRows[safeRowIdx];
 
   const fileMetadata = useMemo(() => {
-    const out = new Map<string, ReturnType<typeof parseFileDiffMetadata>[number]>();
+    const out = new Map<string, FileDiffMetadata>();
     for (const meta of parseFileDiffMetadata(liveDiff)) out.set(meta.name, meta);
     return out;
   }, [liveDiff]);
 
   const plannedRowsByFile = useMemo(() => {
-    const out = new Map<string, ReturnType<typeof planRows>>();
+    const out = new Map<string, PlannedRow[]>();
     for (const [name, meta] of fileMetadata) {
       const fileAnns = liveAnnotations.filter((a) => a.file === name);
       out.set(name, planRows(meta, fileAnns, layout));
