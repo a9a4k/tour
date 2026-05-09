@@ -21,14 +21,18 @@ export function AnnotationCard({ annotation, isCurrent }: AnnotationCardProps) {
       flexDirection="column"
       paddingX={1}
     >
-      <text
-        fg={isCurrent ? "black" : ACCENT_FG}
-        bg={isCurrent ? "cyan" : undefined}
-        bold
-      >
-        [{annotation.side}] {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
-      </text>
-      <text fg="white" wrapMode="word">{annotation.body}</text>
+      <box>
+        <text
+          fg={isCurrent ? "black" : ACCENT_FG}
+          bg={isCurrent ? "cyan" : undefined}
+          bold
+        >
+          [{annotation.side}] {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
+        </text>
+      </box>
+      <box flexGrow={1}>
+        <text fg="white" wrapMode="word">{annotation.body}</text>
+      </box>
     </box>
   );
 }
