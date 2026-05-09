@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickerRow } from "../../core/tour-list.js";
 
 interface TourPickerProps {
@@ -79,8 +79,6 @@ export function TourPicker({
     [onClose],
   );
 
-  const items = useMemo(() => rows, [rows]);
-
   return (
     <div
       className="picker-scrim"
@@ -97,7 +95,7 @@ export function TourPicker({
         onKeyDown={onKeyDown}
       >
         <div className="picker-list" role="listbox">
-          {items.map((r, i) => {
+          {rows.map((r, i) => {
             const isCurrent = r.id === currentTourId;
             const isCursor = i === cursor;
             const cls = [

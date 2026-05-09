@@ -9,8 +9,10 @@ export interface PickerRow {
   annotationCount: number;
 }
 
+export type PickerTour = Pick<Tour, "id" | "title" | "status" | "created_at">;
+
 export interface BuildPickerRowsArgs {
-  tours: Tour[];
+  tours: PickerTour[];
   annotationCounts: Record<string, number>;
   now: number;
 }
@@ -37,7 +39,7 @@ export function buildPickerRows(args: BuildPickerRowsArgs): PickerRow[] {
   const { tours, annotationCounts, now } = args;
   const rows = tours.map<PickerRow>((t) => ({
     id: t.id,
-    title: t.title && t.title.length > 0 ? t.title : "(untitled)",
+    title: t.title || "(untitled)",
     status: t.status,
     glyph: t.status === "open" ? "●" : "○",
     age: formatAge(now - Date.parse(t.created_at)),

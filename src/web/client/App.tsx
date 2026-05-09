@@ -12,7 +12,6 @@ import { fileStatusIcon } from "./file-status.js";
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
-import type { Tour } from "../../core/types.js";
 import {
   buildTree,
   compress,
@@ -318,21 +317,9 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const pickerRows = useMemo(() => {
     if (!tourList) return [];
-    const tours: Tour[] = tourList.map((t) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      created_at: t.created_at,
-      closed_at: "",
-      head_sha: "",
-      base_sha: "",
-      head_source: "",
-      base_source: "",
-      wip_snapshot: false,
-    }));
     const counts: Record<string, number> = {};
     if (tour) counts[tour.id] = tour.annotations.length;
-    return buildPickerRows({ tours, annotationCounts: counts, now: Date.now() });
+    return buildPickerRows({ tours: tourList, annotationCounts: counts, now: Date.now() });
   }, [tourList, tour]);
 
   if (!state.loaded && !tourList) {
