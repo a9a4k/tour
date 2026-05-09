@@ -52,4 +52,20 @@ describe("spa shell html()", () => {
   it("preserves visual top spacing on empty/loading/error state via padding-top on .empty", () => {
     expect(html()).toMatch(/\.empty\s*\{[^}]*padding-top:\s*16px/);
   });
+
+  it("styles the current annotation card with an accent border + tint", () => {
+    const out = html();
+    expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*border-color/);
+  });
+
+  it("pins the sequence pill bottom-right with fixed positioning", () => {
+    const out = html();
+    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*position:\s*fixed/);
+    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*bottom:\s*16px/);
+    expect(out).toMatch(/\.sequence-pill\s*\{[^}]*right:\s*16px/);
+  });
+
+  it("dims disabled pill chevrons so boundary state is visible", () => {
+    expect(html()).toMatch(/\.sequence-pill\s+\.pill-chevron:disabled/);
+  });
 });

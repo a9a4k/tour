@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
-import type { Annotation, AnnotationMetadata, TourData, TourSummary } from "./types.js";
-import { toPierreLineAnnotations, buildRangeBackgroundCSS } from "./annotations.js";
+import type { Annotation, AnnotationMetadata, DiffFileInfo, TourData, TourSummary } from "./types.js";
+import {
+  toPierreLineAnnotations,
+  buildRangeBackgroundCSS,
+  resolveCursorById,
+} from "./annotations.js";
 import { fileStatusIcon, countAnnotationsForFile } from "./file-status.js";
 
 const STICKY_HEADER_CSS = `
@@ -32,12 +36,24 @@ interface LoadState {
   loaded: boolean;
 }
 
+function defaultCollapsedFor(file: DiffFileInfo, annotations: Annotation[]): boolean {
+  const reason = file.classification?.reason;
+  if (reason === "binary") return true;
+  if (file.classification?.collapsed === true && !annotations.some((a) => a.file === file.name)) {
+    return true;
+  }
+  return false;
+}
+
 export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [tourId, setTourId] = useState<string | null>(initialTourId);
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
   const [state, setState] = useState<LoadState>({ tour: null, error: null, loaded: false });
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -90,11 +106,96 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }, [tourId]);
 
   const tour = state.tour;
+  const annotations = useMemo(() => tour?.annotations ?? [], [tour?.annotations]);
+  const currentIdx = useMemo(
+    () => resolveCursorById(annotations, currentAnnotationId),
+    [annotations, currentAnnotationId],
+  );
 
   const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
     if (!tour || !tour.diff) return [];
     return parsePatchFiles(tour.diff, tour.id).flatMap((p) => p.files);
   }, [tour?.diff, tour?.id]);
+
+  const scrollAnnotationIntoView = useCallback((id: string) => {
+    requestAnimationFrame(() => {
+      annotationRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, []);
+
+  const navigateBy = useCallback(
+    (delta: number) => {
+      if (currentIdx === -1) return;
+      const newIdx = Math.max(0, Math.min(annotations.length - 1, currentIdx + delta));
+      if (newIdx === currentIdx) return;
+      const target = annotations[newIdx];
+      setCurrentAnnotationId(target.id);
+      setSelectedFile(target.file);
+      setCollapsedOverrides((prev) =>
+        prev[target.file] === false ? prev : { ...prev, [target.file]: false },
+      );
+      scrollAnnotationIntoView(target.id);
+    },
+    [annotations, currentIdx, scrollAnnotationIntoView],
+  );
+
+  // Re-anchor cursor by id whenever annotations change. On first sight of a
+  // non-empty list, set cursor to first and scroll its card into view. On SSE
+  // reload with the same id present, do nothing (silent re-anchor). If the id
+  // is gone, reset to 0 silently.
+  useEffect(() => {
+    if (annotations.length === 0) {
+      if (currentAnnotationId !== null) setCurrentAnnotationId(null);
+      return;
+    }
+    if (currentAnnotationId === null) {
+      const first = annotations[0];
+      setCurrentAnnotationId(first.id);
+      scrollAnnotationIntoView(first.id);
+      return;
+    }
+    const found = annotations.some((a) => a.id === currentAnnotationId);
+    if (!found) setCurrentAnnotationId(annotations[0].id);
+  }, [annotations, currentAnnotationId, scrollAnnotationIntoView]);
+
+  // Global keydown: n / p step the sequence cursor. No-op when focus is in an
+  // editable element so the shortcuts never steal text input.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "n" && e.key !== "p") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
+      }
+      e.preventDefault();
+      navigateBy(e.key === "n" ? 1 : -1);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [navigateBy]);
+
+  const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) annotationRefs.current.set(id, el);
+    else annotationRefs.current.delete(id);
+  }, []);
+
+  const isCollapsed = useCallback(
+    (fileName: string): boolean => {
+      if (fileName in collapsedOverrides) return collapsedOverrides[fileName];
+      const f = tour?.diffModel?.files.find((x) => x.name === fileName);
+      return f ? defaultCollapsedFor(f, annotations) : false;
+    },
+    [collapsedOverrides, tour, annotations],
+  );
+
+  const toggleCollapsed = useCallback(
+    (fileName: string) => {
+      setCollapsedOverrides((prev) => ({ ...prev, [fileName]: !isCollapsed(fileName) }));
+    },
+    [isCollapsed],
+  );
 
   if (!state.loaded && !tourList) {
     return <div className="empty">Loading…</div>;
@@ -157,7 +258,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           </div>
         ) : null}
         {tour.snapshotLost ? (
-          <AnnotationList annotations={tour.annotations} />
+          <AnnotationList
+            annotations={tour.annotations}
+            currentAnnotationId={currentAnnotationId}
+            registerAnnotationRef={registerAnnotationRef}
+          />
         ) : (
           parsedFiles.map((f) => (
             <FileBlock
@@ -169,10 +274,20 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 if (el) fileRefs.current.set(f.name, el);
                 else fileRefs.current.delete(f.name);
               }}
+              collapsed={isCollapsed(f.name)}
+              onToggleCollapsed={() => toggleCollapsed(f.name)}
+              currentAnnotationId={currentAnnotationId}
+              registerAnnotationRef={registerAnnotationRef}
             />
           ))
         )}
       </main>
+      <SequencePill
+        idx={currentIdx}
+        total={annotations.length}
+        onPrev={() => navigateBy(-1)}
+        onNext={() => navigateBy(1)}
+      />
     </>
   );
 }
@@ -182,15 +297,23 @@ interface FileBlockProps {
   annotations: Annotation[];
   modelFile: TourData["diffModel"]["files"][number] | undefined;
   registerRef: (el: HTMLDivElement | null) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  currentAnnotationId: string | null;
+  registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
 }
 
-function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockProps): React.JSX.Element {
+function FileBlock({
+  fileDiff,
+  annotations,
+  modelFile,
+  registerRef,
+  collapsed,
+  onToggleCollapsed,
+  currentAnnotationId,
+  registerAnnotationRef,
+}: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
-  const startCollapsed =
-    reason === "binary" ||
-    (modelFile?.classification?.collapsed === true &&
-      !annotations.some((a) => a.file === fileDiff.name));
-  const [collapsed, setCollapsed] = useState(startCollapsed);
 
   const lineAnns = useMemo<DiffLineAnnotation<AnnotationMetadata>[]>(
     () => toPierreLineAnnotations(annotations, fileDiff.name),
@@ -203,11 +326,26 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
     return { ...BASE_DIFF_OPTIONS, unsafeCSS, collapsed };
   }, [annotations, fileDiff.name, collapsed]);
 
+  const renderAnnotation = useCallback(
+    (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {
+      if (!ann.metadata?.isAnchor) return null;
+      const a = ann.metadata.annotation;
+      return (
+        <AnnotationCard
+          annotation={a}
+          isCurrent={a.id === currentAnnotationId}
+          registerRef={registerAnnotationRef}
+        />
+      );
+    },
+    [currentAnnotationId, registerAnnotationRef],
+  );
+
   const onWrapperClick = (e: React.MouseEvent) => {
     const onHeader = e.nativeEvent.composedPath().some(
       (n) => n instanceof HTMLElement && n.dataset.diffsHeader === "default",
     );
-    if (onHeader) setCollapsed((c) => !c);
+    if (onHeader) onToggleCollapsed();
   };
 
   return (
@@ -216,7 +354,7 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
         fileDiff={fileDiff}
         options={options}
         lineAnnotations={lineAnns}
-        renderAnnotation={renderAnnotationContent}
+        renderAnnotation={renderAnnotation}
         renderHeaderMetadata={() => (
           <>
             {reason ? <span className="reason-tag">{reason}</span> : null}
@@ -229,13 +367,22 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
   );
 }
 
-function AnnotationCard({ annotation }: { annotation: Annotation }): React.JSX.Element {
+interface AnnotationCardProps {
+  annotation: Annotation;
+  isCurrent: boolean;
+  registerRef?: (id: string, el: HTMLDivElement | null) => void;
+}
+
+function AnnotationCard({ annotation, isCurrent, registerRef }: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
       ? `${annotation.line_start}`
       : `${annotation.line_start}-${annotation.line_end}`;
   return (
-    <div className="annotation-block">
+    <div
+      className={isCurrent ? "annotation-block current" : "annotation-block"}
+      ref={(el) => registerRef?.(annotation.id, el)}
+    >
       <div className="ann-header">
         {annotation.author} · {annotation.file}:{range}
       </div>
@@ -244,19 +391,67 @@ function AnnotationCard({ annotation }: { annotation: Annotation }): React.JSX.E
   );
 }
 
-function renderAnnotationContent(ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode {
-  if (!ann.metadata?.isAnchor) return null;
-  return <AnnotationCard annotation={ann.metadata.annotation} />;
+interface AnnotationListProps {
+  annotations: Annotation[];
+  currentAnnotationId: string | null;
+  registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
 }
 
-function AnnotationList({ annotations }: { annotations: Annotation[] }): React.JSX.Element {
+function AnnotationList({
+  annotations,
+  currentAnnotationId,
+  registerAnnotationRef,
+}: AnnotationListProps): React.JSX.Element {
   if (annotations.length === 0) return <div className="empty">No annotations</div>;
   return (
     <>
       {annotations.map((a) => (
-        <AnnotationCard key={a.id} annotation={a} />
+        <AnnotationCard
+          key={a.id}
+          annotation={a}
+          isCurrent={a.id === currentAnnotationId}
+          registerRef={registerAnnotationRef}
+        />
       ))}
     </>
+  );
+}
+
+interface SequencePillProps {
+  idx: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+function SequencePill({ idx, total, onPrev, onNext }: SequencePillProps): React.JSX.Element | null {
+  if (total === 0) return null;
+  const prevDisabled = idx <= 0;
+  const nextDisabled = idx >= total - 1;
+  return (
+    <div className="sequence-pill" role="navigation" aria-label="Annotation navigation">
+      <button
+        type="button"
+        className="pill-chevron"
+        onClick={onPrev}
+        disabled={prevDisabled}
+        aria-label="Previous annotation"
+      >
+        ‹
+      </button>
+      <span className="pill-position">
+        {idx + 1} / {total}
+      </span>
+      <button
+        type="button"
+        className="pill-chevron"
+        onClick={onNext}
+        disabled={nextDisabled}
+        aria-label="Next annotation"
+      >
+        ›
+      </button>
+    </div>
   );
 }
 
