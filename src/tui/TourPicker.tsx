@@ -1,4 +1,6 @@
 import type { PickerRow } from "../core/tour-list.js";
+import { theme } from "../core/theme.js";
+import { GUTTER_CHAR } from "./DiffLine.js";
 
 interface TourPickerProps {
   rows: PickerRow[];
@@ -21,37 +23,37 @@ export function TourPicker({ rows, currentTourId, cursor }: TourPickerProps) {
       right="10%"
       bottom={2}
       borderStyle="single"
-      borderColor="cyan"
+      borderColor={theme.border.accent}
       title=" Select Tour "
       flexDirection="column"
       zIndex={100}
-      backgroundColor="black"
+      backgroundColor={theme.canvas.default}
     >
       <scrollbox height="100%">
         {rows.length === 0 ? (
-          <text fg="gray">{" (no tours) "}</text>
+          <text fg={theme.fg.muted}>{" (no tours) "}</text>
         ) : (
           rows.map((r, i) => {
             const isCurrent = r.id === currentTourId;
             const isCursor = i === cursor;
+            // Cursor row: bg.accent.cursor + fg.accent gutter glyph.
+            // Current row: bg.accent.current only, no gutter glyph.
+            // Mirrors the webapp's same-named states. ADR 0008 / Issue #57.
             let bg: string | undefined;
-            if (isCursor) bg = "cyan";
-            else if (isCurrent) bg = "blue";
+            if (isCursor) bg = theme.bg.accentCursor.tui;
+            else if (isCurrent) bg = theme.bg.accentCurrent.tui;
+            const glyph = isCursor ? GUTTER_CHAR : " ";
             return (
-              <text
-                key={r.id}
-                fg={isCursor ? "black" : "white"}
-                bg={bg}
-                bold={isCursor}
-              >
-                {rowLabel(r)}
-              </text>
+              <box key={r.id} flexDirection="row">
+                <text fg={theme.fg.accent} bg={bg}>{glyph}</text>
+                <text fg={theme.fg.default} bg={bg}>{rowLabel(r)}</text>
+              </box>
             );
           })
         )}
       </scrollbox>
       <box height={1} paddingX={1}>
-        <text fg="gray">
+        <text fg={theme.fg.muted}>
           {" j/k: move  ·  Enter: select  ·  t/Esc: close "}
         </text>
       </box>

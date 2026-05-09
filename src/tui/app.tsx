@@ -19,6 +19,7 @@ import {
   type VisibleRow,
 } from "../core/file-tree.js";
 import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
+import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
 
@@ -93,8 +94,8 @@ function fileCardBody(
   layout: "split" | "unified",
   currentAnnotationId: string | null,
 ) {
-  if (collapsed) return <text fg="gray">{"[collapsed — Space to expand]"}</text>;
-  if (!hasHunks) return <text fg="gray">{"[no textual changes]"}</text>;
+  if (collapsed) return <text fg={theme.fg.muted}>{"[collapsed — Space to expand]"}</text>;
+  if (!hasHunks) return <text fg={theme.fg.muted}>{"[no textual changes]"}</text>;
   return (
     <DiffRows
       fileName={fileName}
@@ -480,7 +481,7 @@ function App(props: AppProps) {
 
       {liveSnapshotLost && (
         <box height={2} width="100%" paddingX={1}>
-          <text fg="yellow" bold>
+          <text fg={theme.fg.attention} bold>
             ⚠ Snapshot lost — annotations preserved but diff cannot be displayed
           </text>
         </box>
@@ -492,20 +493,21 @@ function App(props: AppProps) {
         <box
           width={30}
           borderStyle="single"
-          borderColor={sidebarFocused ? "cyan" : "gray"}
+          borderColor={sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Files "
           flexDirection="column"
         >
           <scrollbox ref={sidebarScrollRef} height="100%">
             {visibleRows.map((row, idx) => {
               const isSelected = idx === safeRowIdx;
+              const bg = isSelected ? theme.bg.accentCursor.tui : undefined;
               if (row.kind === "folder") {
                 return (
                   <text
                     key={`d:${row.path}`}
                     id={`row-${row.path}`}
-                    fg={isSelected ? "black" : "cyan"}
-                    bg={isSelected ? "cyan" : undefined}
+                    fg={theme.fg.muted}
+                    bg={bg}
                     bold={isSelected}
                   >
                     {folderRowLabel(row)}
@@ -516,8 +518,8 @@ function App(props: AppProps) {
                 <text
                   key={`f:${row.path}`}
                   id={`row-${row.path}`}
-                  fg={isSelected ? "black" : "white"}
-                  bg={isSelected ? "cyan" : undefined}
+                  fg={theme.fg.default}
+                  bg={bg}
                   bold={isSelected}
                 >
                   {fileRowLabel(row, liveClassifications)}
@@ -531,7 +533,7 @@ function App(props: AppProps) {
         <box
           flexGrow={1}
           borderStyle="single"
-          borderColor={!sidebarFocused ? "cyan" : "gray"}
+          borderColor={!sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Diff "
           flexDirection="column"
         >
@@ -550,7 +552,7 @@ function App(props: AppProps) {
                     key={file.name}
                     id={`file-card-${file.name}`}
                     borderStyle="single"
-                    borderColor="gray"
+                    borderColor={theme.border.default}
                     flexDirection="column"
                     marginBottom={1}
                   >
@@ -573,7 +575,7 @@ function App(props: AppProps) {
 
       {/* Footer */}
       <box height={1} width="100%" paddingX={1}>
-        <text fg="gray">{footer}</text>
+        <text fg={theme.fg.muted}>{footer}</text>
       </box>
 
       {pickerOpen && (

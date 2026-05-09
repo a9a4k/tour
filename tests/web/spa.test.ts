@@ -21,6 +21,30 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.app-sidebar\s*\{[^}]*width:\s*280px/);
   });
 
+  it("emits the GitHub Dark Default token block as :root custom properties (Issue #57)", () => {
+    const out = html();
+    // Spot-check Tier 1 + Tier 2 tokens to lock centralization.
+    expect(out).toMatch(/:root\s*\{[\s\S]*--canvas-default:\s*#0d1117/);
+    expect(out).toMatch(/--fg-accent:\s*#58a6ff/);
+    expect(out).toMatch(/--fg-default:\s*#f0f6fc/);
+    expect(out).toMatch(/--border-default:\s*#3d444d/);
+    expect(out).toMatch(/--bg-accent-cursor:\s*rgba\(31, 111, 235, 0\.20\)/);
+    expect(out).toMatch(/--bg-accent-range:\s*rgba\(56, 139, 253, 0\.15\)/);
+  });
+
+  it("references theme tokens via var(--...) for body / sidebar chrome (Issue #57)", () => {
+    const out = html();
+    expect(out).toMatch(/body\s*\{[^}]*background:\s*var\(--canvas-default\)/);
+    expect(out).toMatch(/body\s*\{[^}]*color:\s*var\(--fg-default\)/);
+    expect(out).toMatch(/\.app-sidebar\s*\{[^}]*border-right:\s*1px solid var\(--border-default\)/);
+  });
+
+  it("paints the active layout-toggle with the solid accent emphasis pill (Issue #57)", () => {
+    const out = html();
+    expect(out).toMatch(/\.layout-toggle-btn\.active\s*\{[^}]*background:\s*var\(--bg-accent-emphasis\)/);
+    expect(out).toMatch(/\.layout-toggle-btn\.active\s*\{[^}]*color:\s*var\(--fg-on-emphasis\)/);
+  });
+
   it("does not declare a .file-block-header rule (Pierre owns the header now)", () => {
     expect(html()).not.toContain(".file-block-header");
   });
@@ -124,8 +148,8 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.annotation-block\s*\{[^}]*font-family:[^}]*-apple-system/);
   });
 
-  it("preserves the blue left accent on the annotation card", () => {
-    expect(html()).toMatch(/\.annotation-block\s*\{[^}]*border-left:\s*3px solid #58a6ff/);
+  it("preserves the blue left accent on the annotation card via the shared theme token", () => {
+    expect(html()).toMatch(/\.annotation-block\s*\{[^}]*border-left:\s*3px solid var\(--border-accent\)/);
   });
 
   it("styles inner markdown elements (headings, lists, tables, blockquotes, links, code, pre)", () => {
@@ -157,8 +181,12 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.picker-scrim\s*\{[^}]*position:\s*fixed/);
     expect(out).toMatch(/\.picker-card\s*\{/);
     expect(out).toMatch(/\.picker-row\s*\{/);
-    expect(out).toMatch(/\.picker-row\.current\s*\{[^}]*background:\s*#1f6feb22/);
-    expect(out).toMatch(/\.picker-row\.cursor\s*\{[^}]*#1f6feb33/);
+    // current/cursor rows pull from theme Tier 2 tokens (Issue #57). Cursor
+    // additionally gets the border-accent left edge per the shared "cursor
+    // vs current" treatment.
+    expect(out).toMatch(/\.picker-row\.current\s*\{[^}]*background:\s*var\(--bg-accent-current\)/);
+    expect(out).toMatch(/\.picker-row\.cursor\s*\{[^}]*background:\s*var\(--bg-accent-cursor\)/);
+    expect(out).toMatch(/\.picker-row\.cursor\s*\{[^}]*border-left-color:\s*var\(--border-accent\)/);
   });
 
   it("constrains the annotation card to its host column so long inline content cannot push it wider (Issue #47)", () => {

@@ -118,6 +118,7 @@ describe("buildRangeBackgroundCSS", () => {
       [ann({ side: "additions", line_start: 5, line_end: 7 })],
       "src/main.ts",
     );
+    // fg.accent (#58a6ff) is pinned per ADR 0008; sourced from the theme module.
     expect(css).toContain("box-shadow: inset 3px 0 0 #58a6ff");
     expect(css).toContain("addition");
   });
@@ -131,13 +132,14 @@ describe("buildRangeBackgroundCSS", () => {
     expect(css).toContain("deletion");
   });
 
-  it("preserves the existing tint when emitting the gutter stripe", () => {
+  it("emits the bg.accent.range tint (theme module) alongside the gutter stripe", () => {
     const css = buildRangeBackgroundCSS(
       [ann({ side: "additions", line_start: 1, line_end: 2 })],
       "src/main.ts",
     );
     expect(css).toContain("background-image");
-    expect(css).toContain("rgba(88, 166, 255, 0.12)");
+    // bg.accent.range = blue.4 @ 0.15 (Issue #57 / Primer Tier 2 token).
+    expect(css).toContain("rgba(56, 139, 253, 0.15)");
     expect(css).toContain("box-shadow");
   });
 });
