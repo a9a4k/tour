@@ -75,12 +75,25 @@ describe("buildRangeBackgroundCSS", () => {
     expect(buildRangeBackgroundCSS([ann({ file: "other.ts" })], "src/main.ts")).toBe("");
   });
 
-  it("returns empty string when only single-line annotations exist", () => {
+  it("emits the stripe + tint for a single-line additions annotation", () => {
     const css = buildRangeBackgroundCSS(
-      [ann({ line_start: 5, line_end: 5 }), ann({ id: "a2", line_start: 9, line_end: 9 })],
+      [ann({ side: "additions", line_start: 5, line_end: 5 })],
       "src/main.ts",
     );
-    expect(css).toBe("");
+    expect(css).toContain('[data-line="5"]');
+    expect(css).toContain("addition");
+    expect(css).toContain("box-shadow: inset 3px 0 0 #58a6ff");
+    expect(css).toContain("background-image");
+  });
+
+  it("emits the stripe + tint for a single-line deletions annotation on the deletions side", () => {
+    const css = buildRangeBackgroundCSS(
+      [ann({ side: "deletions", line_start: 5, line_end: 5 })],
+      "src/main.ts",
+    );
+    expect(css).toContain('[data-line="5"]');
+    expect(css).toContain("deletion");
+    expect(css).not.toContain('[data-line-type="addition"]');
   });
 
   it("emits a [data-line] selector for every line in a multi-line additions range", () => {

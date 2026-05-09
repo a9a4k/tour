@@ -36,17 +36,17 @@ const RANGE_ACCENT = theme.fg.accent;
 
 /**
  * Build a CSS string targeting Pierre's per-line `[data-line]` markers for
- * every line in every multi-line annotation range, painting two cues over
- * each annotated row: the subtle blue tint as the row background, plus a
- * 3px accent-coloured gutter stripe at the left edge — matching the
+ * every line in every annotation range, painting two cues over each
+ * annotated row: the subtle blue tint as the row background, plus a 3px
+ * accent-coloured gutter stripe at the left edge — matching the
  * annotation card's accent border so card and range read as one
  * column-aligned bracket (ADR 0008's two-cue rule). Tint and accent are
  * sourced from the shared theme module so TUI and SPA stay in lockstep.
  *
- * Single-line annotations are skipped: Pierre's built-in `lineAnnotations`
- * already paints its own gutter marker for the anchor row, and stacking
- * our 3px stripe on top would visually double up. Multi-line ranges have
- * no such built-in marker on the non-anchor rows, so they need both cues.
+ * Single- and multi-line ranges are treated identically. Pierre's
+ * `lineAnnotations` injects a gutter buffer + a `[data-line-annotation]`
+ * row beneath the anchor (the card body) but paints no marker on the
+ * anchor `[data-line]` row itself, so we own the row-edge cue uniformly.
  *
  * Pierre renders each diff inside a shadow root, so this CSS must be
  * injected via the FileDiff `unsafeCSS` option (which Pierre slots into
@@ -57,7 +57,6 @@ export function buildRangeBackgroundCSS(annotations: Annotation[], file: string)
   const deletionLines = new Set<number>();
   for (const ann of annotations) {
     if (ann.file !== file) continue;
-    if (ann.line_start === ann.line_end) continue;
     const target = ann.side === "additions" ? additionLines : deletionLines;
     for (let line = ann.line_start; line <= ann.line_end; line++) target.add(line);
   }
