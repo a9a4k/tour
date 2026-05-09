@@ -101,10 +101,6 @@ function compareSiblings<F extends FileEntry>(a: TreeNode<F>, b: TreeNode<F>): n
   return a.displayName.localeCompare(b.displayName);
 }
 
-interface Rollup {
-  count: number;
-}
-
 function rollupAnnotations<F extends FileEntry>(
   node: TreeNode<F>,
   counts: Record<string, number>,
