@@ -499,7 +499,6 @@ function FolderRow({ row, onToggle }: FolderRowProps): React.JSX.Element {
     >
       <span className="folder-icon">{caret}</span>
       <span className="folder-name">{row.displayName}</span>
-      {row.annotationCount > 0 ? <span className="badge">{row.annotationCount}</span> : null}
     </button>
   );
 }
@@ -523,9 +522,6 @@ function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.
     >
       <Icon className={`status-icon ${statusClass}`} />
       <span className="file-name">{row.displayName}</span>
-      {row.file.classification?.reason ? (
-        <span className="reason-tag">{row.file.classification.reason}</span>
-      ) : null}
       {row.annotationCount > 0 ? <span className="badge">{row.annotationCount}</span> : null}
     </button>
   );

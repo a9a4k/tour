@@ -49,10 +49,6 @@ describe("spa shell html()", () => {
     expect(html()).not.toContain(".file-block-header");
   });
 
-  it("still styles the sidebar reason tag", () => {
-    expect(html()).toMatch(/\.reason-tag\s*\{[^}]*font-style:\s*italic/);
-  });
-
   it("replaces the letter-badge .file-icon rules with Octicon-driven .status-icon rules (Issue #62)", () => {
     const out = html();
     // Letter-badge rules are gone.
