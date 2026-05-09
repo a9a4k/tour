@@ -1,6 +1,7 @@
 import type { PlannedRow, DiffRow } from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
+import { annotationCardSlot } from "./annotation-placement.js";
 import { DiffLine } from "./DiffLine.js";
 import { getSyntaxStyle, inferFiletype } from "./syntax.js";
 
@@ -53,12 +54,23 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
           );
         }
         if (row.kind === "annotation") {
-          return (
+          const slot = annotationCardSlot(layout, row.annotation.side);
+          const card = (
             <AnnotationCard
               key={`ann-${row.id}`}
               annotation={row.annotation}
               isCurrent={row.id === currentAnnotationId}
             />
+          );
+          if (slot === "full") return card;
+          // Match the per-row split shape (two 50% cells) so the card lines
+          // up with the diff column it discusses. Empty sibling reserves the
+          // opposite half so subsequent rows keep their column alignment.
+          return (
+            <box key={`ann-${row.id}`} flexDirection="row" width="100%">
+              <box width="50%">{slot === "left" ? card : null}</box>
+              <box width="50%">{slot === "right" ? card : null}</box>
+            </box>
           );
         }
 
