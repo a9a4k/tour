@@ -68,4 +68,8 @@ describe("spa shell html()", () => {
   it("dims disabled pill chevrons so boundary state is visible", () => {
     expect(html()).toMatch(/\.sequence-pill\s+\.pill-chevron:disabled/);
   });
+
+  it("declares color-scheme: dark so native scrollbars render in dark", () => {
+    expect(html()).toMatch(/html\s*\{[^}]*color-scheme:\s*dark/);
+  });
 });
