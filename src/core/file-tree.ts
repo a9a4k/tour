@@ -168,6 +168,36 @@ export function revealAncestors<F extends FileEntry>(
   return found ? path : [];
 }
 
+export interface RevealResult<F extends FileEntry> {
+  collapsedFolders: ReadonlySet<string>;
+  rows: VisibleRow<F>[];
+  rowIdx: number;
+}
+
+export function revealAndLocate<F extends FileEntry>(
+  root: FolderNode<F>,
+  collapsedFolders: ReadonlySet<string>,
+  annotationCounts: Record<string, number>,
+  filePath: string,
+): RevealResult<F> | null {
+  const ancestors = revealAncestors(root, filePath);
+  let next = collapsedFolders;
+  let revealed = false;
+  for (const a of ancestors) {
+    if (next.has(a)) {
+      if (!revealed) {
+        next = new Set(next);
+        revealed = true;
+      }
+      (next as Set<string>).delete(a);
+    }
+  }
+  const rows = flatten(root, next, annotationCounts);
+  const rowIdx = rows.findIndex((r) => r.kind === "file" && r.path === filePath);
+  if (rowIdx === -1) return null;
+  return { collapsedFolders: next, rows, rowIdx };
+}
+
 function walk<F extends FileEntry>(
   node: TreeNode<F>,
   filePath: string,

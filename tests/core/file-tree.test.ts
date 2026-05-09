@@ -4,6 +4,7 @@ import {
   compress,
   flatten,
   revealAncestors,
+  revealAndLocate,
 } from "../../src/core/file-tree.js";
 
 interface F {
@@ -142,5 +143,44 @@ describe("file-tree", () => {
     const a = rows([f("b/x.ts"), f("a/y.ts"), f("README.md"), f("a/x.ts")]);
     const b = rows([f("README.md"), f("a/x.ts"), f("b/x.ts"), f("a/y.ts")]);
     expect(a.map((r) => r.path)).toEqual(b.map((r) => r.path));
+  });
+
+  describe("revealAndLocate", () => {
+    it("returns the file row index without altering the collapsed set when ancestors are already revealed", () => {
+      const tree = compress(buildTree([f("src/a.ts"), f("src/b.ts"), f("README.md")]));
+      const collapsed: ReadonlySet<string> = new Set();
+      const out = revealAndLocate(tree, collapsed, {}, "src/b.ts");
+      expect(out).not.toBeNull();
+      expect(out!.collapsedFolders).toBe(collapsed);
+      expect(out!.rowIdx).toBe(2);
+      expect(out!.rows[out!.rowIdx]).toMatchObject({ kind: "file", path: "src/b.ts" });
+    });
+
+    it("removes ancestor folders from the collapsed set and returns the post-reveal row index", () => {
+      const tree = compress(buildTree([f("src/web/x.ts"), f("src/core/y.ts"), f("src/core/z.ts")]));
+      const collapsed = new Set(["src", "src/core"]);
+      const out = revealAndLocate(tree, collapsed, {}, "src/core/y.ts");
+      expect(out).not.toBeNull();
+      expect(out!.collapsedFolders).not.toBe(collapsed);
+      expect(out!.collapsedFolders.has("src")).toBe(false);
+      expect(out!.collapsedFolders.has("src/core")).toBe(false);
+      expect(out!.rows[out!.rowIdx]).toMatchObject({ kind: "file", path: "src/core/y.ts" });
+    });
+
+    it("returns null when the file is not in the tree", () => {
+      const tree = compress(buildTree([f("src/a.ts")]));
+      expect(revealAndLocate(tree, new Set(), {}, "missing.ts")).toBeNull();
+    });
+
+    it("preserves unrelated collapsed folders when revealing a file's ancestors", () => {
+      const tree = compress(
+        buildTree([f("src/a.ts"), f("src/b.ts"), f("docs/intro.md"), f("docs/api.md")]),
+      );
+      const collapsed = new Set(["src", "docs"]);
+      const out = revealAndLocate(tree, collapsed, {}, "docs/api.md");
+      expect(out).not.toBeNull();
+      expect(out!.collapsedFolders.has("src")).toBe(true);
+      expect(out!.collapsedFolders.has("docs")).toBe(false);
+    });
   });
 });

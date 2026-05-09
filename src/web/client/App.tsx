@@ -65,6 +65,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [layout, setLayout] = useState<Layout>("split");
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -191,23 +192,40 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   );
 
   // Re-anchor cursor by id whenever annotations change. On first sight of a
-  // non-empty list, set cursor to first and scroll its card into view. On SSE
-  // reload with the same id present, do nothing (silent re-anchor). If the id
-  // is gone, reset to 0 silently.
+  // non-empty list, set cursor to first, anchor the tree highlight to its
+  // file, reveal ancestors, and scroll its card into view. On SSE reload with
+  // the same id present, do nothing. If the id is gone, re-anchor to the new
+  // first annotation (and re-anchor the tree to it too).
   useEffect(() => {
     if (annotations.length === 0) {
       if (currentAnnotationId !== null) setCurrentAnnotationId(null);
+      if (selectedFile !== null) setSelectedFile(null);
       return;
     }
     if (currentAnnotationId === null) {
       const first = annotations[0];
       setCurrentAnnotationId(first.id);
+      setSelectedFile(first.file);
+      revealFileAncestors(first.file);
       scrollAnnotationIntoView(first.id);
       return;
     }
     const found = annotations.some((a) => a.id === currentAnnotationId);
-    if (!found) setCurrentAnnotationId(annotations[0].id);
-  }, [annotations, currentAnnotationId, scrollAnnotationIntoView]);
+    if (!found) {
+      const first = annotations[0];
+      setCurrentAnnotationId(first.id);
+      setSelectedFile(first.file);
+      revealFileAncestors(first.file);
+    }
+  }, [annotations, currentAnnotationId, selectedFile, revealFileAncestors, scrollAnnotationIntoView]);
+
+  // Keep the selected sidebar row visible. block:"nearest" — already-visible
+  // rows don't jump.
+  useEffect(() => {
+    if (selectedFile === null) return;
+    const el = sidebarRowRefs.current.get(selectedFile);
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [selectedFile]);
 
   // Global keydown: n / p step the sequence cursor; l flips diff layout.
   // No-op when focus is in an editable element so the shortcuts never steal
@@ -291,6 +309,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 key={`f:${row.path}`}
                 row={row}
                 selected={selectedFile === row.path}
+                registerRef={(el) => {
+                  if (el) sidebarRowRefs.current.set(row.path, el);
+                  else sidebarRowRefs.current.delete(row.path);
+                }}
                 onSelect={(name) => {
                   setSelectedFile(name);
                   const el = fileRefs.current.get(name);
@@ -396,12 +418,14 @@ interface FileRowProps {
   row: Extract<VisibleRow<DiffFileInfo>, { kind: "file" }>;
   selected: boolean;
   onSelect: (name: string) => void;
+  registerRef: (el: HTMLButtonElement | null) => void;
 }
 
-function FileRow({ row, selected, onSelect }: FileRowProps): React.JSX.Element {
+function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.JSX.Element {
   const icon = fileStatusIcon(row.file.type);
   return (
     <button
+      ref={registerRef}
       type="button"
       className={`file-entry${selected ? " selected" : ""}`}
       style={{ paddingLeft: 16 + row.depth * 12 }}

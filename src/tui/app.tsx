@@ -11,6 +11,7 @@ import {
   compress,
   flatten,
   revealAncestors,
+  revealAndLocate,
   type VisibleRow,
 } from "../core/file-tree.js";
 import { dispatchKey } from "./keymap.js";
@@ -100,6 +101,7 @@ function App(props: AppProps) {
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const files = useMemo(
     () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
@@ -128,19 +130,42 @@ function App(props: AppProps) {
 
   const rawSegments = useMemo(() => splitRawDiffByFile(props.diff), [props.diff]);
 
-  // Re-anchor the cursor by id across annotation reloads.
+  // Re-anchor the cursor by id across annotation reloads. On first sight of a
+  // non-empty list (or when the previously-current id is gone), pick the first
+  // annotation, reveal its file's ancestor folders, and select that file's
+  // row in the sidebar — so the highlight always agrees with the diff being
+  // shown. Reads of tree/collapsedFolders/etc. are intentionally not in deps
+  // so manual fold/expand doesn't re-anchor the cursor.
   useEffect(() => {
     if (props.annotations.length === 0) {
       if (currentAnnotationId !== null) setCurrentAnnotationId(null);
       return;
     }
     if (
-      currentAnnotationId === null ||
-      !props.annotations.some((a) => a.id === currentAnnotationId)
+      currentAnnotationId !== null &&
+      props.annotations.some((a) => a.id === currentAnnotationId)
     ) {
-      setCurrentAnnotationId(props.annotations[0].id);
+      return;
     }
+    const first = props.annotations[0];
+    setCurrentAnnotationId(first.id);
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
+    if (!located) return;
+    if (located.collapsedFolders !== collapsedFolders) {
+      setCollapsedFolders(located.collapsedFolders as Set<string>);
+    }
+    setSelectedRowIdx(located.rowIdx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.annotations, currentAnnotationId]);
+
+  // Keep the selected sidebar row visible: whenever the row index or the row
+  // list changes, ask the scrollbox to scroll the row into view (block:nearest
+  // semantics — already-visible rows don't move).
+  useEffect(() => {
+    const row = visibleRows[safeRowIdx];
+    if (!row || !sidebarScrollRef.current) return;
+    sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
+  }, [safeRowIdx, visibleRows]);
 
   const currentAnnotationIdx = useMemo(() => {
     if (props.annotations.length === 0) return -1;
@@ -174,21 +199,15 @@ function App(props: AppProps) {
 
   const jumpToAnnotation = (ann: Annotation) => {
     setCurrentAnnotationId(ann.id);
-    const ancestors = revealAncestors(tree, ann.file);
-    const needsReveal = ancestors.some((a) => collapsedFolders.has(a));
-    let nextRows = visibleRows;
-    if (needsReveal) {
-      const nextCollapsed = new Set(collapsedFolders);
-      for (const a of ancestors) nextCollapsed.delete(a);
-      setCollapsedFolders(nextCollapsed);
-      nextRows = flatten(tree, nextCollapsed, annotationCounts);
-    }
-    const newIdx = nextRows.findIndex(
-      (r) => r.kind === "file" && r.path === ann.file,
-    );
-    if (newIdx >= 0 && newIdx !== safeRowIdx) {
-      setSelectedRowIdx(newIdx);
-      if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, ann.file);
+    if (located) {
+      if (located.collapsedFolders !== collapsedFolders) {
+        setCollapsedFolders(located.collapsedFolders as Set<string>);
+      }
+      if (located.rowIdx !== safeRowIdx) {
+        setSelectedRowIdx(located.rowIdx);
+        if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
+      }
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
   };
@@ -328,13 +347,14 @@ function App(props: AppProps) {
           title=" Files "
           flexDirection="column"
         >
-          <scrollbox height="100%">
+          <scrollbox ref={sidebarScrollRef} height="100%">
             {visibleRows.map((row, idx) => {
               const isSelected = idx === safeRowIdx;
               if (row.kind === "folder") {
                 return (
                   <text
                     key={`d:${row.path}`}
+                    id={`row-${row.path}`}
                     fg={isSelected ? "black" : "cyan"}
                     bg={isSelected ? "cyan" : undefined}
                     bold={isSelected}
@@ -346,6 +366,7 @@ function App(props: AppProps) {
               return (
                 <text
                   key={`f:${row.path}`}
+                  id={`row-${row.path}`}
                   fg={isSelected ? "black" : "white"}
                   bg={isSelected ? "cyan" : undefined}
                   bold={isSelected}
