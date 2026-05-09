@@ -80,21 +80,8 @@ export function html(initialTourId?: string): string {
     margin-bottom: 24px;
     border: 1px solid #30363d;
     border-radius: 6px;
-    overflow: clip;
     scroll-margin-top: 16px;
-  }
-  .file-block-header {
-    background: #161b22;
-    padding: 8px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    border-bottom: 1px solid #30363d;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    position: relative;
   }
   .copy-path {
     background: transparent;
@@ -113,10 +100,6 @@ export function html(initialTourId?: string): string {
   }
   .copy-path:hover { color: #c9d1d9; }
   .copy-path:focus-visible { outline: 1px solid #58a6ff; outline-offset: 2px; border-radius: 2px; }
-  .file-block-header .stat { color: #8b949e; font-weight: normal; font-size: 12px; margin-left: auto; }
-  .file-block-header .stat .add { color: #3fb950; }
-  .file-block-header .stat .del { color: #f85149; }
-  .file-block-header .reason { color: #8b949e; font-style: italic; font-size: 12px; }
   .annotation-block {
     background: #1c2128;
     border-left: 3px solid #58a6ff;

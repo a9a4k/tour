@@ -4,13 +4,23 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
 import type { Annotation, AnnotationMetadata, TourData, TourSummary } from "./types.js";
 import { toPierreLineAnnotations } from "./annotations.js";
-import { fileStatusIcon, countAnnotationsForFile, fileStat } from "./file-status.js";
+import { fileStatusIcon, countAnnotationsForFile } from "./file-status.js";
+
+const STICKY_HEADER_CSS = `
+  [data-diffs-header=default] {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    cursor: pointer;
+  }
+`;
 
 const DIFF_OPTIONS = {
   diffStyle: "unified" as const,
   theme: { dark: "github-dark-default", light: "github-light-default" } as const,
   themeType: "dark" as const,
   hunkSeparators: "metadata" as const,
+  unsafeCSS: STICKY_HEADER_CSS,
 };
 
 interface AppProps {
@@ -176,9 +186,9 @@ interface FileBlockProps {
 }
 
 function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockProps): React.JSX.Element {
-  const isBinary = modelFile?.classification?.reason === "binary";
+  const reason = modelFile?.classification?.reason;
   const startCollapsed =
-    isBinary ||
+    reason === "binary" ||
     (modelFile?.classification?.collapsed === true &&
       !annotations.some((a) => a.file === fileDiff.name));
   const [collapsed, setCollapsed] = useState(startCollapsed);
@@ -188,39 +198,31 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
     [annotations, fileDiff.name],
   );
 
-  const stat = fileStat(modelFile?.hunks ?? []);
+  const options = useMemo(() => ({ ...DIFF_OPTIONS, collapsed }), [collapsed]);
+
+  const onWrapperClick = (e: React.MouseEvent) => {
+    const path = (e.nativeEvent as MouseEvent).composedPath();
+    const onHeader = path.some(
+      (n) => n instanceof HTMLElement && n.dataset.diffsHeader != null,
+    );
+    if (onHeader) setCollapsed((c) => !c);
+  };
 
   return (
-    <div className="file-block" ref={registerRef}>
-      <div
-        className="file-block-header"
-        style={isBinary ? undefined : { cursor: "pointer" }}
-        onClick={() => {
-          if (!isBinary) setCollapsed((c) => !c);
-        }}
-      >
-        <span>{fileDiff.name}</span>
-        <CopyPathButton path={fileDiff.name} />
-        {modelFile?.classification?.reason ? (
-          <span className="reason">{modelFile.classification.reason}</span>
-        ) : null}
-        {isBinary ? (
-          <span className="stat">Binary file changed</span>
-        ) : (
-          <span className="stat">
-            <span className="add">+{stat.add}</span> <span className="del">-{stat.del}</span>
-          </span>
+    <div className="file-block" ref={registerRef} onClick={onWrapperClick}>
+      <FileDiff<AnnotationMetadata>
+        fileDiff={fileDiff}
+        options={options}
+        lineAnnotations={lineAnns}
+        renderAnnotation={renderAnnotationContent}
+        renderHeaderMetadata={() => (
+          <>
+            {reason ? <span className="reason-tag">{reason}</span> : null}
+            <CopyPathButton path={fileDiff.name} />
+          </>
         )}
-      </div>
-      {isBinary || collapsed ? null : (
-        <FileDiff<AnnotationMetadata>
-          fileDiff={fileDiff}
-          options={DIFF_OPTIONS}
-          lineAnnotations={lineAnns}
-          renderAnnotation={renderAnnotationContent}
-          disableWorkerPool
-        />
-      )}
+        disableWorkerPool
+      />
     </div>
   );
 }
