@@ -220,7 +220,7 @@ export function html(initialTourId?: string): string {
   .annotation-block {
     border: 2px solid transparent;
     border-left: 3px solid var(--border-accent);
-    margin: 4px 16px;
+    margin: 4px 16px 4px 0;
     padding: 8px 12px;
     border-radius: 4px;
     font-size: 13px;

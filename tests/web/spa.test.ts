@@ -176,6 +176,16 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.annotation-block\s*\{[^}]*border-left:\s*3px solid var\(--border-accent\)/);
   });
 
+  it("zeroes the annotation card's left margin so the accent border column-aligns with the gutter stripe (Issue #68)", () => {
+    const out = html();
+    // The card no longer offsets its border inward — left margin is 0 so the
+    // border-left lands at the same x-column as the gutter accent stripe
+    // painted by `buildRangeBackgroundCSS` on the annotated [data-line] rows.
+    expect(out).toMatch(/\.annotation-block\s*\{[^}]*margin:\s*4px\s+16px\s+4px\s+0/);
+    // Old symmetric `margin: 4px 16px` (which inset the border 16px) is gone.
+    expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*margin:\s*4px\s+16px\s*;/);
+  });
+
   it("styles inner markdown elements (headings, lists, tables, blockquotes, links, code, pre)", () => {
     const out = html();
     expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+h2\b/);
