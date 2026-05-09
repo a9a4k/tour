@@ -86,6 +86,7 @@ function fileEntryLabel(
 }
 
 function fileCardBody(
+  fileName: string,
   collapsed: boolean,
   hasHunks: boolean,
   rows: PlannedRow[],
@@ -96,6 +97,7 @@ function fileCardBody(
   if (!hasHunks) return <text fg="gray">{"[no textual changes]"}</text>;
   return (
     <DiffRows
+      fileName={fileName}
       rows={rows}
       layout={layout}
       currentAnnotationId={currentAnnotationId}
@@ -554,6 +556,7 @@ function App(props: AppProps) {
                   >
                     <text>{fileEntryLabel(file, liveClassifications, liveAnnotations)}</text>
                     {fileCardBody(
+                      file.name,
                       collapsed,
                       file.hunks.length > 0,
                       rows,
