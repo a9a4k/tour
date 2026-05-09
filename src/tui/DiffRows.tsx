@@ -1,10 +1,8 @@
 import type { PlannedRow, DiffRow } from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
-import { DiffLine, ACCENT_FG, GUTTER_CHAR, TINT_BG } from "./DiffLine.js";
+import { DiffLine } from "./DiffLine.js";
 import { getSyntaxStyle, inferFiletype } from "./syntax.js";
-
-export { ACCENT_FG, GUTTER_CHAR, TINT_BG };
 
 interface DiffRowsProps {
   fileName: string;

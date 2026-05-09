@@ -1,6 +1,5 @@
 import type { Annotation } from "../core/types.js";
 import { theme } from "../core/theme.js";
-import { ACCENT_FG } from "./DiffRows.js";
 
 interface AnnotationCardProps {
   annotation: Annotation;
@@ -18,12 +17,12 @@ export function AnnotationCard({ annotation, isCurrent }: AnnotationCardProps) {
     <box
       id={`annotation-${annotation.id}`}
       borderStyle="single"
-      borderColor={ACCENT_FG}
+      borderColor={theme.fg.accent}
       backgroundColor={isCurrent ? theme.bg.accentCurrent.tui : undefined}
       flexDirection="column"
       paddingX={1}
     >
-      <text fg={ACCENT_FG} bold>
+      <text fg={theme.fg.accent} bold>
         [{annotation.side}] {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
       </text>
       <text fg={theme.fg.default} wrapMode="word">{annotation.body}</text>
