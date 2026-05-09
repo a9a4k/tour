@@ -4,6 +4,14 @@ Local code review tool with AI annotations: a TUI and a webapp over a pinned git
 
 ## Install
 
+Homebrew (macOS, Linux):
+
+```sh
+brew install a9a4k/tap/tour
+```
+
+npm / bun:
+
 ```sh
 npm i -g tourdiff
 # or
