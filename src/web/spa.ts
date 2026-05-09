@@ -72,11 +72,11 @@ export function html(initialTourId?: string): string {
     white-space: nowrap;
     color: var(--fg-muted);
   }
-  .file-icon { width: 16px; text-align: center; font-weight: bold; font-size: 11px; }
-  .file-icon.A { color: var(--fg-success); }
-  .file-icon.M { color: var(--fg-attention); }
-  .file-icon.D { color: var(--fg-danger); }
-  .file-icon.R { color: var(--fg-done); }
+  .status-icon { width: 16px; height: 16px; flex-shrink: 0; color: currentColor; }
+  .status-icon.added { color: #3fb950; }
+  .status-icon.modified { color: #d29922; }
+  .status-icon.deleted { color: #f85149; }
+  .status-icon.renamed { color: #a371f7; }
   .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .reason-tag { color: var(--fg-muted); font-size: 11px; font-style: italic; }
   .badge {

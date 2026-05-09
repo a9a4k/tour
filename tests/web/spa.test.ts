@@ -53,6 +53,24 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.reason-tag\s*\{[^}]*font-style:\s*italic/);
   });
 
+  it("replaces the letter-badge .file-icon rules with Octicon-driven .status-icon rules (Issue #62)", () => {
+    const out = html();
+    // Letter-badge rules are gone.
+    expect(out).not.toMatch(/\.file-icon\.A\b/);
+    expect(out).not.toMatch(/\.file-icon\.M\b/);
+    expect(out).not.toMatch(/\.file-icon\.D\b/);
+    expect(out).not.toMatch(/\.file-icon\.R\b/);
+    // Base sizing: 16x16 box, never compressed by flex siblings.
+    expect(out).toMatch(/\.status-icon\s*\{[^}]*width:\s*16px/);
+    expect(out).toMatch(/\.status-icon\s*\{[^}]*height:\s*16px/);
+    expect(out).toMatch(/\.status-icon\s*\{[^}]*flex-shrink:\s*0/);
+    // Per-status colors lifted from the GitHub diff palette.
+    expect(out).toMatch(/\.status-icon\.added\s*\{[^}]*color:\s*#3fb950/);
+    expect(out).toMatch(/\.status-icon\.modified\s*\{[^}]*color:\s*#d29922/);
+    expect(out).toMatch(/\.status-icon\.deleted\s*\{[^}]*color:\s*#f85149/);
+    expect(out).toMatch(/\.status-icon\.renamed\s*\{[^}]*color:\s*#a371f7/);
+  });
+
   it("does not inline highlight.js theme css anymore", () => {
     expect(html()).not.toContain("hljs-keyword");
     expect(html()).not.toContain("highlight.js");
