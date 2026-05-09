@@ -117,8 +117,7 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
 
         const text = row.type === "deletion" ? row.leftText : row.rightText;
         const isPlusMinus = row.type === "addition" || row.type === "deletion";
-        const unifiedDiffBg: "addition" | "deletion" | undefined =
-          row.type === "addition" ? "addition" : row.type === "deletion" ? "deletion" : undefined;
+        const unifiedDiffBg = isPlusMinus ? row.type : undefined;
         return (
           <DiffLine
             key={key}
