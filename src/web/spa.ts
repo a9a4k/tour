@@ -60,7 +60,7 @@ export function html(initialTourId?: string): string {
     font-size: 11px;
     margin-left: auto;
   }
-  .app-main { flex: 1; overflow-y: auto; padding: 16px; }
+  .app-main { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
   .banner {
     background: #d292221a;
     border: 1px solid #d29922;
@@ -71,6 +71,7 @@ export function html(initialTourId?: string): string {
   }
   .tour-header {
     margin-bottom: 16px;
+    padding-top: 16px;
     padding-bottom: 12px;
     border-bottom: 1px solid #30363d;
   }
@@ -114,6 +115,7 @@ export function html(initialTourId?: string): string {
   .empty {
     text-align: center;
     padding: 48px;
+    padding-top: 16px;
     color: #8b949e;
   }
 </style>

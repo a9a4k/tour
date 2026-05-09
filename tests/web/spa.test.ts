@@ -38,4 +38,18 @@ describe("spa shell html()", () => {
     expect(html()).not.toContain("function renderDiff");
     expect(html()).not.toContain("highlightedLines");
   });
+
+  it("removes top padding from .app-main scroll container so sticky header pins flush", () => {
+    const out = html();
+    expect(out).toMatch(/\.app-main\s*\{[^}]*padding:\s*0\s+16px\s+16px/);
+    expect(out).not.toMatch(/\.app-main\s*\{[^}]*padding:\s*16px\s*;/);
+  });
+
+  it("preserves visual top spacing via padding-top on .tour-header", () => {
+    expect(html()).toMatch(/\.tour-header\s*\{[^}]*padding-top:\s*16px/);
+  });
+
+  it("preserves visual top spacing on empty/loading/error state via padding-top on .empty", () => {
+    expect(html()).toMatch(/\.empty\s*\{[^}]*padding-top:\s*16px/);
+  });
 });
