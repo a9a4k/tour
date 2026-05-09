@@ -1,0 +1,49 @@
+# Bidirectional review via hook-spawned reply-agent + pickup
+
+ADR 0003 established that a Tour pins to a fixed `(base_sha, head_sha)` and Annotations don't re-anchor across rebases. The original v1 framing layered another constraint on top: "agents only author, the UI is read-only." That kept the system small but made the loop one-way — there was no way for a human to push back on an AI's review or ask a clarifying question without leaving Tour.
+
+We pivot to bidirectional. Both agents and humans author Annotations and Replies. A new ephemeral, capability-bounded **reply-agent** is spawned by the renderer's existing fs watcher whenever a human-authored Annotation lands; it can only call `tour annotate --as-agent --reply-to <id>` — it cannot edit code, create Tours, or run arbitrary commands. The reply-agent's invocation is delegated to a per-agent adapter shell script (`~/.config/tour/agents/<name>.sh`), keeping Tour itself agent-agnostic; MVP ships adapters for claude / codex / gemini / opencode / pi / copilot. Code changes happen *outside* the conversation: when the human is satisfied, they hand the conversation tree to their normal **main-agent** session via `tour pickup <id> --json`, which emits the raw Thread tree for the main-agent to act on. The pinned-SHA invariant is preserved unconditionally — the reply-agent literally lacks the tools to move it.
+
+Threads do not carry across Tours in v1. When a Tour closes, its Threads close with it; the next Tour at the next SHA starts fresh. Continuity across Tours is the agent's job (it re-references prior concerns in prose), not Tour's data model. This holds the line from ADR 0003 — the simplification of "pinned only, no re-anchoring" survives the addition of conversation.
+
+## Considered Options
+
+- **Round-based protocol with formal phases.** A Tour has explicit `discussing` / `ready-to-fix` / `closed` states; convergence (every Thread replied to by both sides) gates the transition. Rejected: adds a state machine the human has to manage. The same outcome is reachable implicitly — `tour close` is the de-facto round boundary — without naming it as a first-class concept.
+
+- **Tour migrates forward when AI fixes code mid-conversation.** `head_sha` updates, Annotations re-anchor against the new diff. Rejected: contradicts ADR 0003. Re-anchoring heuristics are brittle and the "the diff is pinned" property is a load-bearing simplification we don't want to give up for marginal continuity gains.
+
+- **Threads carry across Tours.** Tour-A closes with open Threads → Tour-B at the new SHA imports them as carried Threads, surfaced inline as ghost Annotations + a side panel. Rejected for v1 (was on the table as Q4 stance Y, cut at Q11): adds a cross-Tour data model (`replies_to: {tour, id}` pointers, ghost-Annotation rendering, opt-in `tour create --carry`), and the simpler "Threads die with their Tour" rule is sufficient — agents can re-raise prior concerns in prose at the new SHA. Re-add later if "I forgot to reply" turns out to bite.
+
+- **MCP push (server-pushed events, sampling).** Tour exposes itself as an MCP server; `resources/subscribe` + `notifications/resources/updated` notify the client of new Annotations, and `sampling/createMessage` lets Tour ask the client's LLM to respond. Rejected for MVP: the protocol fully supports it, but Claude Code does not currently declare the `sampling` capability and Codex's MCP support is similarly limited. Without sampling, the human still has to type "respond" to drive a turn — half a loop. Reachable later as an additive transport once client support matures.
+
+- **Long-running Agent SDK daemon (`tour respond --watch`).** A second process the user starts in tmux holds a single agent session, watches `.tour/<id>/`, replies via the SDK in-session. Rejected: the user has to manage a daemon; session-context-carries-across-replies is a real benefit but doesn't outweigh the operational cost for MVP. Rehabilitate if hook-spawned cold-start cost becomes a real complaint.
+
+- **Hook-spawned reply-agents with capability boundary** (chosen). Tour's existing renderer watcher (`src/core/watcher.ts`) detects new human-authored Annotations and `exec`s a per-agent adapter script. The agent runs cold each time, capability-bounded by its CLI's native allow-list, writes its reply via `tour annotate`, exits. Single-flight per Tour via `.reply-lock.json` (also serves as the in-flight status pill source — see "Reply streaming" decision in CONTEXT.md). Code changes happen *only* via the user's existing main-agent session, invited when ready via `tour pickup`.
+
+- **Token-by-token streaming** of agent replies into the renderer. Rejected: requires a new IPC channel between hook and renderer (socket / named pipe / streaming buffer file), or breaks `annotations.jsonl`'s append-only invariant via a draft-then-edit mechanic. The lockfile-based status pill captures the actual user need ("is the agent on it?") for ~5% of the implementation cost. Reachable later as additive enhancement.
+
+- **Resolution status as a first-class field** (`accepted` / `dismissed` / `deferred`). Rejected: tempts the system into being wrong about consent. The conversation tree IS the truth; the main-agent reads natural language and decides. No `agree:`/`dismiss:` prefix conventions either.
+
+- **Multi-layer agent resolution** (env var → tour.toml → global config → PATH auto-detect). Rejected: cut to layer 1 only — a `--reply-agent <name>` CLI flag on `tour tui` and `tour serve`. No env var, no per-tour config, no auto-detect. Discoverable via `--help`, aligns with ADR 0002 (CLI-first), no invisible global state. Disabled by default — Tour functions fully as a static review tool when the flag is omitted.
+
+## Consequences
+
+- **Pinned-SHA invariant is preserved unconditionally.** The reply-agent's runtime tool restriction means the SHA cannot move during a conversation — not by policy, but by capability. ADR 0003 holds without amendment.
+
+- **Tour stays agent-agnostic.** The binary contains zero claude/codex/gemini-specific code. All agent invocation logic lives in user-replaceable adapter shell scripts at `~/.config/tour/agents/<name>.sh`. The agent contract is documented (stdin = JSON envelope, env = `TOUR_*` vars, system prompt resolved via `tour reply-system-prompt`); supporting a new agent is a new script, not a Tour release.
+
+- **System prompt is a correctness artifact, not a customization surface.** Owned by the Tour binary, exposed via `tour reply-system-prompt`. No `~/.config/tour/reply-prompt.md` override path in v1 — the prompt is what enforces capability bounding semantically (in addition to runtime tool restriction), and a misconfigured override would surface as "agent attempted forbidden action" errors rather than clean replies. Trade-off: power users who genuinely need a different prompt fork or wait for a configurability surface.
+
+- **The schema gains two fields and one transient artifact.** `Annotation` adds required `author_kind: "agent" | "human"` and optional `replies_to: <ann-id>`. The break is taken cleanly — pre-bidirectional `.tour/` data is not migrated, since Tour isn't in production yet. `.tour/<id>/.reply-lock.json` is transient single-flight + status-pill state.
+
+- **The CLI gains three verbs and one flag.** `tour pickup <id> --json` (conversation tree for main-agent consumption); `tour reply-cancel <ann-id>` (kill a stuck reply-agent + clear the lockfile); `tour reply-system-prompt` (print the canonical system prompt to stdout for adapters to consume); `--reply-agent <name>` flag on `tour tui` / `tour serve`. `tour annotate` gains `--reply-to <ann-id>` and `--as-agent` / `--as-human`.
+
+- **Both surfaces gain a composer.** TUI and webapp each need an inline reply composer (top-level Annotations also become authorable). Top-level authoring binds to a key (TBD); replies bind to `r` on a selected Annotation. The composer writes via the same `tour annotate` primitive — UI is a richer client, the CLI remains canonical (ADR 0002 holds).
+
+- **`n`/`p` and the count badge stay topic-counting, not utterance-counting.** Replies live inside their Thread; navigation walks top-level Annotations only. The TUI's `c` collapse (commit 2a389e5) collapses Replies and leaves the parent Annotation visible — whole-Thread collapse is reachable via the existing file-level collapse. Side-anchored card placement (commit c415152) accepts vertical bloat as Threads grow.
+
+- **Conversation context is reloaded cold per reply.** Each hook-spawned reply-agent re-reads `annotations.jsonl` and rebuilds its understanding from scratch. Token cost scales with Thread depth. Mitigated by the typical short-Thread cadence (the human moves on quickly) and the fact that Tour serializes the relevant subtree on stdin so the agent only loads what's relevant. Long Threads will pay; if that becomes a real cost we can revisit with the long-running daemon (Path 3) or the MCP path once sampling support lands.
+
+- **Without `--reply-agent`, Tour works fine as a static review tool.** Agents author top-level notes via CLI, humans read them in the UI; humans can also author notes for `tour pickup` consumption later, or for other humans to read. Multi-human-no-AI is a valid mode.
+
+- **Reversibility.** The reply-agent path is additive — removing it leaves the Tour data model intact (every Annotation is still a valid v1 Annotation; Replies are just Annotations with an extra optional field). The CONTEXT.md "Authoring" decision is the only load-bearing reversal; everything else is layered on top.
