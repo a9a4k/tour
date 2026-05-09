@@ -154,10 +154,7 @@ function App(props: AppProps) {
     return true;
   };
 
-  const selectedFile =
-    selectedRow?.kind === "file"
-      ? props.files.find((f) => f.name === selectedRow.path) ?? null
-      : null;
+  const selectedFile = selectedRow?.kind === "file" ? selectedRow.file : null;
   const fileAnnotations = selectedFile
     ? props.annotations.filter((a) => a.file === selectedFile.name)
     : [];
@@ -172,16 +169,14 @@ function App(props: AppProps) {
   const jumpToAnnotation = (ann: Annotation) => {
     setCurrentAnnotationId(ann.id);
     const ancestors = revealAncestors(tree, ann.file);
-    let nextCollapsed = collapsedFolders;
-    if (ancestors.some((a) => collapsedFolders.has(a))) {
-      nextCollapsed = new Set(collapsedFolders);
+    const needsReveal = ancestors.some((a) => collapsedFolders.has(a));
+    let nextRows = visibleRows;
+    if (needsReveal) {
+      const nextCollapsed = new Set(collapsedFolders);
       for (const a of ancestors) nextCollapsed.delete(a);
       setCollapsedFolders(nextCollapsed);
+      nextRows = flatten(tree, nextCollapsed, annotationCounts);
     }
-    const nextRows =
-      nextCollapsed === collapsedFolders
-        ? visibleRows
-        : flatten(tree, nextCollapsed, annotationCounts);
     const newIdx = nextRows.findIndex(
       (r) => r.kind === "file" && r.path === ann.file,
     );
