@@ -48,7 +48,7 @@ function renderSplit(row: DiffRow, key: string) {
   const rightContentTint = row.rightTinted && leftHasLine && rightHasLine;
 
   return (
-    <text key={key}>
+    <text key={key} wrapMode="word">
       {gutterSpan(row.leftGutter, `${key}-gl`)}
       <span bg={bgIf(row.leftTinted)}>{pad(row.leftLineNumber)}</span>
       <span bg={bgIf(leftContentTint)}>{`  ${row.leftText}    `}</span>
@@ -65,7 +65,7 @@ function renderUnified(row: DiffRow, key: string) {
   const contentTint = row.rightTinted && !isPlusMinus;
 
   return (
-    <text key={key}>
+    <text key={key} wrapMode="word">
       {gutterSpan(row.rightGutter, `${key}-g`)}
       <span bg={bgIf(row.rightTinted)}>{`${pad(row.leftLineNumber)} ${pad(row.rightLineNumber)}`}</span>
       <span bg={bgIf(contentTint)}>{` ${unifiedPrefix(row)} ${text}`}</span>

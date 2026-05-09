@@ -35,6 +35,7 @@ const BASE_DIFF_OPTIONS = {
   theme: { dark: "github-dark-default", light: "github-light-default" } as const,
   themeType: "dark" as const,
   hunkSeparators: "metadata" as const,
+  overflow: "wrap" as const,
 };
 
 interface AppProps {

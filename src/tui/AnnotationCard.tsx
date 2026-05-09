@@ -28,7 +28,7 @@ export function AnnotationCard({ annotation, isCurrent }: AnnotationCardProps) {
       >
         [{annotation.side}] {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
       </text>
-      <text fg="white">{annotation.body}</text>
+      <text fg="white" wrapMode="word">{annotation.body}</text>
     </box>
   );
 }
