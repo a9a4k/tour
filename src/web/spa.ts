@@ -47,6 +47,28 @@ export function html(initialTourId?: string): string {
   }
   .file-entry:hover { background: #161b22; }
   .file-entry.selected { background: #1f6feb33; border-left: 2px solid #58a6ff; }
+  .folder-entry {
+    padding: 6px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: #c9d1d9;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+  }
+  .folder-entry:hover { background: #161b22; }
+  .folder-icon { width: 12px; color: #8b949e; font-size: 10px; flex-shrink: 0; }
+  .folder-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #8b949e;
+  }
   .file-icon { width: 16px; text-align: center; font-weight: bold; font-size: 11px; }
   .file-icon.A { color: #3fb950; }
   .file-icon.M { color: #d29922; }

@@ -93,4 +93,11 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tour-header\s*\{[^}]*padding-left:\s*16px/);
     expect(out).toMatch(/\.tour-header\s*\{[^}]*padding-right:\s*16px/);
   });
+
+  it("styles folder rows in the tree sidebar", () => {
+    const out = html();
+    expect(out).toMatch(/\.folder-entry\s*\{/);
+    expect(out).toMatch(/\.folder-icon\s*\{/);
+    expect(out).toMatch(/\.folder-name\s*\{/);
+  });
 });

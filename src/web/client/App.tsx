@@ -8,7 +8,14 @@ import {
   buildRangeBackgroundCSS,
   resolveCursorById,
 } from "./annotations.js";
-import { fileStatusIcon, countAnnotationsForFile } from "./file-status.js";
+import { fileStatusIcon } from "./file-status.js";
+import {
+  buildTree,
+  compress,
+  flatten,
+  revealAncestors,
+  type VisibleRow,
+} from "../../core/file-tree.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -52,6 +59,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -117,6 +125,45 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     return parsePatchFiles(tour.diff, tour.id).flatMap((p) => p.files);
   }, [tour?.diff, tour?.id]);
 
+  const modelFiles = useMemo(() => tour?.diffModel?.files ?? [], [tour?.diffModel?.files]);
+  const tree = useMemo(() => compress(buildTree(modelFiles)), [modelFiles]);
+  const annotationCounts = useMemo<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    for (const a of annotations) {
+      out[a.file] = (out[a.file] ?? 0) + 1;
+    }
+    return out;
+  }, [annotations]);
+  const visibleRows = useMemo<VisibleRow<DiffFileInfo>[]>(
+    () => flatten(tree, collapsedFolders, annotationCounts),
+    [tree, collapsedFolders, annotationCounts],
+  );
+
+  const revealFileAncestors = useCallback(
+    (filePath: string) => {
+      const ancestors = revealAncestors(tree, filePath);
+      if (ancestors.length === 0) return;
+      setCollapsedFolders((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const a of ancestors) {
+          if (next.delete(a)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    },
+    [tree],
+  );
+
+  const toggleFolder = useCallback((folderPath: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+  }, []);
+
   const scrollAnnotationIntoView = useCallback((id: string) => {
     requestAnimationFrame(() => {
       annotationRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -134,9 +181,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setCollapsedOverrides((prev) =>
         prev[target.file] === false ? prev : { ...prev, [target.file]: false },
       );
+      revealFileAncestors(target.file);
       scrollAnnotationIntoView(target.id);
     },
-    [annotations, currentIdx, scrollAnnotationIntoView],
+    [annotations, currentIdx, revealFileAncestors, scrollAnnotationIntoView],
   );
 
   // Re-anchor cursor by id whenever annotations change. On first sight of a
@@ -213,10 +261,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     return <div className="empty">Loading…</div>;
   }
 
-  const sortedFiles = [...(tour.diffModel?.files ?? [])].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-
   return (
     <>
       <div className="tour-header">
@@ -228,29 +272,22 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       <div className="app-body">
         <aside className="app-sidebar">
           <h2>Files</h2>
-          {sortedFiles.map((f) => {
-            const icon = fileStatusIcon(f.type);
-            const annCount = countAnnotationsForFile(tour.annotations, f.name);
-            return (
-              <button
-                key={f.name}
-                type="button"
-                className={`file-entry${selectedFile === f.name ? " selected" : ""}`}
-                onClick={() => {
-                  setSelectedFile(f.name);
-                  const el = fileRefs.current.get(f.name);
+          {visibleRows.map((row) =>
+            row.kind === "folder" ? (
+              <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
+            ) : (
+              <FileRow
+                key={`f:${row.path}`}
+                row={row}
+                selected={selectedFile === row.path}
+                onSelect={(name) => {
+                  setSelectedFile(name);
+                  const el = fileRefs.current.get(name);
                   if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
                 }}
-              >
-                <span className={`file-icon ${icon}`}>{icon}</span>
-                <span className="file-name">{f.name}</span>
-                {f.classification?.reason ? (
-                  <span className="reason-tag">{f.classification.reason}</span>
-                ) : null}
-                {annCount > 0 ? <span className="badge">{annCount}</span> : null}
-              </button>
-            );
-          })}
+              />
+            ),
+          )}
         </aside>
         <main className="app-main">
           {tour.snapshotLost ? (
@@ -291,6 +328,52 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         onNext={() => navigateBy(1)}
       />
     </>
+  );
+}
+
+interface FolderRowProps {
+  row: Extract<VisibleRow<DiffFileInfo>, { kind: "folder" }>;
+  onToggle: (path: string) => void;
+}
+
+function FolderRow({ row, onToggle }: FolderRowProps): React.JSX.Element {
+  const caret = row.collapsed ? "▸" : "▾";
+  return (
+    <button
+      type="button"
+      className="folder-entry"
+      style={{ paddingLeft: 16 + row.depth * 12 }}
+      onClick={() => onToggle(row.path)}
+    >
+      <span className="folder-icon">{caret}</span>
+      <span className="folder-name">{row.displayName}</span>
+      {row.annotationCount > 0 ? <span className="badge">{row.annotationCount}</span> : null}
+    </button>
+  );
+}
+
+interface FileRowProps {
+  row: Extract<VisibleRow<DiffFileInfo>, { kind: "file" }>;
+  selected: boolean;
+  onSelect: (name: string) => void;
+}
+
+function FileRow({ row, selected, onSelect }: FileRowProps): React.JSX.Element {
+  const icon = fileStatusIcon(row.file.type);
+  return (
+    <button
+      type="button"
+      className={`file-entry${selected ? " selected" : ""}`}
+      style={{ paddingLeft: 16 + row.depth * 12 }}
+      onClick={() => onSelect(row.path)}
+    >
+      <span className={`file-icon ${icon}`}>{icon}</span>
+      <span className="file-name">{row.displayName}</span>
+      {row.file.classification?.reason ? (
+        <span className="reason-tag">{row.file.classification.reason}</span>
+      ) : null}
+      {row.annotationCount > 0 ? <span className="badge">{row.annotationCount}</span> : null}
+    </button>
   );
 }
 
