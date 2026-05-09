@@ -1,4 +1,5 @@
 import { parsePatchFiles } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
 
 export interface DiffFile {
@@ -94,6 +95,16 @@ export function splitRawDiffByFile(rawDiff: string): Map<string, string> {
   flush();
 
   return result;
+}
+
+export function parseFileDiffMetadata(rawDiff: string): FileDiffMetadata[] {
+  if (!rawDiff.trim()) return [];
+  const patches = parsePatchFiles(rawDiff);
+  const out: FileDiffMetadata[] = [];
+  for (const patch of patches) {
+    for (const file of patch.files) out.push(file);
+  }
+  return out;
 }
 
 export function parseDiff(rawDiff: string): DiffModel {
