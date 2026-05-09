@@ -4,8 +4,10 @@
 // Usage:  bun scripts/release.ts <version>           # e.g. 0.1.4
 //         bun scripts/release.ts <version> --push    # also push commit + tag
 //
-// Refuses to run with a dirty working tree, on a non-default branch,
-// or if the tag already exists.
+// Refuses to run if package.json or bun.lock have uncommitted changes,
+// off the main branch, or if the tag already exists. Other dirty state
+// (untracked files, modifications outside the release files) is allowed
+// — the release commit only stages package.json and bun.lock.
 
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,35 +27,43 @@ if (!version || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
 
 const tag = `v${version}`;
 
-async function sh(cmd: string[], opts: { capture?: boolean } = {}): Promise<string> {
+async function sh(cmd: string[], opts: { capture?: boolean; allowFail?: boolean } = {}): Promise<{ out: string; code: number }> {
   const proc = Bun.spawn(cmd, {
     cwd: ROOT,
     stdout: opts.capture ? "pipe" : "inherit",
     stderr: "inherit",
   });
-  const out = opts.capture ? await new Response(proc.stdout).text() : "";
+  const out = opts.capture ? (await new Response(proc.stdout).text()).trim() : "";
   const code = await proc.exited;
-  if (code !== 0) {
+  if (code !== 0 && !opts.allowFail) {
     console.error(`command failed (${code}): ${cmd.join(" ")}`);
     process.exit(code);
   }
-  return out.trim();
+  return { out, code };
 }
 
-const status = await sh(["git", "status", "--porcelain"], { capture: true });
-if (status) {
-  console.error("working tree is dirty — commit or stash before releasing:");
-  console.error(status);
+const RELEASE_FILES = ["package.json", "bun.lock"];
+const unstaged = await sh(["git", "diff", "--quiet", "--", ...RELEASE_FILES], { allowFail: true });
+const staged = await sh(["git", "diff", "--cached", "--quiet", "--", ...RELEASE_FILES], { allowFail: true });
+if (unstaged.code !== 0 || staged.code !== 0) {
+  console.error(`refuse to release: ${RELEASE_FILES.join(" or ")} has uncommitted changes`);
+  console.error("commit, stash, or revert those before bumping");
   process.exit(1);
 }
 
-const branch = await sh(["git", "rev-parse", "--abbrev-ref", "HEAD"], { capture: true });
+const otherDirty = (await sh(["git", "status", "--porcelain"], { capture: true })).out;
+if (otherDirty) {
+  console.warn("note: working tree has other uncommitted changes (not included in release commit):");
+  console.warn(otherDirty.split("\n").map(l => `  ${l}`).join("\n"));
+}
+
+const branch = (await sh(["git", "rev-parse", "--abbrev-ref", "HEAD"], { capture: true })).out;
 if (branch !== "main") {
   console.error(`releases must be cut from main; currently on ${branch}`);
   process.exit(1);
 }
 
-const tagExists = await sh(["git", "tag", "--list", tag], { capture: true });
+const tagExists = (await sh(["git", "tag", "--list", tag], { capture: true })).out;
 if (tagExists) {
   console.error(`tag ${tag} already exists; pick a new version`);
   process.exit(1);
