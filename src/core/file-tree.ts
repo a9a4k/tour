@@ -181,16 +181,12 @@ export function revealAndLocate<F extends FileEntry>(
   filePath: string,
 ): RevealResult<F> | null {
   const ancestors = revealAncestors(root, filePath);
-  let next = collapsedFolders;
-  let revealed = false;
-  for (const a of ancestors) {
-    if (next.has(a)) {
-      if (!revealed) {
-        next = new Set(next);
-        revealed = true;
-      }
-      (next as Set<string>).delete(a);
-    }
+  const needsReveal = ancestors.some((a) => collapsedFolders.has(a));
+  let next: ReadonlySet<string> = collapsedFolders;
+  if (needsReveal) {
+    const mutable = new Set(collapsedFolders);
+    for (const a of ancestors) mutable.delete(a);
+    next = mutable;
   }
   const rows = flatten(root, next, annotationCounts);
   const rowIdx = rows.findIndex((r) => r.kind === "file" && r.path === filePath);
