@@ -77,6 +77,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -216,23 +217,42 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   );
 
   // Re-anchor cursor by id whenever annotations change. On first sight of a
-  // non-empty list, set cursor to first and scroll its card into view. On SSE
-  // reload with the same id present, do nothing (silent re-anchor). If the id
-  // is gone, reset to 0 silently.
+  // non-empty list, set cursor to first, anchor the tree highlight to its
+  // file, reveal ancestors, and scroll its card into view. On SSE reload with
+  // the same id present, do nothing. If the id is gone, re-anchor to the new
+  // first annotation (and re-anchor the tree to it too). Functional setState
+  // for the empty-list branch keeps `selectedFile` out of the dep array so a
+  // user click while annotations is empty is not clobbered by this effect.
   useEffect(() => {
     if (annotations.length === 0) {
-      if (currentAnnotationId !== null) setCurrentAnnotationId(null);
+      setCurrentAnnotationId((curr) => (curr === null ? curr : null));
+      setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
     if (currentAnnotationId === null) {
       const first = annotations[0];
       setCurrentAnnotationId(first.id);
+      setSelectedFile(first.file);
+      revealFileAncestors(first.file);
       scrollAnnotationIntoView(first.id);
       return;
     }
     const found = annotations.some((a) => a.id === currentAnnotationId);
-    if (!found) setCurrentAnnotationId(annotations[0].id);
-  }, [annotations, currentAnnotationId, scrollAnnotationIntoView]);
+    if (!found) {
+      const first = annotations[0];
+      setCurrentAnnotationId(first.id);
+      setSelectedFile(first.file);
+      revealFileAncestors(first.file);
+    }
+  }, [annotations, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
+
+  // Keep the selected sidebar row visible. block:"nearest" — already-visible
+  // rows don't jump.
+  useEffect(() => {
+    if (selectedFile === null) return;
+    const el = sidebarRowRefs.current.get(selectedFile);
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [selectedFile]);
 
   const openPicker = useCallback(() => {
     triggerRef.current = (document.activeElement as HTMLElement) ?? null;
@@ -368,6 +388,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 key={`f:${row.path}`}
                 row={row}
                 selected={selectedFile === row.path}
+                registerRef={(el) => {
+                  if (el) sidebarRowRefs.current.set(row.path, el);
+                  else sidebarRowRefs.current.delete(row.path);
+                }}
                 onSelect={(name) => {
                   setSelectedFile(name);
                   const el = fileRefs.current.get(name);
@@ -481,12 +505,14 @@ interface FileRowProps {
   row: Extract<VisibleRow<DiffFileInfo>, { kind: "file" }>;
   selected: boolean;
   onSelect: (name: string) => void;
+  registerRef: (el: HTMLButtonElement | null) => void;
 }
 
-function FileRow({ row, selected, onSelect }: FileRowProps): React.JSX.Element {
+function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.JSX.Element {
   const icon = fileStatusIcon(row.file.type);
   return (
     <button
+      ref={registerRef}
       type="button"
       className={`file-entry${selected ? " selected" : ""}`}
       style={{ paddingLeft: 16 + row.depth * 12 }}
