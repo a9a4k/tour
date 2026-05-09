@@ -61,6 +61,26 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("space"), diffPane).type).toBe("noop");
   });
 
+  it("n returns next-annotation regardless of pane focus", () => {
+    expect(dispatchKey(k("n"), sidebar).type).toBe("next-annotation");
+    expect(dispatchKey(k("n"), diffPane).type).toBe("next-annotation");
+  });
+
+  it("p returns prev-annotation regardless of pane focus", () => {
+    expect(dispatchKey(k("p"), sidebar).type).toBe("prev-annotation");
+    expect(dispatchKey(k("p"), diffPane).type).toBe("prev-annotation");
+  });
+
+  it("Ctrl+N is not consumed as next-annotation", () => {
+    expect(dispatchKey(k("n", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("n", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Ctrl+P is not consumed as prev-annotation", () => {
+    expect(dispatchKey(k("p", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("p", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
   // Regression: opentui's KeyEvent uses .name (lowercase node-readline style),
   // not the browser KeyboardEvent's .key (TitleCase like "Tab", "ArrowDown").
   // If someone re-introduces the browser shape, this test catches it.

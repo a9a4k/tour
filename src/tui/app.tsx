@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
@@ -44,6 +44,7 @@ function App(props: AppProps) {
   const [selectedFileIdx, setSelectedFileIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
+  const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
@@ -51,6 +52,27 @@ function App(props: AppProps) {
     () => [...props.files].sort((a, b) => a.name.localeCompare(b.name)),
     [props.files],
   );
+
+  // Re-anchor the cursor by id across annotation reloads.
+  useEffect(() => {
+    if (props.annotations.length === 0) {
+      if (currentAnnotationId !== null) setCurrentAnnotationId(null);
+      return;
+    }
+    if (
+      currentAnnotationId === null ||
+      !props.annotations.some((a) => a.id === currentAnnotationId)
+    ) {
+      setCurrentAnnotationId(props.annotations[0].id);
+    }
+  }, [props.annotations, currentAnnotationId]);
+
+  const currentAnnotationIdx = useMemo(() => {
+    if (props.annotations.length === 0) return -1;
+    if (currentAnnotationId === null) return 0;
+    const idx = props.annotations.findIndex((a) => a.id === currentAnnotationId);
+    return idx === -1 ? 0 : idx;
+  }, [props.annotations, currentAnnotationId]);
 
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
@@ -65,10 +87,18 @@ function App(props: AppProps) {
 
   const selectedFile = files[selectedFileIdx];
   const fileAnnotations = selectedFile
-    ? props.annotations
-        .filter((a) => a.file === selectedFile.name)
-        .sort((a, b) => a.line_start - b.line_start)
+    ? props.annotations.filter((a) => a.file === selectedFile.name)
     : [];
+
+  const jumpToAnnotation = (ann: Annotation) => {
+    setCurrentAnnotationId(ann.id);
+    const fileIdx = files.findIndex((f) => f.name === ann.file);
+    if (fileIdx >= 0 && fileIdx !== selectedFileIdx) {
+      setSelectedFileIdx(fileIdx);
+      if (diffScrollRef.current) diffScrollRef.current.scrollTo(0);
+    }
+    setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
+  };
 
   useKeyboard((key) => {
     const action = dispatchKey(
@@ -105,6 +135,17 @@ function App(props: AppProps) {
           ...prev,
           [f.name]: !isFileCollapsed(f.name),
         }));
+        return;
+      }
+      case "next-annotation": {
+        if (currentAnnotationIdx < 0) return;
+        if (currentAnnotationIdx >= props.annotations.length - 1) return;
+        jumpToAnnotation(props.annotations[currentAnnotationIdx + 1]);
+        return;
+      }
+      case "prev-annotation": {
+        if (currentAnnotationIdx <= 0) return;
+        jumpToAnnotation(props.annotations[currentAnnotationIdx - 1]);
         return;
       }
     }
@@ -190,14 +231,21 @@ function App(props: AppProps) {
               height={Math.min(fileAnnotations.length * 3 + 2, 12)}
             >
               <scrollbox height="100%">
-                {fileAnnotations.map((ann) => (
-                  <box key={ann.id} flexDirection="column" paddingX={1}>
-                    <text fg="yellow" bold>
-                      [{ann.side}] {ann.file}:{ann.line_start === ann.line_end ? ann.line_start : `${ann.line_start}-${ann.line_end}`} ({ann.author})
-                    </text>
-                    <text fg="white">  {ann.body}</text>
-                  </box>
-                ))}
+                {fileAnnotations.map((ann) => {
+                  const isCurrent = ann.id === currentAnnotationId;
+                  return (
+                    <box key={ann.id} flexDirection="column" paddingX={1}>
+                      <text
+                        fg={isCurrent ? "black" : "yellow"}
+                        bg={isCurrent ? "cyan" : undefined}
+                        bold
+                      >
+                        [{ann.side}] {ann.file}:{ann.line_start === ann.line_end ? ann.line_start : `${ann.line_start}-${ann.line_end}`} ({ann.author})
+                      </text>
+                      <text fg="white">  {ann.body}</text>
+                    </box>
+                  );
+                })}
               </scrollbox>
             </box>
           )}
@@ -207,7 +255,9 @@ function App(props: AppProps) {
       {/* Footer */}
       <box height={1} width="100%" paddingX={1}>
         <text fg="gray">
-          j/k: navigate  Tab: switch pane  Enter: select file  Space: toggle collapse  q: quit
+          {props.annotations.length > 0
+            ? `Annotation ${currentAnnotationIdx + 1}/${props.annotations.length}  ·  n/p: navigate  ·  j/k: files  ·  Tab: switch pane  ·  Space: toggle collapse  ·  q: quit`
+            : `n/p: navigate  ·  j/k: files  ·  Tab: switch pane  ·  Space: toggle collapse  ·  q: quit`}
         </text>
       </box>
     </box>

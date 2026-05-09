@@ -17,6 +17,8 @@ export type KeyAction =
   | { type: "move-file-up" }
   | { type: "select-file" }
   | { type: "toggle-collapse" }
+  | { type: "next-annotation" }
+  | { type: "prev-annotation" }
   | { type: "noop" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
@@ -26,6 +28,11 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
 
   if (key.name === "tab") {
     return key.shift ? { type: "focus-sidebar" } : { type: "toggle-pane" };
+  }
+
+  if (!key.ctrl && !key.shift) {
+    if (key.name === "n") return { type: "next-annotation" };
+    if (key.name === "p") return { type: "prev-annotation" };
   }
 
   if (ctx.sidebarFocused && ctx.fileCount > 0) {
