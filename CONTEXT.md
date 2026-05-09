@@ -21,12 +21,16 @@ The git ref the Tour's diff starts from. Resolved to a SHA at create time. Defau
 _Avoid_: parent, ancestor
 
 **Annotation**:
-A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `side` is `additions` or `deletions` (matching Pierre's vocabulary); line numbers are file-line-numbers in the file as it exists on that side at the pinned SHA. Authored only by agents in v1 (via CLI). Persisted in the Tour's folder. The body is free-form text — no `kind` enum.
+A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `side` is `additions` or `deletions` (matching Pierre's vocabulary); line numbers are file-line-numbers in the file as it exists on that side at the pinned SHA. Authored only by agents in v1 (via CLI). Persisted in the Tour's folder. The body is **GitHub Flavored Markdown** (no raw HTML); the webapp renders it as rich markdown — including ` ```mermaid ` fences as diagrams — while the TUI shows the raw source. No `kind` enum — structure lives in the markdown itself.
 _Avoid_: comment, review comment, note
 
 **Side**:
-The diff-half an Annotation belongs to: `deletions` for the base-file half, `additions` for the head-file half. Required, not derived. View-mode independent: in split view, `deletions` renders on the left column and `additions` on the right; in unified view, `deletions` attaches to the `-` row and `additions` to the `+` row. Annotations on unchanged context lines pick `additions` by convention. Naming matches Pierre's `AnnotationSide` so `core/` ↔ Pierre is a no-op.
+The diff-half an Annotation belongs to: `deletions` for the base-file half, `additions` for the head-file half. Required, not derived. Layout-independent: in `split` layout, `deletions` renders on the left column and `additions` on the right; in `unified` layout, `deletions` attaches to the `-` row and `additions` to the `+` row. Annotations on unchanged context lines pick `additions` by convention. Naming matches Pierre's `AnnotationSide` so `core/` ↔ Pierre is a no-op.
 _Avoid_: LEFT/RIGHT, before/after, old/new, column
+
+**Layout**:
+How a Tour's Diff is rendered: `split` (deletions left, additions right) or `unified` (single column with `-`/`+` rows). Per-session UI state in each surface — not persisted on the Tour, not synced between TUI and webapp. Annotations are layout-independent: the same `(file, side, line_start, line_end)` anchor resolves in both. Maps to Pierre's `diffStyle` and OpenTUI's `view` props (both already accept `"unified" | "split"`).
+_Avoid_: view mode, diff style, view
 
 **Working-tree snapshot**:
 A synthetic commit object capturing uncommitted changes at the moment a Tour is created, so the Diff stays pinned even as the working tree keeps moving.
@@ -69,3 +73,4 @@ _Avoid_: stash, WIP commit
 - **Lifecycle**: two states, `open` and `closed`. Human transitions via `tour close` or UI button. Closed tours stay in `.tour/<id>/` with `status = "closed"`. Cleanup is explicit (`tour prune --older-than 30d`).
 - **Folder layout**: `.tour/<id>/` flat at top level; each contains `tour.toml` (front-matter) and `annotations.jsonl` (append-only annotation log). `.tour/` is gitignored by default (auto-added on first `tour create`); teams can opt-in to commit by removing the line.
 - **Working-tree snapshot mechanics**: `git stash create` produces a synthetic commit SHA without touching the working tree; `git update-ref refs/tour/<id> <sha>` keeps it alive past gc. Stored as `head_sha` in `tour.toml`. Released on `tour delete` / `tour prune` via `git update-ref -d refs/tour/<id>`.
+- **Annotation body format**: GitHub Flavored Markdown, no raw HTML. The webapp renders it rich (including ` ```mermaid ` fences as SVG diagrams); the TUI shows the raw source unchanged. Single string field — no `kind` enum, no separate `format` field. Existing annotations were already authored with markdown syntax; this decision honours that intent rather than introducing a new format.
