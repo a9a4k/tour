@@ -230,14 +230,6 @@ export function html(initialTourId?: string): string {
     border-radius: 0;
     font-size: inherit;
   }
-  .annotation-block .ann-body .shiki-block pre {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    padding: 10px 12px;
-    overflow-x: auto;
-    font-size: 12px;
-  }
   .annotation-block .ann-body table {
     border-collapse: collapse;
     margin: 8px 0;
