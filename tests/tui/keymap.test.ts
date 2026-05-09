@@ -97,6 +97,17 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("p"), diffPane).type).toBe("prev-annotation");
   });
 
+  it("l returns toggle-layout regardless of pane focus", () => {
+    expect(dispatchKey(k("l"), sidebar).type).toBe("toggle-layout");
+    expect(dispatchKey(k("l"), diffPane).type).toBe("toggle-layout");
+    expect(dispatchKey(k("l"), sidebarFolder).type).toBe("toggle-layout");
+  });
+
+  it("Ctrl+L is not consumed as toggle-layout", () => {
+    expect(dispatchKey(k("l", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("l", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
   it("Ctrl+N is not consumed as next-annotation", () => {
     expect(dispatchKey(k("n", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("n", { ctrl: true }), diffPane).type).toBe("noop");

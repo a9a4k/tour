@@ -1,6 +1,6 @@
 # Tour
 
-A code-review tool that pairs an ephemeral, GitHub-style split-view diff with persisted AI annotations. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
+A code-review tool that pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI annotations. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
 
 ## Language
 
@@ -74,3 +74,4 @@ _Avoid_: stash, WIP commit
 - **Folder layout**: `.tour/<id>/` flat at top level; each contains `tour.toml` (front-matter) and `annotations.jsonl` (append-only annotation log). `.tour/` is gitignored by default (auto-added on first `tour create`); teams can opt-in to commit by removing the line.
 - **Working-tree snapshot mechanics**: `git stash create` produces a synthetic commit SHA without touching the working tree; `git update-ref refs/tour/<id> <sha>` keeps it alive past gc. Stored as `head_sha` in `tour.toml`. Released on `tour delete` / `tour prune` via `git update-ref -d refs/tour/<id>`.
 - **Annotation body format**: GitHub Flavored Markdown, no raw HTML. The webapp renders it rich (including ` ```mermaid ` fences as SVG diagrams); the TUI shows the raw source unchanged. Single string field — no `kind` enum, no separate `format` field. Existing annotations were already authored with markdown syntax; this decision honours that intent rather than introducing a new format.
+- **Layout (v1)**: per-session, in-memory toggle between `split` and `unified`. Both surfaces default to `split` on first paint, matching the project's GitHub-style identity. Pressing `l` flips the layout in either surface (the webapp also exposes a segmented `[ Split | Unified ]` control in the top bar). State lives in `useState` on each renderer's `App`; not persisted (no localStorage, no `tour.toml` field, no on-disk state) and not synced across surfaces — page reload (webapp) or relaunch (TUI) returns to `split`. A single layout value applies to every Tour switched to in the same webapp session; layout is not stored on the Tour. Pierre's `diffStyle` and OpenTUI's `view` props consume the same `"split" | "unified"` vocabulary, so no translation layer.

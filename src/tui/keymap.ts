@@ -24,6 +24,7 @@ export type KeyAction =
   | { type: "collapse-parent" }
   | { type: "next-annotation" }
   | { type: "prev-annotation" }
+  | { type: "toggle-layout" }
   | { type: "noop" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
@@ -38,6 +39,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (!key.ctrl && !key.shift) {
     if (key.name === "n") return { type: "next-annotation" };
     if (key.name === "p") return { type: "prev-annotation" };
+    if (key.name === "l") return { type: "toggle-layout" };
   }
 
   if (ctx.sidebarFocused && ctx.rowCount > 0) {
