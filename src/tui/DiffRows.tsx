@@ -63,12 +63,11 @@ function renderUnified(row: DiffRow, key: string) {
   const text = row.type === "deletion" ? row.leftText : row.rightText;
   const isPlusMinus = row.type === "addition" || row.type === "deletion";
   const contentTint = row.rightTinted && !isPlusMinus;
-  const lineNumTint = row.rightTinted;
 
   return (
     <text key={key}>
       {gutterSpan(row.rightGutter, `${key}-g`)}
-      <span bg={bgIf(lineNumTint)}>{`${pad(row.leftLineNumber)} ${pad(row.rightLineNumber)}`}</span>
+      <span bg={bgIf(row.rightTinted)}>{`${pad(row.leftLineNumber)} ${pad(row.rightLineNumber)}`}</span>
       <span bg={bgIf(contentTint)}>{` ${unifiedPrefix(row)} ${text}`}</span>
     </text>
   );

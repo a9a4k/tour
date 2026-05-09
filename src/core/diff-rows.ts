@@ -129,15 +129,12 @@ function applyAnnotationFlags(
         ann.side === "additions" ? row.rightLineNumber : row.leftLineNumber;
       if (lineOnAnnSide === null) continue;
       if (lineOnAnnSide < ann.line_start || lineOnAnnSide > ann.line_end) continue;
-      if (layout === "unified") {
-        row.rightTinted = true;
-        row.rightGutter = true;
-      } else if (ann.side === "additions") {
-        row.rightTinted = true;
-        row.rightGutter = true;
-      } else {
+      if (layout === "split" && ann.side === "deletions") {
         row.leftTinted = true;
         row.leftGutter = true;
+      } else {
+        row.rightTinted = true;
+        row.rightGutter = true;
       }
     }
   }
