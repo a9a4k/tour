@@ -91,3 +91,74 @@ jobs:
         with:
           files: dist/release/*
           generate_release_notes: true
+
+  bump-formula:
+    needs: publish
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist/artifacts
+
+      - name: Compute SHA256s
+        id: sha
+        run: |
+          set -euo pipefail
+          for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+            f="dist/artifacts/binary-$plat/tour"
+            [ -f "$f" ] || { echo "missing $f"; exit 1; }
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            echo "$plat=$sha" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v5
+        with:
+          repository: a9a4k/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SHA_DARWIN_ARM64: ${{ steps.sha.outputs.darwin-arm64 }}
+          SHA_DARWIN_X64:   ${{ steps.sha.outputs.darwin-x64 }}
+          SHA_LINUX_ARM64:  ${{ steps.sha.outputs.linux-arm64 }}
+          SHA_LINUX_X64:    ${{ steps.sha.outputs.linux-x64 }}
+        run: |
+          set -euo pipefail
+          sed -i "s|version \"[^\"]*\"|version \"$VERSION\"|" Formula/tour.rb
+          update_sha() {
+            local asset="$1" sha="$2"
+            local url_line
+            url_line=$(grep -n "tour-$asset\"" Formula/tour.rb | head -1 | cut -d: -f1)
+            local sha_line=$((url_line + 1))
+            sed -i "${sha_line}s/[a-f0-9]\{64\}/$sha/" Formula/tour.rb
+          }
+          update_sha darwin-arm64 "$SHA_DARWIN_ARM64"
+          update_sha darwin-x64   "$SHA_DARWIN_X64"
+          update_sha linux-arm64  "$SHA_LINUX_ARM64"
+          update_sha linux-x64    "$SHA_LINUX_X64"
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Formula already at $VERSION — nothing to do."
+            exit 0
+          fi
+          git add Formula/tour.rb
+          git commit -m "tour: bump to $VERSION"
+          git push
