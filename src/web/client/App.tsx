@@ -201,9 +201,8 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
   const options = useMemo(() => ({ ...DIFF_OPTIONS, collapsed }), [collapsed]);
 
   const onWrapperClick = (e: React.MouseEvent) => {
-    const path = (e.nativeEvent as MouseEvent).composedPath();
-    const onHeader = path.some(
-      (n) => n instanceof HTMLElement && n.dataset.diffsHeader != null,
+    const onHeader = e.nativeEvent.composedPath().some(
+      (n) => n instanceof HTMLElement && n.dataset.diffsHeader === "default",
     );
     if (onHeader) setCollapsed((c) => !c);
   };
