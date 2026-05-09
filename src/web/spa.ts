@@ -161,6 +161,8 @@ export function html(initialTourId?: string): string {
     border-radius: 4px;
     font-size: 13px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-width: 0;
+    max-width: 100%;
   }
   .annotation-block.current {
     border-color: #58a6ff;
@@ -173,7 +175,7 @@ export function html(initialTourId?: string): string {
     font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', monospace;
   }
-  .annotation-block .ann-body { color: #c9d1d9; }
+  .annotation-block .ann-body { color: #c9d1d9; overflow-wrap: anywhere; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }
   .annotation-block .ann-body h1,

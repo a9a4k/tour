@@ -118,6 +118,17 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("p", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
+  it("t returns open-picker regardless of pane focus", () => {
+    expect(dispatchKey(k("t"), sidebar).type).toBe("open-picker");
+    expect(dispatchKey(k("t"), diffPane).type).toBe("open-picker");
+    expect(dispatchKey(k("t"), sidebarFolder).type).toBe("open-picker");
+  });
+
+  it("Ctrl+T is not consumed as open-picker", () => {
+    expect(dispatchKey(k("t", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("t", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
   // Regression: opentui's KeyEvent uses .name (lowercase node-readline style),
   // not the browser KeyboardEvent's .key (TitleCase like "Tab", "ArrowDown").
   // If someone re-introduces the browser shape, this test catches it.

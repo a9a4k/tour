@@ -161,6 +161,20 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.picker-row\.cursor\s*\{[^}]*#1f6feb33/);
   });
 
+  it("constrains the annotation card to its host column so long inline content cannot push it wider (Issue #47)", () => {
+    const out = html();
+    expect(out).toMatch(/\.annotation-block\s*\{[^}]*min-width:\s*0/);
+    expect(out).toMatch(/\.annotation-block\s*\{[^}]*max-width:\s*100%/);
+  });
+
+  it("wraps long unbreakable tokens inside the annotation body so they do not force horizontal overflow (Issue #47)", () => {
+    expect(html()).toMatch(/\.annotation-block\s+\.ann-body\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  });
+
+  it("preserves horizontal scroll on fenced code blocks so pre content does not wrap (Issue #47)", () => {
+    expect(html()).toMatch(/\.annotation-block\s+\.ann-body\s+pre\s*\{[^}]*overflow-x:\s*auto/);
+  });
+
   it("styles the clickable tour-title button as text-only (no chrome)", () => {
     const out = html();
     expect(out).toMatch(/\.tour-title-btn\s*\{[^}]*background:\s*transparent/);
