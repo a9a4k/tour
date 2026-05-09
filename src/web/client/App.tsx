@@ -3,10 +3,10 @@ import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
 import type { Annotation, AnnotationMetadata, TourData, TourSummary } from "./types.js";
-import { toPierreLineAnnotations } from "./annotations.js";
+import { toPierreLineAnnotations, buildRangeBackgroundCSS } from "./annotations.js";
 import { fileStatusIcon, countAnnotationsForFile, fileStat } from "./file-status.js";
 
-const DIFF_OPTIONS = {
+const BASE_DIFF_OPTIONS = {
   diffStyle: "unified" as const,
   theme: { dark: "github-dark-default", light: "github-light-default" } as const,
   themeType: "dark" as const,
@@ -188,6 +188,11 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
     [annotations, fileDiff.name],
   );
 
+  const diffOptions = useMemo(() => {
+    const unsafeCSS = buildRangeBackgroundCSS(annotations, fileDiff.name);
+    return unsafeCSS ? { ...BASE_DIFF_OPTIONS, unsafeCSS } : BASE_DIFF_OPTIONS;
+  }, [annotations, fileDiff.name]);
+
   const stat = fileStat(modelFile?.hunks ?? []);
 
   return (
@@ -215,7 +220,7 @@ function FileBlock({ fileDiff, annotations, modelFile, registerRef }: FileBlockP
       {isBinary || collapsed ? null : (
         <FileDiff<AnnotationMetadata>
           fileDiff={fileDiff}
-          options={DIFF_OPTIONS}
+          options={diffOptions}
           lineAnnotations={lineAnns}
           renderAnnotation={renderAnnotationContent}
           disableWorkerPool
