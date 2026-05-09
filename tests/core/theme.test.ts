@@ -49,6 +49,12 @@ describe("theme tokens", () => {
     // Annotation row tint (alpha .15 of blue.4)
     expect(theme.bg.accentRange.web).toBe("rgba(56, 139, 253, 0.15)");
     expect(theme.bg.accentRange.tui).toBe("#132339");
+    // Diff addition row bg (alpha .15 of fg.success)
+    expect(theme.bg.successRange.web).toBe("rgba(63, 185, 80, 0.15)");
+    expect(theme.bg.successRange.tui).toBe("#142a20");
+    // Diff deletion row bg (alpha .15 of fg.danger)
+    expect(theme.bg.dangerRange.web).toBe("rgba(248, 81, 73, 0.15)");
+    expect(theme.bg.dangerRange.tui).toBe("#301b1e");
     // Inline <code> chip (alpha .20 of neutral)
     expect(theme.bg.neutralSubtle.web).toBe("rgba(110, 118, 129, 0.20)");
     expect(theme.bg.neutralSubtle.tui).toBe("#22262d");
@@ -83,6 +89,8 @@ describe("themeCSSVars()", () => {
     expect(css).toContain("--bg-accent-cursor: rgba(31, 111, 235, 0.20)");
     expect(css).toContain("--bg-accent-current: rgba(31, 111, 235, 0.13)");
     expect(css).toContain("--bg-accent-range: rgba(56, 139, 253, 0.15)");
+    expect(css).toContain("--bg-success-range: rgba(63, 185, 80, 0.15)");
+    expect(css).toContain("--bg-danger-range: rgba(248, 81, 73, 0.15)");
     expect(css).toContain("--bg-neutral-subtle: rgba(110, 118, 129, 0.20)");
   });
 });
