@@ -41,6 +41,25 @@ function reasonLabel(reason?: string): string {
   return ` [${reason}]`;
 }
 
+function fileEntryLabel(
+  file: DiffFile,
+  classifications: Record<string, FileClassification> | undefined,
+  annotations: Annotation[],
+): string {
+  const annCount = annotationCountForFile(annotations, file.name);
+  const cls = fileClassification(classifications, file.name);
+  const icon = statusIcon(file.type);
+  const badge = annCount > 0 ? ` [${annCount}]` : "";
+  const marker = cls.reason ? reasonLabel(cls.reason) : "";
+  return ` ${icon} ${file.name}${marker}${badge} `;
+}
+
+function fileCardBody(collapsed: boolean, hasHunks: boolean, segment: string) {
+  if (collapsed) return <text fg="gray">{"[collapsed — Space to expand]"}</text>;
+  if (!hasHunks) return <text fg="gray">{"[no textual changes]"}</text>;
+  return <diff diff={segment} view="split" showLineNumbers />;
+}
+
 function App(props: AppProps) {
   const [selectedFileIdx, setSelectedFileIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
@@ -193,12 +212,7 @@ function App(props: AppProps) {
         >
           <scrollbox height="100%">
             {files.map((file, idx) => {
-              const annCount = annotationCountForFile(props.annotations, file.name);
               const isSelected = idx === selectedFileIdx;
-              const icon = statusIcon(file.type);
-              const badge = annCount > 0 ? ` [${annCount}]` : "";
-              const cls = fileClassification(props.classifications, file.name);
-              const marker = cls.reason ? reasonLabel(cls.reason) : "";
               return (
                 <text
                   key={file.name}
@@ -206,7 +220,7 @@ function App(props: AppProps) {
                   bg={isSelected ? "cyan" : undefined}
                   bold={isSelected}
                 >
-                  {` ${icon} ${file.name}${marker}${badge} `}
+                  {fileEntryLabel(file, props.classifications, props.annotations)}
                 </text>
               );
             })}
@@ -228,11 +242,6 @@ function App(props: AppProps) {
               focused={!sidebarFocused}
             >
               {files.map((file) => {
-                const annCount = annotationCountForFile(props.annotations, file.name);
-                const cls = fileClassification(props.classifications, file.name);
-                const icon = statusIcon(file.type);
-                const badge = annCount > 0 ? ` [${annCount}]` : "";
-                const marker = cls.reason ? reasonLabel(cls.reason) : "";
                 const collapsed = isFileCollapsed(file.name);
                 const segment = rawSegments.get(file.name) ?? "";
                 return (
@@ -244,14 +253,8 @@ function App(props: AppProps) {
                     flexDirection="column"
                     marginBottom={1}
                   >
-                    <text>{` ${icon} ${file.name}${marker}${badge} `}</text>
-                    {collapsed ? (
-                      <text fg="gray">{"[collapsed — Space to expand]"}</text>
-                    ) : file.hunks.length === 0 ? (
-                      <text fg="gray">{"[no textual changes]"}</text>
-                    ) : (
-                      <diff diff={segment} view="split" showLineNumbers />
-                    )}
+                    <text>{fileEntryLabel(file, props.classifications, props.annotations)}</text>
+                    {fileCardBody(collapsed, file.hunks.length > 0, segment)}
                   </box>
                 );
               })}
