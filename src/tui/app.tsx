@@ -496,11 +496,19 @@ function App(props: AppProps) {
           borderColor={sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Files "
           flexDirection="column"
+          onMouseDown={() => setSidebarFocused(true)}
         >
           <scrollbox ref={sidebarScrollRef} height="100%">
             {visibleRows.map((row, idx) => {
               const isSelected = idx === safeRowIdx;
               const bg = isSelected ? theme.bg.accentCursor.tui : undefined;
+              const onRowMouseDown = () => {
+                setSidebarFocused(true);
+                setSelectedRowIdx(idx);
+                if (row.kind === "file" && diffScrollRef.current) {
+                  diffScrollRef.current.scrollChildIntoView(`file-card-${row.path}`);
+                }
+              };
               if (row.kind === "folder") {
                 return (
                   <text
@@ -509,6 +517,8 @@ function App(props: AppProps) {
                     fg={theme.fg.muted}
                     bg={bg}
                     bold={isSelected}
+                    selectable={false}
+                    onMouseDown={onRowMouseDown}
                   >
                     {folderRowLabel(row)}
                   </text>
@@ -521,6 +531,8 @@ function App(props: AppProps) {
                   fg={theme.fg.default}
                   bg={bg}
                   bold={isSelected}
+                  selectable={false}
+                  onMouseDown={onRowMouseDown}
                 >
                   {fileRowLabel(row, liveClassifications)}
                 </text>
@@ -536,6 +548,7 @@ function App(props: AppProps) {
           borderColor={!sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Diff "
           flexDirection="column"
+          onMouseDown={() => setSidebarFocused(false)}
         >
           {!liveSnapshotLost && liveDiff && (
             <scrollbox
@@ -593,6 +606,11 @@ export async function startTui(props: AppProps): Promise<void> {
   const renderer = await createCliRenderer({
     screenMode: "alternate-screen",
     useMouse: true,
+    // React state owns which pane is focused; the renderer's auto-focus on
+    // mouse-down would otherwise focus the underlying scrollbox out-of-band
+    // and route j/k to its built-in viewport scroll, conflicting with our
+    // keymap row navigation.
+    autoFocus: false,
     exitOnCtrlC: true,
   });
   const root = createRoot(renderer);
