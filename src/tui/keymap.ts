@@ -62,9 +62,14 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   // `man` / `vim` (pager) / `tig` / `delta` have done since `more(1)`.
   // Shift+Space stays bound for terminals that report the modifier (kitty
   // / WezTerm / Ghostty / foot / recent Alacritty); on legacy terminals
-  // it falls through to plain Space (page-down).
+  // it falls through to plain Space (page-down). `b` mirrors Space's
+  // cross-pane parity — works in both sidebar and diff-pane focus. Ctrl+b
+  // and Shift+B (capital) remain unbound.
   if (!key.ctrl && key.name === "space") {
     return key.shift ? { type: "half-page-diff-up" } : { type: "half-page-diff-down" };
+  }
+  if (!key.ctrl && !key.shift && key.name === "b") {
+    return { type: "half-page-diff-up" };
   }
 
   // Hardware PageDown / PageUp stay at full-viewport step (PRD #138).
@@ -74,13 +79,6 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   // Ctrl-modified is unbound.
   if (!key.ctrl && key.name === "pagedown") return { type: "page-diff-down" };
   if (!key.ctrl && key.name === "pageup") return { type: "page-diff-up" };
-
-  // `b` (no modifier) is the portable page-up alias (PRD #138, issue #139).
-  // Mirrors Space's cross-pane parity — works in both sidebar and diff-pane
-  // focus. Ctrl+b and Shift+B (capital) remain unbound.
-  if (!key.ctrl && !key.shift && key.name === "b") {
-    return { type: "half-page-diff-up" };
-  }
 
   // Hardware Home / End jump the cursor to the first / last cursor-eligible
   // row in the diff stream (PRD #126, issue #130). Scoped to diff-pane
