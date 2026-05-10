@@ -33,9 +33,8 @@ import {
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { nextAnnotationNavStep } from "./annotation-nav.js";
-import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS, PLUS_BUTTON_CSS } from "./cursor-css.js";
+import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS } from "./cursor-css.js";
 import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
-import { syncHoverOverlay } from "./hover-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 
@@ -520,17 +519,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     return syncCursorOverlay(document.body, cursor);
   }, [cursor, parsedFiles, layout, collapsedOverrides]);
 
-  // Hover affordance (ADR 0012). One delegated mouseover/mouseout pair on
-  // document toggles `data-tour-hover` on annotatable cells; the
-  // hover-tint CSS rule and the plus-button overlay both key off that
-  // attribute. Listeners re-register when composerOpen flips so the
-  // suppression takes effect immediately (and any in-flight attribute is
-  // stripped).
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    return syncHoverOverlay(document.body, composerTarget !== null);
-  }, [composerTarget]);
-
   // Lazy materialization (ADR 0012). Returns the seeded cursor (or
   // existing one if already materialized) so the caller can chain into
   // composer-open / move actions in one step. setCursor is queued; the
@@ -691,13 +679,12 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   );
 
   // Plus-button overlay (PRD #136). Mounts a real-DOM `<button>` next to
-  // any cell currently flagged with `data-tour-cursor` or `data-tour-hover`
-  // (the cursor + hover overlays already publish both). Clicking the
-  // button opens the top-level composer at that cell's anchor — the only
-  // mouse path to the composer post-#137. Suppressed while the composer
-  // is open. Re-attaches on parsedFiles / layout / collapsedOverrides /
-  // composerTarget changes so Pierre's shadow-root rebuilds and the
-  // composer-open flip both pick up new observer scopes / cleared state.
+  // the cursor cell — the only `+` affordance the mouse can use to open
+  // the composer (the keyboard `a` shortcut is the parallel path).
+  // Suppressed while the composer is open. Re-attaches on parsedFiles /
+  // layout / collapsedOverrides / composerTarget changes so Pierre's
+  // shadow-root rebuilds and the composer-open flip both pick up new
+  // observer scopes / cleared state.
   useEffect(() => {
     if (typeof document === "undefined") return;
     return syncPlusButtonOverlay(
@@ -1129,16 +1116,11 @@ function FileBlockInner({
       COMMENT_AFFORDANCE_CSS,
       EQUAL_COLUMNS_CSS,
       CURSOR_OUTLINE_CSS,
-      HOVER_TINT_CSS,
       PLUS_BUTTON_CSS,
       rangeCSS,
     ].filter((s) => s !== "");
     const unsafeCSS = parts.join("\n");
     return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
-    // composerTarget intentionally omitted: the hover-tint CSS is
-    // composer-state-independent (suppression happens at the attribute
-    // layer in syncHoverOverlay), so changing composer state must not
-    // thrash Pierre's options reference and force a full file re-render.
   }, [annotations, fileDiff.name, collapsed, layout]);
 
   const renderAnnotation = useCallback(

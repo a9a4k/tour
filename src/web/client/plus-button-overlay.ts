@@ -2,27 +2,27 @@ import { queryAllAcrossShadow, shadowRootsDeep } from "./dom-walk.js";
 
 /**
  * Mounts a real-DOM `<button class="tour-plus-button">` next to every cell
- * currently flagged `data-tour-cursor="true"` or `data-tour-hover="true"`.
- * Click on the button calls `onClick` with the cell's anchor —
- * `{ file, side, line }` — derived from the file's `[data-file]` ancestor,
- * the cell's `data-tour-cursor-side` (cursor case) or `data-line-type`
- * (hover case), and the cell's `data-line`.
+ * currently flagged `data-tour-cursor="true"`. Click on the button calls
+ * `onClick` with the cell's anchor — `{ file, side, line }` — derived from
+ * the file's `[data-file]` ancestor, the cell's `data-tour-cursor-side`,
+ * and the cell's `data-line`.
  *
  * The button is the GitHub-style affordance from PRD #136 — it is the only
  * mouse path to the top-level Annotation composer. Row clicks no longer
  * open the composer; they only move the cursor (App.tsx). Keyboard `a`
  * remains a one-step path through `openTopLevelComposer`.
  *
- * Composer-open suppression: when `composerOpen=true`, any existing buttons
- * are stripped immediately and subsequent attribute flips are ignored, so
- * mouse motion mid-edit cannot tempt the reviewer to a different row.
+ * The hover-driven mount path was removed: the JS plumbing (per-event
+ * listeners on document, MutationObserver-driven mount, attribute drift
+ * between cell and closure state) was a recurring source of paint lag
+ * and stuck-on rows. The cursor is the single trigger now; mouse users
+ * click a row to anchor it, then click `+`.
  *
- * Side derivation:
- *   - Cell carries `data-tour-cursor` → side comes from `data-tour-cursor-side`
- *     (single source of truth for the cursor anchor).
- *   - Cell carries only `data-tour-hover` → side derives from
- *     `data-line-type` via the same convention `findAnnotatableLine` uses
- *     (context → "additions"). Mirrors `sideFromLineType` in App.tsx.
+ * Composer-open suppression: when `composerOpen=true`, the overlay is a
+ * complete no-op (no observers, no buttons). The prior effect's cleanup
+ * has already stripped any buttons mounted during the composerOpen=false
+ * phase, so mouse motion mid-edit cannot tempt the reviewer to a
+ * different row.
  *
  * Returns a cleanup function that detaches MutationObservers and removes
  * every mounted button.
@@ -32,27 +32,19 @@ export function syncPlusButtonOverlay(
   onClick: (anchor: { file: string; side: "additions" | "deletions"; line: number }) => void,
   composerOpen: boolean,
 ): () => void {
-  // Composer-open suppression: the overlay is a complete no-op while the
-  // composer is open — no observers, no buttons. The prior effect's
-  // cleanup has already stripped any buttons mounted during the
-  // composerOpen=false phase, so mouse motion mid-edit cannot tempt the
-  // reviewer to a different row.
   if (composerOpen) return () => {};
 
   const buttons = new Map<HTMLElement, HTMLButtonElement>();
   const observers: MutationObserver[] = [];
 
-  // Persistent mount. Once a cell has carried `data-tour-cursor` or
-  // `data-tour-hover` we leave the button in the DOM permanently and let
-  // the parent-attribute CSS show rules (cursor-css.ts) toggle visibility.
-  // Mount-and-tear-down per attribute flip churned compositor layers on
-  // every hover (transform + z-index promote each `+` to its own layer),
-  // which showed up as paint lag on syntax-highlighted cells. The
-  // attribute-removal case is now a CSS-only display flip — zero JS work,
-  // zero DOM mutation. Cleanup-time teardown still removes every mounted
-  // button, so a fresh effect run starts from a blank slate.
+  // Persistent mount: once a cell has carried `data-tour-cursor` we leave
+  // the button in the DOM permanently and let the cursor-attribute CSS
+  // show rule (cursor-css.ts) toggle visibility. Mount-and-tear-down per
+  // attribute flip churned compositor layers (transform + z-index promote
+  // each `+` to its own layer). The attribute-removal case is now a
+  // CSS-only display flip — zero JS work, zero DOM mutation.
   const addOrUpdate = (cell: HTMLElement): void => {
-    if (!cell.hasAttribute("data-tour-cursor") && !cell.hasAttribute("data-tour-hover")) return;
+    if (!cell.hasAttribute("data-tour-cursor")) return;
     const anchor = anchorFor(cell);
     if (!anchor) return;
     let btn = buttons.get(cell);
@@ -88,7 +80,7 @@ export function syncPlusButtonOverlay(
     });
     observer.observe(target, {
       attributes: true,
-      attributeFilter: ["data-tour-cursor", "data-tour-hover", "data-tour-cursor-side"],
+      attributeFilter: ["data-tour-cursor", "data-tour-cursor-side"],
       subtree: true,
     });
     observers.push(observer);
@@ -97,7 +89,7 @@ export function syncPlusButtonOverlay(
   observe(root);
   for (const sr of shadowRootsDeep(root)) observe(sr);
 
-  for (const cell of queryAllAcrossShadow(root, "[data-tour-cursor], [data-tour-hover]")) {
+  for (const cell of queryAllAcrossShadow(root, "[data-tour-cursor]")) {
     addOrUpdate(cell as HTMLElement);
   }
 
@@ -126,29 +118,9 @@ function anchorFor(
   if (lineRaw === undefined) return null;
   const line = Number(lineRaw);
   if (!Number.isFinite(line)) return null;
-  const side = sideFor(cell);
-  if (!side) return null;
+  const side = cell.getAttribute("data-tour-cursor-side");
+  if (side !== "additions" && side !== "deletions") return null;
   return { file, side, line };
-}
-
-function sideFor(cell: HTMLElement): "additions" | "deletions" | null {
-  // Cursor side is the single source of truth when the cursor is anchored
-  // here — the cursor-overlay sets it explicitly per ADR 0012's column-
-  // disambiguation rule (issue #134). Falls through to data-line-type
-  // when the cell is keyed only by hover.
-  const cursorSide = cell.getAttribute("data-tour-cursor-side");
-  if (cursorSide === "additions" || cursorSide === "deletions") return cursorSide;
-  return sideFromLineType(cell.dataset.lineType);
-}
-
-// Mirror of App.tsx's sideFromLineType — context rows annotate as
-// `additions` per ADR 0012. Kept duplicated rather than imported so this
-// overlay stays a leaf module (App.tsx imports it, not the reverse).
-function sideFromLineType(t: string | undefined): "additions" | "deletions" | null {
-  if (t === "addition" || t === "change-addition") return "additions";
-  if (t === "deletion" || t === "change-deletion") return "deletions";
-  if (t === "context") return "additions";
-  return null;
 }
 
 function findFile(cell: HTMLElement): string | null {
@@ -171,4 +143,3 @@ function findFile(cell: HTMLElement): string | null {
   }
   return null;
 }
-

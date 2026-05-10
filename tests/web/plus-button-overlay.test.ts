@@ -32,10 +32,10 @@ function attach(
   cleanups.push(syncPlusButtonOverlay(root, onClick, composerOpen));
 }
 
-// "Visible" plus button = mounted in DOM AND its parent cell carries a
-// keying attribute. Under the persistent-mount optimization a button is
+// "Visible" plus button = mounted in DOM AND its parent cell carries
+// data-tour-cursor. Under the persistent-mount optimization the button is
 // kept in the DOM after the attribute clears (CSS hides it via the
-// parent-attribute show rule in PLUS_BUTTON_CSS); from the user's POV
+// cursor-attribute show rule in PLUS_BUTTON_CSS); from the user's POV
 // it's gone. Tests assert on visibility, not raw DOM presence — that
 // keeps the contract surface-level and lets the persistent-mount detail
 // be exercised separately by `mountedPlusButtons` below.
@@ -44,10 +44,7 @@ function plusButtons(scope: ParentNode = document.body): HTMLButtonElement[] {
     scope.querySelectorAll<HTMLButtonElement>("button.tour-plus-button"),
   ).filter((btn) => {
     const p = btn.parentElement;
-    return (
-      !!p &&
-      (p.hasAttribute("data-tour-cursor") || p.hasAttribute("data-tour-hover"))
-    );
+    return !!p && p.hasAttribute("data-tour-cursor");
   });
 }
 
@@ -69,7 +66,7 @@ async function flushObservers(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0));
 }
 
-describe("syncPlusButtonOverlay: mount on attribute flip", () => {
+describe("syncPlusButtonOverlay: mount on cursor", () => {
   it("mounts a button next to a cell that gains data-tour-cursor='true'", async () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
@@ -81,16 +78,7 @@ describe("syncPlusButtonOverlay: mount on attribute flip", () => {
     expect(plusButtons()).toHaveLength(1);
   });
 
-  it("mounts a button next to a cell that gains data-tour-hover='true'", async () => {
-    const c = cell({ line: 5, type: "addition" });
-    document.body.appendChild(fileBlock("x.ts", [c]));
-    attach(document.body, () => {}, false);
-    c.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    expect(plusButtons()).toHaveLength(1);
-  });
-
-  it("mounts buttons for cells that already carry the keying attribute at attach time", () => {
+  it("mounts buttons for cells that already carry data-tour-cursor at attach time", () => {
     const c = cell({ line: 5, type: "addition" });
     c.setAttribute("data-tour-cursor", "true");
     c.setAttribute("data-tour-cursor-side", "additions");
@@ -98,30 +86,14 @@ describe("syncPlusButtonOverlay: mount on attribute flip", () => {
     attach(document.body, () => {}, false);
     expect(plusButtons()).toHaveLength(1);
   });
-});
 
-describe("syncPlusButtonOverlay: coexistence", () => {
-  it("two buttons coexist when cursor + hover land on different rows", async () => {
-    const a = cell({ line: 5, type: "addition" });
-    const b = cell({ line: 10, type: "addition" });
-    document.body.appendChild(fileBlock("x.ts", [a, b]));
-    attach(document.body, () => {}, false);
-    a.setAttribute("data-tour-cursor", "true");
-    a.setAttribute("data-tour-cursor-side", "additions");
-    b.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    expect(plusButtons()).toHaveLength(2);
-  });
-
-  it("a single cell carrying both attributes still has a single button", async () => {
+  it("does NOT mount on data-tour-hover (hover-driven path removed)", async () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     attach(document.body, () => {}, false);
-    c.setAttribute("data-tour-cursor", "true");
-    c.setAttribute("data-tour-cursor-side", "additions");
     c.setAttribute("data-tour-hover", "true");
     await flushObservers();
-    expect(plusButtons()).toHaveLength(1);
+    expect(mountedPlusButtons()).toHaveLength(0);
   });
 });
 
@@ -139,7 +111,8 @@ describe("syncPlusButtonOverlay: composer-open suppression", () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     attach(document.body, () => {}, true);
-    c.setAttribute("data-tour-hover", "true");
+    c.setAttribute("data-tour-cursor", "true");
+    c.setAttribute("data-tour-cursor-side", "additions");
     await flushObservers();
     expect(plusButtons()).toHaveLength(0);
   });
@@ -166,33 +139,12 @@ describe("syncPlusButtonOverlay: click anchor", () => {
     const rowClicked = vi.fn();
     block.addEventListener("click", rowClicked);
     attach(document.body, () => {}, false);
-    c.setAttribute("data-tour-hover", "true");
+    c.setAttribute("data-tour-cursor", "true");
+    c.setAttribute("data-tour-cursor-side", "additions");
     await flushObservers();
     const [btn] = plusButtons();
     btn.click();
     expect(rowClicked).not.toHaveBeenCalled();
-  });
-
-  it("derives the click side from data-line-type for hover cells (context → additions)", async () => {
-    const c = cell({ line: 4, type: "context" });
-    document.body.appendChild(fileBlock("x.ts", [c]));
-    const onClick = vi.fn();
-    attach(document.body, onClick, false);
-    c.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    plusButtons()[0].click();
-    expect(onClick).toHaveBeenCalledWith({ file: "x.ts", side: "additions", line: 4 });
-  });
-
-  it("derives the click side from data-line-type for hover cells (deletion → deletions)", async () => {
-    const c = cell({ line: 4, type: "deletion" });
-    document.body.appendChild(fileBlock("x.ts", [c]));
-    const onClick = vi.fn();
-    attach(document.body, onClick, false);
-    c.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    plusButtons()[0].click();
-    expect(onClick).toHaveBeenCalledWith({ file: "x.ts", side: "deletions", line: 4 });
   });
 });
 
@@ -211,70 +163,40 @@ describe("syncPlusButtonOverlay: side scoping in split layout", () => {
     await flushObservers();
     const buttons = plusButtons();
     expect(buttons).toHaveLength(1);
-    // Button anchors on the additions-side cell (its parent is the cursor cell).
     expect(buttons[0].closest("[data-tour-cursor]")).toBe(rightCtx);
     buttons[0].click();
     expect(onClick).toHaveBeenCalledWith({ file: "x.ts", side: "additions", line: 60 });
   });
-
-  it("hover button takes side from the hovered cell's data-line-type", async () => {
-    const leftDel = cell({ line: 4, type: "change-deletion" });
-    const rightAdd = cell({ line: 4, type: "change-addition" });
-    const dels = el("code", { "data-deletions": "" }, [leftDel]);
-    const adds = el("code", { "data-additions": "" }, [rightAdd]);
-    document.body.appendChild(el("div", { "data-file": "x.ts" }, [dels, adds]));
-    const onClick = vi.fn();
-    attach(document.body, onClick, false);
-    leftDel.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    const buttons = plusButtons();
-    expect(buttons).toHaveLength(1);
-    expect(buttons[0].closest("[data-tour-hover]")).toBe(leftDel);
-    buttons[0].click();
-    expect(onClick).toHaveBeenCalledWith({ file: "x.ts", side: "deletions", line: 4 });
-  });
 });
 
-describe("syncPlusButtonOverlay: visibility on attribute clear", () => {
-  it("hides the button (no visible buttons) when the keying attribute is cleared", async () => {
-    const c = cell({ line: 5, type: "addition" });
-    document.body.appendChild(fileBlock("x.ts", [c]));
-    attach(document.body, () => {}, false);
-    c.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    expect(plusButtons()).toHaveLength(1);
-    c.removeAttribute("data-tour-hover");
-    await flushObservers();
-    expect(plusButtons()).toHaveLength(0);
-  });
-
-  // Persistent-mount optimization: the button stays in the DOM after the
-  // attribute clears so subsequent hover cycles on the same cell don't
-  // re-allocate a compositor layer (transform + z-index promote each `+`
-  // to its own layer). CSS handles show/hide via the parent attribute.
-  it("keeps the button in the DOM after the keying attribute is cleared", async () => {
-    const c = cell({ line: 5, type: "addition" });
-    document.body.appendChild(fileBlock("x.ts", [c]));
-    attach(document.body, () => {}, false);
-    c.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    expect(mountedPlusButtons()).toHaveLength(1);
-    c.removeAttribute("data-tour-hover");
-    await flushObservers();
-    expect(mountedPlusButtons()).toHaveLength(1);
-  });
-
-  it("keeps the button visible when one of two keying attributes is cleared", async () => {
+describe("syncPlusButtonOverlay: visibility on cursor clear", () => {
+  it("hides the button (no visible buttons) when data-tour-cursor is cleared", async () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     attach(document.body, () => {}, false);
     c.setAttribute("data-tour-cursor", "true");
     c.setAttribute("data-tour-cursor-side", "additions");
-    c.setAttribute("data-tour-hover", "true");
-    await flushObservers();
-    c.removeAttribute("data-tour-hover");
     await flushObservers();
     expect(plusButtons()).toHaveLength(1);
+    c.removeAttribute("data-tour-cursor");
+    await flushObservers();
+    expect(plusButtons()).toHaveLength(0);
+  });
+
+  // Persistent-mount optimization: the button stays in the DOM after the
+  // cursor moves off (avoids compositor-layer churn on cursor motion).
+  // CSS handles show/hide via the parent attribute.
+  it("keeps the button in the DOM after data-tour-cursor is cleared", async () => {
+    const c = cell({ line: 5, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    attach(document.body, () => {}, false);
+    c.setAttribute("data-tour-cursor", "true");
+    c.setAttribute("data-tour-cursor-side", "additions");
+    await flushObservers();
+    expect(mountedPlusButtons()).toHaveLength(1);
+    c.removeAttribute("data-tour-cursor");
+    await flushObservers();
+    expect(mountedPlusButtons()).toHaveLength(1);
   });
 });
 
@@ -283,7 +205,8 @@ describe("syncPlusButtonOverlay: cleanup", () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     const cleanup = syncPlusButtonOverlay(document.body, () => {}, false);
-    c.setAttribute("data-tour-hover", "true");
+    c.setAttribute("data-tour-cursor", "true");
+    c.setAttribute("data-tour-cursor-side", "additions");
     await flushObservers();
     expect(plusButtons()).toHaveLength(1);
     cleanup();
@@ -295,7 +218,8 @@ describe("syncPlusButtonOverlay: cleanup", () => {
     document.body.appendChild(fileBlock("x.ts", [c]));
     const cleanup = syncPlusButtonOverlay(document.body, () => {}, false);
     cleanup();
-    c.setAttribute("data-tour-hover", "true");
+    c.setAttribute("data-tour-cursor", "true");
+    c.setAttribute("data-tour-cursor-side", "additions");
     await flushObservers();
     expect(plusButtons()).toHaveLength(0);
   });

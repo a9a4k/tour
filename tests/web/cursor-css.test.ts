@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  CURSOR_OUTLINE_CSS,
-  HOVER_TINT_CSS,
-  PLUS_BUTTON_CSS,
-} from "../../src/web/client/cursor-css.js";
+import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS } from "../../src/web/client/cursor-css.js";
 
 describe("CURSOR_OUTLINE_CSS", () => {
   it("targets the cursor-overlay attribute (data-tour-cursor='true')", () => {
@@ -21,44 +17,15 @@ describe("CURSOR_OUTLINE_CSS", () => {
   });
 });
 
-describe("HOVER_TINT_CSS", () => {
-  it("targets the hover-overlay attribute (data-tour-hover='true') on annotatable line types", () => {
-    expect(HOVER_TINT_CSS).toContain('[data-line-type="addition"][data-tour-hover="true"]');
-    expect(HOVER_TINT_CSS).toContain('[data-line-type="deletion"][data-tour-hover="true"]');
-    expect(HOVER_TINT_CSS).toContain('[data-line-type="change-addition"][data-tour-hover="true"]');
-    expect(HOVER_TINT_CSS).toContain('[data-line-type="change-deletion"][data-tour-hover="true"]');
-    expect(HOVER_TINT_CSS).toContain('[data-line-type="context"][data-tour-hover="true"]');
-    expect(HOVER_TINT_CSS).toContain("background-image");
-  });
-
-  it("does NOT use the bare :hover pseudo-class — Pierre may paint its own and we control toggle via the listener", () => {
-    expect(HOVER_TINT_CSS).not.toContain(":hover");
-  });
-
-  // Issue #137 / PRD #136: the `+` affordance is now a real-DOM <button>
-  // mounted by plus-button-overlay.ts, not a CSS pseudo-element. This
-  // rule block must not re-introduce a competing pseudo-element button.
-  it("does NOT render a '+' button as a CSS pseudo-element (real-DOM button per issue #137)", () => {
-    expect(HOVER_TINT_CSS).not.toContain("::after");
-    expect(HOVER_TINT_CSS).not.toContain('content: "+"');
-  });
-
-  it("uses the shared range tint token (no hard-coded rgba)", () => {
-    expect(HOVER_TINT_CSS).toContain("rgba(56, 139, 253, 0.15)");
-  });
-});
-
 // PRD #136 user-story 7: the `+` button must sit to the left of the
-// line-number column (no overlap with the line number). PR #137 shipped the
-// functional contract but deferred CSS positioning; this rule closes that gap
-// by lifting the appended button out of cell-content flow and anchoring it
-// just outside the `[data-line]` cell's left edge.
+// line-number column (no overlap with the line number). The hover-driven
+// mount path was removed; the cursor is the only trigger now.
 describe("PLUS_BUTTON_CSS", () => {
   it("targets the real-DOM button class mounted by plus-button-overlay", () => {
     expect(PLUS_BUTTON_CSS).toContain(".tour-plus-button");
   });
 
-  it("pins the button to the left edge of the cursor/hover cell (GitHub-style gutter affordance)", () => {
+  it("pins the button to the left edge of the cursor cell (GitHub-style gutter affordance)", () => {
     expect(PLUS_BUTTON_CSS).toContain("position: absolute");
     expect(PLUS_BUTTON_CSS).toContain("left: 0");
     expect(PLUS_BUTTON_CSS).toContain("translate(-100%, -50%)");
@@ -74,15 +41,18 @@ describe("PLUS_BUTTON_CSS", () => {
   });
 
   // Persistent-mount optimization: the button is kept in the DOM after the
-  // keying attribute clears (avoids compositor-layer churn on every hover);
-  // visibility flips via these CSS rules instead of DOM mutation.
+  // cursor moves off (avoids compositor-layer churn on cursor motion);
+  // visibility flips via the CSS show rule instead of DOM mutation.
   it("hides the button by default (display: none) so persistent-mounted instances stay invisible", () => {
     expect(PLUS_BUTTON_CSS).toContain("display: none");
   });
 
-  it("shows the button when the parent cell carries data-tour-cursor or data-tour-hover", () => {
+  it("shows the button only when the parent cell carries data-tour-cursor", () => {
     expect(PLUS_BUTTON_CSS).toContain('[data-tour-cursor="true"] > .tour-plus-button');
-    expect(PLUS_BUTTON_CSS).toContain('[data-tour-hover="true"] > .tour-plus-button');
     expect(PLUS_BUTTON_CSS).toContain("display: inline-flex");
+  });
+
+  it("does NOT key visibility off data-tour-hover (hover-driven path removed)", () => {
+    expect(PLUS_BUTTON_CSS).not.toContain("data-tour-hover");
   });
 });
