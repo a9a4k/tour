@@ -295,16 +295,11 @@ export async function startServer(args: ServeArgs): Promise<void> {
             annotations,
             diff,
             diffModel: {
-              files: diffModel.files.map((f) => {
-                const content = fileContents.get(f.name);
-                const base = {
-                  ...f,
-                  classification: classificationMap[f.name] ?? { collapsed: false },
-                };
-                return content
-                  ? { ...base, oldContent: content.oldContent, newContent: content.newContent }
-                  : base;
-              }),
+              files: diffModel.files.map((f) => ({
+                ...f,
+                classification: classificationMap[f.name] ?? { collapsed: false },
+                ...fileContents.get(f.name),
+              })),
             },
             snapshotLost,
           });
