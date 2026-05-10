@@ -3,12 +3,13 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile } from "../core/diff-model.js";
 import { getTour, listTours, resolveIdPrefix } from "../core/tour-store.js";
 import { appendAnnotation, readAnnotations } from "../core/annotations-store.js";
-import { getDiff, isShaResolvable } from "../core/git.js";
+import { getDiff, gitShow, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile, type FileClassification } from "../core/file-classifier.js";
 import { generateId } from "../core/ids.js";
 import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
+import { fetchFileContents, type FileContentPair } from "../core/file-content-provider.js";
 
 interface TuiArgs {
   tourId?: string;
@@ -24,6 +25,7 @@ interface LoadedBundle {
   snapshotLost: boolean;
   classifications: Record<string, FileClassification>;
   replyLock: ReplyLock | null;
+  fileContents: Map<string, FileContentPair>;
 }
 
 async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle> {
@@ -37,6 +39,7 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
   let rawDiff = "";
   let files: DiffFile[] = [];
   let classifications: Record<string, FileClassification> = {};
+  let fileContents: Map<string, FileContentPair> = new Map();
 
   if (!snapshotLost) {
     rawDiff = await getDiff(tour.base_sha, tour.head_sha, cwd);
@@ -53,6 +56,16 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
       }),
     );
     classifications = Object.fromEntries(entries);
+
+    // Load full file contents per side for Hidden-context expansion (PRD #108).
+    // The webapp's bundle build does the same via the same provider; symmetry
+    // keeps the two surfaces resolving identical line text on expansion.
+    fileContents = await fetchFileContents(model, {
+      baseSha: tour.base_sha,
+      headSha: tour.head_sha,
+      cwd,
+      gitShow,
+    });
   }
 
   const replyLock = await readReplyLock(cwd, tourId);
@@ -65,6 +78,7 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
     snapshotLost,
     classifications,
     replyLock,
+    fileContents,
   };
 }
 

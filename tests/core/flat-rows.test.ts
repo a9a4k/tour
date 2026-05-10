@@ -70,16 +70,20 @@ describe("flatRows", () => {
     expect(rows[rows.length - 1].file).toBe("z.txt");
   });
 
-  it("skips hunk-header and annotation rows", () => {
+  it("emits cursor-walkable rows for diff-row + hunk-header but skips annotation rows", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const annotations = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
     const planned = new Map<string, PlannedRow[]>([
       ["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")],
     ]);
     const rows = flatRows([f], planned, () => false);
-    // No hunk header or annotation rows should leak through.
-    const diffRowsOnly = planned.get("x.txt")!.filter((r) => r.kind === "diff-row");
-    expect(rows.length).toBe(diffRowsOnly.length);
+    // Hunk-headers are cursor-addressable as `hunk-separator` interactive
+    // rows (PRD #108, ADR 0013). Annotation rows still skip.
+    const cursorables = planned
+      .get("x.txt")!
+      .filter((r) => r.kind === "diff-row" || r.kind === "hunk-header");
+    expect(rows.length).toBe(cursorables.length);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "hunk-separator")).toBe(true);
   });
 
   it("contributes zero entries from a folded file", () => {
@@ -197,7 +201,11 @@ describe("flatRows interactive rows (PRD #107)", () => {
       interactive({ subKind: "hunk-separator", boundaryRef: 1, text: "··· 12 hidden ···" }),
     ];
     const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
-    const interactiveRow = flat.find((r) => r.kind === "interactive");
+    // The synthetic interactive row has boundaryRef=1; the planner's
+    // hunk-header (also walkable as hunk-separator) has boundaryRef=0.
+    const interactiveRow = flat.find(
+      (r) => r.kind === "interactive" && r.boundaryRef === 1,
+    );
     expect(interactiveRow).toBeDefined();
     expect(interactiveRow!.kind).toBe("interactive");
     if (interactiveRow!.kind !== "interactive") throw new Error("narrow");

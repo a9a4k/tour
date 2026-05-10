@@ -433,3 +433,260 @@ index 1..2 100644
     });
   });
 });
+
+// PRD #108 (issue #112). The planner gains `oldContent`, `newContent`, and
+// `expansion` parameters, learns to emit synthetic file-top / file-bottom
+// boundary rows, attaches `expandUp` / `expandDown` line counts to the
+// hunk-header, and emits expanded `context` rows from the file contents
+// when expansion state requests them.
+describe("planRows hidden-context expansion (PRD #108)", () => {
+  // A file with two hunks separated by a 10-line gap.
+  // Hunk 1: lines 1..3 (one ctx + one paired change). Hunk 2 starts at
+  // line 14, so lines 4..13 are hidden in the gap.
+  const TWO_HUNK_DIFF = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old1
++new1
+ ctx2
+@@ -14,2 +14,2 @@
+ ctx14
+-old14
++new14
+`;
+
+  // newContent: 16 lines (line 1 starts a 16-line file). Old content same
+  // shape with `old1` / `old14` instead of `new1` / `new14`.
+  const NEW_CONTENT_TWO_HUNK =
+    [
+      "ctx1",
+      "new1",
+      "ctx2",
+      "g4",
+      "g5",
+      "g6",
+      "g7",
+      "g8",
+      "g9",
+      "g10",
+      "g11",
+      "g12",
+      "g13",
+      "ctx14",
+      "new14",
+      "ctx15",
+    ].join("\n") + "\n";
+
+  const OLD_CONTENT_TWO_HUNK =
+    [
+      "ctx1",
+      "old1",
+      "ctx2",
+      "g4",
+      "g5",
+      "g6",
+      "g7",
+      "g8",
+      "g9",
+      "g10",
+      "g11",
+      "g12",
+      "g13",
+      "ctx14",
+      "old14",
+      "ctx15",
+    ].join("\n") + "\n";
+
+  it("hunk-header carries expandUp + expandDown line counts (sum = remaining gap size)", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const rows = planRows(file, [], "split");
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers.length).toBe(2);
+    // First hunk has no preceding gap (gap is computed only between hunks).
+    expect(headers[0].expandUp + headers[0].expandDown).toBe(0);
+    // Second hunk's preceding gap: lines 4..13 = 10 hidden lines.
+    expect(headers[1].expandUp + headers[1].expandDown).toBe(10);
+  });
+
+  it("emits a boundary-top interactive row when first hunk's additionStart > 1", () => {
+    // first hunk starts at line 5
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,1 +5,1 @@
+-old5
++new5
+`;
+    const file = parseFile(diff);
+    const rows = planRows(file, [], "split");
+    const top = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "boundary-top",
+    );
+    expect(top).toBeDefined();
+    if (top?.kind === "interactive") {
+      expect(top.boundaryRef).toBe("top");
+    }
+  });
+
+  it("does NOT emit a boundary-top row when first hunk's additionStart === 1", () => {
+    const file = parseFile(SIMPLE_DIFF);
+    const rows = planRows(file, [], "split");
+    const top = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "boundary-top",
+    );
+    expect(top).toBeUndefined();
+  });
+
+  it("emits a boundary-bottom interactive row when last hunk doesn't reach EOF (with newContent)", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+    });
+    const bottom = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "boundary-bottom",
+    );
+    expect(bottom).toBeDefined();
+    if (bottom?.kind === "interactive") {
+      expect(bottom.boundaryRef).toBe("bottom");
+    }
+  });
+
+  it("does NOT emit a boundary-bottom row when newContent is missing", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const rows = planRows(file, [], "split");
+    const bottom = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "boundary-bottom",
+    );
+    expect(bottom).toBeUndefined();
+  });
+
+  it("expansion state with non-zero up/down on a hunk-separator emits matching context rows from newContent", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 2, down: 1 }]]),
+        },
+      ],
+    ]);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+      expansion,
+    });
+    const ctxLines = rows
+      .filter((r) => r.kind === "diff-row" && r.type === "context")
+      .map((r) => (r.kind === "diff-row" ? r.rightText : ""));
+    // up = 2 → lines 4 ("g4"), 5 ("g5") just after hunk 1's end.
+    expect(ctxLines).toContain("g4");
+    expect(ctxLines).toContain("g5");
+    // down = 1 → line 13 ("g13") just before hunk 2.
+    expect(ctxLines).toContain("g13");
+    // Lines NOT in the expanded windows stay hidden.
+    expect(ctxLines).not.toContain("g8");
+  });
+
+  it("expandUp + expandDown shrinks as expansion reveals lines from the gap", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 4, down: 4 }]]),
+        },
+      ],
+    ]);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+      expansion,
+    });
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    // gap was 10; revealed 4 + 4 = 8; remaining = 2.
+    expect(headers[1].expandUp + headers[1].expandDown).toBe(2);
+  });
+
+  it("renamed file uses prevName content for deletion-side expansion via oldContent", () => {
+    // Pierre's `parseFileDiffMetadata` doesn't differentiate prevName for
+    // emit logic; the planner reads oldContent verbatim. The test simply
+    // verifies that a deletion-side line number falls inside a context row
+    // when oldContent supplies the text.
+    const file = parseFile(TWO_HUNK_DIFF);
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 1, down: 0 }]]),
+        },
+      ],
+    ]);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+      expansion,
+    });
+    const ctxLine4 = rows.find(
+      (r) => r.kind === "diff-row" && r.type === "context" && r.rightLineNumber === 4,
+    );
+    expect(ctxLine4).toBeDefined();
+    if (ctxLine4?.kind === "diff-row") {
+      expect(ctxLine4.leftLineNumber).toBe(4);
+      expect(ctxLine4.leftText).toBe("g4");
+    }
+  });
+
+  it("default (no expansion) emits no expanded context rows in the gap", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const rows = planRows(file, [], "split");
+    const ctxLines = rows
+      .filter((r) => r.kind === "diff-row" && r.type === "context")
+      .map((r) => (r.kind === "diff-row" ? r.rightText : ""));
+    // Only the in-hunk context lines (`ctx1`, `ctx14`) should be present.
+    expect(ctxLines).toContain("ctx1");
+    expect(ctxLines).toContain("ctx14");
+    expect(ctxLines).not.toContain("g4");
+    expect(ctxLines).not.toContain("g13");
+  });
+
+  it("'all' expansion fills the entire gap with context rows", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 5, down: 5 }]]),
+        },
+      ],
+    ]);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+      expansion,
+    });
+    const ctxLines = rows
+      .filter((r) => r.kind === "diff-row" && r.type === "context")
+      .map((r) => (r.kind === "diff-row" ? r.rightText : ""));
+    // gap 4..13 fully revealed (10 lines).
+    for (const expected of ["g4", "g5", "g6", "g7", "g8", "g9", "g10", "g11", "g12", "g13"]) {
+      expect(ctxLines).toContain(expected);
+    }
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].expandUp + headers[1].expandDown).toBe(0);
+  });
+});

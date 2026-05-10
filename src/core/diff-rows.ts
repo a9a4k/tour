@@ -1,6 +1,12 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
 import { buildThreads, topLevelAnnotations } from "./threads.js";
+import {
+  emptyExpansion,
+  getBoundary,
+  type BoundaryRef as ExpansionBoundaryRef,
+  type ExpansionState,
+} from "./expansion-state.js";
 
 export type PlannedRow =
   | DiffRow
@@ -25,6 +31,13 @@ export interface HunkHeaderRow {
   kind: "hunk-header";
   header: string;
   hunkIndex: number;
+  /** Lines still hidden in the upper portion of the gap above this hunk
+   *  (closer to the previous hunk's end). Together with `expandDown` they
+   *  feed the `··· N hidden ···` suffix on the hunk-header (PRD #108). */
+  expandUp: number;
+  /** Lines still hidden in the lower portion of the gap above this hunk
+   *  (closer to this hunk's start). */
+  expandDown: number;
 }
 
 export interface AnnotationRow {
@@ -62,12 +75,19 @@ export interface InteractiveRow {
   text?: string;
 }
 
+export interface PlanRowsOptions {
+  oldContent?: string;
+  newContent?: string;
+  expansion?: ExpansionState;
+}
+
 export function planRows(
   file: FileDiffMetadata,
   annotations: Annotation[],
   layout: "split" | "unified",
+  options: PlanRowsOptions = {},
 ): PlannedRow[] {
-  const diffRows = walkHunks(file, layout);
+  const diffRows = walkHunks(file, layout, options);
   applyAnnotationFlags(diffRows, annotations, layout);
   return interleaveAnnotations(diffRows, annotations);
 }
@@ -90,16 +110,163 @@ function stripTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s.slice(0, s.endsWith("\r\n") ? -2 : -1) : s;
 }
 
-function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): PlannedRow[] {
+function splitLines(s: string): string[] {
+  if (!s) return [];
+  const trimmed = s.endsWith("\n") ? s.slice(0, -1) : s;
+  return trimmed.split("\n");
+}
+
+function lineCountOf(s: string): number {
+  if (!s) return 0;
+  const trimmed = s.endsWith("\n") ? s.slice(0, -1) : s;
+  return trimmed === "" ? 0 : trimmed.split("\n").length;
+}
+
+function gapBefore(file: FileDiffMetadata, hunkIndex: number): {
+  size: number;
+  prevAdditionEnd: number;
+  prevDeletionEnd: number;
+  nextAdditionStart: number;
+  nextDeletionStart: number;
+} {
+  const next = file.hunks[hunkIndex];
+  if (hunkIndex === 0) {
+    return {
+      size: 0,
+      prevAdditionEnd: 0,
+      prevDeletionEnd: 0,
+      nextAdditionStart: next.additionStart,
+      nextDeletionStart: next.deletionStart,
+    };
+  }
+  const prev = file.hunks[hunkIndex - 1];
+  const prevAdditionEnd = prev.additionStart + prev.additionCount - 1;
+  const prevDeletionEnd = prev.deletionStart + prev.deletionCount - 1;
+  const size = Math.max(0, next.additionStart - prevAdditionEnd - 1);
+  return {
+    size,
+    prevAdditionEnd,
+    prevDeletionEnd,
+    nextAdditionStart: next.additionStart,
+    nextDeletionStart: next.deletionStart,
+  };
+}
+
+function expansionFor(
+  options: PlanRowsOptions,
+  file: string,
+  ref: ExpansionBoundaryRef,
+): { up: number; down: number } {
+  if (!options.expansion) return { up: 0, down: 0 };
+  return getBoundary(options.expansion, { file, ref });
+}
+
+function emitContextRowsByLineNumber(
+  rows: PlannedRow[],
+  oldContent: string | undefined,
+  newContent: string | undefined,
+  fromAdditionLine: number,
+  fromDeletionLine: number,
+  count: number,
+): void {
+  if (count <= 0) return;
+  const newLines = newContent ? splitLines(newContent) : [];
+  const oldLines = oldContent ? splitLines(oldContent) : [];
+  for (let i = 0; i < count; i++) {
+    const aL = fromAdditionLine + i;
+    const dL = fromDeletionLine + i;
+    const text = newLines[aL - 1] ?? oldLines[dL - 1] ?? "";
+    rows.push({
+      kind: "diff-row",
+      type: "context",
+      leftLineNumber: dL,
+      rightLineNumber: aL,
+      leftText: text,
+      rightText: text,
+    });
+  }
+}
+
+function walkHunks(
+  file: FileDiffMetadata,
+  layout: "split" | "unified",
+  options: PlanRowsOptions,
+): PlannedRow[] {
   const rows: PlannedRow[] = [];
+  const { oldContent, newContent } = options;
+  const newLineCount = newContent !== undefined ? lineCountOf(newContent) : 0;
+
+  // boundary-top: file's first hunk doesn't start at line 1.
+  if (file.hunks.length > 0 && file.hunks[0].additionStart > 1) {
+    const top = expansionFor(options, file.name, "top");
+    const gapSize = file.hunks[0].additionStart - 1;
+    const remaining = Math.max(0, gapSize - top.up - top.down);
+    rows.push({
+      kind: "interactive",
+      subKind: "boundary-top",
+      boundaryRef: "top",
+      text: boundaryTopText(remaining),
+    });
+    if (top.up > 0) {
+      emitContextRowsByLineNumber(rows, oldContent, newContent, 1, 1, top.up);
+    }
+    if (top.down > 0) {
+      emitContextRowsByLineNumber(
+        rows,
+        oldContent,
+        newContent,
+        file.hunks[0].additionStart - top.down,
+        file.hunks[0].deletionStart - top.down,
+        top.down,
+      );
+    }
+  }
 
   for (let hunkIndex = 0; hunkIndex < file.hunks.length; hunkIndex++) {
     const hunk = file.hunks[hunkIndex];
+    const gap = gapBefore(file, hunkIndex);
+    const sep =
+      hunkIndex === 0
+        ? { up: 0, down: 0 }
+        : expansionFor(options, file.name, hunkIndex);
+    const hidden = Math.max(0, gap.size - sep.up - sep.down);
+    // Split the remaining hidden count cosmetically across the two sides
+    // of the @@ line; the suffix concat (expandUp + expandDown) is what the
+    // renderer actually shows. No semantic meaning to the split.
+    const expandUp = Math.ceil(hidden / 2);
+    const expandDown = hidden - expandUp;
+
+    // Up-side context rows: lines just after the previous hunk's end.
+    if (hunkIndex > 0 && sep.up > 0) {
+      emitContextRowsByLineNumber(
+        rows,
+        oldContent,
+        newContent,
+        gap.prevAdditionEnd + 1,
+        gap.prevDeletionEnd + 1,
+        sep.up,
+      );
+    }
+
     rows.push({
       kind: "hunk-header",
       header: hunk.hunkSpecs ?? "",
       hunkIndex,
+      expandUp,
+      expandDown,
     });
+
+    // Down-side context rows: lines just before this hunk's start.
+    if (hunkIndex > 0 && sep.down > 0) {
+      emitContextRowsByLineNumber(
+        rows,
+        oldContent,
+        newContent,
+        gap.nextAdditionStart - sep.down,
+        gap.nextDeletionStart - sep.down,
+        sep.down,
+      );
+    }
 
     let leftLine = hunk.deletionStart;
     let rightLine = hunk.additionStart;
@@ -166,7 +333,57 @@ function walkHunks(file: FileDiffMetadata, layout: "split" | "unified"): Planned
     }
   }
 
+  // boundary-bottom: file's last hunk doesn't reach EOF on the additions
+  // side. Without `newContent` we can't know the file length, so the row
+  // is suppressed.
+  if (file.hunks.length > 0 && newLineCount > 0) {
+    const last = file.hunks[file.hunks.length - 1];
+    const lastAdditionEnd = last.additionStart + last.additionCount - 1;
+    const lastDeletionEnd = last.deletionStart + last.deletionCount - 1;
+    if (lastAdditionEnd < newLineCount) {
+      const bot = expansionFor(options, file.name, "bottom");
+      const gapSize = newLineCount - lastAdditionEnd;
+      const remaining = Math.max(0, gapSize - bot.up - bot.down);
+      if (bot.up > 0) {
+        emitContextRowsByLineNumber(
+          rows,
+          oldContent,
+          newContent,
+          lastAdditionEnd + 1,
+          lastDeletionEnd + 1,
+          bot.up,
+        );
+      }
+      if (bot.down > 0) {
+        emitContextRowsByLineNumber(
+          rows,
+          oldContent,
+          newContent,
+          newLineCount - bot.down + 1,
+          lastDeletionEnd + (gapSize - bot.down) + 1,
+          bot.down,
+        );
+      }
+      rows.push({
+        kind: "interactive",
+        subKind: "boundary-bottom",
+        boundaryRef: "bottom",
+        text: boundaryBottomText(remaining),
+      });
+    }
+  }
+
   return rows;
+}
+
+function boundaryTopText(remaining: number): string {
+  if (remaining === 0) return "··· 0 hidden above ···";
+  return `··· ${remaining} lines hidden above ···`;
+}
+
+function boundaryBottomText(remaining: number): string {
+  if (remaining === 0) return "··· 0 hidden below ···";
+  return `··· ${remaining} lines hidden below ···`;
 }
 
 function applyAnnotationFlags(
@@ -252,3 +469,7 @@ function findAnchorRowIndex(rows: PlannedRow[], ann: Annotation): number {
   }
   return -1;
 }
+
+// Re-export for ergonomic imports at boundary-touching call sites.
+export { emptyExpansion };
+export type { ExpansionState };

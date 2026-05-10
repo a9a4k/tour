@@ -104,7 +104,11 @@ describe("first j/k/h/l materializes at the default target", () => {
     const flat = flatRows([fa, fb], planned, () => false);
     const seeded = initialCursor({ topLevelAnnotations: [], flatRows: flat });
     expect(seeded?.file).toBe("a.txt");
-    expect(seeded?.lineNumber).toBe(flat[0].lineNumber);
+    // Initial cursor lands on the first DIFF row, skipping interactive
+    // hunk-separator rows (PRD #107 US 14, ADR 0013).
+    const firstDiff = flat.find((r) => r.kind === "diff");
+    if (firstDiff?.kind !== "diff") throw new Error("no diff row");
+    expect(seeded?.lineNumber).toBe(firstDiff.lineNumber);
   });
 
   it("Tour with annotations: seeds at the first top-level annotation's anchor", () => {
@@ -152,7 +156,9 @@ describe("a from null cursor materializes at the default target AND opens the co
     expect(composer?.kind).toBe("top-level");
     if (composer?.kind !== "top-level") return;
     expect(composer.file).toBe("a.txt");
-    expect(composer.line_start).toBe(flat[0].lineNumber);
+    const firstDiff = flat.find((r) => r.kind === "diff");
+    if (firstDiff?.kind !== "diff") throw new Error("no diff row");
+    expect(composer.line_start).toBe(firstDiff.lineNumber);
   });
 
   it("degraded (no rows): seeded cursor is null and composer is a silent no-op", () => {

@@ -746,6 +746,50 @@ index 1..2 100644
     });
   });
 
+  // PRD #108 (issue #112). Hunk-header rows render `··· N hidden ···` after
+  // the existing `@@ ...` text when there's still hidden content in the gap
+  // above this hunk. The suffix is suppressed when the gap is fully
+  // expanded (or for hunks with no preceding gap).
+  describe("hunk-header expansion suffix (PRD #108)", () => {
+    function findText(tree: unknown, predicate: (s: string) => boolean): AnyElement | undefined {
+      return flatten(tree).find(
+        (el) => typeof el.props.children === "string" && predicate(el.props.children as string),
+      );
+    }
+
+    it("appends `··· N hidden ···` to the hunk-header text when expandUp + expandDown > 0", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          expandUp: 6,
+          expandDown: 6,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const node = findText(tree, (s) => s.includes("12 hidden"));
+      expect(node).toBeDefined();
+      expect(node!.props.children).toBe("@@ -10,3 +10,3 @@ ··· 12 hidden ···");
+    });
+
+    it("does not append a suffix when expandUp + expandDown === 0", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -1,3 +1,3 @@",
+          hunkIndex: 0,
+          expandUp: 0,
+          expandDown: 0,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const node = findText(tree, (s) => s.startsWith("@@"));
+      expect(node).toBeDefined();
+      expect(node!.props.children).toBe("@@ -1,3 +1,3 @@");
+    });
+  });
+
   it("uses semantic diff-bg props sourced from the theme (no hard-coded hex passed to DiffLine)", () => {
     // The DiffRows wrapper passes the semantic "addition"/"deletion" tag;
     // the actual color is resolved inside DiffLine from the theme. Assert

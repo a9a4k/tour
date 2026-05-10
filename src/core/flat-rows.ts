@@ -104,7 +104,20 @@ export function flatRows(
         });
         continue;
       }
-      // hunk-header + annotation rows are not cursor-addressable.
+      if (row.kind === "hunk-header") {
+        // Hunk-header rows ARE cursor-addressable as `subKind: 'hunk-separator'`
+        // interactive rows (PRD #108, ADR 0013) — pressing Enter on one
+        // expands the hidden gap above this hunk. The boundaryRef is the
+        // hunk's index (gap before hunk i has key i).
+        out.push({
+          kind: "interactive",
+          file: file.name,
+          subKind: "hunk-separator",
+          boundaryRef: row.hunkIndex,
+        });
+        continue;
+      }
+      // annotation rows are not cursor-addressable.
     }
   }
   return out;

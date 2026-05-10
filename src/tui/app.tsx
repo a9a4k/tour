@@ -7,6 +7,14 @@ import type { DiffFile, FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
 import { planRows } from "../core/diff-rows.js";
+import {
+  emptyExpansion,
+  expand,
+  expandTop,
+  expandBottom,
+  type ExpansionState,
+} from "../core/expansion-state.js";
+import type { FileContentPair } from "../core/file-content-provider.js";
 import { DiffRows } from "./DiffRows.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import {
@@ -60,6 +68,7 @@ export interface TourBundle {
   snapshotLost: boolean;
   classifications: Record<string, FileClassification>;
   replyLock: ReplyLock | null;
+  fileContents?: Map<string, FileContentPair>;
 }
 
 export type WriteAnnotationInput =
@@ -81,6 +90,7 @@ interface AppProps {
   snapshotLost: boolean;
   classifications?: Record<string, FileClassification>;
   replyLock?: ReplyLock | null;
+  fileContents?: Map<string, FileContentPair>;
   loadTour?: (id: string) => Promise<TourBundle>;
   loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
   writeAnnotation?: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
@@ -187,6 +197,7 @@ function App(props: AppProps) {
     snapshotLost: props.snapshotLost,
     classifications: props.classifications ?? {},
     replyLock: props.replyLock ?? null,
+    fileContents: props.fileContents ?? new Map(),
   });
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
@@ -201,6 +212,10 @@ function App(props: AppProps) {
   const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
+  // Hidden-context expansion state (PRD #108, ADR 0013). Per-tour, in-memory
+  // only. Reset on tour switch (sibling to collapsedOverrides), preserved on
+  // watcher reload (the diff is SHA-pinned; gaps are unchanged).
+  const [expansion, setExpansion] = useState<ExpansionState>(() => emptyExpansion());
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -217,6 +232,7 @@ function App(props: AppProps) {
   const liveSnapshotLost = bundle.snapshotLost;
   const liveClassifications = bundle.classifications;
   const liveReplyLock = bundle.replyLock;
+  const liveFileContents = bundle.fileContents ?? new Map();
   const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
@@ -303,10 +319,18 @@ function App(props: AppProps) {
     const out = new Map<string, PlannedRow[]>();
     for (const [name, meta] of fileMetadata) {
       const fileAnns = liveAnnotations.filter((a) => a.file === name);
-      out.set(name, planRows(meta, fileAnns, layout));
+      const contents = liveFileContents.get(name);
+      out.set(
+        name,
+        planRows(meta, fileAnns, layout, {
+          oldContent: contents?.oldContent,
+          newContent: contents?.newContent,
+          expansion,
+        }),
+      );
     }
     return out;
-  }, [fileMetadata, liveAnnotations, layout]);
+  }, [fileMetadata, liveAnnotations, layout, liveFileContents, expansion]);
 
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
@@ -498,6 +522,7 @@ function App(props: AppProps) {
       setCursor(null);
       setCollapsedOverrides({});
       setCollapsedFolders(new Set());
+      setExpansion(emptyExpansion());
     } finally {
       closePicker();
     }
@@ -584,22 +609,58 @@ function App(props: AppProps) {
     }
   };
 
-  // Stub handlers for interactive-row primary actions (PRD #107). The
-  // routing primitive ships in this slice; the actual expansion behaviour
-  // — revealing ±10 lines into a hunk gap, expanding a classifier-collapsed
-  // file's body — is delivered by PRD #108. Stubs intentionally do nothing
-  // observable so the keymap + dispatch surface can be tested independently.
-  const expandHunkBoundary = (_boundaryRef: BoundaryRef, _all: boolean) => {
-    // PRD #108
+  // Hunk-separator gap size = lines between previous hunk's additions end
+  // and this hunk's additions start, on the additions side (gap is symmetric
+  // across both sides for context). Returns 0 when the cursor isn't on a
+  // resolvable separator.
+  const hunkSeparatorGapSize = (file: string, hunkIndex: number): number => {
+    const meta = fileMetadata.get(file);
+    if (!meta || hunkIndex <= 0 || hunkIndex >= meta.hunks.length) return 0;
+    const prev = meta.hunks[hunkIndex - 1];
+    const next = meta.hunks[hunkIndex];
+    return Math.max(0, next.additionStart - (prev.additionStart + prev.additionCount));
   };
-  const expandTopBoundary = (_all: boolean) => {
-    // PRD #108
+  const boundaryTopGapSize = (file: string): number => {
+    const meta = fileMetadata.get(file);
+    if (!meta || meta.hunks.length === 0) return 0;
+    return Math.max(0, meta.hunks[0].additionStart - 1);
   };
-  const expandBottomBoundary = (_all: boolean) => {
-    // PRD #108
+  const boundaryBottomGapSize = (file: string): number => {
+    const meta = fileMetadata.get(file);
+    if (!meta || meta.hunks.length === 0) return 0;
+    const last = meta.hunks[meta.hunks.length - 1];
+    const lastEnd = last.additionStart + last.additionCount - 1;
+    const contents = liveFileContents.get(file);
+    if (!contents?.newContent) return 0;
+    const trimmed = contents.newContent.endsWith("\n")
+      ? contents.newContent.slice(0, -1)
+      : contents.newContent;
+    const lineCount = trimmed === "" ? 0 : trimmed.split("\n").length;
+    return Math.max(0, lineCount - lastEnd);
   };
+
+  // Real expansion handlers (PRD #108). Replace the slice-#107 stubs with
+  // reducer calls against the per-tour expansion state.
+  const expandHunkBoundary = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
+    if (typeof boundaryRef !== "number") return;
+    const gapSize = hunkSeparatorGapSize(file, boundaryRef);
+    if (gapSize === 0) return;
+    setExpansion((s) => expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize));
+  };
+  const expandTopBoundary = (file: string, all: boolean) => {
+    const gapSize = boundaryTopGapSize(file);
+    if (gapSize === 0) return;
+    setExpansion((s) => expandTop(s, file, all ? "all" : "symmetric-20", gapSize));
+  };
+  const expandBottomBoundary = (file: string, all: boolean) => {
+    const gapSize = boundaryBottomGapSize(file);
+    if (gapSize === 0) return;
+    setExpansion((s) => expandBottom(s, file, all ? "all" : "symmetric-20", gapSize));
+  };
+  // Collapsed-file expansion is delivered by PRD #108 slice #5; out of scope
+  // here per issue #112.
   const expandCollapsedFile = (_file: string) => {
-    // PRD #108
+    // slice #5
   };
 
   // Routes a primary-action / primary-action-all keystroke to the row-kind-
@@ -610,13 +671,13 @@ function App(props: AppProps) {
     const { subKind, boundaryRef } = cursor.interactive;
     switch (subKind) {
       case "hunk-separator":
-        expandHunkBoundary(boundaryRef, all);
+        expandHunkBoundary(cursor.file, boundaryRef, all);
         return;
       case "boundary-top":
-        expandTopBoundary(all);
+        expandTopBoundary(cursor.file, all);
         return;
       case "boundary-bottom":
-        expandBottomBoundary(all);
+        expandBottomBoundary(cursor.file, all);
         return;
       case "collapsed-file":
         expandCollapsedFile(cursor.file);

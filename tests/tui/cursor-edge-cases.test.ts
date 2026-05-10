@@ -45,7 +45,8 @@ describe("fold invalidation: cursor's file becomes folded", () => {
       ["b.txt", plannedFor("split")],
     ]);
     const allUnfolded = flatRows([fa, fb], planned, () => false);
-    const aRow = allUnfolded.find((r) => r.file === "a.txt")!;
+    const aRow = allUnfolded.find((r) => r.kind === "diff" && r.file === "a.txt");
+    if (!aRow || aRow.kind !== "diff") throw new Error("no diff row in a.txt");
     const cursor: Cursor = {
       file: aRow.file,
       lineNumber: aRow.lineNumber,
@@ -80,7 +81,10 @@ describe("fold invalidation: cursor's file becomes folded", () => {
       ["b.txt", plannedFor("split")],
     ]);
     const allUnfolded = flatRows([fa, fb], planned, () => false);
-    const aRow = allUnfolded.find((r) => r.file === "a.txt")!;
+    const aRow = allUnfolded.find(
+      (r) => r.kind === "diff" && r.file === "a.txt",
+    );
+    if (!aRow || aRow.kind !== "diff") throw new Error("no diff row in a.txt");
     const cursor: Cursor = {
       file: "a.txt",
       lineNumber: aRow.lineNumber,
@@ -102,7 +106,10 @@ describe("fold invalidation: cursor's file becomes folded", () => {
       ["b.txt", plannedFor("split")],
     ]);
     const bFolded = flatRows([fa, fb], planned, (n) => n === "b.txt");
-    const aRow = bFolded.find((r) => r.file === "a.txt")!;
+    const aRow = bFolded.find(
+      (r) => r.kind === "diff" && r.file === "a.txt",
+    );
+    if (!aRow || aRow.kind !== "diff") throw new Error("no diff row in a.txt");
     const cursor: Cursor = {
       file: "a.txt",
       lineNumber: aRow.lineNumber,
@@ -168,7 +175,10 @@ describe("sidebar file click moves cursor to clicked file's first row", () => {
     ]);
     const flat = flatRows([fa, fb], planned, () => false);
     const cursor = cursorAtFirstFileRow("b.txt", flat);
-    const firstB = flat.find((r) => r.file === "b.txt")!;
+    // "Annotatable" = first DIFF row, not the file's hunk-separator (PRD #107
+    // US 14, ADR 0013).
+    const firstB = flat.find((r) => r.kind === "diff" && r.file === "b.txt");
+    if (!firstB || firstB.kind !== "diff") throw new Error("no diff row in b.txt");
     expect(cursor?.file).toBe("b.txt");
     expect(cursor?.lineNumber).toBe(firstB.lineNumber);
   });
@@ -195,7 +205,8 @@ describe("bundle reload preserves cursor", () => {
     const f = fileFromName("x.txt");
     const planned = new Map<string, PlannedRow[]>([["x.txt", plannedFor("split")]]);
     const before = flatRows([f], planned, () => false);
-    const ctxRow = before[0];
+    const ctxRow = before.find((r) => r.kind === "diff");
+    if (!ctxRow || ctxRow.kind !== "diff") throw new Error("no diff row");
     const cursor: Cursor = {
       file: ctxRow.file,
       lineNumber: ctxRow.lineNumber,
@@ -218,7 +229,8 @@ describe("bundle reload preserves cursor", () => {
       ["b.txt", plannedFor("split")],
     ]);
     const before = flatRows([fa, fb], planned, () => false);
-    const aRow = before.find((r) => r.file === "a.txt")!;
+    const aRow = before.find((r) => r.kind === "diff" && r.file === "a.txt");
+    if (!aRow || aRow.kind !== "diff") throw new Error("no diff row in a.txt");
     const cursor: Cursor = {
       file: "a.txt",
       lineNumber: aRow.lineNumber,
