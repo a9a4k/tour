@@ -198,9 +198,12 @@ describe("CLI integration", () => {
     it("adds batch annotations from stdin", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
+      // hello.txt is the only file in the test repo's diff; both items
+      // target it within the file's 1-line bounds (additions and
+      // deletions sides each have 1 line at the pinned SHA).
       const batch = JSON.stringify([
-        { file: "a.ts", side: "additions", line: "1-5", body: "Note 1", author: "agent" },
-        { file: "b.ts", side: "deletions", line: "10", body: "Note 2", author: "agent" },
+        { file: "hello.txt", side: "additions", line: "1", body: "Note 1", author: "agent" },
+        { file: "hello.txt", side: "deletions", line: "1", body: "Note 2", author: "agent" },
       ]);
       const result = await run(
         ["annotate", tour.id, "--batch", "-", "--json"],
@@ -210,6 +213,34 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(0);
       const annotations = JSON.parse(result.stdout);
       expect(annotations).toHaveLength(2);
+    });
+
+    it("rejects annotation whose file is not in the Tour's diff (slice 4 / #144)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const result = await run([
+        "annotate", tour.id,
+        "--file", "no-such-file.ts",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "doomed",
+      ], repo);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("no-such-file.ts");
+    });
+
+    it("rejects annotation whose line_end exceeds the file's line count (slice 4 / #144)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const result = await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "9999",
+        "--body", "doomed",
+      ], repo);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/line/i);
     });
 
     it("rejects invalid side", async () => {
@@ -266,7 +297,7 @@ describe("CLI integration", () => {
         "annotate", tour.id,
         "--file", "hello.txt",
         "--side", "additions",
-        "--line", "1-3",
+        "--line", "1",
         "--body", "root note",
         "--json",
       ], repo)).stdout);

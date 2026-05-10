@@ -1,6 +1,7 @@
 import { readFile, appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Annotation, AuthorKind } from "./types.js";
+import type { TourBundle, BundleFile } from "./tour-bundle.js";
 import { generateId } from "./ids.js";
 
 function annotationsPath(repoRoot: string, tourId: string): string {
@@ -17,6 +18,55 @@ function isValidAuthorKind(v: unknown): v is "agent" | "human" {
 function validateBody(body: string): void {
   if (body.trim().length === 0) {
     throw new Error("Annotation body must not be empty or whitespace-only");
+  }
+}
+
+function lineCount(content: string | undefined): number {
+  if (!content) return 0;
+  const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
+  return trimmed === "" ? 0 : trimmed.split("\n").length;
+}
+
+// PRD #140 rule (4/5): the anchor must resolve inside the Tour's Diff.
+// The `file` must be in `bundle.files`, the line range must satisfy
+// `1 ≤ line_start ≤ line_end ≤ lineCount(file, side)`. Anchors landing in
+// Hidden context (between or outside hunks) are legal — file membership
+// and line-range bounds are the only checks here, hunk membership is a
+// render-time concern (orphan-window already handles placement). See
+// ADR 0017.
+function validateAnchor(
+  request: { file: string; side: "additions" | "deletions"; line_start: number; line_end: number },
+  bundle: TourBundle,
+): void {
+  if (bundle.kind !== "ok") {
+    throw new Error(
+      "Cannot validate annotation anchor against a snapshot-lost tour bundle",
+    );
+  }
+  const file: BundleFile | undefined = bundle.files.find((f) => f.name === request.file);
+  if (!file) {
+    throw new Error(
+      `Annotation file "${request.file}" is not in the Tour's diff (no renderer can display anchors outside the diff)`,
+    );
+  }
+  if (request.line_start < 1) {
+    throw new Error(
+      `Annotation line_start must be >= 1 (got ${request.line_start})`,
+    );
+  }
+  if (request.line_end < request.line_start) {
+    throw new Error(
+      `Annotation line_end (${request.line_end}) must be >= line_start (${request.line_start})`,
+    );
+  }
+  const max =
+    request.side === "additions"
+      ? lineCount(file.newContent)
+      : lineCount(file.oldContent);
+  if (request.line_end > max) {
+    throw new Error(
+      `Annotation line_end (${request.line_end}) exceeds ${request.file}'s line count on ${request.side} side (${max})`,
+    );
   }
 }
 
@@ -120,8 +170,10 @@ export async function createAnnotation(
   repoRoot: string,
   tourId: string,
   request: CreateAnnotationRequest,
+  bundle: TourBundle,
 ): Promise<Annotation> {
   validateBody(request.body);
+  validateAnchor(request, bundle);
   const ann = buildAnnotation(request);
   await appendAnnotation(repoRoot, tourId, ann);
   return ann;
@@ -149,8 +201,12 @@ export async function createAnnotations(
   repoRoot: string,
   tourId: string,
   requests: CreateRequest[],
+  bundle: TourBundle,
 ): Promise<Annotation[]> {
-  for (const req of requests) validateBody(req.body);
+  for (const req of requests) {
+    validateBody(req.body);
+    if (req.kind === "top-level") validateAnchor(req, bundle);
+  }
   const existing = await readAnnotations(repoRoot, tourId);
   const built: Annotation[] = requests.map((req) => {
     if (req.kind === "reply") {

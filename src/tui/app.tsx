@@ -910,6 +910,7 @@ function App(props: AppProps) {
           line_start: composer.line_start,
           line_end: composer.line_end,
           body: trimmed,
+          bundle,
         });
       } else {
         await props.writeAnnotation(liveTour.id, {
