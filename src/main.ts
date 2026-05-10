@@ -60,7 +60,8 @@ Usage:
   tour tui [<id>]                       (open TUI for a specific tour)
   tour serve [--port 7777] [--open] [<id>] (start webapp)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
-  tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--json]
+  tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+  tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour annotate <id> --batch - [--json]
   tour list [--status open|closed|all] [--json]
   tour show <id> [--json]
@@ -112,6 +113,9 @@ async function main(): Promise<void> {
           line: flag(flags, "line"),
           body: flag(flags, "body"),
           author: flag(flags, "author"),
+          asAgent: boolFlag(flags, "as-agent"),
+          asHuman: boolFlag(flags, "as-human"),
+          replyTo: flag(flags, "reply-to"),
           batch: boolFlag(flags, "batch") || flag(flags, "batch") === "-",
           json,
           cwd,

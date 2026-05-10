@@ -14,6 +14,7 @@ import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
 import { shortId } from "../../core/ids.js";
+import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import {
   buildTree,
   compress,
@@ -54,7 +55,10 @@ interface LoadState {
 function defaultCollapsedFor(file: DiffFileInfo, annotations: Annotation[]): boolean {
   const reason = file.classification?.reason;
   if (reason === "binary") return true;
-  if (file.classification?.collapsed === true && !annotations.some((a) => a.file === file.name)) {
+  if (
+    file.classification?.collapsed === true &&
+    !annotations.some((a) => a.file === file.name && isTopLevel(a))
+  ) {
     return true;
   }
   return false;
@@ -148,6 +152,14 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const tour = state.tour;
   const annotations = useMemo(() => tour?.annotations ?? [], [tour?.annotations]);
+  const topLevel = useMemo(() => topLevelAnnotations(annotations), [annotations]);
+  const repliesByRoot = useMemo(() => {
+    const out = new Map<string, Annotation[]>();
+    for (const t of buildThreads(annotations)) {
+      out.set(t.root.id, t.replies);
+    }
+    return out;
+  }, [annotations]);
   const currentIdx = useMemo(
     () => resolveCursorById(annotations, currentAnnotationId),
     [annotations, currentAnnotationId],
@@ -163,11 +175,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const tree = useMemo(() => compress(buildTree(modelFiles)), [modelFiles]);
   const annotationCounts = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
-    for (const a of annotations) {
+    for (const a of topLevel) {
       out[a.file] = (out[a.file] ?? 0) + 1;
     }
     return out;
-  }, [annotations]);
+  }, [topLevel]);
   const visibleRows = useMemo<VisibleRow<DiffFileInfo>[]>(
     () => flatten(tree, collapsedFolders, annotationCounts),
     [tree, collapsedFolders, annotationCounts],
@@ -207,9 +219,9 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const navigateBy = useCallback(
     (delta: number) => {
       if (currentIdx === -1) return;
-      const newIdx = Math.max(0, Math.min(annotations.length - 1, currentIdx + delta));
+      const newIdx = Math.max(0, Math.min(topLevel.length - 1, currentIdx + delta));
       if (newIdx === currentIdx) return;
-      const target = annotations[newIdx];
+      const target = topLevel[newIdx];
       setCurrentAnnotationId(target.id);
       setSelectedFile(target.file);
       setCollapsedOverrides((prev) =>
@@ -218,38 +230,35 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       revealFileAncestors(target.file);
       scrollAnnotationIntoView(target.id);
     },
-    [annotations, currentIdx, revealFileAncestors, scrollAnnotationIntoView],
+    [topLevel, currentIdx, revealFileAncestors, scrollAnnotationIntoView],
   );
 
-  // Re-anchor cursor by id whenever annotations change. On first sight of a
-  // non-empty list, set cursor to first, anchor the tree highlight to its
-  // file, reveal ancestors, and scroll its card into view. On SSE reload with
-  // the same id present, do nothing. If the id is gone, re-anchor to the new
-  // first annotation (and re-anchor the tree to it too). Functional setState
-  // for the empty-list branch keeps `selectedFile` out of the dep array so a
-  // user click while annotations is empty is not clobbered by this effect.
+  // Re-anchor cursor to the current top-level Annotation by id (n/p navigates
+  // top-level only; replies are not nav targets). On first sight of a
+  // non-empty list, anchor the tree to the first top-level annotation; on
+  // SSE reload with the same id present, do nothing; if gone, re-anchor.
   useEffect(() => {
-    if (annotations.length === 0) {
+    if (topLevel.length === 0) {
       setCurrentAnnotationId((curr) => (curr === null ? curr : null));
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
     if (currentAnnotationId === null) {
-      const first = annotations[0];
+      const first = topLevel[0];
       setCurrentAnnotationId(first.id);
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
       scrollAnnotationIntoView(first.id);
       return;
     }
-    const found = annotations.some((a) => a.id === currentAnnotationId);
+    const found = topLevel.some((a) => a.id === currentAnnotationId);
     if (!found) {
-      const first = annotations[0];
+      const first = topLevel[0];
       setCurrentAnnotationId(first.id);
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
     }
-  }, [annotations, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
+  }, [topLevel, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -394,7 +403,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           <LayoutToggle layout={layout} onChange={setLayout} />
           <SequencePill
             idx={currentIdx}
-            total={annotations.length}
+            total={topLevel.length}
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
           />
@@ -432,7 +441,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           ) : null}
           {tour.snapshotLost ? (
             <AnnotationList
-              annotations={tour.annotations}
+              topLevel={topLevel}
+              repliesByRoot={repliesByRoot}
               currentAnnotationId={currentAnnotationId}
               registerAnnotationRef={registerAnnotationRef}
             />
@@ -442,6 +452,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 key={f.name}
                 fileDiff={f}
                 annotations={tour.annotations}
+                repliesByRoot={repliesByRoot}
                 modelFile={tour.diffModel?.files.find((m) => m.name === f.name)}
                 registerRef={(el) => {
                   if (el) fileRefs.current.set(f.name, el);
@@ -545,6 +556,7 @@ function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.
 interface FileBlockProps {
   fileDiff: FileDiffMetadata;
   annotations: Annotation[];
+  repliesByRoot: Map<string, Annotation[]>;
   modelFile: TourData["diffModel"]["files"][number] | undefined;
   registerRef: (el: HTMLDivElement | null) => void;
   collapsed: boolean;
@@ -557,6 +569,7 @@ interface FileBlockProps {
 function FileBlock({
   fileDiff,
   annotations,
+  repliesByRoot,
   modelFile,
   registerRef,
   collapsed,
@@ -585,12 +598,13 @@ function FileBlock({
       return (
         <AnnotationCard
           annotation={a}
+          replies={repliesByRoot.get(a.id) ?? []}
           isCurrent={a.id === currentAnnotationId}
           registerRef={registerAnnotationRef}
         />
       );
     },
-    [currentAnnotationId, registerAnnotationRef],
+    [currentAnnotationId, registerAnnotationRef, repliesByRoot],
   );
 
   const onWrapperClick = (e: React.MouseEvent) => {
@@ -621,11 +635,17 @@ function FileBlock({
 
 interface AnnotationCardProps {
   annotation: Annotation;
+  replies?: Annotation[];
   isCurrent: boolean;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
 }
 
-function AnnotationCard({ annotation, isCurrent, registerRef }: AnnotationCardProps): React.JSX.Element {
+function AnnotationCard({
+  annotation,
+  replies,
+  isCurrent,
+  registerRef,
+}: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
       ? `${annotation.line_start}`
@@ -636,33 +656,61 @@ function AnnotationCard({ annotation, isCurrent, registerRef }: AnnotationCardPr
       ref={(el) => registerRef?.(annotation.id, el)}
     >
       <div className="ann-header">
+        <span className={`author-kind ${annotation.author_kind}`}>
+          [{annotation.author_kind}]
+        </span>{" "}
         {annotation.author} · {annotation.file}:{range}
       </div>
       <div className="ann-body">
         <AnnotationMarkdown body={annotation.body} />
       </div>
+      {replies && replies.length > 0 ? (
+        <div className="ann-replies">
+          {replies.map((r) => (
+            <div
+              className="ann-reply"
+              key={r.id}
+              ref={(el) => registerRef?.(r.id, el)}
+              id={`annotation-${r.id}`}
+            >
+              <div className="ann-header">
+                <span className={`author-kind ${r.author_kind}`}>
+                  [{r.author_kind}]
+                </span>{" "}
+                {r.author}
+              </div>
+              <div className="ann-body">
+                <AnnotationMarkdown body={r.body} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 interface AnnotationListProps {
-  annotations: Annotation[];
+  topLevel: Annotation[];
+  repliesByRoot: Map<string, Annotation[]>;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
 }
 
 function AnnotationList({
-  annotations,
+  topLevel,
+  repliesByRoot,
   currentAnnotationId,
   registerAnnotationRef,
 }: AnnotationListProps): React.JSX.Element {
-  if (annotations.length === 0) return <div className="empty">No annotations</div>;
+  if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
     <>
-      {annotations.map((a) => (
+      {topLevel.map((a) => (
         <AnnotationCard
           key={a.id}
           annotation={a}
+          replies={repliesByRoot.get(a.id) ?? []}
           isCurrent={a.id === currentAnnotationId}
           registerRef={registerAnnotationRef}
         />

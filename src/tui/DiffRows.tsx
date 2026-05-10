@@ -10,6 +10,7 @@ interface DiffRowsProps {
   rows: PlannedRow[];
   layout: "split" | "unified";
   currentAnnotationId: string | null;
+  repliesCollapsed: boolean;
 }
 
 const LINE_NUMBER_WIDTH = 5;
@@ -38,7 +39,13 @@ function unifiedGutter(row: DiffRow): string {
   return `${pad(row.leftLineNumber)} ${pad(row.rightLineNumber)} ${unifiedSign(row)} `;
 }
 
-export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRowsProps) {
+export function DiffRows({
+  fileName,
+  rows,
+  layout,
+  currentAnnotationId,
+  repliesCollapsed,
+}: DiffRowsProps) {
   const filetype = inferFiletype(fileName);
   const syntaxStyle = getSyntaxStyle();
 
@@ -60,6 +67,8 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
               key={`ann-${row.id}`}
               annotation={row.annotation}
               isCurrent={row.id === currentAnnotationId}
+              replies={row.replies}
+              repliesCollapsed={repliesCollapsed}
             />
           );
           if (slot === "full") return card;
@@ -80,6 +89,13 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
           // a change block) keep their content un-tinted so the +/- structural
           // signal survives. ADR 0008.
           const paired = row.leftLineNumber !== null && row.rightLineNumber !== null;
+          // Diff +/- bg (issue #74). A change row's left side is a deletion
+          // and its right side is an addition; an empty side (null line
+          // number) gets no bg so the empty cell stays blank.
+          const leftDiffBg =
+            row.type === "change" && row.leftLineNumber !== null ? "deletion" : undefined;
+          const rightDiffBg =
+            row.type === "change" && row.rightLineNumber !== null ? "addition" : undefined;
           return (
             <box key={key} flexDirection="row" width="100%" minHeight={1}>
               <DiffLine
@@ -88,6 +104,7 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
                 gutterTinted={!!row.leftTinted}
                 contentTinted={!!row.leftTinted && paired}
                 gutterAccent={!!row.leftGutter}
+                diffBg={leftDiffBg}
                 filetype={filetype}
                 syntaxStyle={syntaxStyle}
                 width="50%"
@@ -98,6 +115,7 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
                 gutterTinted={!!row.rightTinted}
                 contentTinted={!!row.rightTinted && paired}
                 gutterAccent={!!row.rightGutter}
+                diffBg={rightDiffBg}
                 filetype={filetype}
                 syntaxStyle={syntaxStyle}
                 width="50%"
@@ -108,6 +126,7 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
 
         const text = row.type === "deletion" ? row.leftText : row.rightText;
         const isPlusMinus = row.type === "addition" || row.type === "deletion";
+        const unifiedDiffBg = isPlusMinus ? row.type : undefined;
         return (
           <DiffLine
             key={key}
@@ -116,6 +135,7 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
             gutterTinted={!!row.rightTinted}
             contentTinted={!!row.rightTinted && !isPlusMinus}
             gutterAccent={!!row.rightGutter}
+            diffBg={unifiedDiffBg}
             filetype={filetype}
             syntaxStyle={syntaxStyle}
             width="100%"

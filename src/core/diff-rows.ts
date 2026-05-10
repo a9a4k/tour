@@ -1,5 +1,6 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
+import { buildThreads, topLevelAnnotations } from "./threads.js";
 
 export type PlannedRow = DiffRow | HunkHeaderRow | AnnotationRow;
 
@@ -25,6 +26,7 @@ export interface HunkHeaderRow {
 export interface AnnotationRow {
   kind: "annotation";
   annotation: Annotation;
+  replies: Annotation[];
   id: string;
 }
 
@@ -36,6 +38,14 @@ export function planRows(
   const diffRows = walkHunks(file, layout);
   applyAnnotationFlags(diffRows, annotations, layout);
   return interleaveAnnotations(diffRows, annotations);
+}
+
+function repliesByRoot(annotations: Annotation[]): Map<string, Annotation[]> {
+  const out = new Map<string, Annotation[]>();
+  for (const t of buildThreads(annotations)) {
+    out.set(t.root.id, t.replies);
+  }
+  return out;
 }
 
 // @pierre/diffs returns each line in additionLines/deletionLines with its
@@ -154,7 +164,15 @@ function applyAnnotationFlags(
 function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): PlannedRow[] {
   if (annotations.length === 0) return rows;
 
-  const sorted = [...annotations].sort((a, b) => {
+  // Only top-level annotations get cards; replies render nested inside the
+  // root's card. Reply anchors are inherited from the root, so a reply would
+  // produce a duplicate card at the same line if interleaved here.
+  const tops = topLevelAnnotations(annotations);
+  if (tops.length === 0) return rows;
+
+  const replies = repliesByRoot(annotations);
+
+  const sorted = [...tops].sort((a, b) => {
     if (a.created_at < b.created_at) return -1;
     if (a.created_at > b.created_at) return 1;
     if (a.id < b.id) return -1;
@@ -179,7 +197,12 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
     const anns = insertions.get(i);
     if (!anns) continue;
     for (const ann of anns) {
-      out.push({ kind: "annotation", annotation: ann, id: ann.id });
+      out.push({
+        kind: "annotation",
+        annotation: ann,
+        replies: replies.get(ann.id) ?? [],
+        id: ann.id,
+      });
     }
   }
   return out;

@@ -239,6 +239,19 @@ export function html(initialTourId?: string): string {
     font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', monospace;
   }
+  .annotation-block .author-kind {
+    text-transform: lowercase;
+    font-weight: 700;
+  }
+  .annotation-block .author-kind.agent { color: var(--fg-muted); }
+  .annotation-block .author-kind.human { color: var(--fg-accent); }
+  .annotation-block .ann-replies {
+    margin-top: 8px;
+    padding-left: 12px;
+    border-left: 2px solid var(--border-muted);
+  }
+  .annotation-block .ann-reply { margin-top: 8px; }
+  .annotation-block .ann-reply:first-child { margin-top: 0; }
   .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }

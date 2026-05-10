@@ -62,8 +62,12 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c"), sidebarFolder).type).toBe("toggle-folder");
   });
 
-  it("c is a no-op when sidebar is not focused", () => {
-    expect(dispatchKey(k("c"), diffPane).type).toBe("noop");
+  it("c outside sidebar toggles replies collapse (sidebar collapse stays sidebar-only)", () => {
+    expect(dispatchKey(k("c"), diffPane).type).toBe("toggle-replies-collapse");
+  });
+
+  it("Ctrl+C outside sidebar is not consumed as toggle-replies-collapse (still quits)", () => {
+    expect(dispatchKey(k("c", { ctrl: true }), diffPane).type).toBe("quit");
   });
 
   it("c is a no-op when no row is selected", () => {

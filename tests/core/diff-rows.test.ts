@@ -21,6 +21,8 @@ function ann(overrides: Partial<Annotation> & Pick<Annotation, "id" | "side" | "
     line_end: overrides.line_end,
     body: overrides.body ?? "note",
     author: overrides.author ?? "agent",
+    author_kind: overrides.author_kind ?? "agent",
+    replies_to: overrides.replies_to,
     created_at: overrides.created_at ?? "2026-01-01T00:00:00Z",
   };
 }

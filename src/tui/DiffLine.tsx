@@ -18,9 +18,21 @@ interface DiffLineProps {
   gutterTinted: boolean;
   contentTinted: boolean;
   gutterAccent: boolean;
+  // Diff +/- row bg (issue #74). When set, paints a subtle add/del bg under
+  // both the gutter and content cells. Annotation tint composes on top per
+  // ADR 0008: on +/- rows the gutter tint wins (caller passes
+  // contentTinted=false so the diff bg shows on content); on context rows
+  // diffBg is undefined so the annotation tint paints both cells.
+  diffBg?: "addition" | "deletion";
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
   width: string | number;
+}
+
+function diffBgColor(kind: "addition" | "deletion" | undefined): string | undefined {
+  if (kind === "addition") return theme.bg.successRange.tui;
+  if (kind === "deletion") return theme.bg.dangerRange.tui;
+  return undefined;
 }
 
 export function DiffLine({
@@ -29,12 +41,14 @@ export function DiffLine({
   gutterTinted,
   contentTinted,
   gutterAccent,
+  diffBg,
   filetype,
   syntaxStyle,
   width,
 }: DiffLineProps) {
-  const gutterBg = gutterTinted ? TINT_BG : undefined;
-  const contentBg = contentTinted ? TINT_BG : undefined;
+  const diffColor = diffBgColor(diffBg);
+  const gutterBg = gutterTinted ? TINT_BG : diffColor;
+  const contentBg = contentTinted ? TINT_BG : diffColor;
   const showCode = !!filetype && text.length > 0;
 
   return (

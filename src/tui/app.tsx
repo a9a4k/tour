@@ -23,6 +23,7 @@ import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
 import { shortId } from "../core/ids.js";
+import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -62,7 +63,7 @@ function statusIcon(type: string): string {
 }
 
 function annotationCountForFile(annotations: Annotation[], fileName: string): number {
-  return annotations.filter((a) => a.file === fileName).length;
+  return annotations.filter((a) => a.file === fileName && isTopLevel(a)).length;
 }
 
 function fileClassification(classifications: Record<string, FileClassification> | undefined, fileName: string): FileClassification {
@@ -94,6 +95,7 @@ function fileCardBody(
   rows: PlannedRow[],
   layout: "split" | "unified",
   currentAnnotationId: string | null,
+  repliesCollapsed: boolean,
 ) {
   if (collapsed) return <text fg={theme.fg.muted}>{"[collapsed — c to expand]"}</text>;
   if (!hasHunks) return <text fg={theme.fg.muted}>{"[no textual changes]"}</text>;
@@ -103,6 +105,7 @@ function fileCardBody(
       rows={rows}
       layout={layout}
       currentAnnotationId={currentAnnotationId}
+      repliesCollapsed={repliesCollapsed}
     />
   );
 }
@@ -135,6 +138,7 @@ function App(props: AppProps) {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [layout, setLayout] = useState<"split" | "unified">("split");
+  const [repliesCollapsed, setRepliesCollapsed] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCursor, setPickerCursor] = useState(0);
   const [pickerTours, setPickerTours] = useState<Tour[]>([]);
@@ -148,6 +152,7 @@ function App(props: AppProps) {
   const liveDiff = bundle.diff;
   const liveSnapshotLost = bundle.snapshotLost;
   const liveClassifications = bundle.classifications;
+  const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
 
   const files = useMemo(
     () => sortFilesForStream(bundle.files),
@@ -191,22 +196,21 @@ function App(props: AppProps) {
 
   // Re-anchor the cursor by id across annotation reloads. On first sight of a
   // non-empty list (or when the previously-current id is gone), pick the first
-  // annotation, reveal its file's ancestor folders, and select that file's
-  // row in the sidebar — so the highlight always agrees with the diff being
-  // shown. Reads of tree/collapsedFolders/etc. are intentionally not in deps
-  // so manual fold/expand doesn't re-anchor the cursor.
+  // top-level annotation, reveal its file's ancestor folders, and select that
+  // file's row in the sidebar — so the highlight always agrees with the diff
+  // being shown. n/p navigates top-level only (replies aren't nav targets).
   useEffect(() => {
-    if (liveAnnotations.length === 0) {
+    if (liveTopLevel.length === 0) {
       if (currentAnnotationId !== null) setCurrentAnnotationId(null);
       return;
     }
     if (
       currentAnnotationId !== null &&
-      liveAnnotations.some((a) => a.id === currentAnnotationId)
+      liveTopLevel.some((a) => a.id === currentAnnotationId)
     ) {
       return;
     }
-    const first = liveAnnotations[0];
+    const first = liveTopLevel[0];
     setCurrentAnnotationId(first.id);
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
     if (!located) return;
@@ -215,7 +219,7 @@ function App(props: AppProps) {
     }
     setSelectedRowIdx(located.rowIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveAnnotations, currentAnnotationId]);
+  }, [liveTopLevel, currentAnnotationId]);
 
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
@@ -239,11 +243,11 @@ function App(props: AppProps) {
   }, [currentAnnotationId, liveAnnotations, plannedRowsByFile]);
 
   const currentAnnotationIdx = useMemo(() => {
-    if (liveAnnotations.length === 0) return -1;
+    if (liveTopLevel.length === 0) return -1;
     if (currentAnnotationId === null) return 0;
-    const idx = liveAnnotations.findIndex((a) => a.id === currentAnnotationId);
+    const idx = liveTopLevel.findIndex((a) => a.id === currentAnnotationId);
     return idx === -1 ? 0 : idx;
-  }, [liveAnnotations, currentAnnotationId]);
+  }, [liveTopLevel, currentAnnotationId]);
 
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
@@ -259,8 +263,8 @@ function App(props: AppProps) {
   const footerHints =
     "n/p: navigate  ·  j/k: rows  ·  c: collapse  ·  Space: page diff  ·  ←→: fold/expand  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
   const footer =
-    liveAnnotations.length > 0
-      ? `Annotation ${currentAnnotationIdx + 1}/${liveAnnotations.length}  ·  ${footerHints}`
+    liveTopLevel.length > 0
+      ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
       : footerHints;
 
   const pickerRows = useMemo(
@@ -334,13 +338,13 @@ function App(props: AppProps) {
 
   const gotoPrevAnnotation = () => {
     if (currentAnnotationIdx <= 0) return;
-    jumpToAnnotation(liveAnnotations[currentAnnotationIdx - 1]);
+    jumpToAnnotation(liveTopLevel[currentAnnotationIdx - 1]);
   };
 
   const gotoNextAnnotation = () => {
     if (currentAnnotationIdx < 0) return;
-    if (currentAnnotationIdx >= liveAnnotations.length - 1) return;
-    jumpToAnnotation(liveAnnotations[currentAnnotationIdx + 1]);
+    if (currentAnnotationIdx >= liveTopLevel.length - 1) return;
+    jumpToAnnotation(liveTopLevel[currentAnnotationIdx + 1]);
   };
 
   useKeyboard((key) => {
@@ -462,6 +466,9 @@ function App(props: AppProps) {
       case "prev-annotation":
         gotoPrevAnnotation();
         return;
+      case "toggle-replies-collapse":
+        setRepliesCollapsed((v) => !v);
+        return;
       case "toggle-layout":
         setLayout((v) => (v === "split" ? "unified" : "split"));
         return;
@@ -509,7 +516,7 @@ function App(props: AppProps) {
           />
           <SequencePillTui
             idx={currentAnnotationIdx}
-            total={liveAnnotations.length}
+            total={liveTopLevel.length}
             onPrev={gotoPrevAnnotation}
             onNext={gotoNextAnnotation}
           />
@@ -614,6 +621,7 @@ function App(props: AppProps) {
                       rows,
                       layout,
                       currentAnnotationId,
+                      repliesCollapsed,
                     )}
                   </box>
                 );

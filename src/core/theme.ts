@@ -66,6 +66,14 @@ export const theme = {
       web: "rgba(56, 139, 253, 0.15)",
       tui: "#132339",
     } satisfies AlphaPair,
+    successRange: {
+      web: "rgba(63, 185, 80, 0.15)",
+      tui: "#142a20",
+    } satisfies AlphaPair,
+    dangerRange: {
+      web: "rgba(248, 81, 73, 0.15)",
+      tui: "#301b1e",
+    } satisfies AlphaPair,
     attentionSubtle: {
       web: "rgba(210, 153, 34, 0.10)",
       tui: "#1c1a12",
@@ -118,6 +126,8 @@ export function themeCSSVars(): string {
     `--bg-accent-current: ${theme.bg.accentCurrent.web};`,
     `--bg-accent-subtle: ${theme.bg.accentSubtle.web};`,
     `--bg-accent-range: ${theme.bg.accentRange.web};`,
+    `--bg-success-range: ${theme.bg.successRange.web};`,
+    `--bg-danger-range: ${theme.bg.dangerRange.web};`,
     `--bg-attention-subtle: ${theme.bg.attentionSubtle.web};`,
     `--bg-neutral-subtle: ${theme.bg.neutralSubtle.web};`,
     `--shadow-scrim: ${theme.shadow.scrim};`,
