@@ -9,6 +9,8 @@ import { del } from "./cli/delete.js";
 import { prune } from "./cli/prune.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
+import { replyCancel } from "./cli/reply-cancel.js";
+import { replySystemPrompt } from "./cli/reply-system-prompt.js";
 import { listTours } from "./core/tour-store.js";
 
 declare const __EMBEDDED_VERSION__: string;
@@ -57,8 +59,8 @@ const USAGE = `tour — local code review tool with AI annotations
 
 Usage:
   tour                                  (open TUI for most recent tour)
-  tour tui [<id>]                       (open TUI for a specific tour)
-  tour serve [--port 7777] [--open] [<id>] (start webapp)
+  tour tui [<id>] [--reply-agent <name>]   (open TUI for a specific tour)
+  tour serve [--port 7777] [--open] [<id>] [--reply-agent <name>] (start webapp)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
   tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
@@ -68,6 +70,8 @@ Usage:
   tour close <id> [--json]
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
+  tour reply-cancel <id> [--json]       (kill a stuck reply-agent + clear the lock)
+  tour reply-system-prompt              (print canonical reply-agent system prompt)
   tour --version
   tour --help
 `;
@@ -160,7 +164,11 @@ async function main(): Promise<void> {
       }
 
       case "tui":
-        await tui({ tourId: positional[0], cwd });
+        await tui({
+          tourId: positional[0],
+          cwd,
+          replyAgent: flag(flags, "reply-agent"),
+        });
         break;
 
       case "serve":
@@ -169,7 +177,19 @@ async function main(): Promise<void> {
           open: boolFlag(flags, "open"),
           tourId: positional[0],
           cwd,
+          replyAgent: flag(flags, "reply-agent"),
         });
+        break;
+
+      case "reply-cancel": {
+        const tourId = positional[0];
+        if (!tourId) throw new Error("Usage: tour reply-cancel <id>");
+        await replyCancel({ tourId, json, cwd });
+        break;
+      }
+
+      case "reply-system-prompt":
+        replySystemPrompt();
         break;
 
       case "help":
@@ -190,7 +210,7 @@ async function main(): Promise<void> {
           console.log(firstRunBanner());
           break;
         }
-        await tui({ cwd });
+        await tui({ cwd, replyAgent: flag(flags, "reply-agent") });
         break;
       }
 

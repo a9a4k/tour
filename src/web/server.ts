@@ -4,6 +4,9 @@ import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
+import { readReplyLock } from "../core/reply-lock.js";
+import { ReplyRunner } from "../core/reply-runner.js";
+import { assertAdapterExists } from "../core/agent-adapter.js";
 import { html } from "./spa.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +16,7 @@ interface ServeArgs {
   open: boolean;
   tourId?: string;
   cwd: string;
+  replyAgent?: string;
 }
 
 declare const Bun: {
@@ -64,8 +68,9 @@ async function getClientBundle(): Promise<{ js: string | null; error: string | n
 }
 
 export async function startServer(args: ServeArgs): Promise<void> {
-  const { port, cwd } = args;
+  const { port, cwd, replyAgent } = args;
   const watchers = new Map<string, TourWatcher>();
+  const runners = new Map<string, ReplyRunner>();
 
   function getOrCreateWatcher(tourId: string): TourWatcher {
     let w = watchers.get(tourId);
@@ -73,6 +78,22 @@ export async function startServer(args: ServeArgs): Promise<void> {
       w = new TourWatcher(cwd, tourId);
       w.start();
       watchers.set(tourId, w);
+
+      // If a reply-agent is configured, dispatch on annotation-changed.
+      // The runner is per-tour (single-flight per tour) and seeded from
+      // existing annotations so pre-existing human notes don't fire.
+      if (replyAgent) {
+        const runner = new ReplyRunner({ cwd, tourId, agent: replyAgent });
+        runners.set(tourId, runner);
+        void runner.prime();
+        w.on((event) => {
+          if (event.type === "annotation-changed") {
+            void runner.tick().catch(() => {
+              // swallow — a transient read failure should not crash serve
+            });
+          }
+        });
+      }
     }
     return w;
   }
@@ -114,9 +135,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const stream = new ReadableStream({
             start(controller) {
               controller.enqueue("data: {\"type\":\"connected\"}\n\n");
-              const callback = () => {
+              const callback = (event: import("../core/watcher.js").WatchEvent) => {
                 try {
-                  controller.enqueue(`data: ${JSON.stringify({ type: "annotation-changed", tourId: resolvedId })}\n\n`);
+                  controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
                 } catch {
                   watcher.off(callback);
                 }
@@ -134,6 +155,19 @@ export async function startServer(args: ServeArgs): Promise<void> {
               "Connection": "keep-alive",
             },
           });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: message }, { status: 404 });
+        }
+      }
+
+      const lockMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/reply-lock$/);
+      if (lockMatch) {
+        const idOrPrefix = lockMatch[1];
+        try {
+          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+          const lock = await readReplyLock(cwd, resolvedId);
+          return Response.json(lock);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return Response.json({ error: message }, { status: 404 });
@@ -209,6 +243,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
     function cleanup() {
       for (const w of watchers.values()) w.stop();
       watchers.clear();
+      runners.clear();
       server.stop();
       resolve();
     }

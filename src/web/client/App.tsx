@@ -15,6 +15,7 @@ import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
 import { shortId } from "../../core/ids.js";
 import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
+import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
   buildTree,
   compress,
@@ -75,6 +76,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl() ?? initialTourId);
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
   const [state, setState] = useState<LoadState>({ tour: null, error: null, loaded: false });
+  const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
@@ -138,6 +141,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   useEffect(() => {
     if (!tourId) return;
+    let cancelled = false;
+    const refetchLock = async () => {
+      try {
+        const res = await fetch(`/api/tours/${tourId}/reply-lock`);
+        const data = (await res.json()) as ReplyLock | { error: string } | null;
+        if (cancelled) return;
+        if (data && typeof data === "object" && "error" in data) {
+          setReplyLock(null);
+        } else {
+          setReplyLock(data as ReplyLock | null);
+        }
+      } catch {
+        // transient — keep current pill state
+      }
+    };
+    void refetchLock();
+
     const evtSource = new EventSource(`/api/tours/${tourId}/events`);
     evtSource.onmessage = async (event) => {
       const msg = JSON.parse(event.data) as { type: string };
@@ -145,10 +165,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         const res = await fetch(`/api/tours/${tourId}`);
         const data = (await res.json()) as TourData | { error: string };
         if (!("error" in data)) setState({ tour: data, error: null, loaded: true });
+      } else if (msg.type === "reply-in-flight" || msg.type === "reply-cleared") {
+        await refetchLock();
       }
     };
-    return () => evtSource.close();
+    return () => {
+      cancelled = true;
+      evtSource.close();
+    };
   }, [tourId]);
+
+  // Tick the wall clock once a second only while a lock is in-flight, so the
+  // "(Ns)" counter advances without burning renders on the idle path.
+  useEffect(() => {
+    if (!replyLock) return;
+    const handle = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(handle);
+  }, [replyLock]);
 
   const tour = state.tour;
   const annotations = useMemo(() => tour?.annotations ?? [], [tour?.annotations]);
@@ -445,6 +478,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
               repliesByRoot={repliesByRoot}
               currentAnnotationId={currentAnnotationId}
               registerAnnotationRef={registerAnnotationRef}
+              replyLock={replyLock}
+              now={now}
             />
           ) : (
             parsedFiles.map((f) => (
@@ -463,6 +498,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 currentAnnotationId={currentAnnotationId}
                 registerAnnotationRef={registerAnnotationRef}
                 layout={layout}
+                replyLock={replyLock}
+                now={now}
               />
             ))
           )}
@@ -564,6 +601,8 @@ interface FileBlockProps {
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   layout: Layout;
+  replyLock: ReplyLock | null;
+  now: number;
 }
 
 function FileBlock({
@@ -577,6 +616,8 @@ function FileBlock({
   currentAnnotationId,
   registerAnnotationRef,
   layout,
+  replyLock,
+  now,
 }: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
 
@@ -595,16 +636,19 @@ function FileBlock({
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {
       if (!ann.metadata?.isAnchor) return null;
       const a = ann.metadata.annotation;
+      const replies = repliesByRoot.get(a.id) ?? [];
       return (
         <AnnotationCard
           annotation={a}
-          replies={repliesByRoot.get(a.id) ?? []}
+          replies={replies}
           isCurrent={a.id === currentAnnotationId}
           registerRef={registerAnnotationRef}
+          replyLock={replyLock}
+          now={now}
         />
       );
     },
-    [currentAnnotationId, registerAnnotationRef, repliesByRoot],
+    [currentAnnotationId, registerAnnotationRef, repliesByRoot, replyLock, now],
   );
 
   const onWrapperClick = (e: React.MouseEvent) => {
@@ -638,6 +682,41 @@ interface AnnotationCardProps {
   replies?: Annotation[];
   isCurrent: boolean;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
+  replyLock?: ReplyLock | null;
+  now?: number;
+}
+
+function ReplyPill({ lock, now }: { lock: ReplyLock; now: number }): React.JSX.Element {
+  const seconds = Math.floor(ageMs(lock, now) / 1000);
+  if (isStale(lock, now)) {
+    return (
+      <div className="reply-pill stale" role="status">
+        <span className="reply-pill-icon" aria-hidden="true">⚠️</span>
+        <span>
+          <strong>{lock.agent}</strong> is taking unusually long…
+        </span>
+        <span className="reply-pill-hint">Run <code>tour reply-cancel &lt;tour-id&gt;</code></span>
+      </div>
+    );
+  }
+  return (
+    <div className="reply-pill" role="status">
+      <span className="reply-pill-icon" aria-hidden="true">✏️</span>
+      <span>
+        <strong>{lock.agent}</strong> is replying… ({seconds}s)
+      </span>
+    </div>
+  );
+}
+
+function pillTargetsThisCard(
+  annotationId: string,
+  replies: Annotation[] | undefined,
+  lock: ReplyLock,
+): boolean {
+  if (lock.responding_to === annotationId) return true;
+  if (!replies) return false;
+  return replies.some((r) => r.id === lock.responding_to);
 }
 
 function AnnotationCard({
@@ -645,11 +724,15 @@ function AnnotationCard({
   replies,
   isCurrent,
   registerRef,
+  replyLock,
+  now,
 }: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
       ? `${annotation.line_start}`
       : `${annotation.line_start}-${annotation.line_end}`;
+  const showPill =
+    !!replyLock && pillTargetsThisCard(annotation.id, replies, replyLock);
   return (
     <div
       className={isCurrent ? "annotation-block current" : "annotation-block"}
@@ -686,6 +769,7 @@ function AnnotationCard({
           ))}
         </div>
       ) : null}
+      {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
     </div>
   );
 }
@@ -695,6 +779,8 @@ interface AnnotationListProps {
   repliesByRoot: Map<string, Annotation[]>;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
+  replyLock: ReplyLock | null;
+  now: number;
 }
 
 function AnnotationList({
@@ -702,6 +788,8 @@ function AnnotationList({
   repliesByRoot,
   currentAnnotationId,
   registerAnnotationRef,
+  replyLock,
+  now,
 }: AnnotationListProps): React.JSX.Element {
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
@@ -713,6 +801,8 @@ function AnnotationList({
           replies={repliesByRoot.get(a.id) ?? []}
           isCurrent={a.id === currentAnnotationId}
           registerRef={registerAnnotationRef}
+          replyLock={replyLock}
+          now={now}
         />
       ))}
     </>

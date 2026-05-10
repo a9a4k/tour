@@ -5,10 +5,13 @@ import { readAnnotations } from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile, type FileClassification } from "../core/file-classifier.js";
+import { assertAdapterExists } from "../core/agent-adapter.js";
+import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
 
 interface TuiArgs {
   tourId?: string;
   cwd: string;
+  replyAgent?: string;
 }
 
 interface LoadedBundle {
@@ -18,6 +21,7 @@ interface LoadedBundle {
   annotations: Annotation[];
   snapshotLost: boolean;
   classifications: Record<string, FileClassification>;
+  replyLock: ReplyLock | null;
 }
 
 async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle> {
@@ -49,10 +53,26 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
     classifications = Object.fromEntries(entries);
   }
 
-  return { tour, diff: rawDiff, files, annotations, snapshotLost, classifications };
+  const replyLock = await readReplyLock(cwd, tourId);
+
+  return {
+    tour,
+    diff: rawDiff,
+    files,
+    annotations,
+    snapshotLost,
+    classifications,
+    replyLock,
+  };
 }
 
 export async function tui(args: TuiArgs): Promise<void> {
+  // Hard-fail at startup if the requested reply-agent's adapter is missing,
+  // per the PRD. Misconfiguration must surface up-front, not at first reply.
+  if (args.replyAgent) {
+    assertAdapterExists(args.replyAgent);
+  }
+
   let tourId: string;
 
   if (args.tourId) {
@@ -72,6 +92,8 @@ export async function tui(args: TuiArgs): Promise<void> {
     startTui: (props: LoadedBundle & {
       loadTour: (id: string) => Promise<LoadedBundle>;
       loadTours: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
+      cwd: string;
+      replyAgent?: string;
     }) => Promise<void>;
   };
   await startTui({
@@ -92,5 +114,7 @@ export async function tui(args: TuiArgs): Promise<void> {
       );
       return { tours, annotationCounts: counts };
     },
+    cwd: args.cwd,
+    replyAgent: args.replyAgent,
   });
 }
