@@ -122,6 +122,32 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("space", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
+  // Hardware PageDown / PageUp mirror Space / Shift-Space (PRD #126, issue #129).
+  it("PageDown pages the diff pane down regardless of focus", () => {
+    expect(dispatchKey(k("pagedown"), sidebar).type).toBe("page-diff-down");
+    expect(dispatchKey(k("pagedown"), sidebarFolder).type).toBe("page-diff-down");
+    expect(dispatchKey(k("pagedown"), diffPane).type).toBe("page-diff-down");
+  });
+
+  it("PageUp pages the diff pane up regardless of focus", () => {
+    expect(dispatchKey(k("pageup"), sidebar).type).toBe("page-diff-up");
+    expect(dispatchKey(k("pageup"), sidebarFolder).type).toBe("page-diff-up");
+    expect(dispatchKey(k("pageup"), diffPane).type).toBe("page-diff-up");
+  });
+
+  it("Shift+PageDown still pages down (direction is intrinsic to the key)", () => {
+    expect(dispatchKey(k("pagedown", { shift: true }), diffPane).type).toBe("page-diff-down");
+  });
+
+  it("Shift+PageUp still pages up (direction is intrinsic to the key)", () => {
+    expect(dispatchKey(k("pageup", { shift: true }), diffPane).type).toBe("page-diff-up");
+  });
+
+  it("Ctrl+PageDown / Ctrl+PageUp are not consumed", () => {
+    expect(dispatchKey(k("pagedown", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("pageup", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
   it("right on a folder row expands the folder", () => {
     expect(dispatchKey(k("right"), sidebarFolder).type).toBe("expand-folder");
   });
