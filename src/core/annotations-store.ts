@@ -38,7 +38,7 @@ function buildAnnotation(input: BuildAnnotationInput): Annotation {
     line_start: input.line_start,
     line_end: input.line_end,
     body: input.body,
-    author: input.author ?? "unknown",
+    author: input.author ?? input.author_kind,
     author_kind: input.author_kind,
     created_at: new Date().toISOString(),
   };
@@ -63,7 +63,7 @@ function buildReply(input: BuildReplyInput, existing: Annotation[]): Annotation 
     line_start: parent.line_start,
     line_end: parent.line_end,
     body: input.body,
-    author: input.author ?? "unknown",
+    author: input.author ?? input.author_kind,
     author_kind: input.author_kind,
     replies_to: input.replies_to,
     created_at: new Date().toISOString(),
