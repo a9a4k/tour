@@ -42,12 +42,18 @@ const ENVELOPE: ReplyEnvelope = {
 };
 
 describe("gemini buildArgs", () => {
-  it("uses --prompt for non-interactive single-shot mode", () => {
+  it("uses the long-form --prompt flag (not -p) at argv[0]", () => {
     const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
-    expect(argv).toContain("--prompt");
+    expect(argv[0]).toBe("--prompt");
+    expect(argv).not.toContain("-p");
   });
 
-  it("folds the system prompt into the prompt argument (gemini has no --system-prompt flag)", () => {
+  it("emits exactly [flag, prompt] — gemini has no separate --system-prompt flag", () => {
+    const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
+    expect(argv).toHaveLength(2);
+  });
+
+  it("folds the system prompt into the prompt argument (last positional)", () => {
     const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
     const prompt = argv[argv.length - 1];
     expect(prompt).toContain("SYSTEM_PROMPT_TEXT");
@@ -57,7 +63,12 @@ describe("gemini buildArgs", () => {
 
   it("does not pass any allow/deny tool configuration (zero tools, ADR 0012)", () => {
     const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
+    // gemini-cli's own spellings
     expect(argv).not.toContain("--allowed-tools");
     expect(argv).not.toContain("--exclude-tools");
+    // claude-style spellings — mirrored in #97 AC text — defensive guard
+    // against a future copy-paste from claude.ts re-introducing them.
+    expect(argv).not.toContain("--allowedTools");
+    expect(argv).not.toContain("--disallowedTools");
   });
 });
