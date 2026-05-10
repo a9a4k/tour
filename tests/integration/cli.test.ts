@@ -316,6 +316,91 @@ describe("CLI integration", () => {
     });
   });
 
+  describe("pickup", () => {
+    it("prints the conversation tree as JSON to stdout (exit 0)", async () => {
+      const cr = await run(
+        ["create", "--head", "HEAD", "--title", "Pickup test", "--json"],
+        repo,
+      );
+      const tour = JSON.parse(cr.stdout);
+      const root = JSON.parse(
+        (
+          await run(
+            [
+              "annotate",
+              tour.id,
+              "--file",
+              "hello.txt",
+              "--side",
+              "additions",
+              "--line",
+              "1",
+              "--body",
+              "initial review",
+              "--json",
+            ],
+            repo,
+          )
+        ).stdout,
+      );
+      await run(
+        [
+          "annotate",
+          tour.id,
+          "--reply-to",
+          root.id,
+          "--body",
+          "thanks",
+          "--as-human",
+          "--json",
+        ],
+        repo,
+      );
+      const r = await run(["pickup", tour.id, "--json"], repo);
+      expect(r.exitCode).toBe(0);
+      const tree = JSON.parse(r.stdout);
+      expect(tree.id).toBe(tour.id);
+      expect(tree.title).toBe("Pickup test");
+      expect(tree.head_sha).toBe(tour.head_sha);
+      expect(tree.base_sha).toBe(tour.base_sha);
+      expect(tree.head_source).toBe(tour.head_source);
+      expect(tree.base_source).toBe(tour.base_source);
+      expect(tree.status).toBe("open");
+      expect(tree.annotations).toHaveLength(1);
+      expect(tree.annotations[0].id).toBe(root.id);
+      expect(tree.annotations[0].body).toBe("initial review");
+      expect(tree.annotations[0].replies).toHaveLength(1);
+      expect(tree.annotations[0].replies[0].body).toBe("thanks");
+      expect(tree.annotations[0].replies[0].author_kind).toBe("human");
+      expect(tree).not.toHaveProperty("wip_snapshot");
+      expect(tree).not.toHaveProperty("closed_at");
+    });
+
+    it("supports prefix matching", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const prefix = tour.id.slice(0, 11);
+      const r = await run(["pickup", prefix, "--json"], repo);
+      expect(r.exitCode).toBe(0);
+      const tree = JSON.parse(r.stdout);
+      expect(tree.id).toBe(tour.id);
+      expect(tree.annotations).toEqual([]);
+    });
+
+    it("exits non-zero on missing Tour with a clear error", async () => {
+      await run(["create", "--head", "HEAD", "--json"], repo);
+      const r = await run(["pickup", "no-such-tour"], repo);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("no-such-tour");
+    });
+
+    it("requires <id>", async () => {
+      const r = await run(["pickup"], repo);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("pickup");
+    });
+  });
+
   describe("close", () => {
     it("marks tour as closed", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);

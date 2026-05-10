@@ -7,6 +7,7 @@ import { show } from "./cli/show.js";
 import { close } from "./cli/close.js";
 import { del } from "./cli/delete.js";
 import { prune } from "./cli/prune.js";
+import { pickup } from "./cli/pickup.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
 import { listTours } from "./core/tour-store.js";
@@ -68,6 +69,7 @@ Usage:
   tour close <id> [--json]
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
+  tour pickup <id> [--json]
   tour --version
   tour --help
 `;
@@ -156,6 +158,13 @@ async function main(): Promise<void> {
         const olderThan = flag(flags, "older-than");
         if (!olderThan) throw new Error("--older-than is required");
         await prune({ olderThan, json, cwd });
+        break;
+      }
+
+      case "pickup": {
+        const tourId = positional[0];
+        if (!tourId) throw new Error("Usage: tour pickup <id> [--json]");
+        await pickup({ tourId, json, cwd });
         break;
       }
 
