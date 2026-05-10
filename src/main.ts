@@ -10,7 +10,6 @@ import { prune } from "./cli/prune.js";
 import { pickup } from "./cli/pickup.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
-import { replyCancel } from "./cli/reply-cancel.js";
 import { listTours } from "./core/tour-store.js";
 
 declare const __EMBEDDED_VERSION__: string;
@@ -71,7 +70,6 @@ Usage:
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
   tour pickup <id> [--json]
-  tour reply-cancel <id> [--json]       (kill a stuck reply-agent + clear the lock)
   tour --version
   tour --help
 `;
@@ -187,13 +185,6 @@ async function main(): Promise<void> {
           replyAgent: flag(flags, "reply-agent"),
         });
         break;
-
-      case "reply-cancel": {
-        const tourId = positional[0];
-        if (!tourId) throw new Error("Usage: tour reply-cancel <id>");
-        await replyCancel({ tourId, json, cwd });
-        break;
-      }
 
       case "help":
       case "--help":

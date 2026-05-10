@@ -6,11 +6,6 @@ export interface ReplyLock {
   responding_to: string;
   started_at: string;
   pid: number;
-  // Filled in by readReplyLock from the path the lock was read from. Not
-  // persisted to disk (the path already encodes the tour id; carrying it
-  // in-memory just lets renderers display the cancel command without
-  // prop-drilling tourId through the card hierarchy).
-  tour_id: string;
 }
 
 // Default stale threshold per PRD #73 / issue #79: ~2 minutes. Configurable for
@@ -21,25 +16,38 @@ export function replyLockPath(repoRoot: string, tourId: string): string {
   return join(repoRoot, ".tour", tourId, ".reply-lock.json");
 }
 
-type PersistedLock = Omit<ReplyLock, "tour_id">;
-
 export async function readReplyLock(
   repoRoot: string,
   tourId: string,
 ): Promise<ReplyLock | null> {
+  const path = replyLockPath(repoRoot, tourId);
+  let lock: ReplyLock;
   try {
-    const raw = await readFile(replyLockPath(repoRoot, tourId), "utf-8");
-    const parsed = JSON.parse(raw) as PersistedLock;
-    return { ...parsed, tour_id: tourId };
+    const raw = await readFile(path, "utf-8");
+    lock = JSON.parse(raw) as ReplyLock;
   } catch {
     return null;
   }
+  // PID-liveness probe: dead pid means the renderer that wrote the lock is
+  // gone (crashed renderer scenario). Clear the orphan and report no lock.
+  // pid === 0 is the placeholder window in reply-runner between the initial
+  // write and the spawn-pid patch — the existing 2-min stale threshold covers
+  // the absurd case of a renderer crash inside that sub-millisecond window.
+  if (lock.pid > 0) {
+    try {
+      process.kill(lock.pid, 0);
+    } catch {
+      await deleteReplyLock(repoRoot, tourId);
+      return null;
+    }
+  }
+  return lock;
 }
 
 export async function writeReplyLock(
   repoRoot: string,
   tourId: string,
-  lock: PersistedLock,
+  lock: ReplyLock,
 ): Promise<void> {
   await writeFile(replyLockPath(repoRoot, tourId), JSON.stringify(lock));
 }

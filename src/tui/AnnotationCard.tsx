@@ -34,12 +34,9 @@ function ReplyPill({ lock, now }: PillProps) {
   const stale = isStale(lock, now);
   if (stale) {
     return (
-      <box marginTop={1} paddingLeft={2} flexDirection="column">
+      <box marginTop={1} paddingLeft={2}>
         <text fg={theme.fg.attention}>
           {`⚠️ ${lock.agent} is taking unusually long…`}
-        </text>
-        <text fg={theme.fg.muted}>
-          {`  Run: tour reply-cancel ${lock.tour_id}`}
         </text>
       </box>
     );

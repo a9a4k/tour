@@ -207,7 +207,7 @@ describe("ReplyRunner", () => {
       agent: "claude",
       responding_to: "ax",
       started_at: new Date().toISOString(),
-      pid: 99999,
+      pid: process.pid,
     });
     await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
