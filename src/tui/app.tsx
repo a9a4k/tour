@@ -628,27 +628,25 @@ function App(props: AppProps) {
     setCursor(cursorFromAnnotation(ann));
   };
 
-  // gotoPrev/NextAnnotation delegate bounds + focus-routing to the
-  // explicitAnnotationJump helper (single source of truth for issue
-  // #132's explicit-jump contract; tested in tests/tui/annotation-jump).
+  // gotoPrev/NextAnnotation delegate the bounds check to the
+  // explicitAnnotationJump helper; jumpToAnnotation applies the
+  // focus-drop + cursor-materialization contract (issue #132).
   const gotoPrevAnnotation = () => {
-    const step = explicitAnnotationJump({
+    const target = explicitAnnotationJump({
       topLevel: liveTopLevel,
       currentIdx: currentAnnotationIdx,
       delta: -1,
     });
-    if (!step) return;
-    jumpToAnnotation(step.target);
+    if (target) jumpToAnnotation(target);
   };
 
   const gotoNextAnnotation = () => {
-    const step = explicitAnnotationJump({
+    const target = explicitAnnotationJump({
       topLevel: liveTopLevel,
       currentIdx: currentAnnotationIdx,
       delta: 1,
     });
-    if (!step) return;
-    jumpToAnnotation(step.target);
+    if (target) jumpToAnnotation(target);
   };
 
   // Mouse click on a diff row → set cursor + side per the click site (issue
