@@ -721,7 +721,21 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
             title="Switch tour"
             onClick={openPicker}
           >
-            ≡
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M2 4 H12 M2 7 H12 M2 10 H12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
           </button>
           <h1 className={titleIsEmpty ? "untitled" : undefined}>
             {tourMeta.title || "(untitled)"}
