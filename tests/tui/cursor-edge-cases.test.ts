@@ -8,6 +8,7 @@ import {
   resolveCursorRowIdx,
   type Cursor,
 } from "../../src/core/cursor-state.js";
+import { step as stepDiffPane } from "../../src/core/diff-pane-motion.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
 
 const SIMPLE_DIFF = `diff --git a/REPLACE b/REPLACE
@@ -271,5 +272,43 @@ describe("cursor null in degraded states", () => {
     const fa = fileFromName("a.txt");
     const empty = new Map<string, PlannedRow[]>();
     expect(flatRows([fa], empty, () => false)).toEqual([]);
+  });
+});
+
+// Parallel-handler regression (issue #127). Pressing j in the comfort zone
+// must advance the cursor by exactly one row in flatRows AND leave scrollTop
+// unchanged — the prior bug had OpenTUI's ScrollBar.handleKeyPress firing
+// alongside the React keymap (because the diff scrollbox was `focused`),
+// double-handling each j keystroke as cursor-advance + 1/5-viewport scroll.
+// The fix drops `focused` so the React keymap is the single source of truth;
+// the contract is encoded in core/diff-pane-motion.step().
+describe("parallel-handler regression: j in comfort zone moves cursor only", () => {
+  it("advances cursor by one row in flatRows and leaves scrollTop unchanged", () => {
+    const fa = fileFromName("a.txt");
+    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("split")]]);
+    const rows = flatRows([fa], planned, () => false);
+    const first = rows.find((r) => r.kind === "diff")!;
+    const cursor: Cursor = {
+      file: first.file,
+      lineNumber: first.lineNumber,
+      side: first.side,
+      preferredSide: first.side,
+    };
+    // viewport=20, doc rows ≤ 5 → no edges to trail to → no scroll.
+    const result = stepDiffPane(
+      {
+        cursor,
+        flatRows: rows,
+        scrollTop: 0,
+        viewportHeight: 20,
+        rowY: (idx) => idx,
+      },
+      "down",
+      3,
+    );
+    expect(result.scrollTop).toBe(0);
+    expect(resolveCursorRowIdx(result.cursor, rows)).toBe(
+      resolveCursorRowIdx(cursor, rows) + 1,
+    );
   });
 });

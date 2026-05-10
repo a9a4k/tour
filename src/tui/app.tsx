@@ -55,6 +55,7 @@ import {
   cursorOnInteractive,
   type Cursor,
 } from "../core/cursor-state.js";
+import { step as stepDiffPane } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
@@ -981,11 +982,44 @@ function App(props: AppProps) {
         diffScrollRef.current?.scrollBy(-1, "viewport");
         return;
       case "cursor-down":
-        setCursor((c) => moveCursor(c, "down", flatRowsList));
+      case "cursor-up": {
+        const dir = action.type === "cursor-down" ? "down" : "up";
+        const sb = diffScrollRef.current;
+        if (!sb) {
+          setCursor((c) => moveCursor(c, dir, flatRowsList));
+          return;
+        }
+        // Diff-pane motion contract (ADR 0011 — Diff-pane motion contract).
+        // Cursor floats; pane scrolls one row only when crossing the 3-row
+        // edge margin. The fallback `[cursor, layout]` useEffect runs after
+        // setCursor and applies block:nearest, which dominates for off-
+        // viewport cursors (post-wheel-scroll) and is a no-op when the
+        // cursor is already visible.
+        const result = stepDiffPane(
+          {
+            cursor,
+            flatRows: flatRowsList,
+            scrollTop: sb.scrollTop,
+            viewportHeight: sb.viewport.height,
+            rowY: (idx) => {
+              const r = flatRowsList[idx];
+              if (!r) return 0;
+              const id =
+                r.kind === "diff"
+                  ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
+                  : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
+              return sb.content.findDescendantById(id)?.y ?? 0;
+            },
+          },
+          dir,
+          3,
+        );
+        setCursor(result.cursor);
+        if (result.scrollTop !== sb.scrollTop) {
+          sb.scrollTo(result.scrollTop);
+        }
         return;
-      case "cursor-up":
-        setCursor((c) => moveCursor(c, "up", flatRowsList));
-        return;
+      }
       case "cursor-side-left":
         setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
         return;
@@ -1097,7 +1131,6 @@ function App(props: AppProps) {
             <scrollbox
               ref={diffScrollRef}
               height="100%"
-              focused={!sidebarFocused && composer === null}
               viewportCulling={false}
             >
               {files.map((file) => {
