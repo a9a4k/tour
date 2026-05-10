@@ -409,98 +409,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     requestAnimationFrame(() => back?.focus());
   }, []);
 
-  // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
-  // side selection, annotate-at-cursor (a), annotation nav (n/p, with
-  // β-coupling to the line cursor), layout toggle (Shift-L, rebound
-  // from the previous lowercase l), and picker open (t) all flow
-  // through the pure dispatchCursorKey classifier so the keymap
-  // contract is testable independent of React state plumbing.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const focusInEditable = !!(
-        t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
-      );
-      const action = dispatchCursorKey(
-        {
-          key: e.key,
-          shiftKey: e.shiftKey,
-          metaKey: e.metaKey,
-          ctrlKey: e.ctrlKey,
-          altKey: e.altKey,
-        },
-        {
-          composerOpen: composerTarget !== null,
-          pickerOpen,
-          focusInEditable,
-        },
-      );
-      if (action.type === "noop") return;
-      e.preventDefault();
-      // Lazy materialization rule (ADR 0012): the first j/k/h/l just
-      // SHOWS the cursor at the default target, no move past it. `a`
-      // materializes AND opens the composer (handled inline below).
-      const motion =
-        action.type === "move-down" ||
-        action.type === "move-up" ||
-        action.type === "set-side-additions" ||
-        action.type === "set-side-deletions";
-      if (motion && !cursor) {
-        materializeCursor();
-        return;
-      }
-      switch (action.type) {
-        case "open-picker":
-          openPicker();
-          return;
-        case "toggle-layout":
-          setLayout((prev) => (prev === "split" ? "unified" : "split"));
-          return;
-        case "nav-next-annotation":
-          navigateBy(1);
-          return;
-        case "nav-prev-annotation":
-          navigateBy(-1);
-          return;
-        case "move-down":
-          setCursor((c) => moveCursor(c, "down", flatRowsList));
-          return;
-        case "move-up":
-          setCursor((c) => moveCursor(c, "up", flatRowsList));
-          return;
-        case "set-side-additions":
-          setCursor((c) => setCursorSide(c, "additions", flatRowsList));
-          return;
-        case "set-side-deletions":
-          setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
-          return;
-        case "annotate-at-cursor": {
-          const c = cursor ?? materializeCursor();
-          if (!c) return;
-          setComposerError(null);
-          setComposerTarget({
-            kind: "top-level",
-            file: c.file,
-            side: c.side,
-            line_start: c.lineNumber,
-            line_end: c.lineNumber,
-          });
-          return;
-        }
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [
-    navigateBy,
-    pickerOpen,
-    openPicker,
-    cursor,
-    composerTarget,
-    flatRowsList,
-    materializeCursor,
-  ]);
-
   const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) annotationRefs.current.set(id, el);
     else annotationRefs.current.delete(id);
@@ -589,6 +497,103 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (seeded) setCursor(seeded);
     return seeded;
   }, [cursor, topLevel, flatRowsList]);
+
+  // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
+  // side selection, annotate-at-cursor (a), annotation nav (n/p, with
+  // β-coupling to the line cursor), layout toggle (Shift-L, rebound
+  // from the previous lowercase l), and picker open (t) all flow
+  // through the pure dispatchCursorKey classifier so the keymap
+  // contract is testable independent of React state plumbing.
+  // Effect is registered AFTER `flatRowsList` and `materializeCursor`
+  // are declared so the deps array doesn't read a TDZ binding during
+  // render (Issue #131). The handler closure refs would be safe on
+  // their own — they only execute on a keystroke — but the deps array
+  // is constructed every render, so source position matters here.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const focusInEditable = !!(
+        t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      );
+      const action = dispatchCursorKey(
+        {
+          key: e.key,
+          shiftKey: e.shiftKey,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+        },
+        {
+          composerOpen: composerTarget !== null,
+          pickerOpen,
+          focusInEditable,
+        },
+      );
+      if (action.type === "noop") return;
+      e.preventDefault();
+      // Lazy materialization rule (ADR 0012): the first j/k/h/l just
+      // SHOWS the cursor at the default target, no move past it. `a`
+      // materializes AND opens the composer (handled inline below).
+      const motion =
+        action.type === "move-down" ||
+        action.type === "move-up" ||
+        action.type === "set-side-additions" ||
+        action.type === "set-side-deletions";
+      if (motion && !cursor) {
+        materializeCursor();
+        return;
+      }
+      switch (action.type) {
+        case "open-picker":
+          openPicker();
+          return;
+        case "toggle-layout":
+          setLayout((prev) => (prev === "split" ? "unified" : "split"));
+          return;
+        case "nav-next-annotation":
+          navigateBy(1);
+          return;
+        case "nav-prev-annotation":
+          navigateBy(-1);
+          return;
+        case "move-down":
+          setCursor((c) => moveCursor(c, "down", flatRowsList));
+          return;
+        case "move-up":
+          setCursor((c) => moveCursor(c, "up", flatRowsList));
+          return;
+        case "set-side-additions":
+          setCursor((c) => setCursorSide(c, "additions", flatRowsList));
+          return;
+        case "set-side-deletions":
+          setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
+          return;
+        case "annotate-at-cursor": {
+          const c = cursor ?? materializeCursor();
+          if (!c) return;
+          setComposerError(null);
+          setComposerTarget({
+            kind: "top-level",
+            file: c.file,
+            side: c.side,
+            line_start: c.lineNumber,
+            line_end: c.lineNumber,
+          });
+          return;
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [
+    navigateBy,
+    pickerOpen,
+    openPicker,
+    cursor,
+    composerTarget,
+    flatRowsList,
+    materializeCursor,
+  ]);
 
   const closeComposer = useCallback(() => {
     setComposerTarget(null);
