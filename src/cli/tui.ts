@@ -23,6 +23,7 @@ export type WriteAnnotationInput =
       line_start: number;
       line_end: number;
       body: string;
+      bundle: TourBundle;
     }
   | { kind: "reply"; parent: Annotation; body: string };
 
@@ -76,14 +77,22 @@ export async function tui(args: TuiArgs): Promise<void> {
           author_kind: "human",
         });
       }
-      return createAnnotation(args.cwd, id, {
-        file: input.file,
-        side: input.side,
-        line_start: input.line_start,
-        line_end: input.line_end,
-        body: input.body,
-        author_kind: "human",
-      });
+      // The bundle the App is currently rendering is the source of truth
+      // for anchor validation — no second bundle load on the TUI write
+      // path (PRD #140 / slice 4 #144).
+      return createAnnotation(
+        args.cwd,
+        id,
+        {
+          file: input.file,
+          side: input.side,
+          line_start: input.line_start,
+          line_end: input.line_end,
+          body: input.body,
+          author_kind: "human",
+        },
+        input.bundle,
+      );
     },
     loadTours: async () => {
       const tours = await listTours(args.cwd, { status: "all" });

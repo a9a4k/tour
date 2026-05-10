@@ -5,6 +5,7 @@ import {
   type CreateRequest,
 } from "../core/annotations-store.js";
 import { resolveIdPrefix } from "../core/tour-store.js";
+import { loadTourBundle } from "../core/tour-bundle.js";
 import { printOutput } from "./output.js";
 import type { AuthorKind } from "../core/types.js";
 
@@ -78,7 +79,9 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
         author_kind: itemKind,
       };
     });
-    const annotations = await createAnnotations(args.cwd, resolvedId, requests);
+    // Single bundle load for the whole batch — PRD #140 / slice 4 #144.
+    const bundle = await loadTourBundle(args.cwd, resolvedId);
+    const annotations = await createAnnotations(args.cwd, resolvedId, requests, bundle);
     if (args.json) {
       printOutput(annotations, true);
     } else {
@@ -91,6 +94,9 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
     if (!args.body) {
       throw new Error("--body is required (with --reply-to)");
     }
+    // Reply path inherits its anchor from the parent (which is already
+    // inside the diff by construction), so no bundle load — keeps the
+    // reply path cheap.
     const reply = await createReply(args.cwd, resolvedId, {
       replies_to: args.replyTo,
       body: args.body,
@@ -112,15 +118,21 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   }
 
   const { start, end } = parseLine(args.line);
-  const annotation = await createAnnotation(args.cwd, resolvedId, {
-    file: args.file,
-    side: validateSide(args.side),
-    line_start: start,
-    line_end: end,
-    body: args.body,
-    author: args.author,
-    author_kind: authorKind,
-  });
+  const bundle = await loadTourBundle(args.cwd, resolvedId);
+  const annotation = await createAnnotation(
+    args.cwd,
+    resolvedId,
+    {
+      file: args.file,
+      side: validateSide(args.side),
+      line_start: start,
+      line_end: end,
+      body: args.body,
+      author: args.author,
+      author_kind: authorKind,
+    },
+    bundle,
+  );
 
   if (args.json) {
     printOutput(annotation, true);

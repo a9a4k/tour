@@ -101,15 +101,21 @@ describe("loadTourBundle", () => {
     });
 
     it("preserves annotations written to the tour", async () => {
-      await createAnnotation(cwd, tourId, {
-        file: "foo.ts",
-        side: "additions",
-        line_start: 30,
-        line_end: 30,
-        body: "in-hunk note",
-        author_kind: "human",
-        author: "test",
-      });
+      const initial = await loadTourBundle(cwd, tourId);
+      await createAnnotation(
+        cwd,
+        tourId,
+        {
+          file: "foo.ts",
+          side: "additions",
+          line_start: 30,
+          line_end: 30,
+          body: "in-hunk note",
+          author_kind: "human",
+          author: "test",
+        },
+        initial,
+      );
       const bundle = await loadTourBundle(cwd, tourId);
       if (bundle.kind !== "ok") throw new Error("expected ok");
       expect(bundle.annotations).toHaveLength(1);
@@ -150,15 +156,21 @@ describe("loadTourBundle", () => {
     });
 
     it("preserves annotations even when snapshot is lost", async () => {
-      await createAnnotation(cwd, tourId, {
-        file: "foo.ts",
-        side: "additions",
-        line_start: 1,
-        line_end: 1,
-        body: "before snapshot loss",
-        author_kind: "human",
-        author: "test",
-      });
+      const initial = await loadTourBundle(cwd, tourId);
+      await createAnnotation(
+        cwd,
+        tourId,
+        {
+          file: "foo.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "before snapshot loss",
+          author_kind: "human",
+          author: "test",
+        },
+        initial,
+      );
       const badBase = "1".repeat(40);
       await writeFile(
         join(cwd, ".tour", tourId, "tour.toml"),
@@ -233,15 +245,21 @@ describe("loadTourBundle", () => {
       // The diff has one hunk around line 30. Default git -U3 surrounds
       // it with context lines 27..33. Annotation at line 5 is far outside
       // any hunk's visible context — it lands in the file's top boundary.
-      await createAnnotation(cwd, tourId, {
-        file: "foo.ts",
-        side: "additions",
-        line_start: 5,
-        line_end: 5,
-        body: "orphan in hidden context",
-        author_kind: "human",
-        author: "test",
-      });
+      const initial = await loadTourBundle(cwd, tourId);
+      await createAnnotation(
+        cwd,
+        tourId,
+        {
+          file: "foo.ts",
+          side: "additions",
+          line_start: 5,
+          line_end: 5,
+          body: "orphan in hidden context",
+          author_kind: "human",
+          author: "test",
+        },
+        initial,
+      );
       const bundle = await loadTourBundle(cwd, tourId);
       if (bundle.kind !== "ok") throw new Error("expected ok");
       const file = bundle.files[0];

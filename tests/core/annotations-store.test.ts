@@ -5,7 +5,8 @@ import {
   createAnnotations,
   readAnnotations,
 } from "../../src/core/annotations-store.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Annotation, Tour } from "../../src/core/types.js";
+import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import { mkdtemp, mkdir, appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -38,6 +39,58 @@ async function seedAnnotation(
   await appendFile(path, JSON.stringify(ann) + "\n");
 }
 
+// Synthetic bundle for anchor validation. The seam only reads
+// `files[].name`, `files[].oldContent`, `files[].newContent` for line-count
+// checks; everything else is filler so the type compiles.
+function makeBundle(
+  files: Array<{
+    name: string;
+    oldLines?: number;
+    newLines?: number;
+  }>,
+): TourBundle {
+  const tour: Tour = {
+    id: "2026-05-10-120000-abcd",
+    title: "test",
+    status: "open",
+    created_at: new Date().toISOString(),
+    closed_at: "",
+    head_sha: "0".repeat(40),
+    base_sha: "1".repeat(40),
+    head_source: "HEAD",
+    base_source: "HEAD^",
+    wip_snapshot: false,
+  };
+  const bundleFiles: BundleFile[] = files.map((f) => {
+    const oldLines = f.oldLines ?? 10;
+    const newLines = f.newLines ?? 10;
+    const oldContent =
+      oldLines === 0
+        ? ""
+        : Array.from({ length: oldLines }, (_, i) => `old line ${i + 1}`).join("\n") + "\n";
+    const newContent =
+      newLines === 0
+        ? ""
+        : Array.from({ length: newLines }, (_, i) => `new line ${i + 1}`).join("\n") + "\n";
+    return {
+      name: f.name,
+      type: "change",
+      hunks: [],
+      oldContent,
+      newContent,
+      classification: { collapsed: false },
+      orphanWindows: [],
+    };
+  });
+  return {
+    kind: "ok",
+    tour,
+    annotations: [],
+    diff: "",
+    files: bundleFiles,
+  };
+}
+
 describe("annotations-store", () => {
   let dir: string;
   const tourId = "2026-05-08-120000-abcd";
@@ -49,15 +102,21 @@ describe("annotations-store", () => {
 
   describe("createAnnotation", () => {
     it("writes a top-level annotation that round-trips through readAnnotations", async () => {
-      const ann = await createAnnotation(dir, tourId, {
-        file: "src/main.ts",
-        side: "additions",
-        line_start: 7,
-        line_end: 9,
-        body: "looks good",
-        author: "human-1",
-        author_kind: "human",
-      });
+      const bundle = makeBundle([{ name: "src/main.ts", newLines: 20 }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "src/main.ts",
+          side: "additions",
+          line_start: 7,
+          line_end: 9,
+          body: "looks good",
+          author: "human-1",
+          author_kind: "human",
+        },
+        bundle,
+      );
       expect(ann.id.length).toBeGreaterThan(0);
       expect(typeof ann.created_at).toBe("string");
       expect(ann.replies_to).toBeUndefined();
@@ -68,68 +127,296 @@ describe("annotations-store", () => {
     });
 
     it("defaults author to 'agent' when omitted and author_kind is 'agent' (slice 3 / #143)", async () => {
-      const ann = await createAnnotation(dir, tourId, {
-        file: "x.ts",
-        side: "deletions",
-        line_start: 1,
-        line_end: 1,
-        body: "b",
-        author_kind: "agent",
-      });
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "deletions",
+          line_start: 1,
+          line_end: 1,
+          body: "b",
+          author_kind: "agent",
+        },
+        bundle,
+      );
       expect(ann.author).toBe("agent");
     });
 
     it("defaults author to 'human' when omitted and author_kind is 'human' (slice 3 / #143)", async () => {
-      const ann = await createAnnotation(dir, tourId, {
-        file: "x.ts",
-        side: "additions",
-        line_start: 1,
-        line_end: 1,
-        body: "b",
-        author_kind: "human",
-      });
-      expect(ann.author).toBe("human");
-    });
-
-    it("preserves a supplied author verbatim regardless of author_kind (slice 3 / #143)", async () => {
-      const ann = await createAnnotation(dir, tourId, {
-        file: "x.ts",
-        side: "additions",
-        line_start: 1,
-        line_end: 1,
-        body: "b",
-        author: "my-script",
-        author_kind: "agent",
-      });
-      expect(ann.author).toBe("my-script");
-    });
-
-    it("rejects whitespace-only body and writes nothing (slice 2 / #142)", async () => {
-      await expect(
-        createAnnotation(dir, tourId, {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
           file: "x.ts",
           side: "additions",
           line_start: 1,
           line_end: 1,
-          body: "   \n\t  ",
+          body: "b",
+          author_kind: "human",
+        },
+        bundle,
+      );
+      expect(ann.author).toBe("human");
+    });
+
+    it("preserves a supplied author verbatim regardless of author_kind (slice 3 / #143)", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "b",
+          author: "my-script",
           author_kind: "agent",
-        }),
+        },
+        bundle,
+      );
+      expect(ann.author).toBe("my-script");
+    });
+
+    it("rejects whitespace-only body and writes nothing (slice 2 / #142)", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "additions",
+            line_start: 1,
+            line_end: 1,
+            body: "   \n\t  ",
+            author_kind: "agent",
+          },
+          bundle,
+        ),
       ).rejects.toThrow(/body/i);
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("appends across multiple invocations", async () => {
-      const a = await createAnnotation(dir, tourId, {
-        file: "a.ts", side: "additions", line_start: 1, line_end: 1,
-        body: "1", author_kind: "agent",
-      });
-      const b = await createAnnotation(dir, tourId, {
-        file: "b.ts", side: "additions", line_start: 2, line_end: 2,
-        body: "2", author_kind: "agent",
-      });
+      const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
+      const a = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+          body: "1", author_kind: "agent",
+        },
+        bundle,
+      );
+      const b = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+          body: "2", author_kind: "agent",
+        },
+        bundle,
+      );
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded.map((x) => x.id)).toEqual([a.id, b.id]);
+    });
+  });
+
+  describe("createAnnotation anchor validation (slice 4 / #144)", () => {
+    it("rejects when file is not in bundle.files and writes nothing", async () => {
+      const bundle = makeBundle([{ name: "real.ts" }]);
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "typo.ts",
+            side: "additions",
+            line_start: 1,
+            line_end: 1,
+            body: "b",
+            author_kind: "agent",
+          },
+          bundle,
+        ),
+      ).rejects.toThrow(/typo\.ts/);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toEqual([]);
+    });
+
+    it("rejects when line_start < 1", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "additions",
+            line_start: 0,
+            line_end: 0,
+            body: "b",
+            author_kind: "agent",
+          },
+          bundle,
+        ),
+      ).rejects.toThrow(/line_start/);
+    });
+
+    it("rejects when line_end < line_start", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "additions",
+            line_start: 5,
+            line_end: 3,
+            body: "b",
+            author_kind: "agent",
+          },
+          bundle,
+        ),
+      ).rejects.toThrow(/line_end/);
+    });
+
+    it("rejects when additions line_end exceeds the head line count", async () => {
+      const bundle = makeBundle([{ name: "x.ts", newLines: 10 }]);
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "additions",
+            line_start: 9,
+            line_end: 11,
+            body: "b",
+            author_kind: "agent",
+          },
+          bundle,
+        ),
+      ).rejects.toThrow(/line/i);
+    });
+
+    it("rejects when deletions line_end exceeds the base line count", async () => {
+      const bundle = makeBundle([{ name: "x.ts", oldLines: 5, newLines: 20 }]);
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "deletions",
+            line_start: 4,
+            line_end: 7,
+            body: "b",
+            author_kind: "agent",
+          },
+          bundle,
+        ),
+      ).rejects.toThrow(/line/i);
+    });
+
+    it("accepts an anchor in hidden context (in-range, no hunks defined)", async () => {
+      // hunks=[] in the synthetic bundle — every line is technically
+      // "between hunks" / "outside hunks". The seam validates file
+      // membership and line-range bounds only, not hunk membership.
+      const bundle = makeBundle([{ name: "x.ts", newLines: 50 }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 25,
+          line_end: 25,
+          body: "in hidden context",
+          author_kind: "agent",
+        },
+        bundle,
+      );
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]).toEqual(ann);
+    });
+
+    it("accepts an anchor on an unchanged context row with side=additions (CONTEXT.md convention)", async () => {
+      const bundle = makeBundle([{ name: "x.ts", newLines: 100, oldLines: 100 }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "context-row note",
+          author_kind: "human",
+        },
+        bundle,
+      );
+      expect(ann.line_start).toBe(1);
+      expect(ann.side).toBe("additions");
+    });
+
+    it("accepts line_end at exactly the file's line count (inclusive upper bound)", async () => {
+      const bundle = makeBundle([{ name: "x.ts", newLines: 7 }]);
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 7,
+          line_end: 7,
+          body: "last line",
+          author_kind: "agent",
+        },
+        bundle,
+      );
+      expect(ann.line_end).toBe(7);
+    });
+
+    it("rejects when the bundle is snapshot-lost (no diff to validate against)", async () => {
+      const lost: TourBundle = {
+        kind: "snapshot-lost",
+        tour: {
+          id: tourId,
+          title: "",
+          status: "open",
+          created_at: "",
+          closed_at: "",
+          head_sha: "",
+          base_sha: "",
+          head_source: "",
+          base_source: "",
+          wip_snapshot: false,
+        },
+        annotations: [],
+      };
+      await expect(
+        createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "additions",
+            line_start: 1,
+            line_end: 1,
+            body: "b",
+            author_kind: "agent",
+          },
+          lost,
+        ),
+      ).rejects.toThrow(/snapshot/i);
     });
   });
 
@@ -227,27 +514,33 @@ describe("annotations-store", () => {
 
   describe("createAnnotations (atomic batch)", () => {
     it("writes every record in a single appendFile call", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }, { name: "c.ts" }]);
       const path = join(dir, ".tour", tourId, "annotations.jsonl");
       const before = await readFile(path, "utf-8").catch(() => "");
       expect(before).toBe("");
 
-      const results = await createAnnotations(dir, tourId, [
-        {
-          kind: "top-level",
-          file: "a.ts", side: "additions", line_start: 1, line_end: 1,
-          body: "first", author_kind: "agent",
-        },
-        {
-          kind: "top-level",
-          file: "b.ts", side: "additions", line_start: 2, line_end: 2,
-          body: "second", author_kind: "agent",
-        },
-        {
-          kind: "top-level",
-          file: "c.ts", side: "additions", line_start: 3, line_end: 3,
-          body: "third", author_kind: "agent",
-        },
-      ]);
+      const results = await createAnnotations(
+        dir,
+        tourId,
+        [
+          {
+            kind: "top-level",
+            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+            body: "first", author_kind: "agent",
+          },
+          {
+            kind: "top-level",
+            file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+            body: "second", author_kind: "agent",
+          },
+          {
+            kind: "top-level",
+            file: "c.ts", side: "additions", line_start: 3, line_end: 3,
+            body: "third", author_kind: "agent",
+          },
+        ],
+        bundle,
+      );
 
       expect(results).toHaveLength(3);
       const loaded = await readAnnotations(dir, tourId);
@@ -259,21 +552,27 @@ describe("annotations-store", () => {
     });
 
     it("supports mixed top-level + reply requests in a single batch", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }, { name: "src/main.ts" }]);
       const parent = makeAnnotation({ id: "p1", side: "deletions" });
       await seedAnnotation(dir, tourId, parent);
 
-      const results = await createAnnotations(dir, tourId, [
-        {
-          kind: "top-level",
-          file: "a.ts", side: "additions", line_start: 1, line_end: 1,
-          body: "top", author_kind: "human",
-        },
-        {
-          kind: "reply",
-          replies_to: "p1",
-          body: "reply", author_kind: "human",
-        },
-      ]);
+      const results = await createAnnotations(
+        dir,
+        tourId,
+        [
+          {
+            kind: "top-level",
+            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+            body: "top", author_kind: "human",
+          },
+          {
+            kind: "reply",
+            replies_to: "p1",
+            body: "reply", author_kind: "human",
+          },
+        ],
+        bundle,
+      );
 
       expect(results).toHaveLength(2);
       expect(results[0].replies_to).toBeUndefined();
@@ -282,41 +581,78 @@ describe("annotations-store", () => {
     });
 
     it("rejects whole batch (no write) when any item has a whitespace-only body (slice 2 / #142)", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
       await expect(
-        createAnnotations(dir, tourId, [
-          {
-            kind: "top-level",
-            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
-            body: "valid", author_kind: "agent",
-          },
-          {
-            kind: "top-level",
-            file: "b.ts", side: "additions", line_start: 2, line_end: 2,
-            body: "   \n  ", author_kind: "agent",
-          },
-        ]),
+        createAnnotations(
+          dir,
+          tourId,
+          [
+            {
+              kind: "top-level",
+              file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+              body: "valid", author_kind: "agent",
+            },
+            {
+              kind: "top-level",
+              file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+              body: "   \n  ", author_kind: "agent",
+            },
+          ],
+          bundle,
+        ),
       ).rejects.toThrow(/body/i);
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("rejects whole batch (no write) when any reply parent is missing", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }]);
       await expect(
-        createAnnotations(dir, tourId, [
-          {
-            kind: "top-level",
-            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
-            body: "valid", author_kind: "agent",
-          },
-          {
-            kind: "reply",
-            replies_to: "no-such-parent",
-            body: "doomed", author_kind: "agent",
-          },
-        ]),
+        createAnnotations(
+          dir,
+          tourId,
+          [
+            {
+              kind: "top-level",
+              file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+              body: "valid", author_kind: "agent",
+            },
+            {
+              kind: "reply",
+              replies_to: "no-such-parent",
+              body: "doomed", author_kind: "agent",
+            },
+          ],
+          bundle,
+        ),
       ).rejects.toThrow(/no-such-parent/);
 
       // No partial write: the file is still empty.
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toEqual([]);
+    });
+
+    it("rejects whole batch (no write) when any anchor file is not in the bundle (slice 4 / #144)", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }]);
+      await expect(
+        createAnnotations(
+          dir,
+          tourId,
+          [
+            {
+              kind: "top-level",
+              file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+              body: "valid", author_kind: "agent",
+            },
+            {
+              kind: "top-level",
+              file: "typo.ts", side: "additions", line_start: 1, line_end: 1,
+              body: "doomed", author_kind: "agent",
+            },
+          ],
+          bundle,
+        ),
+      ).rejects.toThrow(/typo\.ts/);
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded).toEqual([]);
     });
@@ -367,14 +703,20 @@ describe("annotations-store", () => {
 
   describe("multi-line ranges", () => {
     it("stores and retrieves line_start != line_end", async () => {
-      await createAnnotation(dir, tourId, {
-        file: "x.ts",
-        side: "additions",
-        line_start: 5,
-        line_end: 15,
-        body: "range",
-        author_kind: "agent",
-      });
+      const bundle = makeBundle([{ name: "x.ts", newLines: 20 }]);
+      await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 5,
+          line_end: 15,
+          body: "range",
+          author_kind: "agent",
+        },
+        bundle,
+      );
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded[0].line_start).toBe(5);
       expect(loaded[0].line_end).toBe(15);

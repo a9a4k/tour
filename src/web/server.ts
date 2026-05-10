@@ -304,16 +304,25 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const end = asInt(body.line_end);
           if (start === undefined) throw new Error("line_start is required");
           if (end === undefined) throw new Error("line_end is required");
-          if (end < start) throw new Error("line_end must be >= line_start");
-          const ann = await createAnnotation(cwd, resolvedId, {
-            file,
-            side,
-            line_start: start,
-            line_end: end,
-            body: text,
-            author,
-            author_kind: "human",
-          });
+          // The seam owns line-range + file-membership validation (PRD #140
+          // / slice 4 #144) — load the bundle so it has something to check
+          // against. Cost is one extra read per POST; SPA already pays this
+          // on its own `GET /api/tours/:id` calls.
+          const bundle = await loadTourBundle(cwd, resolvedId);
+          const ann = await createAnnotation(
+            cwd,
+            resolvedId,
+            {
+              file,
+              side,
+              line_start: start,
+              line_end: end,
+              body: text,
+              author,
+              author_kind: "human",
+            },
+            bundle,
+          );
           return Response.json(ann, { status: 201 });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
