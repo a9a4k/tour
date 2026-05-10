@@ -1,6 +1,8 @@
 # Stdout-as-reply contract for reply-agent dispatch
 
 > **Supersedes:** the dispatch-mechanism portion of ADR 0010 (bidirectional review via reply-agent + pickup). Everything else in 0010 — the bidirectional pivot itself, the reply-agent vs main-agent split, the no-MCP rejection, the no-resolution-status decision, the no-cross-Tour-Threads stance — stands unchanged. Only the "agent calls `tour annotate` via allow-listed bash" piece is revised here.
+>
+> **See also:** [ADR 0014 (per-dispatch reply-agent logs)](./0014-reply-agent-dispatch-logs.md) — adds the post-mortem diagnostics layer on top of the stdout-capture contract decided here. The stdout-as-reply contract (`body = stdout.trim()`) is unchanged; 0014 just persists the streams to disk for inspection when a dispatch fails.
 
 ADR 0010 chose a tool-call dispatch mechanism: the reply-agent runs cold, capability-bounded by its CLI's native allow-list (`claude --allowedTools 'Bash(tour annotate:*)'`, codex sandbox, etc.), writes its reply by invoking `tour annotate --as-agent --reply-to <id>`, and exits. The system prompt + the allow/deny pair were jointly the contract.
 
