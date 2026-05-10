@@ -33,7 +33,7 @@ A top-level Annotation plus the chain of Replies attached to it. Lives entirely 
 _Avoid_: conversation, discussion, exchange
 
 **Reply-agent**:
-An ephemeral, capability-bounded agent process spawned by the renderer's watcher whenever a new Annotation with `author_kind = "human"` lands. Its only available tool is `tour annotate --as-agent --reply-to <id>`; it cannot edit code, create Tours, or run arbitrary commands. Runtime restriction is enforced by the agent CLI's native allow-list (e.g. `claude --allowedTools 'Bash(tour annotate:*)'`); a Tour-canonical system prompt reinforces the boundary semantically. Distinct from the **main-agent** — the user's existing Claude Code / Codex / etc. session — which is unrestricted and consumes the conversation later via `tour pickup`.
+An ephemeral, capability-bounded agent process spawned by the renderer's watcher whenever a new Annotation with `author_kind = "human"` lands. The agent has **no tools** — it runs in non-interactive print mode and emits the reply body to stdout; Tour captures stdout and writes the Reply Annotation itself. The capability boundary is "no tools," strictly stronger than the prior single-allowed-tool design: the agent literally cannot read, write, edit, or shell out. A Tour-canonical system prompt instructs the model to emit only the reply body — no preamble, no narration. Distinct from the **main-agent** — the user's existing Claude Code / Codex / etc. session — which is unrestricted and consumes the conversation later via `tour pickup`.
 _Avoid_: bot, listener, autoreplier
 
 **Side**:
