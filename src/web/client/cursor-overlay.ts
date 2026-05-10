@@ -1,5 +1,5 @@
 import type { Cursor } from "../../core/cursor-state.js";
-import { queryAllAcrossShadow } from "./dom-walk.js";
+import { queryAllAcrossShadow, shadowRootsDeep } from "./dom-walk.js";
 
 /**
  * Mark the DOM cell that the line cursor is anchored on with
@@ -16,17 +16,23 @@ import { queryAllAcrossShadow } from "./dom-walk.js";
  *   2. If `cursor` is non-null, finds the cursor's file's matching cell
  *      on the cursor's side at the cursor's line number and sets the
  *      attributes.
+ *   3. Installs a MutationObserver on every shadow root inside the
+ *      cursor's file block. Pierre re-renders its shadow tree
+ *      asynchronously when the syntax-highlight worker returns tokens —
+ *      that re-render replaces the cell DOM node, dropping our
+ *      attribute. The observer re-applies the attribute on the
+ *      successor cell so the outline survives across worker-driven
+ *      re-renders.
  *
  * Performance: the previous implementation walked every file's shadow
  * subtree to clear attributes and to find the file block. Now the file
  * block is found via a direct light-DOM `[data-file="..."]` selector
  * (data-file is owned by Tour's own light-DOM wrapper, not Pierre's
- * shadow), so we never enumerate other files' content. The cleanup
- * walks only the previously-tagged cell via a stored reference.
+ * shadow), so we never enumerate other files' content.
  *
- * Returns a cleanup function that strips the attributes — call it on
- * effect teardown so a remount doesn't leave orphan attributes on the
- * previous render's DOM.
+ * Returns a cleanup function that strips the attributes and disconnects
+ * the observer — call it on effect teardown so a remount doesn't leave
+ * orphan attributes or live observers on the previous render's DOM.
  *
  * Idempotent — calling with the same `(root, cursor)` pair twice produces
  * the same DOM state.
@@ -35,23 +41,70 @@ export function syncCursorOverlay(
   root: ParentNode,
   cursor: Cursor | null,
 ): () => void {
-  // Defensive: if a previous remount left attributes behind on cells we
-  // don't track via state, sweep them. This is the only walker that
-  // crosses every shadow root, and only because we may not have a
-  // per-cell reference after a remount.
   clearOverlayEverywhere(root);
-  const cleanup = (): void => clearOverlayEverywhere(root);
-  if (!cursor) return cleanup;
+  if (!cursor) return () => clearOverlayEverywhere(root);
+
   const block = findFileBlock(root, cursor.file);
-  if (!block) return cleanup;
+  if (!block) return () => clearOverlayEverywhere(root);
+
+  applyCursorAttrs(block, cursor, true /* scroll on first apply */);
+
+  // Re-apply on Pierre's shadow-root mutations. Pierre's worker pool
+  // delivers highlighted tokens after a re-render boundary; when those
+  // tokens arrive Pierre swaps the cell DOM and our attribute disappears
+  // with the discarded node. The observer notices the swap and re-marks
+  // the successor. `applyCursorAttrs(scroll=false)` because we don't
+  // want a re-highlight to scroll the user back to the cursor — the
+  // intent of `block:nearest` is to follow the cursor's keyboard moves,
+  // not to fight ambient re-renders.
+  const observers: MutationObserver[] = [];
+  const observe = (target: Node): void => {
+    const observer = new MutationObserver(() => {
+      if (block.isConnected === false) return;
+      applyCursorAttrs(block, cursor, false);
+    });
+    observer.observe(target, { childList: true, subtree: true });
+    observers.push(observer);
+  };
+  // MutationObservers don't cross shadow boundaries — observe each one
+  // reachable from the block. Pierre attaches one per file plus inner
+  // shadows for hunks, so `shadowRootsDeep` is the right reach.
+  for (const sr of shadowRootsDeep(block)) observe(sr);
+
+  return (): void => {
+    for (const o of observers) o.disconnect();
+    clearOverlayEverywhere(root);
+  };
+}
+
+function applyCursorAttrs(block: Element, cursor: Cursor, scroll: boolean): void {
   const cell = findCursorCell(block, cursor);
-  if (!cell) return cleanup;
+  if (!cell) return;
+  // No-op if the right cell already carries the right attrs. Cheap guard
+  // so the MutationObserver doesn't churn during unrelated mutations
+  // (Pierre's tokens swap inside the cell, attribute on the cell itself
+  // survives) — without this we'd setAttribute on every keystroke into
+  // the composer if it shared a shadow root, etc.
+  if (
+    cell.getAttribute("data-tour-cursor") === "true" &&
+    cell.getAttribute("data-tour-cursor-side") === cursor.side
+  ) {
+    return;
+  }
+  // Strip any stale mark on a different cell in the same block before
+  // setting the new one. Covers the case where Pierre re-rendered and
+  // both the old marked cell AND a new candidate cell briefly coexist
+  // (the old one will be removed by Pierre, but until then it confuses
+  // the CSS rule).
+  for (const stale of queryAllAcrossShadow(block, "[data-tour-cursor]")) {
+    if (stale !== cell) {
+      stale.removeAttribute("data-tour-cursor");
+      stale.removeAttribute("data-tour-cursor-side");
+    }
+  }
   cell.setAttribute("data-tour-cursor", "true");
   cell.setAttribute("data-tour-cursor-side", cursor.side);
-  // block:"nearest" — already-visible rows don't jump; off-screen rows
-  // pull into view at the closest edge. Mirrors the sidebar follow effect.
-  cell.scrollIntoView({ block: "nearest" });
-  return cleanup;
+  if (scroll) cell.scrollIntoView({ block: "nearest" });
 }
 
 function clearOverlayEverywhere(root: ParentNode): void {
