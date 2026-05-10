@@ -27,6 +27,16 @@ function fire(target: EventTarget, type: "mouseover" | "mouseout"): void {
   target.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
 }
 
+// MouseEvent variant so the `relatedTarget`-based intra-cell filter can be
+// exercised — plain `Event` doesn't carry relatedTarget.
+function fireMouse(
+  target: EventTarget,
+  type: "mouseover" | "mouseout",
+  relatedTarget: EventTarget | null,
+): void {
+  target.dispatchEvent(new MouseEvent(type, { bubbles: true, composed: true, relatedTarget }));
+}
+
 const cleanups: Array<() => void> = [];
 function attach(root: ParentNode, composerOpen: boolean): void {
   cleanups.push(syncHoverOverlay(root, composerOpen));
@@ -113,6 +123,73 @@ describe("syncHoverOverlay: mouseout cleanup", () => {
     fire(b, "mouseover");
     expect(a.hasAttribute("data-tour-hover")).toBe(false);
     expect(b.getAttribute("data-tour-hover")).toBe("true");
+  });
+});
+
+// Defensive single-hover invariant. The previous design relied on mouseout
+// always firing to clear `data-tour-hover` — but rapid motion, virtualizer
+// scroll-out, or leaving the window all reliably drop mouseouts, stranding
+// attributes on every visited cell. The diff ends up dotted with `+`
+// buttons that never disappear. The fix: every onOver clears the previously
+// hovered cell, regardless of whether its mouseout fired.
+describe("syncHoverOverlay: single-hover invariant (regression)", () => {
+  it("missed mouseout: onOver on cell B still clears stale data-tour-hover on cell A", () => {
+    const a = cell({ line: 1, type: "addition" });
+    const b = cell({ line: 2, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [a, b]));
+    attach(document.body, false);
+    fire(a, "mouseover");
+    // Skip mouseout on A — simulates the dropped-event case.
+    fire(b, "mouseover");
+    expect(a.hasAttribute("data-tour-hover")).toBe(false);
+    expect(b.getAttribute("data-tour-hover")).toBe("true");
+  });
+
+  it("hovering ten cells in sequence leaves at most one marked", () => {
+    const cells = Array.from({ length: 10 }, (_, i) =>
+      cell({ line: i + 1, type: "addition" }),
+    );
+    document.body.appendChild(fileBlock("x.ts", cells));
+    attach(document.body, false);
+    for (const c of cells) fire(c, "mouseover");
+    const marked = cells.filter((c) => c.hasAttribute("data-tour-hover"));
+    expect(marked.length).toBe(1);
+    expect(marked[0]).toBe(cells[cells.length - 1]);
+  });
+
+  it("intra-cell mouseout (relatedTarget inside same cell) does NOT clear the hover", () => {
+    const c = cell({ line: 1, type: "addition" });
+    const innerA = el("span");
+    const innerB = el("span");
+    c.append(innerA, innerB);
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    attach(document.body, false);
+    fire(c, "mouseover");
+    expect(c.getAttribute("data-tour-hover")).toBe("true");
+    // Mouse moves from innerA to innerB — both children of the same cell.
+    fireMouse(innerA, "mouseout", innerB);
+    expect(c.getAttribute("data-tour-hover")).toBe("true");
+  });
+
+  it("mouseout onto the cell's own appended `+` button is treated as intra-cell", () => {
+    const c = cell({ line: 1, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    attach(document.body, false);
+    fire(c, "mouseover");
+    // Simulate plus-button-overlay appending its real-DOM button.
+    const plus = el("button", { class: "tour-plus-button" });
+    c.appendChild(plus);
+    fireMouse(c, "mouseout", plus);
+    expect(c.getAttribute("data-tour-hover")).toBe("true");
+  });
+
+  it("mouseout with no relatedTarget (mouse leaves window) clears the hover", () => {
+    const c = cell({ line: 1, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    attach(document.body, false);
+    fire(c, "mouseover");
+    fireMouse(c, "mouseout", null);
+    expect(c.hasAttribute("data-tour-hover")).toBe(false);
   });
 });
 

@@ -24,16 +24,37 @@ import { queryAllAcrossShadow } from "./dom-walk.js";
 export function syncHoverOverlay(root: ParentNode, composerOpen: boolean): () => void {
   if (composerOpen) clearHover(root);
 
+  // Single-hover invariant. The previous design only set the attribute on
+  // mouseover and only cleared it on mouseout of the SAME cell — so any
+  // missed mouseout (rapid diagonal motion, virtualizer scroll-out under
+  // the cursor, leaving the window) stranded `data-tour-hover` on the
+  // last cell forever. Subsequent hovers piled new attributes on top
+  // without clearing the old, leaving the diff covered in `+` buttons.
+  //
+  // Tracking `lastCell` here lets every onOver clear the previous cell
+  // before marking the new one, and lets onOut filter intra-cell
+  // transitions via `relatedTarget` so mouseover/mouseout pairs between
+  // a cell's children (or onto its own `+` button, which is a DOM child
+  // of the cell) collapse to no-ops.
+  let lastCell: HTMLElement | null = null;
+
   const onOver = (e: Event): void => {
     if (composerOpen) return;
     const cell = annotatableTargetFromEvent(e);
-    if (!cell) return;
+    if (!cell || cell === lastCell) return;
+    if (lastCell) lastCell.removeAttribute("data-tour-hover");
     cell.setAttribute("data-tour-hover", "true");
+    lastCell = cell;
   };
   const onOut = (e: Event): void => {
     const cell = annotatableTargetFromEvent(e);
-    if (!cell) return;
+    if (!cell || cell !== lastCell) return;
+    const related = (e as MouseEvent).relatedTarget;
+    // Moving to a descendant of the same cell (or onto our `+` button,
+    // which is appended as a DOM child of the cell) is not a real "leave".
+    if (related instanceof Node && cell.contains(related)) return;
     cell.removeAttribute("data-tour-hover");
+    lastCell = null;
   };
 
   // Listeners on document so events from inside Pierre's open shadow
@@ -46,6 +67,7 @@ export function syncHoverOverlay(root: ParentNode, composerOpen: boolean): () =>
   return (): void => {
     target.removeEventListener("mouseover", onOver);
     target.removeEventListener("mouseout", onOut);
+    lastCell = null;
     clearHover(root);
   };
 }
