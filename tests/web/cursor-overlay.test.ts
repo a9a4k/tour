@@ -158,3 +158,38 @@ describe("syncCursorOverlay: shadow DOM", () => {
     expect(c.getAttribute("data-tour-cursor")).toBe("true");
   });
 });
+
+describe("syncCursorOverlay: auto-scroll", () => {
+  it("scrollIntoView({ block: 'nearest' }) on the cursor's cell after a move", () => {
+    const c = cell({ line: 5, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    const calls: ScrollIntoViewOptions[] = [];
+    c.scrollIntoView = (opts?: ScrollIntoViewOptions | boolean) => {
+      calls.push(typeof opts === "object" && opts !== null ? opts : {});
+    };
+    syncCursorOverlay(document.body, cur({ file: "x.ts", lineNumber: 5, side: "additions" }));
+    expect(calls).toEqual([{ block: "nearest" }]);
+  });
+
+  it("does not scroll when the cursor's file isn't in the DOM", () => {
+    const c = cell({ line: 1, type: "addition" });
+    document.body.appendChild(fileBlock("a.ts", [c]));
+    let scrolled = false;
+    c.scrollIntoView = () => {
+      scrolled = true;
+    };
+    syncCursorOverlay(document.body, cur({ file: "missing.ts", lineNumber: 1, side: "additions" }));
+    expect(scrolled).toBe(false);
+  });
+
+  it("does not scroll when the cursor goes null (e.g., tour switch)", () => {
+    const c = cell({ line: 1, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    let scrolled = false;
+    c.scrollIntoView = () => {
+      scrolled = true;
+    };
+    syncCursorOverlay(document.body, null);
+    expect(scrolled).toBe(false);
+  });
+});

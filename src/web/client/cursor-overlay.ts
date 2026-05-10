@@ -37,6 +37,9 @@ export function syncCursorOverlay(
   if (!cell) return cleanup;
   cell.setAttribute("data-tour-cursor", "true");
   cell.setAttribute("data-tour-cursor-side", cursor.side);
+  // Cross-file j/k can land the cursor below the fold; auto-scroll keeps
+  // the new row visible. block:"nearest" — already-visible rows don't jump.
+  (cell as HTMLElement).scrollIntoView({ block: "nearest" });
   return cleanup;
 }
 
