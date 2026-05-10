@@ -1,5 +1,4 @@
-import { watch, type FSWatcher } from "node:fs";
-import { existsSync } from "node:fs";
+import { watch, existsSync, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 
 export type WatchEvent =

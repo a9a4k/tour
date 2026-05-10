@@ -35,18 +35,12 @@ export function buildEnvelope(
   annotations: Annotation[],
   triggering: Annotation,
 ): ReplyEnvelope {
-  const threads = buildThreads(annotations);
-  let chain: Annotation[] = [triggering];
-  if (triggering.replies_to !== undefined) {
-    const root = threads.find(
-      (t) => t.root.id === triggering.replies_to ||
-        t.replies.some((r) => r.id === triggering.replies_to),
-    );
-    if (root) chain = [root.root, ...root.replies];
-  } else {
-    const t = threads.find((th) => th.root.id === triggering.id);
-    if (t) chain = [t.root, ...t.replies];
-  }
+  const thread = buildThreads(annotations).find(
+    (t) =>
+      t.root.id === triggering.id ||
+      t.replies.some((r) => r.id === triggering.id),
+  );
+  const chain = thread ? [thread.root, ...thread.replies] : [triggering];
   return { tour, triggering_annotation: triggering, thread: chain };
 }
 

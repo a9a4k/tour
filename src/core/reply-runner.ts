@@ -86,13 +86,18 @@ export class ReplyRunner {
       const tourDir = join(this.opts.cwd, ".tour", this.opts.tourId);
 
       // Write a placeholder lock with pid=0 first so the renderer's pill
-      // surfaces *before* the spawn returns — fs.spawn is fast on macOS but
-      // the pill needs to be visible from the moment of the human's reply,
-      // not from the moment the child is up.
-      await writeReplyLock(this.opts.cwd, this.opts.tourId, {
+      // surfaces *before* the spawn returns — fs.spawn is fast but the pill
+      // needs to be visible from the moment of the human's reply, not from
+      // the moment the child is up. started_at is captured once so the
+      // pill's age counter is stable across the placeholder/patch sequence.
+      const startedAt = new Date().toISOString();
+      const lockBase = {
         agent: this.opts.agent,
         responding_to: triggering.id,
-        started_at: new Date().toISOString(),
+        started_at: startedAt,
+      };
+      await writeReplyLock(this.opts.cwd, this.opts.tourId, {
+        ...lockBase,
         pid: 0,
       });
 
@@ -106,9 +111,7 @@ export class ReplyRunner {
       // Now patch the pid in. The renderer reads the lock per pill render
       // tick, so the eventual-consistency is fine.
       await writeReplyLock(this.opts.cwd, this.opts.tourId, {
-        agent: this.opts.agent,
-        responding_to: triggering.id,
-        started_at: new Date().toISOString(),
+        ...lockBase,
         pid: spawned.pid,
       });
 
