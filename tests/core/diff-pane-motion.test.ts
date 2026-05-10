@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { step, pageMove } from "../../src/core/diff-pane-motion.js";
+import { step, pageMove, jump } from "../../src/core/diff-pane-motion.js";
 import type { PaneState } from "../../src/core/diff-pane-motion.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
@@ -479,5 +479,317 @@ describe("pageMove (up)", () => {
     };
     const r = pageMove(state, "down");
     expect(r.cursor?.preferredSide).toBe("deletions");
+  });
+});
+
+// PRD #126 / issue #130: Home / End jump the cursor to the first / last
+// cursor-eligible row in the concatenated diff stream and the pane scrolls
+// so the cursor lands at the 3-row top / bottom margin (matching step()'s
+// scrolloff invariant). Folded files are skipped — flatRows already
+// excludes them so jump() walks the visible-row sequence directly.
+describe("jump (home)", () => {
+  it("snaps cursor to flatRows[0] and scrolls so the cursor lands at the 3-row top margin", () => {
+    // 50 rows, viewport=10. cursor mid-doc at idx 25, scrollTop=20.
+    // Home: cursor → idx 0 (lineNumber 1). Desired scrollTop = rowY(0) - 3 = -3 → clamped to 0.
+    const rows = makeRows("x.txt", 50);
+    const state: PaneState = {
+      cursor: cursorAt(rows[25]),
+      flatRows: rows,
+      scrollTop: 20,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.lineNumber).toBe(1);
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("applies the 3-row top margin when the first row sits below the document top", () => {
+    // Simulate a leading file card: rowY(0)=8, then rowY(i) packs from 9.
+    // viewport=10. Home: cursor → idx 0, scrollTop = 8-3 = 5.
+    const rows = makeRows("x.txt", 30);
+    const rowY = (idx: number): number => (idx === 0 ? 8 : 8 + idx);
+    const state: PaneState = {
+      cursor: cursorAt(rows[10]),
+      flatRows: rows,
+      scrollTop: 12,
+      viewportHeight: 10,
+      rowY,
+      contentHeight: 100,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.lineNumber).toBe(1);
+    expect(r.scrollTop).toBe(5);
+  });
+
+  it("is a no-op when the cursor is already at the first row and scrollTop is already at the desired position", () => {
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[0]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    // Reference equality: nothing changed.
+    expect(r.cursor).toBe(state.cursor);
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("skips folded files implicitly: lands on the first row in flatRows even when its file is not the bundle's first", () => {
+    // flatRows starts with b.txt rows (a.txt is folded → contributes
+    // zero entries). Home lands on b.txt's first row.
+    const rows: FlatRow[] = [
+      pairedRow("b.txt", 1),
+      pairedRow("b.txt", 2),
+      pairedRow("c.txt", 1),
+    ];
+    const state: PaneState = {
+      cursor: cursorAt(rows[2]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.file).toBe("b.txt");
+    expect(r.cursor?.lineNumber).toBe(1);
+  });
+
+  it("is a no-op on empty flatRows", () => {
+    const state: PaneState = {
+      cursor: null,
+      flatRows: [],
+      scrollTop: 5,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: 0,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor).toBeNull();
+    expect(r.scrollTop).toBe(5);
+  });
+
+  it("works on a null cursor — materializes at flatRows[0]", () => {
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: null,
+      flatRows: rows,
+      scrollTop: 15,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.lineNumber).toBe(1);
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("preserves preferredSide", () => {
+    const rows = makeRows("x.txt", 30);
+    const cursor: Cursor = {
+      file: "x.txt",
+      lineNumber: 15,
+      side: "additions",
+      preferredSide: "deletions",
+    };
+    const state: PaneState = {
+      cursor,
+      flatRows: rows,
+      scrollTop: 10,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.preferredSide).toBe("deletions");
+  });
+
+  it("doc shorter than viewport — cursor lands on first row, scrollTop stays 0", () => {
+    const rows = makeRows("x.txt", 5);
+    const state: PaneState = {
+      cursor: cursorAt(rows[3]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.lineNumber).toBe(1);
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("single-row flatRows — cursor lands on that row, scrollTop=0", () => {
+    const rows = makeRows("x.txt", 1);
+    const state: PaneState = {
+      cursor: cursorAt(rows[0]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "home");
+    expect(r.cursor?.lineNumber).toBe(1);
+    expect(r.scrollTop).toBe(0);
+  });
+});
+
+describe("jump (end)", () => {
+  it("snaps cursor to last row and scrolls so the cursor lands at the 3-row bottom margin (clamped at maxScrollTop)", () => {
+    // 30 rows, viewport=10, scrolloff=3 → maxScrollTop=20.
+    // End: cursor → idx 29, lineNumber 30. Desired csy = viewport - 3 - 1 = 6.
+    // Desired scrollTop = rowY(29) - 6 = 23 → clamped to 20.
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[5]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.lineNumber).toBe(30);
+    expect(r.scrollTop).toBe(20);
+  });
+
+  it("applies the 3-row bottom margin when there is room (rowY(last) is below the natural scroll-to-end target)", () => {
+    // Synthesize: 30 rows, but contentHeight=100 (lots of trailing
+    // file/annotation cards below the last cursor-eligible row).
+    // viewport=10. rowY(idx)=idx. End: cursor → idx 29.
+    // Desired scrollTop = rowY(29) - (10 - 3 - 1) = 29 - 6 = 23.
+    // maxScrollTop = 100-10 = 90. Not clamped.
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[5]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: 100,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.lineNumber).toBe(30);
+    expect(r.scrollTop).toBe(23);
+  });
+
+  it("is a no-op when the cursor is already at the last row and scrollTop is already at the desired position", () => {
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[29]),
+      flatRows: rows,
+      scrollTop: 20,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor).toBe(state.cursor);
+    expect(r.scrollTop).toBe(20);
+  });
+
+  it("doc shorter than viewport — cursor lands on last row, scrollTop stays 0", () => {
+    const rows = makeRows("x.txt", 5);
+    const state: PaneState = {
+      cursor: cursorAt(rows[0]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.lineNumber).toBe(5);
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("is a no-op on empty flatRows", () => {
+    const state: PaneState = {
+      cursor: null,
+      flatRows: [],
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: 0,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor).toBeNull();
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("works on a null cursor — materializes at last row", () => {
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: null,
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.lineNumber).toBe(30);
+    expect(r.scrollTop).toBe(20);
+  });
+
+  it("preserves preferredSide", () => {
+    const rows = makeRows("x.txt", 30);
+    const cursor: Cursor = {
+      file: "x.txt",
+      lineNumber: 5,
+      side: "additions",
+      preferredSide: "deletions",
+    };
+    const state: PaneState = {
+      cursor,
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.preferredSide).toBe("deletions");
+  });
+
+  it("end at single-row flatRows — cursor lands on that row, scrollTop=0", () => {
+    const rows = makeRows("x.txt", 1);
+    const state: PaneState = {
+      cursor: cursorAt(rows[0]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.lineNumber).toBe(1);
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("end skips folded files implicitly: lands on the last row in flatRows even when its file is not the bundle's last", () => {
+    // flatRows ends with b.txt (c.txt is folded → contributes zero entries).
+    const rows: FlatRow[] = [
+      pairedRow("a.txt", 1),
+      pairedRow("b.txt", 1),
+      pairedRow("b.txt", 2),
+    ];
+    const state: PaneState = {
+      cursor: cursorAt(rows[0]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = jump(state, "end");
+    expect(r.cursor?.file).toBe("b.txt");
+    expect(r.cursor?.lineNumber).toBe(2);
   });
 });

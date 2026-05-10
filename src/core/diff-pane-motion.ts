@@ -127,3 +127,47 @@ function nearestRowIdx(
   }
   return bestIdx;
 }
+
+/**
+ * Home / End: snap the cursor to the first / last cursor-eligible row in
+ * `flatRows` (PRD #126 / issue #130) and scroll the pane so the cursor
+ * lands at the `scrolloff`-row top / bottom margin (matching `step()`'s
+ * edge-margin invariant). Folded files contribute zero entries to
+ * flatRows, so the snap automatically lands on the first / last *visible*
+ * file's bound row.
+ *
+ * No-op when flatRows is empty (all folded, empty Tour, snapshot lost).
+ * No-op when the cursor is already at the target row AND scrollTop is
+ * already at the desired position (reference equality preserved so the
+ * caller can short-circuit re-renders).
+ */
+export function jump(
+  state: PaneState,
+  target: "home" | "end",
+  scrolloff = 3,
+): MotionResult {
+  if (state.flatRows.length === 0) {
+    return { cursor: state.cursor, scrollTop: state.scrollTop };
+  }
+  const targetIdx = target === "home" ? 0 : state.flatRows.length - 1;
+  const targetRow = state.flatRows[targetIdx];
+
+  const y = state.rowY(targetIdx);
+  const maxScrollTop = Math.max(0, state.contentHeight - state.viewportHeight);
+  // Home: cursor csy = scrolloff (3 rows above). End: cursor csy =
+  // viewportHeight - scrolloff - 1 (3 rows below). Clamped at doc bounds.
+  const desiredScrollTop =
+    target === "home" ? y - scrolloff : y - state.viewportHeight + scrolloff + 1;
+  const newScrollTop = Math.max(0, Math.min(desiredScrollTop, maxScrollTop));
+
+  const currentIdx = resolveCursorRowIdx(state.cursor, state.flatRows);
+  if (currentIdx === targetIdx && newScrollTop === state.scrollTop) {
+    return { cursor: state.cursor, scrollTop: state.scrollTop };
+  }
+
+  const preferredSide: "additions" | "deletions" =
+    state.cursor?.preferredSide ??
+    (targetRow.kind === "diff" ? targetRow.side : "additions");
+  const next = cursorFromRow(targetRow, preferredSide);
+  return { cursor: next, scrollTop: newScrollTop };
+}

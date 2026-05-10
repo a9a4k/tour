@@ -56,7 +56,11 @@ import {
   cursorOnInteractive,
   type Cursor,
 } from "../core/cursor-state.js";
-import { step as stepDiffPane, pageMove as pageMoveDiffPane } from "../core/diff-pane-motion.js";
+import {
+  step as stepDiffPane,
+  pageMove as pageMoveDiffPane,
+  jump as jumpDiffPane,
+} from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
@@ -1019,6 +1023,41 @@ function App(props: AppProps) {
             },
           },
           dir,
+        );
+        setCursor(result.cursor);
+        if (result.scrollTop !== sb.scrollTop) {
+          sb.scrollTo(result.scrollTop);
+        }
+        return;
+      }
+      case "cursor-home":
+      case "cursor-end": {
+        const target = action.type === "cursor-home" ? "home" : "end";
+        const sb = diffScrollRef.current;
+        if (!sb) return;
+        // Home / End jump (PRD #126, issue #130): cursor snaps to the
+        // first / last cursor-eligible row; pane scrolls so the cursor
+        // lands at the 3-row top / bottom margin (matching step()'s
+        // scrolloff invariant). Folded files are auto-skipped — flatRows
+        // already excludes their entries.
+        const result = jumpDiffPane(
+          {
+            cursor,
+            flatRows: flatRowsList,
+            scrollTop: sb.scrollTop,
+            viewportHeight: sb.viewport.height,
+            contentHeight: sb.scrollHeight,
+            rowY: (idx) => {
+              const r = flatRowsList[idx];
+              if (!r) return 0;
+              const id =
+                r.kind === "diff"
+                  ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
+                  : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
+              return sb.content.findDescendantById(id)?.y ?? 0;
+            },
+          },
+          target,
         );
         setCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {

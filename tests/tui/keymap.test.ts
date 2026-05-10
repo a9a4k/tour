@@ -148,6 +148,42 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("pageup", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
+  // Hardware Home / End jump the cursor to the first / last cursor-eligible
+  // row in the diff stream (PRD #126, issue #130). Scoped to diff-pane
+  // focus — sidebar focus suppresses them (the existing focus-routing
+  // rule extended to the new keys). Direction is intrinsic, so the shift
+  // modifier is ignored. Ctrl-modified is unbound.
+  it("Home in the diff pane dispatches cursor-home", () => {
+    expect(dispatchKey(k("home"), diffPane).type).toBe("cursor-home");
+  });
+
+  it("End in the diff pane dispatches cursor-end", () => {
+    expect(dispatchKey(k("end"), diffPane).type).toBe("cursor-end");
+  });
+
+  it("Home in the sidebar is a no-op (focus-routing rule)", () => {
+    expect(dispatchKey(k("home"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("home"), sidebarFolder).type).toBe("noop");
+  });
+
+  it("End in the sidebar is a no-op (focus-routing rule)", () => {
+    expect(dispatchKey(k("end"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("end"), sidebarFolder).type).toBe("noop");
+  });
+
+  it("Shift+Home still dispatches cursor-home (direction is intrinsic to the key)", () => {
+    expect(dispatchKey(k("home", { shift: true }), diffPane).type).toBe("cursor-home");
+  });
+
+  it("Shift+End still dispatches cursor-end (direction is intrinsic to the key)", () => {
+    expect(dispatchKey(k("end", { shift: true }), diffPane).type).toBe("cursor-end");
+  });
+
+  it("Ctrl+Home / Ctrl+End are not consumed", () => {
+    expect(dispatchKey(k("home", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("end", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
   it("right on a folder row expands the folder", () => {
     expect(dispatchKey(k("right"), sidebarFolder).type).toBe("expand-folder");
   });

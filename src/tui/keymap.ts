@@ -38,6 +38,8 @@ export type KeyAction =
   | { type: "page-diff-up" }
   | { type: "cursor-down" }
   | { type: "cursor-up" }
+  | { type: "cursor-home" }
+  | { type: "cursor-end" }
   | { type: "cursor-side-left" }
   | { type: "cursor-side-right" }
   | { type: "primary-action" }
@@ -64,6 +66,17 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   // Ctrl-modified is unbound.
   if (!key.ctrl && key.name === "pagedown") return { type: "page-diff-down" };
   if (!key.ctrl && key.name === "pageup") return { type: "page-diff-up" };
+
+  // Hardware Home / End jump the cursor to the first / last cursor-eligible
+  // row in the diff stream (PRD #126, issue #130). Scoped to diff-pane
+  // focus — sidebar focus suppresses them. Direction is intrinsic, so the
+  // shift modifier is ignored. Ctrl-modified is unbound.
+  if (!ctx.sidebarFocused && !key.ctrl && key.name === "home") {
+    return { type: "cursor-home" };
+  }
+  if (!ctx.sidebarFocused && !key.ctrl && key.name === "end") {
+    return { type: "cursor-end" };
+  }
 
   // Layout toggle moved from `l` to Shift-L (ADR 0011): the lowercase pair
   // `h`/`l` is now reserved for cursor side selection in the diff pane.
