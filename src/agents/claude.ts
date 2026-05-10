@@ -52,9 +52,13 @@ Use the triggering_annotation.id from the envelope as the --reply-to argument."
 # --allowedTools: only \`tour annotate ...\` Bash patterns are permitted.
 # --disallowedTools: hard-deny Edit, Write, and bare Bash so the only path
 #   for the agent to act on the world is the single allowed pattern above.
+# The trailing \`--\` is required because --disallowedTools is variadic in
+# claude's CLI: without the separator it would swallow USER_PROMPT as another
+# tool name, leaving claude with no prompt and erroring with
+# "Input must be provided…".
 exec claude --print \\
   --system-prompt "\${SYSTEM_PROMPT}" \\
   --allowedTools "Bash(tour annotate:*)" \\
   --disallowedTools "Edit Write Bash" \\
-  "\${USER_PROMPT}"
+  -- "\${USER_PROMPT}"
 `;
