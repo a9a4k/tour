@@ -41,8 +41,16 @@ export function syncHoverOverlay(root: ParentNode, composerOpen: boolean): () =>
   const onOver = (e: Event): void => {
     if (composerOpen) return;
     const cell = annotatableTargetFromEvent(e);
-    if (!cell || cell === lastCell) return;
-    if (lastCell) lastCell.removeAttribute("data-tour-hover");
+    if (!cell) return;
+    // Skip only when this cell is already our lastCell AND the attribute
+    // is still set on it. A plain `cell === lastCell` short-circuit drifts
+    // out of sync if any external code (Pierre worker re-render replacing
+    // children, plus-button-overlay cleanup, manual DOM scrubs) cleared
+    // the attribute while our closure still pointed at the cell — the next
+    // mouseover on that same cell would early-return without re-marking
+    // it, leaving the row visually un-hovered.
+    if (cell === lastCell && cell.getAttribute("data-tour-hover") === "true") return;
+    if (lastCell && lastCell !== cell) lastCell.removeAttribute("data-tour-hover");
     cell.setAttribute("data-tour-hover", "true");
     lastCell = cell;
   };

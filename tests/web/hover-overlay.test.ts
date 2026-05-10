@@ -191,6 +191,23 @@ describe("syncHoverOverlay: single-hover invariant (regression)", () => {
     fireMouse(c, "mouseout", null);
     expect(c.hasAttribute("data-tour-hover")).toBe(false);
   });
+
+  // Drift case: external code (Pierre worker re-render, manual DOM scrub,
+  // a sibling overlay's cleanup, etc.) strips data-tour-hover while the
+  // overlay's `lastCell` still points at that cell. The next mouseover
+  // on the same cell must re-mark it; the previous `cell === lastCell`
+  // short-circuit silently dropped that mouseover and left the row
+  // visually un-hovered until the user moved to a different cell.
+  it("re-hovering the lastCell after external attribute clear re-marks it", () => {
+    const c = cell({ line: 1, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    attach(document.body, false);
+    fire(c, "mouseover");
+    expect(c.getAttribute("data-tour-hover")).toBe("true");
+    c.removeAttribute("data-tour-hover");
+    fire(c, "mouseover");
+    expect(c.getAttribute("data-tour-hover")).toBe("true");
+  });
 });
 
 describe("syncHoverOverlay: composer-open suppression", () => {
