@@ -344,13 +344,6 @@ export function html(initialTourId?: string): string {
     flex-wrap: wrap;
   }
   .reply-pill .reply-pill-icon { font-size: 14px; }
-  .reply-pill .reply-pill-hint { color: var(--fg-muted); font-size: 11px; }
-  .reply-pill code {
-    background: var(--bg-neutral-subtle);
-    border-radius: 3px;
-    padding: 0.1em 0.3em;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-  }
   .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }

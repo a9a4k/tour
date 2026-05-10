@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -22,6 +23,16 @@ async function makeRepo(): Promise<string> {
   return dir;
 }
 
+// Spawn a no-op child, wait for exit, return its (now-dead) pid. Used to
+// exercise the PID-liveness probe without mocking process.kill.
+async function spawnAndExit(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  const pid = child.pid;
+  if (!pid) throw new Error("spawn returned no pid");
+  await new Promise<void>((resolve) => child.on("exit", () => resolve()));
+  return pid;
+}
+
 describe("reply-lock", () => {
   let repo: string;
 
@@ -38,8 +49,7 @@ describe("reply-lock", () => {
       agent: "fixture",
       responding_to: "ann-1",
       started_at: "2026-05-10T12:00:00Z",
-      pid: 12345,
-      tour_id: tourId,
+      pid: process.pid,
     };
     await writeReplyLock(repo, tourId, lock);
     expect(existsSync(replyLockPath(repo, tourId))).toBe(true);
@@ -52,8 +62,7 @@ describe("reply-lock", () => {
       agent: "fixture",
       responding_to: "ann-1",
       started_at: "2026-05-10T12:00:00Z",
-      pid: 12345,
-      tour_id: tourId,
+      pid: process.pid,
     };
     await writeReplyLock(repo, tourId, lock);
     await deleteReplyLock(repo, tourId);
@@ -70,7 +79,6 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
-      tour_id: tourId,
     };
     expect(isStale(lock, now)).toBe(false);
   });
@@ -83,7 +91,6 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
-      tour_id: tourId,
     };
     expect(isStale(lock, now)).toBe(true);
   });
@@ -95,7 +102,6 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
-      tour_id: tourId,
     };
     expect(isStale(lock, Date.parse(startedAt) + 1500, 1000)).toBe(true);
     expect(isStale(lock, Date.parse(startedAt) + 500, 1000)).toBe(false);
@@ -108,9 +114,50 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
-      tour_id: tourId,
     };
     expect(ageMs(lock, Date.parse(startedAt) + 5000)).toBe(5000);
     expect(ageMs(lock, Date.parse(startedAt) - 1000)).toBe(0);
+  });
+
+  describe("PID-liveness on read", () => {
+    it("returns the lock unchanged when pid is alive (lockfile untouched)", async () => {
+      const lock: ReplyLock = {
+        agent: "fixture",
+        responding_to: "ann-1",
+        started_at: "2026-05-10T12:00:00Z",
+        pid: process.pid,
+      };
+      await writeReplyLock(repo, tourId, lock);
+      const got = await readReplyLock(repo, tourId);
+      expect(got).toEqual(lock);
+      expect(existsSync(replyLockPath(repo, tourId))).toBe(true);
+    });
+
+    it("returns null and deletes the lockfile when pid > 0 is dead", async () => {
+      const deadPid = await spawnAndExit();
+      const lock: ReplyLock = {
+        agent: "fixture",
+        responding_to: "ann-1",
+        started_at: "2026-05-10T12:00:00Z",
+        pid: deadPid,
+      };
+      await writeReplyLock(repo, tourId, lock);
+      const got = await readReplyLock(repo, tourId);
+      expect(got).toBeNull();
+      expect(existsSync(replyLockPath(repo, tourId))).toBe(false);
+    });
+
+    it("returns the lock as-is when pid === 0 (placeholder window)", async () => {
+      const lock: ReplyLock = {
+        agent: "fixture",
+        responding_to: "ann-1",
+        started_at: "2026-05-10T12:00:00Z",
+        pid: 0,
+      };
+      await writeReplyLock(repo, tourId, lock);
+      const got = await readReplyLock(repo, tourId);
+      expect(got).toEqual(lock);
+      expect(existsSync(replyLockPath(repo, tourId))).toBe(true);
+    });
   });
 });
