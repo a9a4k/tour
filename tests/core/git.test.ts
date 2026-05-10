@@ -6,6 +6,7 @@ import {
   releaseSnapshot,
   getDiff,
   isShaResolvable,
+  gitShow,
 } from "../../src/core/git.js";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -132,5 +133,40 @@ describe("isShaResolvable", () => {
 
   it("returns false for garbage", async () => {
     expect(await isShaResolvable("0000000000000000000000000000000000000000", repo)).toBe(false);
+  });
+});
+
+describe("gitShow", () => {
+  let repo: string;
+  beforeEach(async () => { repo = await createTempRepo(); });
+
+  it("returns blob content at HEAD", async () => {
+    const head = await resolveRef("HEAD", repo);
+    const content = await gitShow(head, "hello.txt", repo);
+    expect(content).toBe("hello\n");
+  });
+
+  it("returns updated content after a second commit", async () => {
+    await writeFile(join(repo, "hello.txt"), "hello world\n");
+    await gitCmd(["add", "."], repo);
+    await gitCmd(["commit", "-m", "update"], repo);
+    const head = await resolveRef("HEAD", repo);
+    const content = await gitShow(head, "hello.txt", repo);
+    expect(content).toBe("hello world\n");
+  });
+
+  it("returns empty string when path does not exist at the SHA", async () => {
+    const head = await resolveRef("HEAD", repo);
+    const content = await gitShow(head, "does-not-exist.txt", repo);
+    expect(content).toBe("");
+  });
+
+  it("returns empty string for the parent of an introducing commit", async () => {
+    await writeFile(join(repo, "new.txt"), "new file\n");
+    await gitCmd(["add", "."], repo);
+    await gitCmd(["commit", "-m", "add new.txt"], repo);
+    const parent = await resolveRef("HEAD^", repo);
+    const content = await gitShow(parent, "new.txt", repo);
+    expect(content).toBe("");
   });
 });

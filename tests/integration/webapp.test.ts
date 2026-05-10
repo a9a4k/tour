@@ -103,6 +103,18 @@ describe("Webapp integration", () => {
     expect(data.diffModel).toBeDefined();
   });
 
+  it("GET /api/tours/:id ships per-file oldContent/newContent for hidden context expansion (Issue #109)", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      diffModel: { files: Array<{ name: string; oldContent?: string; newContent?: string }> };
+    };
+    const hello = data.diffModel.files.find((f) => f.name === "hello.txt");
+    expect(hello).toBeDefined();
+    expect(hello!.oldContent).toBe("hello\n");
+    expect(hello!.newContent).toBe("hello world\n");
+  });
+
   it("GET /api/tours/:id with prefix returns tour", async () => {
     const prefix = tourId.slice(0, 11);
     const res = await fetch(`${baseUrl}/api/tours/${prefix}`);

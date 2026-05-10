@@ -24,6 +24,8 @@ export interface DiffFileInfo {
   type: string;
   hunks: { content: { type: "context" | "addition" | "deletion" | "change" }[] }[];
   classification?: FileClassification;
+  oldContent?: string;
+  newContent?: string;
 }
 
 export interface TourSummary {

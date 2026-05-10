@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileDiff } from "@pierre/diffs/react";
+import { FileDiff, MultiFileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
-import type { FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
+import type { FileContents, FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
 import type { Annotation, AnnotationMetadata, DiffFileInfo, TourData, TourSummary } from "./types.js";
 import {
   toPierreLineAnnotations,
@@ -72,6 +72,8 @@ const BASE_DIFF_OPTIONS = {
   themeType: "dark" as const,
   hunkSeparators: "metadata" as const,
   overflow: "wrap" as const,
+  expandUnchanged: true,
+  expansionLineCount: 20,
 };
 
 interface AppProps {
@@ -747,6 +749,29 @@ interface FileBlockProps {
   now: number;
 }
 
+// Pierre's hidden-context expansion needs the full pre/post-image of each
+// file. When the bundle ships oldContent/newContent (everything except
+// binary files), switch from <FileDiff fileDiff=…> (patch-only, isPartial)
+// to <MultiFileDiff oldFile= newFile=…> so chevrons can resolve unchanged
+// lines on demand. Renamed files key the old side off prevName.
+function fileContentsFor(
+  fileDiff: FileDiffMetadata,
+  modelFile: TourData["diffModel"]["files"][number] | undefined,
+): { oldFile: FileContents; newFile: FileContents } | null {
+  if (
+    !modelFile ||
+    typeof modelFile.oldContent !== "string" ||
+    typeof modelFile.newContent !== "string"
+  ) {
+    return null;
+  }
+  const oldName = fileDiff.prevName ?? fileDiff.name;
+  return {
+    oldFile: { name: oldName, contents: modelFile.oldContent },
+    newFile: { name: fileDiff.name, contents: modelFile.newContent },
+  };
+}
+
 function sideFromLineType(t: string | undefined): "additions" | "deletions" | null {
   if (t === "addition" || t === "change-addition") return "additions";
   if (t === "deletion" || t === "change-deletion") return "deletions";
@@ -892,21 +917,37 @@ function FileBlock({
     onOpenTopLevel(fileDiff.name, hit.side, hit.line);
   };
 
+  const headerMetadata = () => (
+    <>
+      {reason ? <span className="reason-tag">{reason}</span> : null}
+      <CopyPathButton path={fileDiff.name} />
+    </>
+  );
+
+  const contents = fileContentsFor(fileDiff, modelFile);
+
   return (
     <div className="file-block" ref={registerRef} onClick={onWrapperClick}>
-      <FileDiff<AnnotationMetadata>
-        fileDiff={fileDiff}
-        options={options}
-        lineAnnotations={lineAnns}
-        renderAnnotation={renderAnnotation}
-        renderHeaderMetadata={() => (
-          <>
-            {reason ? <span className="reason-tag">{reason}</span> : null}
-            <CopyPathButton path={fileDiff.name} />
-          </>
-        )}
-        disableWorkerPool
-      />
+      {contents ? (
+        <MultiFileDiff<AnnotationMetadata>
+          oldFile={contents.oldFile}
+          newFile={contents.newFile}
+          options={options}
+          lineAnnotations={lineAnns}
+          renderAnnotation={renderAnnotation}
+          renderHeaderMetadata={headerMetadata}
+          disableWorkerPool
+        />
+      ) : (
+        <FileDiff<AnnotationMetadata>
+          fileDiff={fileDiff}
+          options={options}
+          lineAnnotations={lineAnns}
+          renderAnnotation={renderAnnotation}
+          renderHeaderMetadata={headerMetadata}
+          disableWorkerPool
+        />
+      )}
     </div>
   );
 }
