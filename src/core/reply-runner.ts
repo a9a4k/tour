@@ -1,5 +1,9 @@
 import { join } from "node:path";
-import { appendAnnotation, readAnnotations } from "./annotations-store.js";
+import {
+  appendAnnotation,
+  buildReplyAnnotation,
+  readAnnotations,
+} from "./annotations-store.js";
 import { getTour } from "./tour-store.js";
 import { shouldDispatchReply } from "./reply-dispatch.js";
 import {
@@ -13,7 +17,6 @@ import {
   type ShippedAdapter,
 } from "./agent-adapter.js";
 import { replyAgentSystemPrompt } from "./system-prompt.js";
-import { generateId } from "./ids.js";
 import type { Annotation } from "./types.js";
 
 export interface ReplyRunnerOptions {
@@ -156,18 +159,7 @@ export class ReplyRunner {
       );
       return;
     }
-    const reply: Annotation = {
-      id: generateId(),
-      file: triggering.file,
-      side: triggering.side,
-      line_start: triggering.line_start,
-      line_end: triggering.line_end,
-      body,
-      author: agent,
-      author_kind: "agent",
-      replies_to: triggering.id,
-      created_at: new Date().toISOString(),
-    };
+    const reply = buildReplyAnnotation(triggering, agent, body);
     await appendAnnotation(this.opts.cwd, this.opts.tourId, reply);
   }
 }

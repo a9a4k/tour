@@ -13,7 +13,6 @@ import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icon
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
-import { shortId } from "../../core/ids.js";
 import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
@@ -346,17 +345,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // replaceState — chosen over pushState so the browser back button steps
   // over Tour switches, not over every n/p keystroke. Same gate as the
   // restorer above: writing during the in-flight Tour-switch window can
-  // leak the previous Tour's `ann=` into the new URL.
+  // leak the previous Tour's `ann=` into the new URL. When the cursor is
+  // null on a Tour with zero annotations and a stale `ann=` lingers,
+  // strip it so the URL self-heals and shared links can't propagate
+  // broken state. When cursor is null but topLevel is non-empty, the
+  // restorer is about to anchor — defer the URL write to that pass so
+  // we don't strip-then-restore a valid `ann=` in a single cycle.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!tour || tour.id !== tourId) return;
-    if (currentAnnotationId === null) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("tour") !== tourId) return;
+    if (currentAnnotationId === null && topLevel.length > 0) return;
     if (params.get("ann") === currentAnnotationId) return;
-    params.set("ann", currentAnnotationId);
+    if (currentAnnotationId === null) params.delete("ann");
+    else params.set("ann", currentAnnotationId);
     window.history.replaceState(window.history.state, "", `/?${params.toString()}`);
-  }, [currentAnnotationId, tour, tourId]);
+  }, [currentAnnotationId, tour, tourId, topLevel]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -530,40 +535,36 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }
 
   const titleIsEmpty = !tour.title;
-  const headerShortId = shortId(tour.id);
 
   return (
     <>
       <div className="tour-header">
-        <button
-          ref={pickerButtonRef}
-          type="button"
-          className="picker-button"
-          aria-label="Switch tour"
-          title="Switch tour"
-          onClick={openPicker}
-        >
-          ☰
-        </button>
-        <div className="tour-header-content">
-          <div className="tour-header-line1">
-            <h1 className={titleIsEmpty ? "untitled" : undefined}>
-              {tour.title || "(untitled)"}
-            </h1>
-            <span className="tour-id">#{headerShortId}</span>
-          </div>
+        <div className="tour-header-left">
+          <button
+            ref={pickerButtonRef}
+            type="button"
+            className="picker-button"
+            aria-label="Switch tour"
+            title="Switch tour"
+            onClick={openPicker}
+          >
+            ☰
+          </button>
+          <h1 className={titleIsEmpty ? "untitled" : undefined}>
+            {tour.title || "(untitled)"}
+          </h1>
           <span className="tour-refs">
             {tour.base_source} ← {tour.head_source}
           </span>
         </div>
-        <div className="tour-header-controls">
-          <LayoutToggle layout={layout} onChange={setLayout} />
+        <div className="tour-header-right">
           <SequencePill
             idx={currentIdx}
             total={topLevel.length}
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
           />
+          <LayoutToggle layout={layout} onChange={setLayout} />
         </div>
       </div>
       <div className="app-body">

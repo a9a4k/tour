@@ -5,6 +5,7 @@ import {
   readAnnotations,
   buildAnnotation,
   buildReply,
+  buildReplyAnnotation,
 } from "../../src/core/annotations-store.js";
 import type { Annotation } from "../../src/core/types.js";
 import { mkdtemp, mkdir } from "node:fs/promises";
@@ -211,5 +212,38 @@ describe("buildReply", () => {
         [parent],
       ),
     ).toThrow(/missing/);
+  });
+});
+
+describe("buildReplyAnnotation", () => {
+  const triggering: Annotation = {
+    id: "trig-1",
+    file: "src/lib/x.ts",
+    side: "deletions",
+    line_start: 12,
+    line_end: 14,
+    body: "why?",
+    author: "human-1",
+    author_kind: "human",
+    created_at: "2026-05-08T00:00:00Z",
+  };
+
+  it("inherits the triggering anchor and stamps agent author + replies_to", () => {
+    const reply = buildReplyAnnotation(triggering, "claude", "because legacy compat");
+    expect(reply.file).toBe(triggering.file);
+    expect(reply.side).toBe(triggering.side);
+    expect(reply.line_start).toBe(triggering.line_start);
+    expect(reply.line_end).toBe(triggering.line_end);
+    expect(reply.replies_to).toBe(triggering.id);
+    expect(reply.author).toBe("claude");
+    expect(reply.author_kind).toBe("agent");
+    expect(reply.body).toBe("because legacy compat");
+    expect(reply.id.length).toBeGreaterThan(0);
+    expect(typeof reply.created_at).toBe("string");
+  });
+
+  it("trims surrounding whitespace from the body (ADR 0012 stdout-as-reply)", () => {
+    const reply = buildReplyAnnotation(triggering, "claude", "  hello\n\n");
+    expect(reply.body).toBe("hello");
   });
 });
