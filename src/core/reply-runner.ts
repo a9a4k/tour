@@ -14,7 +14,6 @@ import {
 import {
   buildEnvelope,
   spawnReplyAgent,
-  type ReplyEnvelope,
   type ShippedAdapter,
 } from "./agent-adapter.js";
 import { replyAgentSystemPrompt } from "./system-prompt.js";
@@ -135,7 +134,7 @@ export class ReplyRunner {
         tourId: this.opts.tourId,
         startedAt,
         pid: spawned.pid,
-        envelopeBytes: envelopeByteCount(envelope),
+        envelopeBytes: Buffer.byteLength(JSON.stringify(envelope), "utf8"),
         systemPromptBytes: Buffer.byteLength(systemPrompt, "utf8"),
       });
       spawned.onStdout((chunk) => {
@@ -192,8 +191,4 @@ export class ReplyRunner {
     const reply = buildReplyAnnotation(triggering, agent, body);
     await appendAnnotation(this.opts.cwd, this.opts.tourId, reply);
   }
-}
-
-function envelopeByteCount(envelope: ReplyEnvelope): number {
-  return Buffer.byteLength(JSON.stringify(envelope), "utf8");
 }

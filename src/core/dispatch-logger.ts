@@ -34,6 +34,11 @@ export interface DispatchLogger {
   finalize: (exit: DispatchLoggerExit) => Promise<void>;
 }
 
+interface StreamState {
+  prefix: "OUT" | "ERR";
+  buf: string;
+}
+
 export async function createDispatchLogger(
   path: string,
   header: DispatchLoggerHeader,
@@ -48,7 +53,7 @@ export async function createDispatchLogger(
   try {
     existingSize = (await stat(path)).size;
   } catch {
-    existingSize = 0;
+    // First run for this triggering id — no existing file.
   }
   const opener =
     (existingSize > 0
@@ -61,47 +66,40 @@ export async function createDispatchLogger(
   // arrival order even when callers don't await individually.
   let chain: Promise<void> = appendFile(path, opener);
 
-  let stdoutBuf = "";
-  let stderrBuf = "";
+  const stdout: StreamState = { prefix: "OUT", buf: "" };
+  const stderr: StreamState = { prefix: "ERR", buf: "" };
 
-  const flushStream = (
-    prefix: "OUT" | "ERR",
-    chunk: string,
-    bufKind: "stdout" | "stderr",
-  ): Promise<void> => {
+  const flush = (stream: StreamState, chunk: string): Promise<void> => {
     chain = chain.then(async () => {
-      const buf = bufKind === "stdout" ? stdoutBuf : stderrBuf;
-      const combined = buf + chunk;
+      const combined = stream.buf + chunk;
       const lastNl = combined.lastIndexOf("\n");
       if (lastNl === -1) {
-        if (bufKind === "stdout") stdoutBuf = combined;
-        else stderrBuf = combined;
+        stream.buf = combined;
         return;
       }
-      const complete = combined.slice(0, lastNl);
-      const trailing = combined.slice(lastNl + 1);
-      if (bufKind === "stdout") stdoutBuf = trailing;
-      else stderrBuf = trailing;
-      const lines = complete.split("\n");
-      let out = "";
-      for (const l of lines) out += `${prefix}: ${l}\n`;
+      stream.buf = combined.slice(lastNl + 1);
+      const out = combined
+        .slice(0, lastNl)
+        .split("\n")
+        .map((l) => `${stream.prefix}: ${l}\n`)
+        .join("");
       await appendFile(path, out);
     });
     return chain;
   };
 
   return {
-    onStdout: (chunk) => flushStream("OUT", chunk, "stdout"),
-    onStderr: (chunk) => flushStream("ERR", chunk, "stderr"),
+    onStdout: (chunk) => flush(stdout, chunk),
+    onStderr: (chunk) => flush(stderr, chunk),
     finalize: (exit) => {
       chain = chain.then(async () => {
         let trail = "";
         // Trailing partials (no terminating newline) flush deterministically:
         // stdout first, then stderr, then the exit footer.
-        if (stdoutBuf.length > 0) trail += `OUT: ${stdoutBuf}\n`;
-        if (stderrBuf.length > 0) trail += `ERR: ${stderrBuf}\n`;
-        stdoutBuf = "";
-        stderrBuf = "";
+        if (stdout.buf.length > 0) trail += `OUT: ${stdout.buf}\n`;
+        if (stderr.buf.length > 0) trail += `ERR: ${stderr.buf}\n`;
+        stdout.buf = "";
+        stderr.buf = "";
         if (exit.error) {
           trail += `=== error: ${exit.error.message}\n`;
         }
