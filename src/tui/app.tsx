@@ -22,7 +22,7 @@ import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
-import { HamburgerButtonTui } from "./HamburgerButton.js";
+import { TopHeaderTui } from "./TopHeader.js";
 import { Composer } from "./Composer.js";
 import {
   buildReplyComposer,
@@ -30,7 +30,6 @@ import {
   type ComposerState,
   type TopLevelAnchor,
 } from "./composer-state.js";
-import { shortId } from "../core/ids.js";
 import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
 import { TourWatcher } from "../core/watcher.js";
 import { ReplyRunner } from "../core/reply-runner.js";
@@ -671,34 +670,17 @@ function App(props: AppProps) {
 
   return (
     <box width="100%" height="100%" flexDirection="column">
-      {/* Header — GitHub PR-style 2-line: hamburger | title+#shortId / refs | toggle / pill */}
-      <box width="100%" flexDirection="row" paddingX={1}>
-        <HamburgerButtonTui onOpen={() => void openPicker()} />
-        <box flexDirection="column" flexGrow={1} paddingX={1} paddingTop={1}>
-          <box flexDirection="row">
-            <text bold fg={liveTour.title ? theme.fg.default : theme.fg.muted}>
-              {liveTour.title || "(untitled)"}
-            </text>
-            <text fg={theme.fg.muted}>{` #${shortId(liveTour.id)}`}</text>
-          </box>
-          <text fg={theme.fg.muted}>
-            {`${liveTour.base_source} ← ${liveTour.head_source}`}
-          </text>
-        </box>
-        <box flexDirection="column" alignItems="flex-end" paddingTop={1}>
-          <LayoutToggleTui
-            layout={layout}
-            onSplit={() => setLayout("split")}
-            onUnified={() => setLayout("unified")}
-          />
-          <SequencePillTui
-            idx={currentAnnotationIdx}
-            total={liveTopLevel.length}
-            onPrev={gotoPrevAnnotation}
-            onNext={gotoNextAnnotation}
-          />
-        </box>
-      </box>
+      <TopHeaderTui
+        tour={liveTour}
+        layout={layout}
+        currentAnnotationIdx={currentAnnotationIdx}
+        topLevelTotal={liveTopLevel.length}
+        onOpenPicker={() => void openPicker()}
+        onPrevAnnotation={gotoPrevAnnotation}
+        onNextAnnotation={gotoNextAnnotation}
+        onSplit={() => setLayout("split")}
+        onUnified={() => setLayout("unified")}
+      />
 
       {liveSnapshotLost && (
         <box height={2} width="100%" paddingX={1}>
@@ -824,68 +806,6 @@ function App(props: AppProps) {
       )}
 
       {composer && <Composer state={composer} onSubmit={(body) => void submitComposer(body)} />}
-    </box>
-  );
-}
-
-interface LayoutToggleTuiProps {
-  layout: "split" | "unified";
-  onSplit: () => void;
-  onUnified: () => void;
-}
-
-function LayoutToggleTui({ layout, onSplit, onUnified }: LayoutToggleTuiProps) {
-  return (
-    <box flexDirection="row">
-      <text fg={theme.fg.muted}>{"["}</text>
-      <text
-        fg={layout === "split" ? theme.fg.accent : theme.fg.muted}
-        bold={layout === "split"}
-        onMouseDown={onSplit}
-      >
-        {"Split"}
-      </text>
-      <text fg={theme.fg.muted}>{" | "}</text>
-      <text
-        fg={layout === "unified" ? theme.fg.accent : theme.fg.muted}
-        bold={layout === "unified"}
-        onMouseDown={onUnified}
-      >
-        {"Unified"}
-      </text>
-      <text fg={theme.fg.muted}>{"]"}</text>
-    </box>
-  );
-}
-
-interface SequencePillTuiProps {
-  idx: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}
-
-function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {
-  if (total === 0) return null;
-  const prevDisabled = idx <= 0;
-  const nextDisabled = idx >= total - 1;
-  return (
-    <box flexDirection="row">
-      <text fg={theme.fg.muted}>{"["}</text>
-      <text
-        fg={prevDisabled ? theme.fg.subtle : theme.fg.default}
-        onMouseDown={prevDisabled ? undefined : onPrev}
-      >
-        {"←"}
-      </text>
-      <text fg={theme.fg.default}>{` ${idx + 1}/${total} `}</text>
-      <text
-        fg={nextDisabled ? theme.fg.subtle : theme.fg.default}
-        onMouseDown={nextDisabled ? undefined : onNext}
-      >
-        {"→"}
-      </text>
-      <text fg={theme.fg.muted}>{"]"}</text>
     </box>
   );
 }
