@@ -5,6 +5,7 @@ import {
   setCursorSide,
   validateCursor,
   resolveCursorRowIdx,
+  cursorFromAnnotation,
   type Cursor,
 } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
@@ -214,6 +215,51 @@ describe("validateCursor", () => {
 
   it("returns null when input is null", () => {
     expect(validateCursor(null, [pairedFlat("x.txt", 1, 1)])).toBeNull();
+  });
+});
+
+// β-coupling (ADR 0011 / issue #103): pressing n/p moves the line cursor to
+// the target annotation's anchor. The pure helper computes the cursor from
+// the annotation; app.tsx wires it into the n/p navigation handlers.
+describe("cursorFromAnnotation", () => {
+  it("anchors to the annotation's (file, side, line_start)", () => {
+    const a = ann({
+      id: "a1",
+      file: "src/foo.ts",
+      side: "additions",
+      line_start: 42,
+      line_end: 42,
+    });
+    expect(cursorFromAnnotation(a)).toEqual({
+      file: "src/foo.ts",
+      lineNumber: 42,
+      side: "additions",
+      preferredSide: "additions",
+    });
+  });
+
+  it("uses line_start (not line_end) for multi-line annotations", () => {
+    const a = ann({
+      id: "a1",
+      file: "src/foo.ts",
+      side: "additions",
+      line_start: 10,
+      line_end: 20,
+    });
+    expect(cursorFromAnnotation(a).lineNumber).toBe(10);
+  });
+
+  it("sets preferredSide to the annotation's side (deletions)", () => {
+    const a = ann({
+      id: "a1",
+      file: "src/foo.ts",
+      side: "deletions",
+      line_start: 7,
+      line_end: 7,
+    });
+    const c = cursorFromAnnotation(a);
+    expect(c.side).toBe("deletions");
+    expect(c.preferredSide).toBe("deletions");
   });
 });
 

@@ -39,6 +39,7 @@ import {
   moveCursor,
   setCursorSide,
   validateCursor,
+  cursorFromAnnotation,
   type Cursor,
 } from "../core/cursor-state.js";
 
@@ -486,6 +487,11 @@ function App(props: AppProps) {
       }
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
+    // β-coupling (ADR 0011 / issue #103): annotation-nav also moves the
+    // line cursor so a follow-up `a` lands a sibling top-level on the same
+    // line. The reverse direction stays decoupled — `j`/`k` line motion
+    // does not touch currentAnnotationId.
+    setCursor(cursorFromAnnotation(ann));
   };
 
   const gotoPrevAnnotation = () => {

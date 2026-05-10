@@ -89,6 +89,23 @@ export function resolveCursorRowIdx(
   return -1;
 }
 
+/**
+ * Cursor anchored at an annotation's (file, side, line_start). Used by the
+ * `n`/`p` annotation-navigation flow to move the line cursor in lockstep
+ * (β-coupling, ADR 0011): annotation-nav is inherently code-nav, so going
+ * "to annotation 5" means going to its line. preferredSide takes the
+ * annotation's side so a follow-up `a` (sibling top-level) lands on the
+ * same column the user just navigated to.
+ */
+export function cursorFromAnnotation(a: Annotation): Cursor {
+  return {
+    file: a.file,
+    lineNumber: a.line_start,
+    side: a.side,
+    preferredSide: a.side,
+  };
+}
+
 function rowMatchesAnchor(
   row: FlatRow,
   file: string,
