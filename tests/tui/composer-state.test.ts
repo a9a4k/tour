@@ -4,6 +4,7 @@ import {
   buildTopLevelComposer,
 } from "../../src/tui/composer-state.js";
 import type { Annotation } from "../../src/core/types.js";
+import type { Cursor } from "../../src/core/cursor-state.js";
 
 function ann(overrides: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
   return {
@@ -20,9 +21,64 @@ function ann(overrides: Partial<Annotation> & Pick<Annotation, "id">): Annotatio
   };
 }
 
+const cursor = (overrides: Partial<Cursor> & Pick<Cursor, "file" | "lineNumber">): Cursor => ({
+  file: overrides.file,
+  lineNumber: overrides.lineNumber,
+  side: overrides.side ?? "additions",
+  preferredSide: overrides.preferredSide ?? overrides.side ?? "additions",
+});
+
 describe("buildTopLevelComposer", () => {
-  it("anchors to the current annotation when one is selected", () => {
-    const current = ann({
+  it("anchors to the cursor when one is present (ADR 0011)", () => {
+    const c = cursor({ file: "src/foo.ts", lineNumber: 42, side: "additions" });
+    const state = buildTopLevelComposer({
+      cursor: c,
+      currentAnnotation: null,
+    });
+    expect(state).toEqual({
+      kind: "top-level",
+      file: "src/foo.ts",
+      side: "additions",
+      line_start: 42,
+      line_end: 42,
+    });
+  });
+
+  it("collapses cursor to a single-line range (line_start === line_end)", () => {
+    const c = cursor({ file: "src/foo.ts", lineNumber: 7, side: "deletions" });
+    const state = buildTopLevelComposer({
+      cursor: c,
+      currentAnnotation: null,
+    });
+    if (state?.kind !== "top-level") throw new Error("expected top-level");
+    expect(state.line_start).toBe(7);
+    expect(state.line_end).toBe(7);
+  });
+
+  it("cursor wins over the current annotation when both are present", () => {
+    const c = cursor({ file: "src/cursor.ts", lineNumber: 3, side: "deletions" });
+    const a = ann({
+      id: "a1",
+      file: "src/ann.ts",
+      side: "additions",
+      line_start: 100,
+      line_end: 110,
+    });
+    const state = buildTopLevelComposer({
+      cursor: c,
+      currentAnnotation: a,
+    });
+    expect(state).toEqual({
+      kind: "top-level",
+      file: "src/cursor.ts",
+      side: "deletions",
+      line_start: 3,
+      line_end: 3,
+    });
+  });
+
+  it("falls back to the current annotation when cursor is null", () => {
+    const a = ann({
       id: "a1",
       file: "src/foo.ts",
       side: "additions",
@@ -30,8 +86,8 @@ describe("buildTopLevelComposer", () => {
       line_end: 44,
     });
     const state = buildTopLevelComposer({
-      currentAnnotation: current,
-      fallback: null,
+      cursor: null,
+      currentAnnotation: a,
     });
     expect(state).toEqual({
       kind: "top-level",
@@ -42,29 +98,10 @@ describe("buildTopLevelComposer", () => {
     });
   });
 
-  it("falls back to the provided fallback anchor when no annotation is current", () => {
+  it("returns null when both cursor and current annotation are null (silent no-op upstream)", () => {
     const state = buildTopLevelComposer({
+      cursor: null,
       currentAnnotation: null,
-      fallback: {
-        file: "src/bar.ts",
-        side: "additions",
-        line_start: 1,
-        line_end: 1,
-      },
-    });
-    expect(state).toEqual({
-      kind: "top-level",
-      file: "src/bar.ts",
-      side: "additions",
-      line_start: 1,
-      line_end: 1,
-    });
-  });
-
-  it("returns null when there's neither a current annotation nor a fallback", () => {
-    const state = buildTopLevelComposer({
-      currentAnnotation: null,
-      fallback: null,
     });
     expect(state).toBeNull();
   });

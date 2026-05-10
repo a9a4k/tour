@@ -1,0 +1,242 @@
+import { describe, it, expect } from "vitest";
+import {
+  initialCursor,
+  moveCursor,
+  setCursorSide,
+  validateCursor,
+  resolveCursorRowIdx,
+  type Cursor,
+} from "../../src/core/cursor-state.js";
+import type { FlatRow } from "../../src/core/flat-rows.js";
+import type { Annotation } from "../../src/core/types.js";
+
+function flat(parts: Partial<FlatRow> & Pick<FlatRow, "file" | "lineNumber" | "side">): FlatRow {
+  return {
+    file: parts.file,
+    lineNumber: parts.lineNumber,
+    side: parts.side,
+    leftLineNumber: parts.leftLineNumber ?? (parts.side === "deletions" ? parts.lineNumber : null),
+    rightLineNumber: parts.rightLineNumber ?? (parts.side === "additions" ? parts.lineNumber : null),
+    paired: parts.paired ?? false,
+  };
+}
+
+function pairedFlat(file: string, left: number, right: number): FlatRow {
+  return {
+    file,
+    lineNumber: right,
+    side: "additions",
+    leftLineNumber: left,
+    rightLineNumber: right,
+    paired: true,
+  };
+}
+
+function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "side" | "line_start" | "line_end">): Annotation {
+  return {
+    id: o.id,
+    file: o.file ?? "x.txt",
+    side: o.side,
+    line_start: o.line_start,
+    line_end: o.line_end,
+    body: o.body ?? "n",
+    author: o.author ?? "agent",
+    author_kind: o.author_kind ?? "agent",
+    replies_to: o.replies_to,
+    created_at: o.created_at ?? "2026-01-01T00:00:00Z",
+  };
+}
+
+describe("initialCursor", () => {
+  it("returns null when there are no rows", () => {
+    expect(initialCursor({ topLevelAnnotations: [], flatRows: [] })).toBeNull();
+  });
+
+  it("seeds from the first top-level annotation when one exists and resolves", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      pairedFlat("x.txt", 2, 2),
+    ];
+    const a = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 2, line_end: 2 });
+    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
+    expect(cursor).toEqual({ file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
+  });
+
+  it("falls back to the first row when there are no annotations", () => {
+    const rows: FlatRow[] = [pairedFlat("x.txt", 5, 5)];
+    const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
+    expect(cursor).toEqual({ file: "x.txt", lineNumber: 5, side: "additions", preferredSide: "additions" });
+  });
+
+  it("falls back to the first row when the top annotation's anchor isn't resolvable", () => {
+    const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
+    const a = ann({ id: "g", file: "x.txt", side: "additions", line_start: 999, line_end: 999 });
+    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
+    expect(cursor?.lineNumber).toBe(1);
+  });
+
+  it("seeds preferredSide from the annotation's side", () => {
+    const rows: FlatRow[] = [
+      flat({ file: "x.txt", side: "deletions", lineNumber: 7, leftLineNumber: 7, rightLineNumber: null }),
+    ];
+    const a = ann({ id: "a1", file: "x.txt", side: "deletions", line_start: 7, line_end: 7 });
+    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
+    expect(cursor?.preferredSide).toBe("deletions");
+    expect(cursor?.side).toBe("deletions");
+  });
+});
+
+describe("moveCursor", () => {
+  const rows: FlatRow[] = [
+    pairedFlat("x.txt", 1, 1),
+    pairedFlat("x.txt", 2, 2),
+    pairedFlat("x.txt", 3, 3),
+  ];
+
+  it("moves down one row", () => {
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const next = moveCursor(c, "down", rows);
+    expect(next?.lineNumber).toBe(2);
+  });
+
+  it("moves up one row", () => {
+    const c: Cursor = { file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" };
+    const next = moveCursor(c, "up", rows);
+    expect(next?.lineNumber).toBe(1);
+  });
+
+  it("stops at the last row (no cross-EOF in this slice)", () => {
+    const c: Cursor = { file: "x.txt", lineNumber: 3, side: "additions", preferredSide: "additions" };
+    const next = moveCursor(c, "down", rows);
+    expect(next?.lineNumber).toBe(3);
+  });
+
+  it("stops at the first row", () => {
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const next = moveCursor(c, "up", rows);
+    expect(next?.lineNumber).toBe(1);
+  });
+
+  it("returns null when cursor is null", () => {
+    expect(moveCursor(null, "down", rows)).toBeNull();
+  });
+
+  it("preserves preferredSide across motion", () => {
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" };
+    const next = moveCursor(c, "down", rows);
+    expect(next?.preferredSide).toBe("deletions");
+    // Paired rows honour preferredSide so effective side stays deletions.
+    expect(next?.side).toBe("deletions");
+    expect(next?.lineNumber).toBe(2);
+  });
+
+  it("snaps effective side on a single-side destination row", () => {
+    const mixed: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      flat({ file: "x.txt", side: "additions", lineNumber: 2, leftLineNumber: null, rightLineNumber: 2 }),
+    ];
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" };
+    const next = moveCursor(c, "down", mixed);
+    expect(next?.preferredSide).toBe("deletions");
+    expect(next?.side).toBe("additions");
+    expect(next?.lineNumber).toBe(2);
+  });
+});
+
+describe("setCursorSide", () => {
+  it("on a paired row, both preferredSide and effective side switch", () => {
+    const rows = [pairedFlat("x.txt", 5, 7)];
+    const c: Cursor = { file: "x.txt", lineNumber: 7, side: "additions", preferredSide: "additions" };
+    const next = setCursorSide(c, "deletions", rows);
+    expect(next?.side).toBe("deletions");
+    expect(next?.preferredSide).toBe("deletions");
+    expect(next?.lineNumber).toBe(5);
+  });
+
+  it("on a single-side row, preferredSide updates but effective side is forced", () => {
+    const rows: FlatRow[] = [
+      flat({ file: "x.txt", side: "additions", lineNumber: 9, leftLineNumber: null, rightLineNumber: 9 }),
+    ];
+    const c: Cursor = { file: "x.txt", lineNumber: 9, side: "additions", preferredSide: "additions" };
+    const next = setCursorSide(c, "deletions", rows);
+    expect(next?.preferredSide).toBe("deletions");
+    expect(next?.side).toBe("additions");
+    expect(next?.lineNumber).toBe(9);
+  });
+
+  it("returns null when cursor is null", () => {
+    expect(setCursorSide(null, "deletions", [])).toBeNull();
+  });
+
+  it("preserves preferredSide across moves after a side change", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 10),
+      pairedFlat("x.txt", 2, 11),
+      pairedFlat("x.txt", 3, 12),
+    ];
+    const c: Cursor = { file: "x.txt", lineNumber: 10, side: "additions", preferredSide: "additions" };
+    const sided = setCursorSide(c, "deletions", rows);
+    expect(sided?.side).toBe("deletions");
+    const moved = moveCursor(sided, "down", rows);
+    expect(moved?.side).toBe("deletions");
+    expect(moved?.lineNumber).toBe(2);
+    const moved2 = moveCursor(moved, "down", rows);
+    expect(moved2?.side).toBe("deletions");
+    expect(moved2?.lineNumber).toBe(3);
+  });
+});
+
+describe("validateCursor", () => {
+  it("returns the cursor unchanged when its anchor still resolves", () => {
+    const rows = [pairedFlat("x.txt", 1, 1)];
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    expect(validateCursor(c, rows)).toEqual(c);
+  });
+
+  it("snaps to the file's first row when the anchor is gone but the file remains", () => {
+    const rows = [pairedFlat("x.txt", 1, 1), pairedFlat("x.txt", 2, 2)];
+    const c: Cursor = { file: "x.txt", lineNumber: 999, side: "additions", preferredSide: "additions" };
+    const v = validateCursor(c, rows);
+    expect(v?.file).toBe("x.txt");
+    expect(v?.lineNumber).toBe(1);
+  });
+
+  it("returns null when no rows remain at all", () => {
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    expect(validateCursor(c, [])).toBeNull();
+  });
+
+  it("returns null when the cursor's file has no rows", () => {
+    const rows = [pairedFlat("y.txt", 1, 1)];
+    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    expect(validateCursor(c, rows)).toBeNull();
+  });
+
+  it("returns null when input is null", () => {
+    expect(validateCursor(null, [pairedFlat("x.txt", 1, 1)])).toBeNull();
+  });
+});
+
+describe("resolveCursorRowIdx", () => {
+  it("locates a paired row by additions-side line number", () => {
+    const rows = [pairedFlat("x.txt", 5, 7), pairedFlat("x.txt", 6, 8)];
+    const c: Cursor = { file: "x.txt", lineNumber: 8, side: "additions", preferredSide: "additions" };
+    expect(resolveCursorRowIdx(c, rows)).toBe(1);
+  });
+
+  it("locates a paired row by deletions-side line number", () => {
+    const rows = [pairedFlat("x.txt", 5, 7), pairedFlat("x.txt", 6, 8)];
+    const c: Cursor = { file: "x.txt", lineNumber: 5, side: "deletions", preferredSide: "deletions" };
+    expect(resolveCursorRowIdx(c, rows)).toBe(0);
+  });
+
+  it("returns -1 when not resolvable", () => {
+    const rows = [pairedFlat("x.txt", 1, 1)];
+    const c: Cursor = { file: "x.txt", lineNumber: 99, side: "additions", preferredSide: "additions" };
+    expect(resolveCursorRowIdx(c, rows)).toBe(-1);
+  });
+
+  it("returns -1 when cursor is null", () => {
+    expect(resolveCursorRowIdx(null, [pairedFlat("x.txt", 1, 1)])).toBe(-1);
+  });
+});

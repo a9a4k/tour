@@ -28,12 +28,19 @@ import {
   buildReplyComposer,
   buildTopLevelComposer,
   type ComposerState,
-  type TopLevelAnchor,
 } from "./composer-state.js";
 import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
 import { TourWatcher } from "../core/watcher.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
+import { flatRows, type FlatRow } from "../core/flat-rows.js";
+import {
+  initialCursor,
+  moveCursor,
+  setCursorSide,
+  validateCursor,
+  type Cursor,
+} from "../core/cursor-state.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -121,6 +128,7 @@ function fileCardBody(
   rows: PlannedRow[],
   layout: "split" | "unified",
   currentAnnotationId: string | null,
+  cursor: Cursor | null,
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
@@ -133,6 +141,7 @@ function fileCardBody(
       rows={rows}
       layout={layout}
       currentAnnotationId={currentAnnotationId}
+      cursor={cursor}
       repliesCollapsed={repliesCollapsed}
       replyLock={replyLock}
       now={now}
@@ -151,33 +160,6 @@ function fileRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "file" }>): str
   const icon = statusIcon(row.file.type);
   const badge = row.annotationCount > 0 ? ` [${row.annotationCount}]` : "";
   return ` ${indent}${icon} ${row.displayName}${badge} `;
-}
-
-// Fallback anchor for `a` (top-level annotate) when no annotation is selected.
-// Walks the planned rows for the file and picks the first row that has at
-// least one line number — typically the first context line of the first hunk.
-// Prefer the additions side; fall back to deletions for delete-only files.
-function firstAnnotatableAnchor(rows: PlannedRow[], fileName: string): TopLevelAnchor | null {
-  for (const row of rows) {
-    if (row.kind !== "diff-row") continue;
-    if (row.rightLineNumber !== null) {
-      return {
-        file: fileName,
-        side: "additions",
-        line_start: row.rightLineNumber,
-        line_end: row.rightLineNumber,
-      };
-    }
-    if (row.leftLineNumber !== null) {
-      return {
-        file: fileName,
-        side: "deletions",
-        line_start: row.leftLineNumber,
-        line_end: row.leftLineNumber,
-      };
-    }
-  }
-  return null;
 }
 
 function App(props: AppProps) {
@@ -202,9 +184,16 @@ function App(props: AppProps) {
   const [pickerTours, setPickerTours] = useState<Tour[]>([]);
   const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
   const [composer, setComposer] = useState<ComposerState | null>(null);
+  const [cursor, setCursor] = useState<Cursor | null>(null);
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // Seeded-once-per-tour guard for currentAnnotationId. Without it, opening
+  // an empty Tour and pressing `a` would auto-advance currentAnnotationId
+  // to the freshly-typed annotation (so a subsequent `r` would reply to
+  // your own thing). The cursor stays where it was; the annotation focus
+  // ring should too.
+  const seededTourIdRef = useRef<string | null>(null);
 
   const liveTour = bundle.tour;
   const liveAnnotations = bundle.annotations;
@@ -303,32 +292,99 @@ function App(props: AppProps) {
     return out;
   }, [fileMetadata, liveAnnotations, layout]);
 
-  // Re-anchor the cursor by id across annotation reloads. On first sight of a
-  // non-empty list (or when the previously-current id is gone), pick the first
-  // top-level annotation, reveal its file's ancestor folders, and select that
-  // file's row in the sidebar — so the highlight always agrees with the diff
-  // being shown. n/p navigates top-level only (replies aren't nav targets).
+  const isFileCollapsed = (fileName: string): boolean => {
+    const override = collapsedOverrides[fileName];
+    if (override !== undefined) return override;
+    const cls = fileClassification(liveClassifications, fileName);
+    if (!cls.collapsed) return false;
+    if (cls.reason === "binary") return true;
+    const hasAnnotations = liveAnnotations.some((a) => a.file === fileName);
+    if (hasAnnotations) return false;
+    return true;
+  };
+
+  // Cross-file flat row sequence the line cursor walks (ADR 0011). Skips
+  // hunk-headers, annotation rows, and folded files. Re-derives whenever
+  // the underlying diff, layout, or fold state changes — the cursor's
+  // anchor is invariant across this re-derivation; only its resolved
+  // viewport index moves.
+  const flatRowsList = useMemo<FlatRow[]>(
+    () => flatRows(files, plannedRowsByFile, isFileCollapsed),
+    // isFileCollapsed is a fresh closure per render but its observable
+    // output is fully determined by the listed state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [files, plannedRowsByFile, collapsedOverrides, liveClassifications, liveAnnotations],
+  );
+
+  // Seed currentAnnotationId once per tour: on tour-open with annotations,
+  // land on the first top-level Annotation (preserves today's UX). After
+  // seeding, the user owns it — pressing `a` to add a new Annotation does
+  // NOT auto-advance currentAnnotationId to the new one (PRD UX 26: a
+  // follow-up `r` would otherwise reply to your own freshly-typed thing).
+  // Tour-switch resets the ref so the next tour seeds on its own terms.
   useEffect(() => {
-    if (liveTopLevel.length === 0) {
-      if (currentAnnotationId !== null) setCurrentAnnotationId(null);
+    if (seededTourIdRef.current !== liveTour.id) {
+      seededTourIdRef.current = liveTour.id;
+      if (liveTopLevel.length === 0) {
+        if (currentAnnotationId !== null) setCurrentAnnotationId(null);
+        return;
+      }
+      const first = liveTopLevel[0];
+      setCurrentAnnotationId(first.id);
+      const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
+      if (!located) return;
+      if (located.collapsedFolders !== collapsedFolders) {
+        setCollapsedFolders(located.collapsedFolders as Set<string>);
+      }
+      setSelectedRowIdx(located.rowIdx);
       return;
     }
+    // Already seeded for this tour: only invalidate when the current id
+    // disappears (e.g. agent removed an annotation).
     if (
       currentAnnotationId !== null &&
-      liveTopLevel.some((a) => a.id === currentAnnotationId)
+      !liveTopLevel.some((a) => a.id === currentAnnotationId)
     ) {
+      setCurrentAnnotationId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveTopLevel, liveTour.id]);
+
+  // Seed and validate the line cursor (ADR 0011). On first sight of a
+  // non-empty flat row sequence we pick the first top-level Annotation's
+  // anchor (preserves today's "land on first annotation" UX) or, failing
+  // that, the first row of the first non-folded file. On subsequent
+  // re-derivations (fold toggle, bundle reload, layout change) we
+  // validate-in-place: the anchor is preserved when it still resolves;
+  // when its row vanishes it snaps to the file's first remaining row;
+  // when the file is gone the cursor goes null and re-seeds from the
+  // initial-position rules. Tour-switch resets cursor explicitly in
+  // commitTour so a fresh seed runs against the new tour's flat rows.
+  useEffect(() => {
+    if (flatRowsList.length === 0) {
+      if (cursor !== null) setCursor(null);
       return;
     }
-    const first = liveTopLevel[0];
-    setCurrentAnnotationId(first.id);
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
-    if (!located) return;
-    if (located.collapsedFolders !== collapsedFolders) {
-      setCollapsedFolders(located.collapsedFolders as Set<string>);
+    if (cursor === null) {
+      setCursor(initialCursor({ topLevelAnnotations: liveTopLevel, flatRows: flatRowsList }));
+      return;
     }
-    setSelectedRowIdx(located.rowIdx);
+    const validated = validateCursor(cursor, flatRowsList);
+    if (validated !== cursor) setCursor(validated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveTopLevel, currentAnnotationId]);
+  }, [flatRowsList, liveTopLevel]);
+
+  // Keep the line cursor's row visible: every cursor mutation asks the
+  // scrollbox to scroll the row into view (block:nearest semantics so an
+  // already-visible row doesn't move). Side toggle on a paired row is a
+  // no-op vertically and a no-op-or-nudge horizontally per scrollbox
+  // semantics.
+  useEffect(() => {
+    if (!diffScrollRef.current || !cursor) return;
+    diffScrollRef.current.scrollChildIntoView(
+      `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`,
+    );
+  }, [cursor]);
 
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
@@ -358,19 +414,8 @@ function App(props: AppProps) {
     return idx === -1 ? 0 : idx;
   }, [liveTopLevel, currentAnnotationId]);
 
-  const isFileCollapsed = (fileName: string): boolean => {
-    const override = collapsedOverrides[fileName];
-    if (override !== undefined) return override;
-    const cls = fileClassification(liveClassifications, fileName);
-    if (!cls.collapsed) return false;
-    if (cls.reason === "binary") return true;
-    const hasAnnotations = liveAnnotations.some((a) => a.file === fileName);
-    if (hasAnnotations) return false;
-    return true;
-  };
-
   const footerHints =
-    "n/p: navigate  ·  a: annotate  ·  r: reply  ·  c: collapse  ·  Space: page  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
+    "j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: annotate  ·  r: reply  ·  c: collapse  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  q: quit";
   const footer =
     liveTopLevel.length > 0
       ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
@@ -424,6 +469,7 @@ function App(props: AppProps) {
       setBundle(next);
       setSelectedRowIdx(0);
       setCurrentAnnotationId(null);
+      setCursor(null);
       setCollapsedOverrides({});
       setCollapsedFolders(new Set());
     } finally {
@@ -459,12 +505,7 @@ function App(props: AppProps) {
   const openTopLevelComposer = () => {
     const currentAnn =
       liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
-    let fallback: TopLevelAnchor | null = null;
-    if (selectedRow?.kind === "file") {
-      const fileRows = plannedRowsByFile.get(selectedRow.file.name) ?? [];
-      fallback = firstAnnotatableAnchor(fileRows, selectedRow.file.name);
-    }
-    const state = buildTopLevelComposer({ currentAnnotation: currentAnn, fallback });
+    const state = buildTopLevelComposer({ cursor, currentAnnotation: currentAnn });
     if (!state) return;
     setComposer(state);
   };
@@ -554,6 +595,7 @@ function App(props: AppProps) {
         sidebarFocused,
         rowCount: visibleRows.length,
         selectedRowKind: selectedRow?.kind ?? null,
+        cursorExists: cursor !== null,
       },
     );
 
@@ -664,6 +706,18 @@ function App(props: AppProps) {
         return;
       case "page-diff-up":
         diffScrollRef.current?.scrollBy(-1, "viewport");
+        return;
+      case "cursor-down":
+        setCursor((c) => moveCursor(c, "down", flatRowsList));
+        return;
+      case "cursor-up":
+        setCursor((c) => moveCursor(c, "up", flatRowsList));
+        return;
+      case "cursor-side-left":
+        setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
+        return;
+      case "cursor-side-right":
+        setCursor((c) => setCursorSide(c, "additions", flatRowsList));
         return;
     }
   });
@@ -780,6 +834,7 @@ function App(props: AppProps) {
                       rows,
                       layout,
                       currentAnnotationId,
+                      cursor,
                       repliesCollapsed,
                       liveReplyLock,
                       now,
