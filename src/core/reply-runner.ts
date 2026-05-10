@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import {
-  appendAnnotation,
-  buildReplyAnnotation,
+  createReply,
   readAnnotations,
 } from "./annotations-store.js";
 import { getTour } from "./tour-store.js";
@@ -188,7 +187,11 @@ export class ReplyRunner {
       );
       return;
     }
-    const reply = buildReplyAnnotation(triggering, agent, body);
-    await appendAnnotation(this.opts.cwd, this.opts.tourId, reply);
+    await createReply(this.opts.cwd, this.opts.tourId, {
+      replies_to: triggering.id,
+      body,
+      author: agent,
+      author_kind: "agent",
+    });
   }
 }

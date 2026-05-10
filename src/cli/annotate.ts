@@ -1,13 +1,12 @@
 import {
-  appendAnnotation,
-  appendAnnotations,
-  readAnnotations,
-  buildAnnotation,
-  buildReply,
+  createAnnotation,
+  createAnnotations,
+  createReply,
+  type CreateRequest,
 } from "../core/annotations-store.js";
 import { resolveIdPrefix } from "../core/tour-store.js";
 import { printOutput } from "./output.js";
-import type { Annotation, AuthorKind } from "../core/types.js";
+import type { AuthorKind } from "../core/types.js";
 
 interface AnnotateArgs {
   tourId: string;
@@ -56,22 +55,20 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
       author_kind?: AuthorKind;
       replies_to?: string;
     }>;
-    const existing = await readAnnotations(args.cwd, resolvedId);
-    const annotations: Annotation[] = items.map((item) => {
+    const requests: CreateRequest[] = items.map((item) => {
       const itemKind = item.author_kind ?? authorKind;
       if (item.replies_to !== undefined) {
-        return buildReply(
-          {
-            replies_to: item.replies_to,
-            body: item.body,
-            author: item.author,
-            author_kind: itemKind,
-          },
-          existing,
-        );
+        return {
+          kind: "reply",
+          replies_to: item.replies_to,
+          body: item.body,
+          author: item.author,
+          author_kind: itemKind,
+        };
       }
       const { start, end } = parseLine(item.line);
-      return buildAnnotation({
+      return {
+        kind: "top-level",
         file: item.file,
         side: validateSide(item.side),
         line_start: start,
@@ -79,9 +76,9 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
         body: item.body,
         author: item.author,
         author_kind: itemKind,
-      });
+      };
     });
-    await appendAnnotations(args.cwd, resolvedId, annotations);
+    const annotations = await createAnnotations(args.cwd, resolvedId, requests);
     if (args.json) {
       printOutput(annotations, true);
     } else {
@@ -94,17 +91,12 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
     if (!args.body) {
       throw new Error("--body is required (with --reply-to)");
     }
-    const existing = await readAnnotations(args.cwd, resolvedId);
-    const reply = buildReply(
-      {
-        replies_to: args.replyTo,
-        body: args.body,
-        author: args.author,
-        author_kind: authorKind,
-      },
-      existing,
-    );
-    await appendAnnotation(args.cwd, resolvedId, reply);
+    const reply = await createReply(args.cwd, resolvedId, {
+      replies_to: args.replyTo,
+      body: args.body,
+      author: args.author,
+      author_kind: authorKind,
+    });
     if (args.json) {
       printOutput(reply, true);
     } else {
@@ -120,7 +112,7 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   }
 
   const { start, end } = parseLine(args.line);
-  const annotation = buildAnnotation({
+  const annotation = await createAnnotation(args.cwd, resolvedId, {
     file: args.file,
     side: validateSide(args.side),
     line_start: start,
@@ -129,8 +121,6 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
     author: args.author,
     author_kind: authorKind,
   });
-
-  await appendAnnotation(args.cwd, resolvedId, annotation);
 
   if (args.json) {
     printOutput(annotation, true);

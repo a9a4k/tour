@@ -1,8 +1,11 @@
 import { userInfo } from "node:os";
 import type { Tour, Annotation } from "../core/types.js";
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
-import { appendAnnotation, readAnnotations } from "../core/annotations-store.js";
-import { generateId } from "../core/ids.js";
+import {
+  createAnnotation,
+  createReply,
+  readAnnotations,
+} from "../core/annotations-store.js";
 import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
 import { loadTourBundle, type TourBundle } from "../core/tour-bundle.js";
@@ -23,49 +26,6 @@ export type WriteAnnotationInput =
       body: string;
     }
   | { kind: "reply"; parent: Annotation; body: string };
-
-// In-process annotate path used by the TUI inline composer. Routes through
-// `appendAnnotation` (the same primitive `tour annotate` uses underneath) so
-// human-authored notes are indistinguishable on disk from CLI-authored ones.
-// Replies inherit the parent's anchor — same rule as the CLI's `--reply-to`
-// path, applied at write time so readers don't have to walk chains.
-async function writeAnnotationFromTui(
-  cwd: string,
-  tourId: string,
-  input: WriteAnnotationInput,
-): Promise<Annotation> {
-  const author = humanAuthor();
-  const now = new Date().toISOString();
-  if (input.kind === "reply") {
-    const ann: Annotation = {
-      id: generateId(),
-      file: input.parent.file,
-      side: input.parent.side,
-      line_start: input.parent.line_start,
-      line_end: input.parent.line_end,
-      body: input.body,
-      author,
-      author_kind: "human",
-      replies_to: input.parent.id,
-      created_at: now,
-    };
-    await appendAnnotation(cwd, tourId, ann);
-    return ann;
-  }
-  const ann: Annotation = {
-    id: generateId(),
-    file: input.file,
-    side: input.side,
-    line_start: input.line_start,
-    line_end: input.line_end,
-    body: input.body,
-    author,
-    author_kind: "human",
-    created_at: now,
-  };
-  await appendAnnotation(cwd, tourId, ann);
-  return ann;
-}
 
 function humanAuthor(): string {
   try {
@@ -118,7 +78,26 @@ export async function tui(args: TuiArgs): Promise<void> {
     replyLock: initialReplyLock,
     loadTour: (id) => loadTourBundle(args.cwd, id),
     loadReplyLock: (id) => readReplyLock(args.cwd, id),
-    writeAnnotation: (id, input) => writeAnnotationFromTui(args.cwd, id, input),
+    writeAnnotation: (id, input) => {
+      const author = humanAuthor();
+      if (input.kind === "reply") {
+        return createReply(args.cwd, id, {
+          replies_to: input.parent.id,
+          body: input.body,
+          author,
+          author_kind: "human",
+        });
+      }
+      return createAnnotation(args.cwd, id, {
+        file: input.file,
+        side: input.side,
+        line_start: input.line_start,
+        line_end: input.line_end,
+        body: input.body,
+        author,
+        author_kind: "human",
+      });
+    },
     loadTours: async () => {
       const tours = await listTours(args.cwd, { status: "all" });
       const counts: Record<string, number> = {};

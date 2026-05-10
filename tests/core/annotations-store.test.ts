@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  appendAnnotation,
-  appendAnnotations,
+  createAnnotation,
+  createReply,
+  createAnnotations,
   readAnnotations,
-  buildAnnotation,
-  buildReply,
-  buildReplyAnnotation,
 } from "../../src/core/annotations-store.js";
 import type { Annotation } from "../../src/core/types.js";
-import { mkdtemp, mkdir } from "node:fs/promises";
+import { mkdtemp, mkdir, appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { appendFileSync } from "node:fs";
@@ -28,6 +26,18 @@ function makeAnnotation(overrides?: Partial<Annotation>): Annotation {
   };
 }
 
+// Direct JSONL append helper — sidesteps the seam to seed records with a
+// caller-supplied id when the test needs to assert about that id (e.g.
+// reply-parent lookup). The store's own `appendAnnotation` is private.
+async function seedAnnotation(
+  dir: string,
+  tourId: string,
+  ann: Annotation,
+): Promise<void> {
+  const path = join(dir, ".tour", tourId, "annotations.jsonl");
+  await appendFile(path, JSON.stringify(ann) + "\n");
+}
+
 describe("annotations-store", () => {
   let dir: string;
   const tourId = "2026-05-08-120000-abcd";
@@ -37,41 +47,185 @@ describe("annotations-store", () => {
     await mkdir(join(dir, ".tour", tourId), { recursive: true });
   });
 
-  describe("appendAnnotation + readAnnotations", () => {
-    it("round-trips a single annotation", async () => {
-      const ann = makeAnnotation();
-      await appendAnnotation(dir, tourId, ann);
+  describe("createAnnotation", () => {
+    it("writes a top-level annotation that round-trips through readAnnotations", async () => {
+      const ann = await createAnnotation(dir, tourId, {
+        file: "src/main.ts",
+        side: "additions",
+        line_start: 7,
+        line_end: 9,
+        body: "looks good",
+        author: "human-1",
+        author_kind: "human",
+      });
+      expect(ann.id.length).toBeGreaterThan(0);
+      expect(typeof ann.created_at).toBe("string");
+      expect(ann.replies_to).toBeUndefined();
+
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded).toHaveLength(1);
-      expect(loaded[0].id).toBe("ann-1");
-      expect(loaded[0].file).toBe("src/main.ts");
-      expect(loaded[0].side).toBe("additions");
-      expect(loaded[0].line_start).toBe(10);
-      expect(loaded[0].body).toBe("Consider extracting this into a helper.");
-      expect(loaded[0].author).toBe("claude-code");
+      expect(loaded[0]).toEqual(ann);
     });
 
-    it("appends multiple annotations in sequence", async () => {
-      await appendAnnotation(dir, tourId, makeAnnotation({ id: "ann-1" }));
-      await appendAnnotation(dir, tourId, makeAnnotation({ id: "ann-2" }));
-      await appendAnnotation(dir, tourId, makeAnnotation({ id: "ann-3" }));
+    it("defaults author to 'unknown' when omitted (slice 1: no new validation rules)", async () => {
+      const ann = await createAnnotation(dir, tourId, {
+        file: "x.ts",
+        side: "deletions",
+        line_start: 1,
+        line_end: 1,
+        body: "b",
+        author_kind: "agent",
+      });
+      expect(ann.author).toBe("unknown");
+    });
+
+    it("appends across multiple invocations", async () => {
+      const a = await createAnnotation(dir, tourId, {
+        file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+        body: "1", author_kind: "agent",
+      });
+      const b = await createAnnotation(dir, tourId, {
+        file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+        body: "2", author_kind: "agent",
+      });
       const loaded = await readAnnotations(dir, tourId);
-      expect(loaded).toHaveLength(3);
-      expect(loaded.map((a) => a.id)).toEqual(["ann-1", "ann-2", "ann-3"]);
+      expect(loaded.map((x) => x.id)).toEqual([a.id, b.id]);
     });
   });
 
-  describe("appendAnnotations (batch)", () => {
-    it("writes multiple annotations at once", async () => {
-      const anns = [
-        makeAnnotation({ id: "b-1" }),
-        makeAnnotation({ id: "b-2" }),
-        makeAnnotation({ id: "b-3" }),
-      ];
-      await appendAnnotations(dir, tourId, anns);
+  describe("createReply", () => {
+    it("inherits the parent's anchor and stamps replies_to", async () => {
+      const parent = makeAnnotation({
+        id: "parent-1",
+        file: "src/lib/x.ts",
+        side: "deletions",
+        line_start: 12,
+        line_end: 14,
+      });
+      await seedAnnotation(dir, tourId, parent);
+
+      const reply = await createReply(dir, tourId, {
+        replies_to: "parent-1",
+        body: "because of legacy compat",
+        author: "human-2",
+        author_kind: "human",
+      });
+
+      expect(reply.file).toBe(parent.file);
+      expect(reply.side).toBe(parent.side);
+      expect(reply.line_start).toBe(parent.line_start);
+      expect(reply.line_end).toBe(parent.line_end);
+      expect(reply.replies_to).toBe("parent-1");
+      expect(reply.author).toBe("human-2");
+      expect(reply.author_kind).toBe("human");
+      expect(reply.body).toBe("because of legacy compat");
+
       const loaded = await readAnnotations(dir, tourId);
-      expect(loaded).toHaveLength(3);
-      expect(loaded.map((a) => a.id)).toEqual(["b-1", "b-2", "b-3"]);
+      expect(loaded).toHaveLength(2);
+      expect(loaded[1]).toEqual(reply);
+    });
+
+    it("rejects when the parent id is not on disk and writes nothing", async () => {
+      await expect(
+        createReply(dir, tourId, {
+          replies_to: "no-such-id",
+          body: "orphan reply",
+          author_kind: "human",
+        }),
+      ).rejects.toThrow(/no-such-id/);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toEqual([]);
+    });
+
+    it("always re-reads annotations.jsonl (caller cannot bypass with stale in-memory data)", async () => {
+      // Parent is added between the caller's "decision" to reply and the
+      // seam call — createReply finds it because it re-reads on every call.
+      const parent = makeAnnotation({ id: "p-late" });
+      await seedAnnotation(dir, tourId, parent);
+      const reply = await createReply(dir, tourId, {
+        replies_to: "p-late",
+        body: "found it",
+        author_kind: "agent",
+      });
+      expect(reply.replies_to).toBe("p-late");
+    });
+  });
+
+  describe("createAnnotations (atomic batch)", () => {
+    it("writes every record in a single appendFile call", async () => {
+      const path = join(dir, ".tour", tourId, "annotations.jsonl");
+      const before = await readFile(path, "utf-8").catch(() => "");
+      expect(before).toBe("");
+
+      const results = await createAnnotations(dir, tourId, [
+        {
+          kind: "top-level",
+          file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+          body: "first", author_kind: "agent",
+        },
+        {
+          kind: "top-level",
+          file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+          body: "second", author_kind: "agent",
+        },
+        {
+          kind: "top-level",
+          file: "c.ts", side: "additions", line_start: 3, line_end: 3,
+          body: "third", author_kind: "agent",
+        },
+      ]);
+
+      expect(results).toHaveLength(3);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.body)).toEqual(["first", "second", "third"]);
+      // All three records land on the same write — the file's exact
+      // content matches a single newline-joined block.
+      const content = await readFile(path, "utf-8");
+      expect(content).toBe(results.map((a) => JSON.stringify(a)).join("\n") + "\n");
+    });
+
+    it("supports mixed top-level + reply requests in a single batch", async () => {
+      const parent = makeAnnotation({ id: "p1", side: "deletions" });
+      await seedAnnotation(dir, tourId, parent);
+
+      const results = await createAnnotations(dir, tourId, [
+        {
+          kind: "top-level",
+          file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+          body: "top", author_kind: "human",
+        },
+        {
+          kind: "reply",
+          replies_to: "p1",
+          body: "reply", author_kind: "human",
+        },
+      ]);
+
+      expect(results).toHaveLength(2);
+      expect(results[0].replies_to).toBeUndefined();
+      expect(results[1].replies_to).toBe("p1");
+      expect(results[1].side).toBe("deletions"); // inherits parent's anchor
+    });
+
+    it("rejects whole batch (no write) when any reply parent is missing", async () => {
+      await expect(
+        createAnnotations(dir, tourId, [
+          {
+            kind: "top-level",
+            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+            body: "valid", author_kind: "agent",
+          },
+          {
+            kind: "reply",
+            replies_to: "no-such-parent",
+            body: "doomed", author_kind: "agent",
+          },
+        ]),
+      ).rejects.toThrow(/no-such-parent/);
+
+      // No partial write: the file is still empty.
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toEqual([]);
     });
   });
 
@@ -93,7 +247,6 @@ describe("annotations-store", () => {
 
     it("throws on pre-bidirectional data missing author_kind (no silent fallback)", async () => {
       const path = join(dir, ".tour", tourId, "annotations.jsonl");
-      // Synthesise a pre-schema-break record (no author_kind field).
       const legacy = JSON.stringify({
         id: "legacy",
         file: "x.ts",
@@ -121,129 +274,17 @@ describe("annotations-store", () => {
 
   describe("multi-line ranges", () => {
     it("stores and retrieves line_start != line_end", async () => {
-      await appendAnnotation(
-        dir,
-        tourId,
-        makeAnnotation({ line_start: 5, line_end: 15 }),
-      );
+      await createAnnotation(dir, tourId, {
+        file: "x.ts",
+        side: "additions",
+        line_start: 5,
+        line_end: 15,
+        body: "range",
+        author_kind: "agent",
+      });
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded[0].line_start).toBe(5);
       expect(loaded[0].line_end).toBe(15);
     });
-  });
-});
-
-describe("buildAnnotation", () => {
-  it("builds a top-level Annotation with the supplied fields and a fresh id + timestamp", () => {
-    const ann = buildAnnotation({
-      file: "src/main.ts",
-      side: "additions",
-      line_start: 7,
-      line_end: 9,
-      body: "looks good",
-      author: "human-1",
-      author_kind: "human",
-    });
-    expect(ann.file).toBe("src/main.ts");
-    expect(ann.side).toBe("additions");
-    expect(ann.line_start).toBe(7);
-    expect(ann.line_end).toBe(9);
-    expect(ann.body).toBe("looks good");
-    expect(ann.author).toBe("human-1");
-    expect(ann.author_kind).toBe("human");
-    expect(ann.replies_to).toBeUndefined();
-    expect(ann.id.length).toBeGreaterThan(0);
-    expect(typeof ann.created_at).toBe("string");
-  });
-
-  it("defaults author to 'unknown' when omitted", () => {
-    const ann = buildAnnotation({
-      file: "x.ts",
-      side: "deletions",
-      line_start: 1,
-      line_end: 1,
-      body: "b",
-      author_kind: "agent",
-    });
-    expect(ann.author).toBe("unknown");
-  });
-});
-
-describe("buildReply", () => {
-  const parent: Annotation = {
-    id: "parent-1",
-    file: "src/lib/x.ts",
-    side: "deletions",
-    line_start: 12,
-    line_end: 14,
-    body: "why?",
-    author: "agent-bot",
-    author_kind: "agent",
-    created_at: "2026-05-08T00:00:00Z",
-  };
-
-  it("inherits the parent's anchor (file, side, line range)", () => {
-    const reply = buildReply(
-      {
-        replies_to: parent.id,
-        body: "because of legacy compat",
-        author: "human-2",
-        author_kind: "human",
-      },
-      [parent],
-    );
-    expect(reply.file).toBe(parent.file);
-    expect(reply.side).toBe(parent.side);
-    expect(reply.line_start).toBe(parent.line_start);
-    expect(reply.line_end).toBe(parent.line_end);
-    expect(reply.replies_to).toBe(parent.id);
-    expect(reply.author_kind).toBe("human");
-    expect(reply.body).toBe("because of legacy compat");
-  });
-
-  it("throws when the parent id is not in the existing list", () => {
-    expect(() =>
-      buildReply(
-        {
-          replies_to: "missing",
-          body: "b",
-          author_kind: "human",
-        },
-        [parent],
-      ),
-    ).toThrow(/missing/);
-  });
-});
-
-describe("buildReplyAnnotation", () => {
-  const triggering: Annotation = {
-    id: "trig-1",
-    file: "src/lib/x.ts",
-    side: "deletions",
-    line_start: 12,
-    line_end: 14,
-    body: "why?",
-    author: "human-1",
-    author_kind: "human",
-    created_at: "2026-05-08T00:00:00Z",
-  };
-
-  it("inherits the triggering anchor and stamps agent author + replies_to", () => {
-    const reply = buildReplyAnnotation(triggering, "claude", "because legacy compat");
-    expect(reply.file).toBe(triggering.file);
-    expect(reply.side).toBe(triggering.side);
-    expect(reply.line_start).toBe(triggering.line_start);
-    expect(reply.line_end).toBe(triggering.line_end);
-    expect(reply.replies_to).toBe(triggering.id);
-    expect(reply.author).toBe("claude");
-    expect(reply.author_kind).toBe("agent");
-    expect(reply.body).toBe("because legacy compat");
-    expect(reply.id.length).toBeGreaterThan(0);
-    expect(typeof reply.created_at).toBe("string");
-  });
-
-  it("trims surrounding whitespace from the body (ADR 0012 stdout-as-reply)", () => {
-    const reply = buildReplyAnnotation(triggering, "claude", "  hello\n\n");
-    expect(reply.body).toBe("hello");
   });
 });
