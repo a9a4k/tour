@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from "vitest";
-import { syncCursorOverlay } from "../../src/web/client/cursor-overlay.js";
+import { syncCursorOverlay, scrollCursorIntoView } from "../../src/web/client/cursor-overlay.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
 const cur = (over: Partial<Cursor> & Pick<Cursor, "file" | "lineNumber" | "side">): Cursor => ({
@@ -33,6 +33,11 @@ function cell(opts: {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  // syncCursorOverlay holds module-level IntersectionObserver state
+  // (observedCell). Reset it via a null-cursor sync so each test starts
+  // from a clean slate; otherwise leftover observed cells from an
+  // earlier test cause `scrollCursorIntoView` to early-return.
+  syncCursorOverlay(document.body, null);
 });
 
 describe("syncCursorOverlay: attribute placement", () => {
@@ -191,37 +196,75 @@ describe("syncCursorOverlay: shadow DOM", () => {
   });
 });
 
-describe("syncCursorOverlay: auto-scroll", () => {
-  it("scrollIntoView({ block: 'nearest' }) on the cursor's cell after a move", () => {
+describe("syncCursorOverlay: does not auto-scroll", () => {
+  // Scroll moved out to `scrollCursorIntoView` so the sync path (which
+  // also runs on mouse-click cursor placement and on Pierre's worker
+  // token re-renders) does not pay a layout flush per call. Auto-
+  // scroll is a keyboard-only concern handled by the dispatch handler.
+  it("does NOT call scrollIntoView when applying the cursor attrs", () => {
+    const c = cell({ line: 5, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    let scrolled = false;
+    c.scrollIntoView = () => {
+      scrolled = true;
+    };
+    syncCursorOverlay(document.body, cur({ file: "x.ts", lineNumber: 5, side: "additions" }));
+    expect(scrolled).toBe(false);
+  });
+});
+
+describe("scrollCursorIntoView", () => {
+  it("scrolls the cursor's cell into view via scrollIntoView({ block: 'nearest' })", () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     const calls: ScrollIntoViewOptions[] = [];
     c.scrollIntoView = (opts?: ScrollIntoViewOptions | boolean) => {
       calls.push(typeof opts === "object" && opts !== null ? opts : {});
     };
-    syncCursorOverlay(document.body, cur({ file: "x.ts", lineNumber: 5, side: "additions" }));
+    // happy-dom's getBoundingClientRect returns zeros, so the cell is
+    // treated as "above viewport top" (rect.top === 0 is fine, but the
+    // viewport-height check below uses window.innerHeight which defaults
+    // to 0 in happy-dom — meaning rect.bottom (0) > 0 is false, so the
+    // visible-skip path would trigger. Force a non-zero rect.bottom to
+    // simulate an off-screen cell.
+    c.getBoundingClientRect = () => ({ top: 1000, bottom: 1020, left: 0, right: 100, width: 100, height: 20, x: 0, y: 1000, toJSON: () => ({}) }) as DOMRect;
+    Object.defineProperty(window, "innerHeight", { value: 600, configurable: true });
+    scrollCursorIntoView(document.body, cur({ file: "x.ts", lineNumber: 5, side: "additions" }));
     expect(calls).toEqual([{ block: "nearest" }]);
   });
 
-  it("does not scroll when the cursor's file isn't in the DOM", () => {
+  it("skips when the cell is already in viewport (no layout-thrashing scrollIntoView)", () => {
+    const c = cell({ line: 5, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    let scrolled = false;
+    c.scrollIntoView = () => {
+      scrolled = true;
+    };
+    c.getBoundingClientRect = () => ({ top: 100, bottom: 120, left: 0, right: 100, width: 100, height: 20, x: 0, y: 100, toJSON: () => ({}) }) as DOMRect;
+    Object.defineProperty(window, "innerHeight", { value: 600, configurable: true });
+    scrollCursorIntoView(document.body, cur({ file: "x.ts", lineNumber: 5, side: "additions" }));
+    expect(scrolled).toBe(false);
+  });
+
+  it("does nothing when the cursor's file isn't in the DOM", () => {
     const c = cell({ line: 1, type: "addition" });
     document.body.appendChild(fileBlock("a.ts", [c]));
     let scrolled = false;
     c.scrollIntoView = () => {
       scrolled = true;
     };
-    syncCursorOverlay(document.body, cur({ file: "missing.ts", lineNumber: 1, side: "additions" }));
+    scrollCursorIntoView(document.body, cur({ file: "missing.ts", lineNumber: 1, side: "additions" }));
     expect(scrolled).toBe(false);
   });
 
-  it("does not scroll when the cursor goes null (e.g., tour switch)", () => {
+  it("does nothing when cursor is null", () => {
     const c = cell({ line: 1, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     let scrolled = false;
     c.scrollIntoView = () => {
       scrolled = true;
     };
-    syncCursorOverlay(document.body, null);
+    scrollCursorIntoView(document.body, null);
     expect(scrolled).toBe(false);
   });
 });

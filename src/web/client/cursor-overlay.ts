@@ -47,21 +47,18 @@ export function syncCursorOverlay(
   const block = findFileBlock(root, cursor.file);
   if (!block) return () => clearOverlayEverywhere(root);
 
-  applyCursorAttrs(block, cursor, true /* scroll on first apply */);
+  applyCursorAttrs(block, cursor);
 
   // Re-apply on Pierre's shadow-root mutations. Pierre's worker pool
   // delivers highlighted tokens after a re-render boundary; when those
   // tokens arrive Pierre swaps the cell DOM and our attribute disappears
   // with the discarded node. The observer notices the swap and re-marks
-  // the successor. `applyCursorAttrs(scroll=false)` because we don't
-  // want a re-highlight to scroll the user back to the cursor — the
-  // intent of `block:nearest` is to follow the cursor's keyboard moves,
-  // not to fight ambient re-renders.
+  // the successor.
   const observers: MutationObserver[] = [];
   const observe = (target: Node): void => {
     const observer = new MutationObserver(() => {
       if (block.isConnected === false) return;
-      applyCursorAttrs(block, cursor, false);
+      applyCursorAttrs(block, cursor);
     });
     observer.observe(target, { childList: true, subtree: true });
     observers.push(observer);
@@ -77,7 +74,7 @@ export function syncCursorOverlay(
   };
 }
 
-function applyCursorAttrs(block: Element, cursor: Cursor, scroll: boolean): void {
+function applyCursorAttrs(block: Element, cursor: Cursor): void {
   const cell = findCursorCell(block, cursor);
   if (!cell) return;
   // No-op if the right cell already carries the right attrs. Cheap guard
@@ -89,6 +86,7 @@ function applyCursorAttrs(block: Element, cursor: Cursor, scroll: boolean): void
     cell.getAttribute("data-tour-cursor") === "true" &&
     cell.getAttribute("data-tour-cursor-side") === cursor.side
   ) {
+    trackVisibility(cell);
     return;
   }
   // Strip any stale mark on a different cell in the same block before
@@ -104,10 +102,79 @@ function applyCursorAttrs(block: Element, cursor: Cursor, scroll: boolean): void
   }
   cell.setAttribute("data-tour-cursor", "true");
   cell.setAttribute("data-tour-cursor-side", cursor.side);
-  if (scroll) cell.scrollIntoView({ block: "nearest" });
+  trackVisibility(cell);
+}
+
+// IntersectionObserver-backed scroll. A profile on a large diff showed
+// `scrollIntoView` (then `getBoundingClientRect`) accounting for ~26%
+// of main-thread time on every `j`/`k` because each call forced a
+// full-page layout (~200 ms at this document size). The observer pushes
+// the viewport check off the synchronous hot path: the browser computes
+// intersections asynchronously after layout it was going to do anyway,
+// and only when the marked cell actually leaves the viewport does the
+// callback fire one `scrollIntoView`. Intra-viewport motion (the common
+// `j`/`k` case) pays zero layout cost.
+let visibilityObserver: IntersectionObserver | null = null;
+let observedCell: Element | null = null;
+
+function getVisibilityObserver(): IntersectionObserver | null {
+  if (visibilityObserver) return visibilityObserver;
+  if (typeof IntersectionObserver === "undefined") return null;
+  visibilityObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.target !== observedCell) continue;
+        if (!entry.isIntersecting) {
+          (entry.target as Element).scrollIntoView({ block: "nearest" });
+        }
+      }
+    },
+    // threshold 0 means "any part visible counts as intersecting". Matches
+    // `scrollIntoView({ block: "nearest" })`'s own no-op condition.
+    { root: null, threshold: 0 },
+  );
+  return visibilityObserver;
+}
+
+function trackVisibility(cell: Element): void {
+  const io = getVisibilityObserver();
+  if (!io) return;
+  if (observedCell === cell) return;
+  if (observedCell) io.unobserve(observedCell);
+  observedCell = cell;
+  io.observe(cell);
+}
+
+function untrackVisibility(): void {
+  const io = visibilityObserver;
+  if (!io || !observedCell) return;
+  io.unobserve(observedCell);
+  observedCell = null;
+}
+
+/**
+ * Synchronous scroll-into-view fallback for environments without
+ * `IntersectionObserver` (e.g., older browsers, some test runners). In
+ * a working browser this is a no-op once the IO is tracking the cell —
+ * IO handles offscreen-cell scrolling automatically. Kept as a back-
+ * compat call from the keyboard handler so the fallback path still
+ * scrolls on first interaction even without IO.
+ */
+export function scrollCursorIntoView(root: ParentNode, cursor: Cursor | null): void {
+  if (visibilityObserver && observedCell) return; // IO is in charge.
+  if (!cursor) return;
+  const block = findFileBlock(root, cursor.file);
+  if (!block) return;
+  const cell = findCursorCell(block, cursor);
+  if (!cell) return;
+  const rect = cell.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (rect.top >= 0 && rect.bottom <= viewportHeight) return;
+  cell.scrollIntoView({ block: "nearest" });
 }
 
 function clearOverlayEverywhere(root: ParentNode): void {
+  untrackVisibility();
   for (const el of queryAllAcrossShadow(root, "[data-tour-cursor]")) {
     el.removeAttribute("data-tour-cursor");
     el.removeAttribute("data-tour-cursor-side");

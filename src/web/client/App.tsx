@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileDiff, MultiFileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileContents, FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
@@ -34,7 +34,7 @@ import {
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { nextAnnotationNavStep } from "./annotation-nav.js";
 import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS, PLUS_BUTTON_CSS } from "./cursor-css.js";
-import { syncCursorOverlay } from "./cursor-overlay.js";
+import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncHoverOverlay } from "./hover-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
@@ -282,6 +282,17 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     () => (bundle && bundle.kind === "ok" ? bundle.files : []),
     [bundle],
   );
+  // O(1) lookup keyed by file name. The previous render-time
+  // `liveFiles.find(...)` per `<FileBlock>` is O(N) per file × N files
+  // per render = O(N²) and — more importantly — returns the same
+  // BundleFile reference each time, but inside a fresh arrow per
+  // render. Hoisting to a stable Map keeps the modelFile prop
+  // referentially stable across renders so React.memo can short-circuit.
+  const modelFilesByName = useMemo<Map<string, BundleFile>>(() => {
+    const m = new Map<string, BundleFile>();
+    for (const f of liveFiles) m.set(f.name, f);
+    return m;
+  }, [liveFiles]);
   const snapshotLost = bundle?.kind === "snapshot-lost";
 
   const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
@@ -451,6 +462,16 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     [isCollapsed],
   );
 
+  // Stable per-file ref registrar so FileBlock can be `React.memo`'d.
+  // The previous inline arrow `(el) => fileRefs.current.set(f.name, el)`
+  // was a fresh function on every App render, defeating any memoisation
+  // attempt; lifting it here gives FileBlock a stable function reference
+  // and the file name flows through the call instead of the closure.
+  const registerFileRef = useCallback((file: string, el: HTMLDivElement | null) => {
+    if (el) fileRefs.current.set(file, el);
+    else fileRefs.current.delete(file);
+  }, []);
+
   // Cursor walk sequence (ADR 0012). Per-file planned rows are built
   // from each Pierre-parsed file + the annotation list + the active
   // layout (split vs unified differ in pairing). The flat-rows builder
@@ -563,7 +584,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         action.type === "set-side-additions" ||
         action.type === "set-side-deletions";
       if (motion && !cursor) {
-        materializeCursor();
+        const seeded = materializeCursor();
+        // Keyboard motion needs scroll-into-view; the mouse path
+        // (setCursorFromRowClick) deliberately omits it because the
+        // clicked cell is already where the user is looking.
+        if (seeded) scrollCursorIntoView(document.body, seeded);
         return;
       }
       switch (action.type) {
@@ -579,13 +604,27 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         case "nav-prev-annotation":
           navigateBy(-1);
           return;
-        case "move-down":
-          setCursor((c) => moveCursor(c, "down", flatRowsList));
+        case "move-down": {
+          // Compute next synchronously so we can scroll the destination
+          // cell into view. setCursor(fn) would keep us inside React's
+          // updater (no side-effects allowed); since the handler closure
+          // already captures the latest `cursor` via the deps array,
+          // computing eagerly is safe.
+          const next = moveCursor(cursor, "down", flatRowsList);
+          setCursor(next);
+          if (next) scrollCursorIntoView(document.body, next);
           return;
-        case "move-up":
-          setCursor((c) => moveCursor(c, "up", flatRowsList));
+        }
+        case "move-up": {
+          const next = moveCursor(cursor, "up", flatRowsList);
+          setCursor(next);
+          if (next) scrollCursorIntoView(document.body, next);
           return;
+        }
         case "set-side-additions":
+          // Horizontal side toggle stays on the same row, so the cell is
+          // already on screen — no scroll. Skipping the layout flush is
+          // the whole reason we hoisted scroll out of syncCursorOverlay.
           setCursor((c) => setCursorSide(c, "additions", flatRowsList));
           return;
         case "set-side-deletions":
@@ -848,13 +887,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 fileDiff={f}
                 annotations={annotations}
                 repliesByRoot={repliesByRoot}
-                modelFile={liveFiles.find((m) => m.name === f.name)}
-                registerRef={(el) => {
-                  if (el) fileRefs.current.set(f.name, el);
-                  else fileRefs.current.delete(f.name);
-                }}
+                modelFile={modelFilesByName.get(f.name)}
+                registerRef={registerFileRef}
                 collapsed={isCollapsed(f.name)}
-                onToggleCollapsed={() => toggleCollapsed(f.name)}
+                onToggleCollapsed={toggleCollapsed}
                 currentAnnotationId={currentAnnotationId}
                 registerAnnotationRef={registerAnnotationRef}
                 layout={layout}
@@ -961,9 +997,13 @@ interface FileBlockProps {
   annotations: Annotation[];
   repliesByRoot: Map<string, Annotation[]>;
   modelFile: BundleFile | undefined;
-  registerRef: (el: HTMLDivElement | null) => void;
+  // File name is passed as an argument (rather than bound via closure)
+  // so the same function reference can serve every file — see App.tsx
+  // `registerFileRef` / `toggleCollapsed`. That stability is what lets
+  // `React.memo` short-circuit FileBlock on cursor moves.
+  registerRef: (file: string, el: HTMLDivElement | null) => void;
   collapsed: boolean;
-  onToggleCollapsed: () => void;
+  onToggleCollapsed: (file: string) => void;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   layout: Layout;
@@ -1024,7 +1064,21 @@ function findAnnotatableLine(path: EventTarget[]): { line: number; side: "additi
   return null;
 }
 
-function FileBlock({
+// `React.memo` short-circuits re-renders when none of the props change
+// by reference. The big payoff: cursor moves (`j`/`k`) update App state
+// but do NOT touch any FileBlock prop, so every FileBlock — and the
+// Pierre subtree beneath each — bails before React schedules any
+// reconciliation work. Pre-memo the trace showed 700 ms-1.3 s input
+// tasks driven entirely by per-file render fan-out; with memo the work
+// collapses to the cursor-overlay attribute write.
+//
+// This depends on all props being referentially stable across cursor
+// renders. `registerRef` / `onToggleCollapsed` take the file name as
+// an argument (not closed over), and `modelFile` comes from a
+// `useMemo`'d Map — both done at the App level above.
+const FileBlock = React.memo(FileBlockInner);
+
+function FileBlockInner({
   fileDiff,
   annotations,
   repliesByRoot,
@@ -1143,7 +1197,7 @@ function FileBlock({
       (n) => n instanceof HTMLElement && n.dataset.diffsHeader === "default",
     );
     if (onHeader) {
-      onToggleCollapsed();
+      onToggleCollapsed(fileDiff.name);
       return;
     }
     if (collapsed) return;
@@ -1176,7 +1230,7 @@ function FileBlock({
     <div
       className="file-block"
       data-file={fileDiff.name}
-      ref={registerRef}
+      ref={(el) => registerRef(fileDiff.name, el)}
       onClick={onWrapperClick}
     >
       {contents ? (
