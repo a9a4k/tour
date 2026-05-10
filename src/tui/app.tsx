@@ -32,6 +32,7 @@ import {
 import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
+import { center as centerScrollTarget } from "../core/scroll-target.js";
 import { TourPicker } from "./TourPicker.js";
 import { TopHeaderTui } from "./TopHeader.js";
 import { Composer } from "./Composer.js";
@@ -490,16 +491,32 @@ function App(props: AppProps) {
     sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
   }, [safeRowIdx, visibleRows]);
 
-  // Keep the current annotation card in the diff-pane viewport. Fires only
-  // when the current annotation id (or the underlying diff content) changes,
-  // so manual scrolling between transitions is preserved. Falls back to the
-  // file card when the annotation card itself can't be located (e.g. the
-  // annotation's anchor row isn't in any hunk).
+  // Centre the current annotation card in the diff-pane viewport on every
+  // n/p — even if it was already on-screen — so the user always has context
+  // above and below to read into the thread. Mirrors the webapp's existing
+  // `scrollIntoView({ block: 'center' })` (PRD #126, issue #128). Cards
+  // taller than the viewport fall back to `block:start` inside
+  // `centerScrollTarget` so the title row lands at the top.
   useEffect(() => {
-    if (!diffScrollRef.current || !currentAnnotationId) return;
+    const sb = diffScrollRef.current;
+    if (!sb || !currentAnnotationId) return;
     const ann = liveAnnotations.find((a) => a.id === currentAnnotationId);
     if (!ann) return;
-    diffScrollRef.current.scrollChildIntoView(`annotation-${ann.id}`);
+    const child = sb.content.findDescendantById(`annotation-${ann.id}`);
+    if (!child) return;
+    // OpenTUI exposes `child.y` and `viewport.y` in absolute screen
+    // coordinates; convert to the content frame the helper expects:
+    //   contentY = child.y - viewport.y + scrollTop
+    const contentY = child.y - sb.viewport.y + sb.scrollTop;
+    const target = centerScrollTarget(
+      { y: contentY, height: child.height },
+      {
+        scrollTop: sb.scrollTop,
+        height: sb.viewport.height,
+        contentHeight: sb.scrollHeight,
+      },
+    );
+    sb.scrollTo(target);
   }, [currentAnnotationId, liveAnnotations, plannedRowsByFile]);
 
   const currentAnnotationIdx = useMemo(() => {
