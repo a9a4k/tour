@@ -22,6 +22,7 @@ import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
+import { HamburgerButtonTui } from "./HamburgerButton.js";
 import { Composer } from "./Composer.js";
 import {
   buildReplyComposer,
@@ -672,15 +673,7 @@ function App(props: AppProps) {
     <box width="100%" height="100%" flexDirection="column">
       {/* Header — GitHub PR-style 2-line: hamburger | title+#shortId / refs | toggle / pill */}
       <box width="100%" flexDirection="row" paddingX={1}>
-        <box
-          borderStyle="single"
-          borderColor={theme.border.default}
-          width={5}
-          height={4}
-          onMouseDown={() => void openPicker()}
-        >
-          <text fg={theme.fg.default}>{" ☰ "}</text>
-        </box>
+        <HamburgerButtonTui onOpen={() => void openPicker()} />
         <box flexDirection="column" flexGrow={1} paddingX={1} paddingTop={1}>
           <box flexDirection="row">
             <text bold fg={liveTour.title ? theme.fg.default : theme.fg.muted}>
