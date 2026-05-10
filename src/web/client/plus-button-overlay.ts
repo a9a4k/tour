@@ -32,13 +32,23 @@ export function syncPlusButtonOverlay(
   onClick: (anchor: { file: string; side: "additions" | "deletions"; line: number }) => void,
   composerOpen: boolean,
 ): () => void {
+  // Composer-open suppression: the overlay is a complete no-op while the
+  // composer is open — no observers, no buttons. The prior effect's
+  // cleanup has already stripped any buttons mounted during the
+  // composerOpen=false phase, so mouse motion mid-edit cannot tempt the
+  // reviewer to a different row.
+  if (composerOpen) return () => {};
+
   const buttons = new Map<HTMLElement, HTMLButtonElement>();
   const observers: MutationObserver[] = [];
 
   const addOrUpdate = (cell: HTMLElement): void => {
-    if (composerOpen) return;
     if (!cell.hasAttribute("data-tour-cursor") && !cell.hasAttribute("data-tour-hover")) {
-      removeFor(cell);
+      const stale = buttons.get(cell);
+      if (stale) {
+        stale.remove();
+        buttons.delete(cell);
+      }
       return;
     }
     const anchor = anchorFor(cell);
@@ -58,28 +68,6 @@ export function syncPlusButtonOverlay(
       e.stopPropagation();
       onClick(anchor);
     };
-  };
-
-  const removeFor = (cell: HTMLElement): void => {
-    const btn = buttons.get(cell);
-    if (!btn) return;
-    btn.remove();
-    buttons.delete(cell);
-  };
-
-  const clearAll = (): void => {
-    for (const btn of buttons.values()) btn.remove();
-    buttons.clear();
-  };
-
-  const initialSweep = (): void => {
-    if (composerOpen) {
-      clearAll();
-      return;
-    }
-    for (const cell of queryAllAcrossShadow(root, "[data-tour-cursor], [data-tour-hover]")) {
-      addOrUpdate(cell as HTMLElement);
-    }
   };
 
   // MutationObservers don't cross shadow-root boundaries, so install one
@@ -107,12 +95,14 @@ export function syncPlusButtonOverlay(
   observe(root);
   for (const sr of shadowRootsUnder(root)) observe(sr);
 
-  initialSweep();
+  for (const cell of queryAllAcrossShadow(root, "[data-tour-cursor], [data-tour-hover]")) {
+    addOrUpdate(cell as HTMLElement);
+  }
 
   return (): void => {
     for (const o of observers) o.disconnect();
-    observers.length = 0;
-    clearAll();
+    for (const btn of buttons.values()) btn.remove();
+    buttons.clear();
   };
 }
 
