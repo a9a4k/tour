@@ -75,7 +75,7 @@ function listenerTarget(root: ParentNode): EventTarget {
   // (Pierre's per-file scope) bubble up to it. Falls back to root for
   // detached fixtures (tests that hand in a non-document ParentNode).
   if (root instanceof Document) return root;
-  if (root instanceof Element && root.ownerDocument) return root.ownerDocument;
+  if (root instanceof Element) return root.ownerDocument ?? root;
   return root as unknown as EventTarget;
 }
 
