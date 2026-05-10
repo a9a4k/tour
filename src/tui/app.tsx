@@ -1060,14 +1060,25 @@ function App(props: AppProps) {
         openReplyComposer();
         return;
       case "page-diff-down":
-      case "page-diff-up": {
-        const dir = action.type === "page-diff-down" ? "down" : "up";
+      case "page-diff-up":
+      case "half-page-diff-down":
+      case "half-page-diff-up": {
+        const dir =
+          action.type === "page-diff-down" || action.type === "half-page-diff-down"
+            ? "down"
+            : "up";
+        const step: "half" | "full" =
+          action.type === "page-diff-down" || action.type === "page-diff-up"
+            ? "full"
+            : "half";
         const sb = diffScrollRef.current;
         if (!sb) return;
-        // Page motion (PRD #126, issue #129): pane scrolls one viewport
-        // AND cursor moves with it so its screen-relative offset is
-        // preserved. Bumping a document bound snaps the cursor to the
-        // last/first eligible row instead of stranding it mid-pane.
+        // Page motion (PRD #126, issue #129; PRD #138, issue #139): pane
+        // scrolls one step (full for hardware PageUp/PageDown, half for
+        // Space / `b` / Shift+Space) AND cursor moves with it so its
+        // screen-relative offset is preserved. Bumping a document bound
+        // snaps the cursor to the last/first eligible row instead of
+        // stranding it mid-pane.
         const result = pageMoveDiffPane(
           {
             cursor,
@@ -1086,6 +1097,7 @@ function App(props: AppProps) {
             },
           },
           dir,
+          step,
         );
         setCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {

@@ -69,11 +69,15 @@ export function step(
 }
 
 /**
- * Page-motion: pane scrolls by one full viewport AND the cursor moves with
- * it so its screen-relative offset is preserved (PRD #126 / issue #129).
- * Doc-fits-viewport is a no-op. When the pane bumps a document bound (no
- * full viewport of room left), the cursor snaps to the last/first cursor-
- * eligible row instead of stranding mid-pane.
+ * Page-motion: pane scrolls by `step` AND the cursor moves with it so its
+ * screen-relative offset is preserved (PRD #126 / issue #129; PRD #138 /
+ * issue #139 added the `step` parameter). `step: "full"` advances by one
+ * full viewport (hardware PageUp / PageDown); `step: "half"` advances by
+ * half a viewport, clamped to a 1-row minimum so 1-row terminals still
+ * move (Space / `b` / Shift+Space). Doc-fits-viewport is a no-op. When
+ * the pane bumps a document bound (no full step of room left), the
+ * cursor snaps to the last/first cursor-eligible row instead of stranding
+ * mid-pane.
  *
  * The cursor lands on the cursor-eligible row in `flatRows` whose `rowY` is
  * nearest to the screen-y-preserving target — not every screen position
@@ -81,7 +85,11 @@ export function step(
  * space without contributing flatRows entries), so the snap may differ
  * from the precise target by ±1 row.
  */
-export function pageMove(state: PaneState, direction: "up" | "down"): MotionResult {
+export function pageMove(
+  state: PaneState,
+  direction: "up" | "down",
+  step: "half" | "full",
+): MotionResult {
   if (!state.cursor) {
     return { cursor: null, scrollTop: state.scrollTop };
   }
@@ -92,8 +100,12 @@ export function pageMove(state: PaneState, direction: "up" | "down"): MotionResu
   if (oldIdx === -1) {
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }
+  const stepSize =
+    step === "full"
+      ? state.viewportHeight
+      : Math.max(1, Math.floor(state.viewportHeight / 2));
   const sign = direction === "down" ? 1 : -1;
-  const desiredScrollTop = state.scrollTop + sign * state.viewportHeight;
+  const desiredScrollTop = state.scrollTop + sign * stepSize;
   const maxScrollTop = Math.max(0, state.contentHeight - state.viewportHeight);
   const newScrollTop = Math.max(0, Math.min(desiredScrollTop, maxScrollTop));
   let snapIdx: number;

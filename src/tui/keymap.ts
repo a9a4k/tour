@@ -36,6 +36,8 @@ export type KeyAction =
   | { type: "open-reply-composer" }
   | { type: "page-diff-down" }
   | { type: "page-diff-up" }
+  | { type: "half-page-diff-down" }
+  | { type: "half-page-diff-up" }
   | { type: "cursor-down" }
   | { type: "cursor-up" }
   | { type: "cursor-home" }
@@ -55,14 +57,25 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     return key.shift ? { type: "focus-sidebar" } : { type: "toggle-pane" };
   }
 
+  // Half-page paging on Space / Shift+Space / `b` (PRD #138, issue #139).
+  // `b` is the portable page-up alias paired with Space the way `less` /
+  // `man` / `vim` (pager) / `tig` / `delta` have done since `more(1)`.
+  // Shift+Space stays bound for terminals that report the modifier (kitty
+  // / WezTerm / Ghostty / foot / recent Alacritty); on legacy terminals
+  // it falls through to plain Space (page-down). `b` mirrors Space's
+  // cross-pane parity — works in both sidebar and diff-pane focus. Ctrl+b
+  // and Shift+B (capital) remain unbound.
   if (!key.ctrl && key.name === "space") {
-    return key.shift ? { type: "page-diff-up" } : { type: "page-diff-down" };
+    return key.shift ? { type: "half-page-diff-up" } : { type: "half-page-diff-down" };
+  }
+  if (!key.ctrl && !key.shift && key.name === "b") {
+    return { type: "half-page-diff-up" };
   }
 
-  // Hardware PageDown / PageUp mirror Space / Shift-Space (PRD #126,
-  // issue #129). Direction is intrinsic to the key (PageDown is always
-  // page-down, PageUp is always page-up); the shift modifier is ignored
-  // so users with shift held mid-page-flip don't get inverted behaviour.
+  // Hardware PageDown / PageUp stay at full-viewport step (PRD #138).
+  // They carry an OS-level "jump a screen" expectation; keeping them at
+  // full-step gives users an opt-in escape hatch for the bigger jump.
+  // Direction is intrinsic to the key; the shift modifier is ignored.
   // Ctrl-modified is unbound.
   if (!key.ctrl && key.name === "pagedown") return { type: "page-diff-down" };
   if (!key.ctrl && key.name === "pageup") return { type: "page-diff-up" };

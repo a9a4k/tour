@@ -272,7 +272,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(10);
     expect(r.cursor?.lineNumber).toBe(16); // idx 15 = lineNumber 16
     const newIdx = resolveCursorRowIdx(r.cursor, rows);
@@ -291,7 +291,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(10);
     expect(r.cursor?.lineNumber).toBe(12);
     expect(resolveCursorRowIdx(r.cursor, rows) - r.scrollTop).toBe(1);
@@ -310,7 +310,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(20);
     expect(r.cursor?.lineNumber).toBe(30); // last row, idx 29
   });
@@ -327,7 +327,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(20);
     expect(r.cursor?.lineNumber).toBe(30);
   });
@@ -342,7 +342,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(0);
     expect(r.cursor?.lineNumber).toBe(3); // unchanged
   });
@@ -357,7 +357,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(0);
     expect(r.cursor?.lineNumber).toBe(4);
   });
@@ -374,7 +374,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.scrollTop).toBe(1);
     expect(r.cursor?.lineNumber).toBe(11);
   });
@@ -389,7 +389,7 @@ describe("pageMove (down)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.cursor).toBeNull();
     expect(r.scrollTop).toBe(0);
   });
@@ -408,7 +408,7 @@ describe("pageMove (up)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "up");
+    const r = pageMove(state, "up", "full");
     expect(r.scrollTop).toBe(10);
     expect(r.cursor?.lineNumber).toBe(16);
     expect(resolveCursorRowIdx(r.cursor, rows) - r.scrollTop).toBe(5);
@@ -426,7 +426,7 @@ describe("pageMove (up)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "up");
+    const r = pageMove(state, "up", "full");
     expect(r.scrollTop).toBe(0);
     expect(r.cursor?.lineNumber).toBe(1);
   });
@@ -441,7 +441,7 @@ describe("pageMove (up)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "up");
+    const r = pageMove(state, "up", "full");
     expect(r.scrollTop).toBe(0);
     expect(r.cursor?.lineNumber).toBe(1);
   });
@@ -456,7 +456,7 @@ describe("pageMove (up)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "up");
+    const r = pageMove(state, "up", "full");
     expect(r.scrollTop).toBe(0);
     expect(r.cursor?.lineNumber).toBe(3);
   });
@@ -477,8 +477,172 @@ describe("pageMove (up)", () => {
       rowY: ROW_AT_INDEX,
       contentHeight: rows.length,
     };
-    const r = pageMove(state, "down");
+    const r = pageMove(state, "down", "full");
     expect(r.cursor?.preferredSide).toBe("deletions");
+  });
+});
+
+// PRD #138 / issue #139: Space / `b` / Shift+Space step a HALF viewport
+// (Math.max(1, Math.floor(viewportHeight / 2))) instead of a full one.
+// Hardware PageUp / PageDown keep their full-step contract (covered by
+// the "full" suite above). All other invariants — cursor screen-Y
+// preservation in the comfort zone, bound-snap to first/last cursor-
+// eligible row at document edges, doc-fits-viewport no-op, null cursor
+// short-circuit, reference equality on no-op — are unchanged.
+describe("pageMove (half-step, down)", () => {
+  it("scrolls half a viewport down and preserves the cursor's screen-relative offset (comfort zone)", () => {
+    // 50 rows, viewport=10 → half=5. cursor idx 5, scrollTop=0 → csy=5.
+    // half-down: scrollTop → 5, cursor → idx 10 (csy preserved at 5).
+    const rows = makeRows("x.txt", 50);
+    const state: PaneState = {
+      cursor: cursorAt(rows[5]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "down", "half");
+    expect(r.scrollTop).toBe(5);
+    expect(r.cursor?.lineNumber).toBe(11); // idx 10 = lineNumber 11
+    expect(resolveCursorRowIdx(r.cursor, rows) - r.scrollTop).toBe(5);
+  });
+
+  it("snaps cursor to the last row when bumping the document bottom", () => {
+    // 30 rows, viewport=10 → maxScrollTop=20, half=5. cursor idx 25,
+    // scrollTop=18 → desired=23, clamped to 20. Cursor → last row.
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[25]),
+      flatRows: rows,
+      scrollTop: 18,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "down", "half");
+    expect(r.scrollTop).toBe(20);
+    expect(r.cursor?.lineNumber).toBe(30);
+  });
+
+  it("is a no-op when document fits in one viewport", () => {
+    const rows = makeRows("x.txt", 5);
+    const state: PaneState = {
+      cursor: cursorAt(rows[2]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "down", "half");
+    expect(r.scrollTop).toBe(0);
+    expect(r.cursor?.lineNumber).toBe(3); // unchanged
+    expect(r.cursor).toBe(state.cursor); // reference equality preserved
+  });
+
+  it("clamps to a 1-row step when viewportHeight is 1 (preserves 'Space always moves')", () => {
+    // viewport=1 → half = max(1, floor(0.5)) = 1. 10 rows → maxScrollTop=9.
+    // cursor idx 0, scrollTop=0 → desired=1. Cursor preserves csy=0 → idx 1.
+    const rows = makeRows("x.txt", 10);
+    const state: PaneState = {
+      cursor: cursorAt(rows[0]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 1,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "down", "half");
+    expect(r.scrollTop).toBe(1);
+    expect(r.cursor?.lineNumber).toBe(2);
+  });
+
+  it("returns null cursor unchanged", () => {
+    const rows = makeRows("x.txt", 50);
+    const state: PaneState = {
+      cursor: null,
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "down", "half");
+    expect(r.cursor).toBeNull();
+    expect(r.scrollTop).toBe(0);
+  });
+
+  it("preserves preferredSide across half-step motion", () => {
+    const rows = makeRows("x.txt", 50);
+    const cursor: Cursor = {
+      file: "x.txt",
+      lineNumber: 6,
+      side: "additions",
+      preferredSide: "deletions",
+    };
+    const state: PaneState = {
+      cursor,
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "down", "half");
+    expect(r.cursor?.preferredSide).toBe("deletions");
+  });
+});
+
+describe("pageMove (half-step, up)", () => {
+  it("scrolls half a viewport up and preserves the cursor's screen-relative offset (comfort zone)", () => {
+    // 50 rows, viewport=10 → half=5. cursor idx 25, scrollTop=20 → csy=5.
+    // half-up: scrollTop → 15, cursor → idx 20 (csy preserved at 5).
+    const rows = makeRows("x.txt", 50);
+    const state: PaneState = {
+      cursor: cursorAt(rows[25]),
+      flatRows: rows,
+      scrollTop: 20,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "up", "half");
+    expect(r.scrollTop).toBe(15);
+    expect(r.cursor?.lineNumber).toBe(21);
+    expect(resolveCursorRowIdx(r.cursor, rows) - r.scrollTop).toBe(5);
+  });
+
+  it("snaps cursor to the first row when bumping the document top", () => {
+    // 30 rows, viewport=10 → half=5. cursor idx 5, scrollTop=3 → desired=-2,
+    // clamped to 0. Cursor → first row.
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[5]),
+      flatRows: rows,
+      scrollTop: 3,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "up", "half");
+    expect(r.scrollTop).toBe(0);
+    expect(r.cursor?.lineNumber).toBe(1);
+  });
+
+  it("at the top edge (scrollTop already 0), still snaps the cursor to the first row", () => {
+    const rows = makeRows("x.txt", 30);
+    const state: PaneState = {
+      cursor: cursorAt(rows[5]),
+      flatRows: rows,
+      scrollTop: 0,
+      viewportHeight: 10,
+      rowY: ROW_AT_INDEX,
+      contentHeight: rows.length,
+    };
+    const r = pageMove(state, "up", "half");
+    expect(r.scrollTop).toBe(0);
+    expect(r.cursor?.lineNumber).toBe(1);
   });
 });
 
