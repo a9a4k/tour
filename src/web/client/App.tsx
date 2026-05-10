@@ -357,15 +357,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (!tour || tour.id !== tourId) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("tour") !== tourId) return;
-    const current = params.get("ann");
-    if (currentAnnotationId === null) {
-      if (topLevel.length > 0) return;
-      if (current === null) return;
-      params.delete("ann");
-    } else {
-      if (current === currentAnnotationId) return;
-      params.set("ann", currentAnnotationId);
-    }
+    if (currentAnnotationId === null && topLevel.length > 0) return;
+    if (params.get("ann") === currentAnnotationId) return;
+    if (currentAnnotationId === null) params.delete("ann");
+    else params.set("ann", currentAnnotationId);
     window.history.replaceState(window.history.state, "", `/?${params.toString()}`);
   }, [currentAnnotationId, tour, tourId, topLevel]);
 
