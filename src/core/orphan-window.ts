@@ -1,4 +1,4 @@
-import type { DiffFile } from "./diff-model.js";
+import type { DiffFile, DiffHunk } from "./diff-model.js";
 import type { Annotation } from "./types.js";
 
 export interface HunkExpansionRegion {
@@ -33,22 +33,24 @@ export function computeOrphanWindows(
     if (a.file !== file.name) continue;
     const region = orphanRegionFor(file, a, opts);
     if (!region) continue;
-    const prev = result.get(region.hunkIndex);
-    result.set(region.hunkIndex, prev
-      ? {
-          fromStart: Math.max(prev.fromStart, region.fromStart),
-          fromEnd: Math.max(prev.fromEnd, region.fromEnd),
-        }
-      : { fromStart: region.fromStart, fromEnd: region.fromEnd });
+    const prev = result.get(region.hunkIndex) ?? { fromStart: 0, fromEnd: 0 };
+    result.set(region.hunkIndex, {
+      fromStart: Math.max(prev.fromStart, region.fromStart),
+      fromEnd: Math.max(prev.fromEnd, region.fromEnd),
+    });
   }
 
   return result;
 }
 
-interface OrphanRegion {
+interface OrphanRegion extends HunkExpansionRegion {
   hunkIndex: number;
-  fromStart: number;
-  fromEnd: number;
+}
+
+function hunkRangeOn(h: DiffHunk, isAdditions: boolean): { start: number; count: number } {
+  return isAdditions
+    ? { start: h.additionStart, count: h.additionCount }
+    : { start: h.deletionStart, count: h.deletionCount };
 }
 
 function orphanRegionFor(
@@ -63,9 +65,7 @@ function orphanRegionFor(
 
   let hunkIndex = file.hunks.length;
   for (let i = 0; i < file.hunks.length; i++) {
-    const h = file.hunks[i];
-    const start = isAdditions ? h.additionStart : h.deletionStart;
-    const count = isAdditions ? h.additionCount : h.deletionCount;
+    const { start, count } = hunkRangeOn(file.hunks[i], isAdditions);
     if (count === 0) continue;
     const end = start + count - 1;
     if (L >= start && L <= end) return null;
@@ -98,32 +98,26 @@ function gapBoundsFor(
 ): { gapStart: number; gapEnd: number } {
   if (hunkIndex === 0) {
     for (const h of file.hunks) {
-      const start = isAdditions ? h.additionStart : h.deletionStart;
-      const count = isAdditions ? h.additionCount : h.deletionCount;
+      const { start, count } = hunkRangeOn(h, isAdditions);
       if (count > 0) return { gapStart: 1, gapEnd: start - 1 };
     }
     return { gapStart: 1, gapEnd: lineCount };
   }
   if (hunkIndex >= file.hunks.length) {
     for (let i = file.hunks.length - 1; i >= 0; i--) {
-      const h = file.hunks[i];
-      const start = isAdditions ? h.additionStart : h.deletionStart;
-      const count = isAdditions ? h.additionCount : h.deletionCount;
+      const { start, count } = hunkRangeOn(file.hunks[i], isAdditions);
       if (count > 0) return { gapStart: start + count, gapEnd: lineCount };
     }
     return { gapStart: 1, gapEnd: lineCount };
   }
   let prevEnd = 0;
   for (let i = hunkIndex - 1; i >= 0; i--) {
-    const h = file.hunks[i];
-    const start = isAdditions ? h.additionStart : h.deletionStart;
-    const count = isAdditions ? h.additionCount : h.deletionCount;
+    const { start, count } = hunkRangeOn(file.hunks[i], isAdditions);
     if (count > 0) {
       prevEnd = start + count - 1;
       break;
     }
   }
-  const next = file.hunks[hunkIndex];
-  const nextStart = isAdditions ? next.additionStart : next.deletionStart;
+  const { start: nextStart } = hunkRangeOn(file.hunks[hunkIndex], isAdditions);
   return { gapStart: prevEnd + 1, gapEnd: nextStart - 1 };
 }
