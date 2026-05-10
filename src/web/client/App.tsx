@@ -326,8 +326,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     }
     if (currentAnnotationId === null) {
       const fromUrl = readAnnFromUrl();
-      const target =
-        (fromUrl !== null && topLevel.find((a) => a.id === fromUrl)) || topLevel[0];
+      const target = topLevel.find((a) => a.id === fromUrl) ?? topLevel[0];
       setCurrentAnnotationId(target.id);
       setSelectedFile(target.file);
       revealFileAncestors(target.file);
