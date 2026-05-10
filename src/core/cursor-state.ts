@@ -61,19 +61,51 @@ export function setCursorSide(
 /**
  * Snap a cursor to the nearest still-valid anchor after the row sequence
  * changes (fold/unfold, layout toggle, bundle reload). When the anchor is
- * still resolvable, returns the cursor unchanged. When the file is gone
- * altogether, returns null.
+ * still resolvable, returns the cursor unchanged. When only the anchor's
+ * specific row vanished but the file is still in the sequence, snaps to
+ * that file's first row. When the cursor's file is gone (folded or removed
+ * from the bundle), `files` is consulted to snap to the next file in
+ * stream order — falling back to the previous file when the cursor's file
+ * was the last one. Returns null when no valid row exists in the bundle.
  */
 export function validateCursor(
   cursor: Cursor | null,
   flatRows: FlatRow[],
+  files?: ReadonlyArray<{ name: string }>,
 ): Cursor | null {
   if (!cursor) return null;
   if (flatRows.length === 0) return null;
   if (resolveCursorRowIdx(cursor, flatRows) !== -1) return cursor;
   const fileRow = flatRows.find((r) => r.file === cursor.file);
   if (fileRow) return cursorFromRow(fileRow, cursor.preferredSide);
+  if (!files) return null;
+  const cursorFileIdx = files.findIndex((f) => f.name === cursor.file);
+  if (cursorFileIdx === -1) return null;
+  for (let i = cursorFileIdx + 1; i < files.length; i++) {
+    const r = flatRows.find((row) => row.file === files[i].name);
+    if (r) return cursorFromRow(r, cursor.preferredSide);
+  }
+  for (let i = cursorFileIdx - 1; i >= 0; i--) {
+    const r = flatRows.find((row) => row.file === files[i].name);
+    if (r) return cursorFromRow(r, cursor.preferredSide);
+  }
   return null;
+}
+
+/**
+ * Cursor at a file's first annotatable row in stream order, or null when
+ * the file has no rows (folded, classified-no-textual, snapshot-lost,
+ * empty tour). Used by sidebar-driven file selection (PRD US 20) — the
+ * explicit "show me from the top" gesture distinct from j/k cross-file
+ * motion which lands on the immediate-next row, not the file's first.
+ */
+export function cursorAtFirstFileRow(
+  file: string,
+  flatRows: FlatRow[],
+): Cursor | null {
+  const r = flatRows.find((row) => row.file === file);
+  if (!r) return null;
+  return cursorFromRow(r, r.side);
 }
 
 export function resolveCursorRowIdx(
