@@ -95,9 +95,10 @@ interface PostBody {
   replies_to?: string;
 }
 
+// Theme / themeType / lineDiffType / tokenizeMaxLineLength are controlled
+// by the WorkerPoolContextProvider in main.tsx — Pierre's worker docs
+// warn these per-component options are ignored when a pool is wired up.
 const BASE_DIFF_OPTIONS = {
-  theme: { dark: "github-dark-default", light: "github-light-default" } as const,
-  themeType: "dark" as const,
   hunkSeparators: "metadata" as const,
   overflow: "wrap" as const,
   expandUnchanged: true,
@@ -1186,7 +1187,6 @@ function FileBlock({
           lineAnnotations={lineAnns}
           renderAnnotation={renderAnnotation}
           renderHeaderMetadata={headerMetadata}
-          disableWorkerPool
         />
       ) : (
         <FileDiff<AnnotationMetadata>
@@ -1195,7 +1195,6 @@ function FileBlock({
           lineAnnotations={lineAnns}
           renderAnnotation={renderAnnotation}
           renderHeaderMetadata={headerMetadata}
-          disableWorkerPool
         />
       )}
     </div>
