@@ -33,7 +33,7 @@ import {
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { nextAnnotationNavStep } from "./annotation-nav.js";
-import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS } from "./cursor-css.js";
+import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS, PLUS_BUTTON_CSS } from "./cursor-css.js";
 import { syncCursorOverlay } from "./cursor-overlay.js";
 import { syncHoverOverlay } from "./hover-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
@@ -1077,6 +1077,7 @@ function FileBlock({
       EQUAL_COLUMNS_CSS,
       CURSOR_OUTLINE_CSS,
       HOVER_TINT_CSS,
+      PLUS_BUTTON_CSS,
       rangeCSS,
     ].filter((s) => s !== "");
     const unsafeCSS = parts.join("\n");

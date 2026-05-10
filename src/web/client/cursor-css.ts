@@ -62,3 +62,55 @@ export const HOVER_TINT_CSS = (() => {
     }
   `;
 })();
+
+/**
+ * Visual positioning + styling for the real-DOM `<button class="tour-plus-button">`
+ * mounted by `plus-button-overlay.ts`. PRD #136 user-story 7 calls for the button
+ * to sit "to the left of the line-number column" — GitHub's pattern. The overlay
+ * appends the button inside the cursor/hover `[data-line]` cell; this rule lifts
+ * it out of cell-content flow and pins it just outside the cell's left edge so
+ * it overlays the line-number gutter rather than landing at the end of the code
+ * text.
+ *
+ * `[data-line]` is already `position: relative` in Pierre's bundle (see
+ * `[data-line], [data-column-number], [data-no-newline] { position: relative; }`),
+ * so the absolute positioning resolves against the code cell itself.
+ * `translate(-100%, -50%)` places the button to the left of the cursor outline
+ * (which lives on the same `[data-line]` cell), vertically centered on the row.
+ *
+ * Z-index has to clear Pierre's `[data-gutter]`, which sets `z-index: 3` plus an
+ * opaque `background-color` (style.css around `[data-gutter] { z-index: 3; ... }`).
+ * Without that, the button — translated leftward into the gutter column area —
+ * gets painted over by the gutter's background. `z-index: 4` keeps the button
+ * on top of the gutter while still sitting below absolutely-positioned UI
+ * overlays Pierre layers above the diff itself.
+ */
+export const PLUS_BUTTON_CSS = `
+  .tour-plus-button {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(-100%, -50%);
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background-color: ${theme.bg.accentEmphasis};
+    color: ${theme.fg.onEmphasis};
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .tour-plus-button:focus-visible {
+    outline: 2px solid ${theme.fg.accent};
+    outline-offset: 2px;
+  }
+`;

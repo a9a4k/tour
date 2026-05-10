@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS } from "../../src/web/client/cursor-css.js";
+import {
+  CURSOR_OUTLINE_CSS,
+  HOVER_TINT_CSS,
+  PLUS_BUTTON_CSS,
+} from "../../src/web/client/cursor-css.js";
 
 describe("CURSOR_OUTLINE_CSS", () => {
   it("targets the cursor-overlay attribute (data-tour-cursor='true')", () => {
@@ -41,5 +45,26 @@ describe("HOVER_TINT_CSS", () => {
 
   it("uses the shared range tint token (no hard-coded rgba)", () => {
     expect(HOVER_TINT_CSS).toContain("rgba(56, 139, 253, 0.15)");
+  });
+});
+
+// PRD #136 user-story 7: the `+` button must sit to the left of the
+// line-number column (no overlap with the line number). PR #137 shipped the
+// functional contract but deferred CSS positioning; this rule closes that gap
+// by lifting the appended button out of cell-content flow and anchoring it
+// just outside the `[data-line]` cell's left edge.
+describe("PLUS_BUTTON_CSS", () => {
+  it("targets the real-DOM button class mounted by plus-button-overlay", () => {
+    expect(PLUS_BUTTON_CSS).toContain(".tour-plus-button");
+  });
+
+  it("pins the button to the left edge of the cursor/hover cell (GitHub-style gutter affordance)", () => {
+    expect(PLUS_BUTTON_CSS).toContain("position: absolute");
+    expect(PLUS_BUTTON_CSS).toContain("left: 0");
+    expect(PLUS_BUTTON_CSS).toContain("translate(-100%, -50%)");
+  });
+
+  it("uses the shared accent-emphasis token (GitHub PR `+` blue)", () => {
+    expect(PLUS_BUTTON_CSS).toContain("#1f6feb");
   });
 });
