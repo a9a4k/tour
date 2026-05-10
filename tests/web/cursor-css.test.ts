@@ -18,14 +18,26 @@ describe("CURSOR_OUTLINE_CSS", () => {
 });
 
 describe("buildHoverTintCSS", () => {
-  it("emits a :hover background tint on annotatable line types", () => {
+  it("targets the hover-overlay attribute (data-tour-hover='true') on annotatable line types", () => {
     const css = buildHoverTintCSS(false);
-    expect(css).toContain('[data-line-type="addition"]:hover');
-    expect(css).toContain('[data-line-type="deletion"]:hover');
-    expect(css).toContain('[data-line-type="change-addition"]:hover');
-    expect(css).toContain('[data-line-type="change-deletion"]:hover');
-    expect(css).toContain('[data-line-type="context"]:hover');
+    expect(css).toContain('[data-line-type="addition"][data-tour-hover="true"]');
+    expect(css).toContain('[data-line-type="deletion"][data-tour-hover="true"]');
+    expect(css).toContain('[data-line-type="change-addition"][data-tour-hover="true"]');
+    expect(css).toContain('[data-line-type="change-deletion"][data-tour-hover="true"]');
+    expect(css).toContain('[data-line-type="context"][data-tour-hover="true"]');
     expect(css).toContain("background-image");
+  });
+
+  it("does NOT use the bare :hover pseudo-class — Pierre may paint its own and we control toggle via the listener", () => {
+    const css = buildHoverTintCSS(false);
+    expect(css).not.toContain(":hover");
+  });
+
+  it("renders a '+' button as ::after on the hovered row", () => {
+    const css = buildHoverTintCSS(false);
+    expect(css).toContain("[data-tour-hover=\"true\"]");
+    expect(css).toContain("::after");
+    expect(css).toContain("\"+\"");
   });
 
   it("returns empty string when composer is open (suppress mid-edit)", () => {
