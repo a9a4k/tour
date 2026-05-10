@@ -65,6 +65,7 @@ describe("walkCursorRows: row shapes", () => {
     const rows = walkCursorRows(document.body);
     expect(rows).toEqual([
       {
+        kind: "diff",
         file: "x.ts",
         lineNumber: 7,
         side: "additions",
@@ -82,6 +83,7 @@ describe("walkCursorRows: row shapes", () => {
     const rows = walkCursorRows(document.body);
     expect(rows).toEqual([
       {
+        kind: "diff",
         file: "x.ts",
         lineNumber: 3,
         side: "deletions",

@@ -37,6 +37,9 @@ export function syncCursorOverlay(
   if (!cell) return cleanup;
   cell.setAttribute("data-tour-cursor", "true");
   cell.setAttribute("data-tour-cursor-side", cursor.side);
+  // block:"nearest" — already-visible rows don't jump; off-screen rows
+  // pull into view at the closest edge. Mirrors the sidebar follow effect.
+  cell.scrollIntoView({ block: "nearest" });
   return cleanup;
 }
 
