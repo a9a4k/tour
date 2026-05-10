@@ -1,75 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { buildCursorOutlineCSS, buildHoverTintCSS } from "../../src/web/client/cursor-css.js";
-import type { Cursor } from "../../src/core/cursor-state.js";
+import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "../../src/web/client/cursor-css.js";
 
-const cur = (over: Partial<Cursor> & Pick<Cursor, "file" | "lineNumber" | "side">): Cursor => ({
-  file: over.file,
-  lineNumber: over.lineNumber,
-  side: over.side,
-  preferredSide: over.preferredSide ?? over.side,
-});
-
-describe("buildCursorOutlineCSS", () => {
-  it("returns empty string when cursor is null", () => {
-    expect(buildCursorOutlineCSS(null, "src/main.ts")).toBe("");
+describe("CURSOR_OUTLINE_CSS", () => {
+  it("targets the cursor-overlay attribute (data-tour-cursor='true')", () => {
+    expect(CURSOR_OUTLINE_CSS).toContain('[data-tour-cursor="true"]');
   });
 
-  it("returns empty string when cursor is on a different file", () => {
-    expect(
-      buildCursorOutlineCSS(
-        cur({ file: "other.ts", lineNumber: 5, side: "additions" }),
-        "src/main.ts",
-      ),
-    ).toBe("");
-  });
-
-  it("emits the GitHub outline + zero-layout shift on the cursor's line", () => {
-    const css = buildCursorOutlineCSS(
-      cur({ file: "src/main.ts", lineNumber: 12, side: "additions" }),
-      "src/main.ts",
-    );
-    expect(css).toContain('[data-line="12"]');
-    expect(css).toContain("outline: 2px solid");
-    expect(css).toContain("border-radius: 4px");
-    expect(css).toContain("outline-offset: -1px");
-  });
-
-  it("scopes the outline to additions-side cells when cursor.side is additions", () => {
-    const css = buildCursorOutlineCSS(
-      cur({ file: "x.ts", lineNumber: 7, side: "additions" }),
-      "x.ts",
-    );
-    expect(css).toContain('data-line-type="addition"');
-    expect(css).toContain('data-line-type="change-addition"');
-    expect(css).not.toContain('data-line-type="deletion"');
-    expect(css).not.toContain('data-line-type="change-deletion"');
-  });
-
-  it("scopes the outline to deletions-side cells when cursor.side is deletions", () => {
-    const css = buildCursorOutlineCSS(
-      cur({ file: "x.ts", lineNumber: 7, side: "deletions" }),
-      "x.ts",
-    );
-    expect(css).toContain('data-line-type="deletion"');
-    expect(css).toContain('data-line-type="change-deletion"');
-    expect(css).not.toContain('data-line-type="addition"');
-    expect(css).not.toContain('data-line-type="change-addition"');
-  });
-
-  it("includes context rows in both side branches (context is annotatable on both sides per ADR 0012)", () => {
-    const css = buildCursorOutlineCSS(
-      cur({ file: "x.ts", lineNumber: 7, side: "additions" }),
-      "x.ts",
-    );
-    expect(css).toContain('data-line-type="context"');
+  it("emits the GitHub-style outline + zero-layout shift on the cursor cell", () => {
+    expect(CURSOR_OUTLINE_CSS).toContain("outline: 2px solid");
+    expect(CURSOR_OUTLINE_CSS).toContain("border-radius: 4px");
+    expect(CURSOR_OUTLINE_CSS).toContain("outline-offset: -1px");
   });
 
   it("uses the shared accent token (#58a6ff) so cursor + range CSS are color-aligned", () => {
-    const css = buildCursorOutlineCSS(
-      cur({ file: "x.ts", lineNumber: 7, side: "additions" }),
-      "x.ts",
-    );
-    expect(css).toContain("#58a6ff");
+    expect(CURSOR_OUTLINE_CSS).toContain("#58a6ff");
   });
 });
 

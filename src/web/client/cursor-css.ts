@@ -1,34 +1,26 @@
 import { theme } from "../../core/theme.js";
-import type { Cursor } from "../../core/cursor-state.js";
 
 /**
  * GitHub-style rounded outline on the cursor row's active-side cell
  * (ADR 0012). Pixel-thin via CSS `outline` so adjacent rows don't shift.
  *
- * Per-file CSS: returns rules only when the cursor's file matches the
- * argument; otherwise empty string. Pierre's per-file shadow root scopes
- * `[data-line]` selectors to that file's rendered diff, so an empty
- * string from non-matching files leaves their renders untouched.
+ * The cursor is mirrored onto the DOM as `data-tour-cursor="true"` +
+ * `data-tour-cursor-side` by `cursor-overlay.ts`; this rule keys off
+ * those attributes so the visual layer is decoupled from React render
+ * boundaries — Pierre `expandUnchanged` chevron-revealed rows compose
+ * for free once the overlay re-syncs against the new DOM.
  *
- * Side scoping: in split layout the outline must paint on the
- * `cursor.side` column only (additions vs deletions). The `data-line-type`
- * filter handles that for paired rows; pure-add / pure-del rows have a
- * single populated cell anyway.
+ * Split-layout column scoping is encoded in the side-attribute: in
+ * unified layout the matching cell is the only candidate, so the side
+ * filter is benign.
  */
-export function buildCursorOutlineCSS(
-  cursor: Cursor | null,
-  file: string,
-): string {
-  if (!cursor) return "";
-  if (cursor.file !== file) return "";
-  const types =
-    cursor.side === "additions"
-      ? ["addition", "change-addition", "context"]
-      : ["deletion", "change-deletion", "context"];
-  const lineSel = `[data-line="${cursor.lineNumber}"]`;
-  const typeSel = types.map((t) => `[data-line-type="${t}"]`).join(", ");
-  return `${lineSel}:is(${typeSel}) { outline: 2px solid ${theme.fg.accent}; border-radius: 4px; outline-offset: -1px; }`;
-}
+export const CURSOR_OUTLINE_CSS = `
+  [data-tour-cursor="true"] {
+    outline: 2px solid ${theme.fg.accent};
+    border-radius: 4px;
+    outline-offset: -1px;
+  }
+`;
 
 /**
  * Soft hover tint on annotatable rows (ADR 0012). After the click-to-
