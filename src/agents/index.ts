@@ -3,12 +3,14 @@
 // from this map on first run and writes the script to
 // ~/.config/tour/agents/<name>.sh.
 //
-// New adapters land here as they ship: gemini, opencode, pi follow in
-// slices 8–10 per PRD #73.
+// New adapters land here as they ship: opencode, pi follow in
+// slices 9–10 per PRD #73.
 import { CLAUDE_ADAPTER_SCRIPT } from "./claude.js";
 import { CODEX_ADAPTER_SCRIPT } from "./codex.js";
+import { GEMINI_ADAPTER_SCRIPT } from "./gemini.js";
 
 export const SHIPPED_ADAPTERS: Record<string, string> = {
   claude: CLAUDE_ADAPTER_SCRIPT,
   codex: CODEX_ADAPTER_SCRIPT,
+  gemini: GEMINI_ADAPTER_SCRIPT,
 };
