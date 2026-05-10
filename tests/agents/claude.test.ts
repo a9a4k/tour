@@ -28,7 +28,8 @@ interface MockEnv {
 }
 
 /**
- * Fake `claude`: dumps argv (one per line) + stdin to inspection files, exits 0.
+ * Fake `claude`: dumps argv (NUL-separated, since args may contain newlines)
+ * and stdin to inspection files, exits 0.
  * Fake `tour`: emits a known system-prompt token when called as `tour reply-system-prompt`.
  */
 async function setupMockEnv(): Promise<MockEnv> {
