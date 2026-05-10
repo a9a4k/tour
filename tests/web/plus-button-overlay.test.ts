@@ -32,7 +32,26 @@ function attach(
   cleanups.push(syncPlusButtonOverlay(root, onClick, composerOpen));
 }
 
+// "Visible" plus button = mounted in DOM AND its parent cell carries a
+// keying attribute. Under the persistent-mount optimization a button is
+// kept in the DOM after the attribute clears (CSS hides it via the
+// parent-attribute show rule in PLUS_BUTTON_CSS); from the user's POV
+// it's gone. Tests assert on visibility, not raw DOM presence — that
+// keeps the contract surface-level and lets the persistent-mount detail
+// be exercised separately by `mountedPlusButtons` below.
 function plusButtons(scope: ParentNode = document.body): HTMLButtonElement[] {
+  return Array.from(
+    scope.querySelectorAll<HTMLButtonElement>("button.tour-plus-button"),
+  ).filter((btn) => {
+    const p = btn.parentElement;
+    return (
+      !!p &&
+      (p.hasAttribute("data-tour-cursor") || p.hasAttribute("data-tour-hover"))
+    );
+  });
+}
+
+function mountedPlusButtons(scope: ParentNode = document.body): HTMLButtonElement[] {
   return Array.from(scope.querySelectorAll<HTMLButtonElement>("button.tour-plus-button"));
 }
 
@@ -216,8 +235,8 @@ describe("syncPlusButtonOverlay: side scoping in split layout", () => {
   });
 });
 
-describe("syncPlusButtonOverlay: removal on attribute clear", () => {
-  it("removes the button when the keying attribute is cleared", async () => {
+describe("syncPlusButtonOverlay: visibility on attribute clear", () => {
+  it("hides the button (no visible buttons) when the keying attribute is cleared", async () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     attach(document.body, () => {}, false);
@@ -229,7 +248,23 @@ describe("syncPlusButtonOverlay: removal on attribute clear", () => {
     expect(plusButtons()).toHaveLength(0);
   });
 
-  it("keeps the button when one of two keying attributes is cleared", async () => {
+  // Persistent-mount optimization: the button stays in the DOM after the
+  // attribute clears so subsequent hover cycles on the same cell don't
+  // re-allocate a compositor layer (transform + z-index promote each `+`
+  // to its own layer). CSS handles show/hide via the parent attribute.
+  it("keeps the button in the DOM after the keying attribute is cleared", async () => {
+    const c = cell({ line: 5, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    attach(document.body, () => {}, false);
+    c.setAttribute("data-tour-hover", "true");
+    await flushObservers();
+    expect(mountedPlusButtons()).toHaveLength(1);
+    c.removeAttribute("data-tour-hover");
+    await flushObservers();
+    expect(mountedPlusButtons()).toHaveLength(1);
+  });
+
+  it("keeps the button visible when one of two keying attributes is cleared", async () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
     attach(document.body, () => {}, false);

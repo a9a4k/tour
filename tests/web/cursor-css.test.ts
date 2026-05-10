@@ -72,4 +72,17 @@ describe("PLUS_BUTTON_CSS", () => {
     expect(PLUS_BUTTON_CSS).toContain(".tour-plus-button:hover");
     expect(PLUS_BUTTON_CSS).toContain("filter: brightness");
   });
+
+  // Persistent-mount optimization: the button is kept in the DOM after the
+  // keying attribute clears (avoids compositor-layer churn on every hover);
+  // visibility flips via these CSS rules instead of DOM mutation.
+  it("hides the button by default (display: none) so persistent-mounted instances stay invisible", () => {
+    expect(PLUS_BUTTON_CSS).toContain("display: none");
+  });
+
+  it("shows the button when the parent cell carries data-tour-cursor or data-tour-hover", () => {
+    expect(PLUS_BUTTON_CSS).toContain('[data-tour-cursor="true"] > .tour-plus-button');
+    expect(PLUS_BUTTON_CSS).toContain('[data-tour-hover="true"] > .tour-plus-button');
+    expect(PLUS_BUTTON_CSS).toContain("display: inline-flex");
+  });
 });

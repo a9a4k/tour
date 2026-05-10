@@ -84,15 +84,23 @@ export const HOVER_TINT_CSS = (() => {
  * gets painted over by the gutter's background. `z-index: 4` keeps the button
  * on top of the gutter while still sitting below absolutely-positioned UI
  * overlays Pierre layers above the diff itself.
+ *
+ * Default `display: none` plus the parent-attribute show rules below turn the
+ * overlay's lifecycle from "mount-on-flip / unmount-on-flip" to "mount-once /
+ * CSS toggles visibility". Pre-PR #137 follow-up the overlay tore the button
+ * out of the DOM on every mouseout, churning compositor layers (transform +
+ * z-index promote this to its own layer). The CSS-driven path collapses the
+ * hover cycle to a single attribute-selector style flip — no DOM mutation,
+ * no layer alloc/dealloc.
  */
 export const PLUS_BUTTON_CSS = `
   .tour-plus-button {
+    display: none;
     position: absolute;
     top: 50%;
     left: 0;
     transform: translate(-100%, -50%);
     z-index: 4;
-    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 20px;
@@ -107,6 +115,11 @@ export const PLUS_BUTTON_CSS = `
     font-weight: 700;
     line-height: 1;
     cursor: pointer;
+  }
+
+  [data-tour-cursor="true"] > .tour-plus-button,
+  [data-tour-hover="true"] > .tour-plus-button {
+    display: inline-flex;
   }
 
   .tour-plus-button:hover {

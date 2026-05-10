@@ -42,15 +42,17 @@ export function syncPlusButtonOverlay(
   const buttons = new Map<HTMLElement, HTMLButtonElement>();
   const observers: MutationObserver[] = [];
 
+  // Persistent mount. Once a cell has carried `data-tour-cursor` or
+  // `data-tour-hover` we leave the button in the DOM permanently and let
+  // the parent-attribute CSS show rules (cursor-css.ts) toggle visibility.
+  // Mount-and-tear-down per attribute flip churned compositor layers on
+  // every hover (transform + z-index promote each `+` to its own layer),
+  // which showed up as paint lag on syntax-highlighted cells. The
+  // attribute-removal case is now a CSS-only display flip — zero JS work,
+  // zero DOM mutation. Cleanup-time teardown still removes every mounted
+  // button, so a fresh effect run starts from a blank slate.
   const addOrUpdate = (cell: HTMLElement): void => {
-    if (!cell.hasAttribute("data-tour-cursor") && !cell.hasAttribute("data-tour-hover")) {
-      const stale = buttons.get(cell);
-      if (stale) {
-        stale.remove();
-        buttons.delete(cell);
-      }
-      return;
-    }
+    if (!cell.hasAttribute("data-tour-cursor") && !cell.hasAttribute("data-tour-hover")) return;
     const anchor = anchorFor(cell);
     if (!anchor) return;
     let btn = buttons.get(cell);
