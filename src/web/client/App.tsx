@@ -904,7 +904,7 @@ function ReplyPill({ lock, now }: { lock: ReplyLock; now: number }): React.JSX.E
         <span>
           <strong>{lock.agent}</strong> is taking unusually long…
         </span>
-        <span className="reply-pill-hint">Run <code>tour reply-cancel &lt;tour-id&gt;</code></span>
+        <span className="reply-pill-hint">Run <code>tour reply-cancel {lock.tour_id}</code></span>
       </div>
     );
   }

@@ -39,7 +39,7 @@ function ReplyPill({ lock, now }: PillProps) {
           {`⚠️ ${lock.agent} is taking unusually long…`}
         </text>
         <text fg={theme.fg.muted}>
-          {`  Run: tour reply-cancel <tour-id>`}
+          {`  Run: tour reply-cancel ${lock.tour_id}`}
         </text>
       </box>
     );

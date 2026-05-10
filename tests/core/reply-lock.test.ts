@@ -39,6 +39,7 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: "2026-05-10T12:00:00Z",
       pid: 12345,
+      tour_id: tourId,
     };
     await writeReplyLock(repo, tourId, lock);
     expect(existsSync(replyLockPath(repo, tourId))).toBe(true);
@@ -52,6 +53,7 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: "2026-05-10T12:00:00Z",
       pid: 12345,
+      tour_id: tourId,
     };
     await writeReplyLock(repo, tourId, lock);
     await deleteReplyLock(repo, tourId);
@@ -68,6 +70,7 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
+      tour_id: tourId,
     };
     expect(isStale(lock, now)).toBe(false);
   });
@@ -80,6 +83,7 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
+      tour_id: tourId,
     };
     expect(isStale(lock, now)).toBe(true);
   });
@@ -91,6 +95,7 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
+      tour_id: tourId,
     };
     expect(isStale(lock, Date.parse(startedAt) + 1500, 1000)).toBe(true);
     expect(isStale(lock, Date.parse(startedAt) + 500, 1000)).toBe(false);
@@ -103,6 +108,7 @@ describe("reply-lock", () => {
       responding_to: "ann-1",
       started_at: startedAt,
       pid: 1,
+      tour_id: tourId,
     };
     expect(ageMs(lock, Date.parse(startedAt) + 5000)).toBe(5000);
     expect(ageMs(lock, Date.parse(startedAt) - 1000)).toBe(0);
