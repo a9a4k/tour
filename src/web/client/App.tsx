@@ -721,7 +721,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
             title="Switch tour"
             onClick={openPicker}
           >
-            ☰
+            ≡
           </button>
           <h1 className={titleIsEmpty ? "untitled" : undefined}>
             {tourMeta.title || "(untitled)"}
