@@ -31,10 +31,10 @@ function plannedFor(layout: "split" | "unified"): PlannedRow[] {
 }
 
 /**
- * App-level smokes for the cursor edge cases tracked in issue #105. Each
- * test composes the same pure helpers app.tsx wires together
- * (`flatRows` → `validateCursor`/`cursorAtFirstFileRow`) — App's role is
- * just plumbing, so the contract sits at the helper layer.
+ * App-level smokes for cursor edge cases at state transitions. Each test
+ * composes the same pure helpers app.tsx wires together (`flatRows` →
+ * `validateCursor`/`cursorAtFirstFileRow`) — App's role is just plumbing,
+ * so the contract sits at the helper layer.
  */
 describe("fold invalidation: cursor's file becomes folded", () => {
   it("snaps cursor to the next file's first row in stream order", () => {
@@ -117,7 +117,7 @@ describe("fold invalidation: cursor's file becomes folded", () => {
 });
 
 describe("layout toggle preserves cursor anchor", () => {
-  it("an anchor that resolves in split also resolves in unified (issue #105 AC #4)", () => {
+  it("an anchor that resolves in split also resolves in unified", () => {
     const f = fileFromName("x.txt");
     const splitPlanned = new Map<string, PlannedRow[]>([["x.txt", plannedFor("split")]]);
     const unifiedPlanned = new Map<string, PlannedRow[]>([["x.txt", plannedFor("unified")]]);
@@ -185,11 +185,11 @@ describe("sidebar file click moves cursor to clicked file's first row", () => {
   });
 });
 
-// Issue #105 AC #5: bundle reload (watcher fired) preserves cursor
-// position. validateCursor only mutates the cursor when the anchor is
-// genuinely lost (e.g. the agent removed the file from the bundle); in
-// the typical "agent appended an annotation" case the anchor still
-// resolves and the cursor stays put.
+// Bundle reload (watcher fired) preserves cursor position.
+// validateCursor only mutates the cursor when the anchor is genuinely
+// lost (e.g. the agent removed the file from the bundle); in the typical
+// "agent appended an annotation" case the anchor still resolves and the
+// cursor stays put.
 describe("bundle reload preserves cursor", () => {
   it("preserves cursor when the agent appends an annotation (anchor still resolves)", () => {
     const f = fileFromName("x.txt");
@@ -236,10 +236,10 @@ describe("bundle reload preserves cursor", () => {
   });
 });
 
-// Issue #105 AC #9–11: cursor must be null in degraded states so `a` is
-// a silent no-op (composer-state already returns null for cursor-null +
-// no current annotation, but the seeding effect in app.tsx must not
-// materialize a cursor when there are no rows).
+// Cursor must be null in degraded states so `a` is a silent no-op
+// (composer-state already returns null for cursor-null + no current
+// annotation, but the seeding effect in app.tsx must not materialize a
+// cursor when there are no rows).
 describe("cursor null in degraded states", () => {
   it("empty tour (no files) → cursor stays null", () => {
     expect(flatRows([], new Map(), () => false)).toEqual([]);

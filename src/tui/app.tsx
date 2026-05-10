@@ -375,8 +375,8 @@ function App(props: AppProps) {
       return;
     }
     // Pass `files` so validateCursor can snap to the next file in stream
-    // order when the cursor's file was folded out (issue #105 AC #1).
-    // Without `files` it would null out instead of advancing.
+    // order when the cursor's file was folded out. Without `files` it
+    // would null out instead of advancing.
     const validated = validateCursor(cursor, flatRowsList, files);
     if (validated !== cursor) setCursor(validated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -387,8 +387,7 @@ function App(props: AppProps) {
   // already-visible row doesn't move). Side toggle on a paired row is a
   // no-op vertically and a no-op-or-nudge horizontally per scrollbox
   // semantics. `layout` is in deps so a Shift-L flip — which preserves the
-  // anchor but moves the visual position — re-fires the scroll (issue
-  // #105 AC #4).
+  // anchor but moves the visual position — re-fires the scroll.
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
     diffScrollRef.current.scrollChildIntoView(
@@ -674,10 +673,10 @@ function App(props: AppProps) {
         if (diffScrollRef.current) {
           diffScrollRef.current.scrollChildIntoView(`file-card-${selectedRow.path}`);
         }
-        // PRD US 20 / issue #105: explicit sidebar-driven file selection
-        // moves the cursor to that file's first annotatable row. Folded
-        // files contribute no rows so cursor goes null. currentAnnotationId
-        // is unchanged — annotation focus is independent of code-reading
+        // PRD US 20: explicit sidebar-driven file selection moves the
+        // cursor to that file's first annotatable row. Folded files
+        // contribute no rows so cursor goes null. currentAnnotationId is
+        // unchanged — annotation focus is independent of code-reading
         // position.
         setCursor(cursorAtFirstFileRow(selectedRow.path, flatRowsList));
         return;
@@ -825,10 +824,10 @@ function App(props: AppProps) {
                   if (diffScrollRef.current) {
                     diffScrollRef.current.scrollChildIntoView(`file-card-${row.path}`);
                   }
-                  // Same semantics as the select-file action above (issue
-                  // #105 / PRD US 20): clicking a file in the sidebar
-                  // expresses "show me from the top." A folded click yields
-                  // null since the file contributes no flat rows.
+                  // Same semantics as the select-file action above (PRD
+                  // US 20): clicking a file in the sidebar expresses "show
+                  // me from the top." A folded click yields null since
+                  // the file contributes no flat rows.
                   setCursor(cursorAtFirstFileRow(row.path, flatRowsList));
                 }
               };

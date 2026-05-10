@@ -281,11 +281,11 @@ describe("validateCursor", () => {
     expect(validateCursor(null, [pairedFlat("x.txt", 1, 1)])).toBeNull();
   });
 
-  // Issue #105: when the cursor's file becomes folded (`c` on the cursor's
-  // file in the sidebar) the row sequence loses every row from that file.
-  // validateCursor must snap to the next file in stream order so the cursor
-  // never points at an invisible row, falling back to the previous file at
-  // the tail and to null when no file in the bundle has any row.
+  // When the cursor's file becomes folded (`c` on the cursor's file in
+  // the sidebar) the row sequence loses every row from that file.
+  // validateCursor must snap to the next file in stream order so the
+  // cursor never points at an invisible row, falling back to the previous
+  // file at the tail and to null when no file in the bundle has any row.
   describe("stream-order snap when cursor's file is gone", () => {
     it("snaps to the first row of the next file in stream order", () => {
       const rows = [pairedFlat("a.txt", 5, 5), pairedFlat("c.txt", 7, 7)];
@@ -329,10 +329,10 @@ describe("validateCursor", () => {
   });
 });
 
-// Issue #105: explicit sidebar-driven file selection (mouse click or
-// arrow-then-Return) moves the cursor to that file's first annotatable
-// row — "show me from the top" per PRD US 20. Folded files have no rows
-// and the cursor goes null.
+// Explicit sidebar-driven file selection (mouse click or arrow-then-
+// Return) moves the cursor to that file's first annotatable row — "show
+// me from the top" per PRD US 20. Folded files have no rows and the
+// cursor goes null.
 describe("cursorAtFirstFileRow", () => {
   it("returns a cursor on the file's first row in stream order", () => {
     const rows = [
