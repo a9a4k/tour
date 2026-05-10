@@ -249,6 +249,19 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.picker-button:focus-visible\s*\{[^}]*outline:\s*1px solid var\(--border-accent\)/);
   });
 
+  it("sizes the hamburger button by its own content, not the title block height (Issue #89)", () => {
+    const out = html();
+    // The button must NOT stretch to match the parent's cross-axis height —
+    // when the title wraps to two lines, a stretched button grows into a
+    // tall rectangle. Override the parent's `align-items: stretch` with a
+    // self-centered alignment so the button sizes by its content + padding.
+    expect(out).not.toMatch(/\.picker-button\s*\{[^}]*align-self:\s*stretch/);
+    expect(out).toMatch(/\.picker-button\s*\{[^}]*align-self:\s*center/);
+    // Keep a comfortably tappable click target via min-height so the button
+    // does not collapse to a thin strip once stretch is gone.
+    expect(out).toMatch(/\.picker-button\s*\{[^}]*min-height:\s*32px/);
+  });
+
   it("declares two-column header layout: content left, controls right (Issue #69)", () => {
     const out = html();
     expect(out).toMatch(/\.tour-header-content\s*\{[^}]*flex:\s*1/);

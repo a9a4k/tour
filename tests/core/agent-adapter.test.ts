@@ -1,17 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, chmod, readFile, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { describe, it, expect } from "vitest";
 import {
-  assertAdapterExists,
   buildEnvelope,
-  ensureShippedAdapter,
-  spawnAdapter,
+  spawnReplyAgent,
+  type ShippedAdapter,
+  type SpawnedAdapter,
 } from "../../src/core/agent-adapter.js";
-import { CLAUDE_ADAPTER_SCRIPT } from "../../src/agents/claude.js";
-import { CODEX_ADAPTER_SCRIPT } from "../../src/agents/codex.js";
-import { PI_ADAPTER_SCRIPT } from "../../src/agents/pi.js";
+import {
+  SHIPPED_ADAPTERS,
+  assertShippedAgent,
+  availableShippedAgents,
+} from "../../src/agents/index.js";
 import type { Annotation, Tour } from "../../src/core/types.js";
 
 function tour(over: Partial<Tour> = {}): Tour {
@@ -45,74 +43,45 @@ function ann(over: Partial<Annotation> & { id: string }): Annotation {
   };
 }
 
-describe("assertAdapterExists", () => {
-  it("throws a clear error when the named adapter is missing", () => {
-    expect(() => assertAdapterExists("definitely-not-installed-xyz")).toThrow(
-      /not found at/,
-    );
+describe("availableShippedAgents", () => {
+  it("returns the five shipped names sorted", () => {
+    expect(availableShippedAgents()).toEqual([
+      "claude",
+      "codex",
+      "gemini",
+      "opencode",
+      "pi",
+    ]);
   });
 });
 
-describe("ensureShippedAdapter (first-run bootstrap)", () => {
-  let savedHome: string | undefined;
-  let fakeHome: string;
-
-  beforeEach(async () => {
-    fakeHome = await mkdtemp(join(tmpdir(), "tour-fakehome-"));
-    savedHome = process.env.HOME;
-    process.env.HOME = fakeHome;
+describe("assertShippedAgent", () => {
+  it("is a no-op for known names", () => {
+    for (const name of availableShippedAgents()) {
+      expect(() => assertShippedAgent(name)).not.toThrow();
+    }
   });
 
-  afterEach(() => {
-    if (savedHome !== undefined) process.env.HOME = savedHome;
-    else delete process.env.HOME;
+  it("throws with the available-names list when the name is unknown", () => {
+    let caught: Error | undefined;
+    try {
+      assertShippedAgent("definitely-not-shipped");
+    } catch (e) {
+      caught = e as Error;
+    }
+    expect(caught).toBeDefined();
+    expect(caught?.message).toContain("definitely-not-shipped");
+    for (const name of availableShippedAgents()) {
+      expect(caught?.message).toContain(name);
+    }
   });
+});
 
-  it("writes the shipped claude adapter to ~/.config/tour/agents/claude.sh on first run", async () => {
-    ensureShippedAdapter("claude");
-    const path = join(fakeHome, ".config", "tour", "agents", "claude.sh");
-    expect(existsSync(path)).toBe(true);
-    const contents = await readFile(path, "utf-8");
-    expect(contents).toBe(CLAUDE_ADAPTER_SCRIPT);
-    const st = await stat(path);
-    // Owner-executable. Node masks the high bits on some platforms; checking
-    // the +x bit is the portable assertion.
-    expect(st.mode & 0o111).not.toBe(0);
-  });
-
-  it("does not overwrite a user-edited adapter script on subsequent runs", async () => {
-    ensureShippedAdapter("claude");
-    const path = join(fakeHome, ".config", "tour", "agents", "claude.sh");
-    await writeFile(path, "#!/usr/bin/env bash\n# user-customized\n");
-    ensureShippedAdapter("claude");
-    const after = await readFile(path, "utf-8");
-    expect(after).toBe("#!/usr/bin/env bash\n# user-customized\n");
-  });
-
-  it("writes the shipped codex adapter to ~/.config/tour/agents/codex.sh on first run", async () => {
-    ensureShippedAdapter("codex");
-    const path = join(fakeHome, ".config", "tour", "agents", "codex.sh");
-    expect(existsSync(path)).toBe(true);
-    const contents = await readFile(path, "utf-8");
-    expect(contents).toBe(CODEX_ADAPTER_SCRIPT);
-    const st = await stat(path);
-    expect(st.mode & 0o111).not.toBe(0);
-  });
-
-  it("writes the shipped pi adapter to ~/.config/tour/agents/pi.sh on first run", async () => {
-    ensureShippedAdapter("pi");
-    const path = join(fakeHome, ".config", "tour", "agents", "pi.sh");
-    expect(existsSync(path)).toBe(true);
-    const contents = await readFile(path, "utf-8");
-    expect(contents).toBe(PI_ADAPTER_SCRIPT);
-    const st = await stat(path);
-    expect(st.mode & 0o111).not.toBe(0);
-  });
-
-  it("is a no-op for adapter names not in the shipped registry", () => {
-    ensureShippedAdapter("custom-not-shipped");
-    const path = join(fakeHome, ".config", "tour", "agents", "custom-not-shipped.sh");
-    expect(existsSync(path)).toBe(false);
+describe("SHIPPED_ADAPTERS registry", () => {
+  it("exposes a spawn() function for each shipped agent", () => {
+    for (const name of availableShippedAgents()) {
+      expect(typeof SHIPPED_ADAPTERS[name].spawn).toBe("function");
+    }
   });
 });
 
@@ -144,61 +113,52 @@ describe("buildEnvelope", () => {
   });
 });
 
-describe("spawnAdapter (integration with a fake adapter)", () => {
-  let dir: string;
-  let adapter: string;
-  let stdinFile: string;
-  let envFile: string;
-
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "tour-adapter-"));
-    adapter = join(dir, "fake.sh");
-    stdinFile = join(dir, "stdin.json");
-    envFile = join(dir, "env.txt");
-    // Fake adapter: dump stdin to one file, TOUR_* env vars to another, exit 0.
-    // Lets the test assert envelope shape and env vars without process probing.
-    const script = `#!/usr/bin/env bash
-set -e
-cat > "${stdinFile}"
-{
-  echo "TOUR_ID=$TOUR_ID"
-  echo "TOUR_HEAD_SHA=$TOUR_HEAD_SHA"
-  echo "TOUR_BASE_SHA=$TOUR_BASE_SHA"
-  echo "TOUR_DIR=$TOUR_DIR"
-} > "${envFile}"
-exit 0
-`;
-    await writeFile(adapter, script);
-    await chmod(adapter, 0o755);
-  });
-
-  it("invokes the adapter with the envelope on stdin and TOUR_* in env", async () => {
+describe("spawnReplyAgent", () => {
+  it("uses the test-injected adapter when supplied (bypasses the registry)", async () => {
+    let receivedAgentName: string | null = null;
+    const fake: ShippedAdapter = {
+      spawn(opts): SpawnedAdapter {
+        receivedAgentName = opts.envelope.tour.id;
+        return {
+          pid: 4242,
+          exit: Promise.resolve({
+            code: 0,
+            signal: null,
+            stdout: "fake reply\n",
+          }),
+        };
+      },
+    };
     const t = tour();
     const triggering = ann({ id: "a1", author_kind: "human" });
     const envelope = buildEnvelope(t, [triggering], triggering);
-    const tourDir = join(dir, ".tour", t.id);
-    await mkdir(tourDir, { recursive: true });
-
-    const spawned = spawnAdapter({
-      agent: "fake",
+    const spawned = spawnReplyAgent({
+      agent: "definitely-not-shipped",
       envelope,
-      cwd: dir,
-      tourDir,
-      adapterPath: adapter,
+      systemPrompt: "SYS",
+      cwd: "/tmp",
+      tourDir: "/tmp/.tour/x",
+      adapter: fake,
     });
-    expect(spawned.pid).toBeGreaterThan(0);
-    const { code } = await spawned.exit;
-    expect(code).toBe(0);
+    expect(spawned.pid).toBe(4242);
+    const result = await spawned.exit;
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("fake reply\n");
+    expect(receivedAgentName).toBe(t.id);
+  });
 
-    const stdinJson = JSON.parse(await readFile(stdinFile, "utf-8"));
-    expect(stdinJson.triggering_annotation.id).toBe("a1");
-    expect(stdinJson.tour.id).toBe(t.id);
-    expect(stdinJson.thread).toHaveLength(1);
-
-    const envText = await readFile(envFile, "utf-8");
-    expect(envText).toContain(`TOUR_ID=${t.id}`);
-    expect(envText).toContain(`TOUR_HEAD_SHA=${t.head_sha}`);
-    expect(envText).toContain(`TOUR_BASE_SHA=${t.base_sha}`);
-    expect(envText).toContain(`TOUR_DIR=${tourDir}`);
+  it("throws on an unknown name when no override is supplied", () => {
+    const t = tour();
+    const triggering = ann({ id: "a1", author_kind: "human" });
+    const envelope = buildEnvelope(t, [triggering], triggering);
+    expect(() =>
+      spawnReplyAgent({
+        agent: "definitely-not-shipped",
+        envelope,
+        systemPrompt: "SYS",
+        cwd: "/tmp",
+        tourDir: "/tmp/.tour/x",
+      }),
+    ).toThrow(/Unknown reply-agent/);
   });
 });

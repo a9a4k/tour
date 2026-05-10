@@ -11,7 +11,6 @@ import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { ReplyRunner } from "../core/reply-runner.js";
-import { assertAdapterExists } from "../core/agent-adapter.js";
 import { html } from "./spa.js";
 import type { Annotation } from "../core/types.js";
 import { resolve, dirname } from "node:path";

@@ -4,20 +4,30 @@ import { replyAgentSystemPrompt } from "../../src/core/system-prompt.js";
 describe("replyAgentSystemPrompt", () => {
   it("matches the locked-in canonical text", () => {
     // Snapshot test: the prompt is correctness-critical (it semantically
-    // reinforces the runtime tool restriction). Changes should be deliberate
-    // and visible in the diff. Compared as a stable hash so quote-escape
-    // wobbles in the inline-snapshot serializer don't make the test brittle.
+    // reinforces the runtime stdout-as-reply contract from ADR 0012).
+    // Changes should be deliberate and visible in the diff.
     expect(replyAgentSystemPrompt().length).toBeGreaterThan(500);
     expect(replyAgentSystemPrompt()).toMatchSnapshot();
   });
 
-  it("contains the capability boundary phrasing", () => {
+  it("contains the output contract section (ADR 0012)", () => {
     const prompt = replyAgentSystemPrompt();
-    expect(prompt).toContain("tour annotate --as-agent --reply-to");
-    expect(prompt).toContain("may NOT edit code");
+    // The output contract block teaches the model that its stdout is the
+    // reply body, and enumerates the failure modes (preamble, narration,
+    // sign-off) to suppress.
+    expect(prompt).toContain("Output contract");
+    expect(prompt).toContain("Your stdout IS the reply");
   });
 
-  it("contains the always-reply guidance", () => {
+  it("declares zero tools (no `tour annotate` invocation, no allow/deny)", () => {
+    const prompt = replyAgentSystemPrompt();
+    expect(prompt).toContain("You have no tools");
+    expect(prompt).toContain("cannot edit code");
+    // The previous tool-call dispatch language is gone.
+    expect(prompt).not.toContain("tour annotate --as-agent --reply-to");
+  });
+
+  it("retains the always-reply guidance", () => {
     const prompt = replyAgentSystemPrompt();
     expect(prompt).toContain("Always reply");
     expect(prompt).toContain("Never exit without writing a reply");

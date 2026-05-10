@@ -155,7 +155,8 @@ export function html(initialTourId?: string): string {
     align-items: center;
     justify-content: center;
     width: 36px;
-    align-self: stretch;
+    min-height: 32px;
+    align-self: center;
     background: transparent;
     border: 1px solid var(--border-default);
     border-radius: 6px;

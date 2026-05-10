@@ -1,19 +1,33 @@
-// Registry of adapter shell scripts shipped with the Tour binary. Keyed by
-// agent name; the value is the script content. `ensureShippedAdapter` reads
-// from this map on first run and writes the script to
-// ~/.config/tour/agents/<name>.sh.
-//
-// All adapters from PRD #73 (slices 6–10) have shipped.
-import { CLAUDE_ADAPTER_SCRIPT } from "./claude.js";
-import { CODEX_ADAPTER_SCRIPT } from "./codex.js";
-import { GEMINI_ADAPTER_SCRIPT } from "./gemini.js";
-import { OPENCODE_ADAPTER_SCRIPT } from "./opencode.js";
-import { PI_ADAPTER_SCRIPT } from "./pi.js";
+// Registry of TS-native reply-agent adapters shipped with the Tour binary.
+// Keyed by the name passed via `--reply-agent <name>`. Each adapter spawns
+// its inner CLI directly via child_process.spawn — no on-disk script, no
+// `~/.config/tour/agents/` materialisation. Custom (out-of-tree) adapters
+// are not honored.
+import type { ShippedAdapter } from "../core/agent-adapter.js";
+import { claudeAdapter } from "./claude.js";
+import { codexAdapter } from "./codex.js";
+import { geminiAdapter } from "./gemini.js";
+import { opencodeAdapter } from "./opencode.js";
+import { piAdapter } from "./pi.js";
 
-export const SHIPPED_ADAPTERS: Record<string, string> = {
-  claude: CLAUDE_ADAPTER_SCRIPT,
-  codex: CODEX_ADAPTER_SCRIPT,
-  gemini: GEMINI_ADAPTER_SCRIPT,
-  opencode: OPENCODE_ADAPTER_SCRIPT,
-  pi: PI_ADAPTER_SCRIPT,
+export const SHIPPED_ADAPTERS: Record<string, ShippedAdapter> = {
+  claude: claudeAdapter,
+  codex: codexAdapter,
+  gemini: geminiAdapter,
+  opencode: opencodeAdapter,
+  pi: piAdapter,
 };
+
+export function availableShippedAgents(): string[] {
+  return Object.keys(SHIPPED_ADAPTERS).sort();
+}
+
+// Hard-fails at startup if `name` is not in the shipped registry. The error
+// message lists the supported names so users see what they can pick from.
+export function assertShippedAgent(name: string): void {
+  if (!(name in SHIPPED_ADAPTERS)) {
+    throw new Error(
+      `Unknown reply-agent "${name}". Available agents: ${availableShippedAgents().join(", ")}`,
+    );
+  }
+}

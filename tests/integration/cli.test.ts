@@ -454,15 +454,6 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("reply-system-prompt", () => {
-    it("prints the canonical system prompt to stdout", async () => {
-      const result = await run(["reply-system-prompt"], repo);
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Tour's reply-agent");
-      expect(result.stdout).toContain("tour annotate --as-agent --reply-to");
-    });
-  });
-
   describe("reply-cancel", () => {
     it("is a no-op when no lock exists", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
