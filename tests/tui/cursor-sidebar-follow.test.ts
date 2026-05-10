@@ -25,10 +25,9 @@ function pairedFlat(file: string, left: number, right: number): FlatRow {
 
 /**
  * App-level integration smoke for the cross-file motion + sidebar-follows-cursor
- * composition (PRD #100 UX 6 / issue #102). Each test exercises the chain that
- * app.tsx wires together: `moveCursor(...)` produces a cursor with a new file,
- * and `revealAndLocate(...)` resolves it to a sidebar row (revealing collapsed
- * ancestors when needed).
+ * composition. Each test exercises the chain that app.tsx wires together:
+ * `moveCursor(...)` produces a cursor with a new file, and `revealAndLocate(...)`
+ * resolves it to a sidebar row (revealing collapsed ancestors when needed).
  */
 describe("cross-file cursor motion drives sidebar selection", () => {
   it("crossing file A→B updates the sidebar to point at file B", () => {

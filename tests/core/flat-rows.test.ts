@@ -89,7 +89,7 @@ describe("flatRows", () => {
     expect(rows.every((r) => r.file === "x.txt")).toBe(true);
   });
 
-  it("skips a folded file in the middle so cross-file motion jumps over it (#102)", () => {
+  it("skips a folded file in the middle so cross-file motion jumps over it", () => {
     // Three files in stream order. The middle one is folded — the cursor
     // should walk a.txt's rows directly into c.txt's rows with no b.txt
     // entries appearing between them.

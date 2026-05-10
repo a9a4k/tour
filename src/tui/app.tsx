@@ -383,11 +383,9 @@ function App(props: AppProps) {
     );
   }, [cursor]);
 
-  // Sidebar follows the cursor's file (PRD #100 UX 6 / issue #102). Fires
-  // only when cursor.file changes — in-file j/k motion leaves the sidebar
-  // untouched. revealAndLocate uncollapses ancestor folders when the
-  // cursor lands inside a collapsed subtree, so the file is reachable in
-  // the flattened sidebar list.
+  // Sidebar follows the cursor's file. Deps are `[cursor?.file]` (not
+  // `[cursor]`) so in-file j/k motion leaves the sidebar untouched —
+  // sidebar selection is a per-file affordance, not a per-row one.
   useEffect(() => {
     if (!cursor) return;
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursor.file);

@@ -142,7 +142,7 @@ describe("moveCursor", () => {
     expect(next?.lineNumber).toBe(2);
   });
 
-  describe("cross-file motion (#102)", () => {
+  describe("cross-file motion", () => {
     const multi: FlatRow[] = [
       pairedFlat("a.txt", 1, 1),
       pairedFlat("a.txt", 2, 2),
