@@ -105,16 +105,40 @@ describe("dispatchKey", () => {
     ).toBe("noop");
   });
 
-  it("Space pages the diff pane down regardless of focus", () => {
-    expect(dispatchKey(k("space"), sidebar).type).toBe("page-diff-down");
-    expect(dispatchKey(k("space"), sidebarFolder).type).toBe("page-diff-down");
-    expect(dispatchKey(k("space"), diffPane).type).toBe("page-diff-down");
+  // PRD #138 / issue #139: Space / Shift+Space / `b` step a half viewport;
+  // hardware PageDown / PageUp continue to step a full viewport.
+  it("Space half-pages the diff pane down regardless of focus", () => {
+    expect(dispatchKey(k("space"), sidebar).type).toBe("half-page-diff-down");
+    expect(dispatchKey(k("space"), sidebarFolder).type).toBe("half-page-diff-down");
+    expect(dispatchKey(k("space"), diffPane).type).toBe("half-page-diff-down");
   });
 
-  it("Shift+Space pages the diff pane up regardless of focus", () => {
-    expect(dispatchKey(k("space", { shift: true }), sidebar).type).toBe("page-diff-up");
-    expect(dispatchKey(k("space", { shift: true }), sidebarFolder).type).toBe("page-diff-up");
-    expect(dispatchKey(k("space", { shift: true }), diffPane).type).toBe("page-diff-up");
+  it("Shift+Space half-pages the diff pane up regardless of focus", () => {
+    expect(dispatchKey(k("space", { shift: true }), sidebar).type).toBe(
+      "half-page-diff-up",
+    );
+    expect(dispatchKey(k("space", { shift: true }), sidebarFolder).type).toBe(
+      "half-page-diff-up",
+    );
+    expect(dispatchKey(k("space", { shift: true }), diffPane).type).toBe(
+      "half-page-diff-up",
+    );
+  });
+
+  it("`b` half-pages the diff pane up regardless of focus", () => {
+    expect(dispatchKey(k("b"), sidebar).type).toBe("half-page-diff-up");
+    expect(dispatchKey(k("b"), sidebarFolder).type).toBe("half-page-diff-up");
+    expect(dispatchKey(k("b"), diffPane).type).toBe("half-page-diff-up");
+  });
+
+  it("Ctrl+b is not consumed as half-page-up (modifier guard)", () => {
+    expect(dispatchKey(k("b", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("b", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Shift+B (capital) is not consumed as half-page-up (modifier guard)", () => {
+    expect(dispatchKey(k("b", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("b", { shift: true }), diffPane).type).toBe("noop");
   });
 
   it("Ctrl+Space is not consumed as page-diff", () => {
