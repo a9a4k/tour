@@ -61,6 +61,7 @@ import {
   pageMove as pageMoveDiffPane,
   jump as jumpDiffPane,
 } from "../core/diff-pane-motion.js";
+import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
@@ -412,6 +413,11 @@ function App(props: AppProps) {
   // NOT auto-advance currentAnnotationId to the new one (PRD UX 26: a
   // follow-up `r` would otherwise reply to your own freshly-typed thing).
   // Tour-switch resets the ref so the next tour seeds on its own terms.
+  // Issue #132: this is an INCIDENTAL jump — the seed must NOT call
+  // setSidebarFocused. The user just opened the app and is orienting in
+  // the file tree; focus-thrash on every tour load would be jarring. The
+  // explicit-jump path (n/p → jumpToAnnotation) drops sidebar focus; this
+  // path does not.
   useEffect(() => {
     if (seededTourIdRef.current !== liveTour.id) {
       seededTourIdRef.current = liveTour.id;
@@ -599,6 +605,13 @@ function App(props: AppProps) {
   };
 
   const jumpToAnnotation = (ann: Annotation) => {
+    // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
+    // subsequent j/k move the diff cursor, not the file row. The user's
+    // visual attention is on the annotation in the diff — motion keys
+    // should follow. The tour-open seed effect (above) intentionally does
+    // NOT call this function; it updates state directly so sidebarFocused
+    // stays at its default of `true` for first-load orientation.
+    setSidebarFocused(false);
     setCurrentAnnotationId(ann.id);
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, ann.file);
     if (located) {
@@ -615,15 +628,27 @@ function App(props: AppProps) {
     setCursor(cursorFromAnnotation(ann));
   };
 
+  // gotoPrev/NextAnnotation delegate bounds + focus-routing to the
+  // explicitAnnotationJump helper (single source of truth for issue
+  // #132's explicit-jump contract; tested in tests/tui/annotation-jump).
   const gotoPrevAnnotation = () => {
-    if (currentAnnotationIdx <= 0) return;
-    jumpToAnnotation(liveTopLevel[currentAnnotationIdx - 1]);
+    const step = explicitAnnotationJump({
+      topLevel: liveTopLevel,
+      currentIdx: currentAnnotationIdx,
+      delta: -1,
+    });
+    if (!step) return;
+    jumpToAnnotation(step.target);
   };
 
   const gotoNextAnnotation = () => {
-    if (currentAnnotationIdx < 0) return;
-    if (currentAnnotationIdx >= liveTopLevel.length - 1) return;
-    jumpToAnnotation(liveTopLevel[currentAnnotationIdx + 1]);
+    const step = explicitAnnotationJump({
+      topLevel: liveTopLevel,
+      currentIdx: currentAnnotationIdx,
+      delta: 1,
+    });
+    if (!step) return;
+    jumpToAnnotation(step.target);
   };
 
   // Mouse click on a diff row → set cursor + side per the click site (issue
