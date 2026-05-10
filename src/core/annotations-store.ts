@@ -1,4 +1,4 @@
-import { readFile, appendFile, writeFile } from "node:fs/promises";
+import { readFile, appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Annotation, AuthorKind } from "./types.js";
 import { generateId } from "./ids.js";
@@ -11,7 +11,7 @@ function isValidAuthorKind(v: unknown): v is "agent" | "human" {
   return v === "agent" || v === "human";
 }
 
-export interface BuildAnnotationInput {
+interface BuildAnnotationInput {
   file: string;
   side: "additions" | "deletions";
   line_start: number;
@@ -21,7 +21,7 @@ export interface BuildAnnotationInput {
   author_kind: AuthorKind;
 }
 
-export function buildAnnotation(input: BuildAnnotationInput): Annotation {
+function buildAnnotation(input: BuildAnnotationInput): Annotation {
   return {
     id: generateId(),
     file: input.file,
@@ -35,20 +35,14 @@ export function buildAnnotation(input: BuildAnnotationInput): Annotation {
   };
 }
 
-export interface BuildReplyInput {
+interface BuildReplyInput {
   replies_to: string;
   body: string;
   author?: string;
   author_kind: AuthorKind;
 }
 
-/**
- * Build a Reply Annotation from a parent already in the tour. The Reply
- * inherits the parent's `(file, side, line_start, line_end)` anchor so
- * readers don't need to walk the chain to resolve where the Reply paints
- * its cues — see PRD #73 / Slice 1 (#75).
- */
-export function buildReply(input: BuildReplyInput, existing: Annotation[]): Annotation {
+function buildReply(input: BuildReplyInput, existing: Annotation[]): Annotation {
   const parent = existing.find((a) => a.id === input.replies_to);
   if (!parent) {
     throw new Error(`No annotation with id "${input.replies_to}" in this tour`);
@@ -67,30 +61,7 @@ export function buildReply(input: BuildReplyInput, existing: Annotation[]): Anno
   };
 }
 
-// Build the agent's Reply Annotation under the stdout-as-reply contract
-// (ADR 0012 / PRD #94 / slice #95). Body is trimmed because the runner
-// captures stdout verbatim — surrounding whitespace from the inner CLI's
-// flush is not part of the reply.
-export function buildReplyAnnotation(
-  triggering: Annotation,
-  agentName: string,
-  body: string,
-): Annotation {
-  return {
-    id: generateId(),
-    file: triggering.file,
-    side: triggering.side,
-    line_start: triggering.line_start,
-    line_end: triggering.line_end,
-    body: body.trim(),
-    author: agentName,
-    author_kind: "agent",
-    replies_to: triggering.id,
-    created_at: new Date().toISOString(),
-  };
-}
-
-export async function appendAnnotation(
+async function appendAnnotation(
   repoRoot: string,
   tourId: string,
   annotation: Annotation,
@@ -99,7 +70,7 @@ export async function appendAnnotation(
   await appendFile(path, JSON.stringify(annotation) + "\n");
 }
 
-export async function appendAnnotations(
+async function appendAnnotations(
   repoRoot: string,
   tourId: string,
   annotations: Annotation[],
@@ -107,6 +78,76 @@ export async function appendAnnotations(
   const path = annotationsPath(repoRoot, tourId);
   const lines = annotations.map((a) => JSON.stringify(a)).join("\n") + "\n";
   await appendFile(path, lines);
+}
+
+// The Annotation creation seam (PRD #140 / slice 1 #141). All four writers —
+// CLI, TUI, webapp, reply-runner — funnel through `createAnnotation`,
+// `createReply`, `createAnnotations`. Subsequent slices add validation rules
+// (body-trim, author-default, anchor-in-diff) behind this seam; slice 1
+// keeps behaviour identical and only narrows the public surface.
+
+export interface CreateAnnotationRequest {
+  file: string;
+  side: "additions" | "deletions";
+  line_start: number;
+  line_end: number;
+  body: string;
+  author?: string;
+  author_kind: AuthorKind;
+}
+
+export interface CreateReplyRequest {
+  replies_to: string;
+  body: string;
+  author?: string;
+  author_kind: AuthorKind;
+}
+
+export type CreateRequest =
+  | ({ kind: "top-level" } & CreateAnnotationRequest)
+  | ({ kind: "reply" } & CreateReplyRequest);
+
+export async function createAnnotation(
+  repoRoot: string,
+  tourId: string,
+  request: CreateAnnotationRequest,
+): Promise<Annotation> {
+  const ann = buildAnnotation(request);
+  await appendAnnotation(repoRoot, tourId, ann);
+  return ann;
+}
+
+// `createReply` always re-reads `annotations.jsonl` to prove the parent
+// exists at write time — callers must not pass a pre-loaded parent (PRD
+// #140). The Reply inherits the parent's anchor.
+export async function createReply(
+  repoRoot: string,
+  tourId: string,
+  request: CreateReplyRequest,
+): Promise<Annotation> {
+  const existing = await readAnnotations(repoRoot, tourId);
+  const reply = buildReply(request, existing);
+  await appendAnnotation(repoRoot, tourId, reply);
+  return reply;
+}
+
+// Atomic batch: build every record first (replies resolve against
+// `annotations.jsonl` read once), then a single `appendFile` for the
+// whole batch. A bad reply parent rejects before any write happens.
+export async function createAnnotations(
+  repoRoot: string,
+  tourId: string,
+  requests: CreateRequest[],
+): Promise<Annotation[]> {
+  const existing = await readAnnotations(repoRoot, tourId);
+  const built: Annotation[] = requests.map((req) => {
+    if (req.kind === "reply") {
+      return buildReply(req, existing);
+    }
+    return buildAnnotation(req);
+  });
+  await appendAnnotations(repoRoot, tourId, built);
+  return built;
 }
 
 export async function readAnnotations(

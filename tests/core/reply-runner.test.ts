@@ -5,10 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { stringify as stringifyTOML } from "smol-toml";
 import { ReplyRunner } from "../../src/core/reply-runner.js";
-import {
-  appendAnnotation,
-  readAnnotations,
-} from "../../src/core/annotations-store.js";
+import { readAnnotations } from "../../src/core/annotations-store.js";
+import { appendFile } from "node:fs/promises";
 import { writeReplyLock, readReplyLock } from "../../src/core/reply-lock.js";
 import type {
   ShippedAdapter,
@@ -17,6 +15,20 @@ import type {
   SpawnResult,
 } from "../../src/core/agent-adapter.js";
 import type { Annotation, Tour } from "../../src/core/types.js";
+
+// Local injection helper — writes a fully-formed Annotation record directly
+// to the JSONL store. Used here so reply-runner tests can seed parent
+// annotations with a known id without going through the (public) creation
+// seam, which would generate its own id and timestamp. The store's primitive
+// `appendAnnotation` is private to the module under PRD #140.
+async function seedAnnotation(
+  cwd: string,
+  tourId: string,
+  ann: Annotation,
+): Promise<void> {
+  const path = join(cwd, ".tour", tourId, "annotations.jsonl");
+  await appendFile(path, JSON.stringify(ann) + "\n");
+}
 
 const tourId = "2026-05-10-120000-test";
 
@@ -135,7 +147,7 @@ describe("ReplyRunner", () => {
   });
 
   it("does not dispatch on initial prime", async () => {
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     const adapter = fixtureAdapter({
       code: 0,
       signal: null,
@@ -165,7 +177,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
     expect(adapter.invocations).toHaveLength(1);
     expect(adapter.invocations[0].envelope.triggering_annotation.id).toBe("a1");
@@ -185,7 +197,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "agent" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "agent" }));
     await runner.tick();
     expect(adapter.invocations).toHaveLength(0);
   });
@@ -209,7 +221,7 @@ describe("ReplyRunner", () => {
       started_at: new Date().toISOString(),
       pid: process.pid,
     });
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
     expect(adapter.invocations).toHaveLength(0);
   });
@@ -227,7 +239,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
@@ -245,7 +257,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(
+    await seedAnnotation(
       dir,
       tourId,
       mkAnn({
@@ -287,7 +299,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
     const annotations = await readAnnotations(dir, tourId);
     expect(annotations.find((a) => a.replies_to === "a1")).toBeUndefined();
@@ -310,7 +322,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
     const annotations = await readAnnotations(dir, tourId);
     expect(annotations.find((a) => a.replies_to === "a1")).toBeUndefined();
@@ -334,7 +346,7 @@ describe("ReplyRunner", () => {
       adapter,
     });
     await runner.prime();
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+    await seedAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
     await runner.tick();
     const annotations = await readAnnotations(dir, tourId);
     expect(annotations.find((a) => a.replies_to === "a1")).toBeUndefined();
@@ -366,7 +378,7 @@ describe("ReplyRunner", () => {
       await runner.prime();
       // No logs/ subdir before first dispatch.
       expect(existsSync(logsDir())).toBe(false);
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-aaaa", author_kind: "human" }),
@@ -392,7 +404,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-bbbb", author_kind: "human" }),
@@ -429,7 +441,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-cccc", author_kind: "human" }),
@@ -458,7 +470,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-dddd", author_kind: "human" }),
@@ -488,7 +500,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-eeee", author_kind: "human" }),
@@ -516,7 +528,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-ffff", author_kind: "human" }),
@@ -543,7 +555,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-gggg", author_kind: "human" }),
@@ -569,7 +581,7 @@ describe("ReplyRunner", () => {
         adapter,
       });
       await runner.prime();
-      await appendAnnotation(
+      await seedAnnotation(
         dir,
         tourId,
         mkAnn({ id: "ann-hhhh", author_kind: "human" }),

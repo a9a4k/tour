@@ -1,16 +1,13 @@
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
-  readAnnotations,
-  appendAnnotation,
-  buildAnnotation,
-  buildReply,
+  createAnnotation,
+  createReply,
 } from "../core/annotations-store.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { html } from "./spa.js";
-import type { Annotation } from "../core/types.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,50 +52,6 @@ function asInt(v: unknown): number | undefined {
   return v;
 }
 
-/**
- * Build a human-authored Annotation from a webapp POST body. Mirrors the
- * `tour annotate --as-human [--reply-to]` CLI surface (PRD #73 / Slice 3
- * #77). Throws on missing / malformed fields so the route returns 400.
- *
- * Exported for unit tests; the route handler does the disk write.
- */
-export async function createHumanAnnotation(
-  cwd: string,
-  tourId: string,
-  body: Record<string, unknown>,
-): Promise<Annotation> {
-  const text = asString(body.body);
-  if (!text || text.trim().length === 0) {
-    throw new Error("body is required");
-  }
-  const author = asString(body.author) ?? DEFAULT_HUMAN_AUTHOR;
-  const repliesTo = asString(body.replies_to);
-  if (repliesTo) {
-    const existing = await readAnnotations(cwd, tourId);
-    return buildReply(
-      { replies_to: repliesTo, body: text, author, author_kind: "human" },
-      existing,
-    );
-  }
-  const file = asString(body.file);
-  if (!file) throw new Error("file is required");
-  const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
-  if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
-  const start = asInt(body.line_start);
-  const end = asInt(body.line_end);
-  if (start === undefined) throw new Error("line_start is required");
-  if (end === undefined) throw new Error("line_end is required");
-  if (end < start) throw new Error("line_end must be >= line_start");
-  return buildAnnotation({
-    file,
-    side,
-    line_start: start,
-    line_end: end,
-    body: text,
-    author,
-    author_kind: "human",
-  });
-}
 
 async function getClientBundle(): Promise<{ js: string | null; error: string | null }> {
   if (cachedClientBundle !== null) return { js: cachedClientBundle, error: null };
@@ -226,8 +179,40 @@ export async function startServer(args: ServeArgs): Promise<void> {
         try {
           const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
           const body = (await req.json()) as Record<string, unknown>;
-          const ann = await createHumanAnnotation(cwd, resolvedId, body);
-          await appendAnnotation(cwd, resolvedId, ann);
+          const text = asString(body.body);
+          if (!text || text.trim().length === 0) {
+            throw new Error("body is required");
+          }
+          const author = asString(body.author) ?? DEFAULT_HUMAN_AUTHOR;
+          const repliesTo = asString(body.replies_to);
+          let ann;
+          if (repliesTo) {
+            ann = await createReply(cwd, resolvedId, {
+              replies_to: repliesTo,
+              body: text,
+              author,
+              author_kind: "human",
+            });
+          } else {
+            const file = asString(body.file);
+            if (!file) throw new Error("file is required");
+            const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
+            if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
+            const start = asInt(body.line_start);
+            const end = asInt(body.line_end);
+            if (start === undefined) throw new Error("line_start is required");
+            if (end === undefined) throw new Error("line_end is required");
+            if (end < start) throw new Error("line_end must be >= line_start");
+            ann = await createAnnotation(cwd, resolvedId, {
+              file,
+              side,
+              line_start: start,
+              line_end: end,
+              body: text,
+              author,
+              author_kind: "human",
+            });
+          }
           return Response.json(ann, { status: 201 });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
