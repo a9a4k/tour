@@ -67,7 +67,7 @@ describe("annotations-store", () => {
       expect(loaded[0]).toEqual(ann);
     });
 
-    it("defaults author to 'unknown' when omitted (slice 1: no new validation rules)", async () => {
+    it("defaults author to 'agent' when omitted and author_kind is 'agent' (slice 3 / #143)", async () => {
       const ann = await createAnnotation(dir, tourId, {
         file: "x.ts",
         side: "deletions",
@@ -76,7 +76,32 @@ describe("annotations-store", () => {
         body: "b",
         author_kind: "agent",
       });
-      expect(ann.author).toBe("unknown");
+      expect(ann.author).toBe("agent");
+    });
+
+    it("defaults author to 'human' when omitted and author_kind is 'human' (slice 3 / #143)", async () => {
+      const ann = await createAnnotation(dir, tourId, {
+        file: "x.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "b",
+        author_kind: "human",
+      });
+      expect(ann.author).toBe("human");
+    });
+
+    it("preserves a supplied author verbatim regardless of author_kind (slice 3 / #143)", async () => {
+      const ann = await createAnnotation(dir, tourId, {
+        file: "x.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "b",
+        author: "my-script",
+        author_kind: "agent",
+      });
+      expect(ann.author).toBe("my-script");
     });
 
     it("rejects whitespace-only body and writes nothing (slice 2 / #142)", async () => {
@@ -165,6 +190,25 @@ describe("annotations-store", () => {
       // Only the seeded parent is on disk; no reply landed.
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["p-trim"]);
+    });
+
+    it("defaults reply author to the author_kind literal when omitted (slice 3 / #143)", async () => {
+      const parent = makeAnnotation({ id: "p-author-default" });
+      await seedAnnotation(dir, tourId, parent);
+
+      const replyHuman = await createReply(dir, tourId, {
+        replies_to: "p-author-default",
+        body: "looks reasonable",
+        author_kind: "human",
+      });
+      expect(replyHuman.author).toBe("human");
+
+      const replyAgent = await createReply(dir, tourId, {
+        replies_to: "p-author-default",
+        body: "agree",
+        author_kind: "agent",
+      });
+      expect(replyAgent.author).toBe("agent");
     });
 
     it("always re-reads annotations.jsonl (caller cannot bypass with stale in-memory data)", async () => {

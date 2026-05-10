@@ -1,4 +1,3 @@
-import { userInfo } from "node:os";
 import type { Tour, Annotation } from "../core/types.js";
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
@@ -26,15 +25,6 @@ export type WriteAnnotationInput =
       body: string;
     }
   | { kind: "reply"; parent: Annotation; body: string };
-
-function humanAuthor(): string {
-  try {
-    const username = userInfo().username;
-    return username || "human";
-  } catch {
-    return "human";
-  }
-}
 
 export async function tui(args: TuiArgs): Promise<void> {
   // Hard-fail at startup if the requested reply-agent isn't shipped, with
@@ -79,12 +69,10 @@ export async function tui(args: TuiArgs): Promise<void> {
     loadTour: (id) => loadTourBundle(args.cwd, id),
     loadReplyLock: (id) => readReplyLock(args.cwd, id),
     writeAnnotation: (id, input) => {
-      const author = humanAuthor();
       if (input.kind === "reply") {
         return createReply(args.cwd, id, {
           replies_to: input.parent.id,
           body: input.body,
-          author,
           author_kind: "human",
         });
       }
@@ -94,7 +82,6 @@ export async function tui(args: TuiArgs): Promise<void> {
         line_start: input.line_start,
         line_end: input.line_end,
         body: input.body,
-        author,
         author_kind: "human",
       });
     },

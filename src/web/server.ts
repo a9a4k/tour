@@ -41,8 +41,6 @@ declare const Bun: {
 let cachedClientBundle: string | null = null;
 let cachedClientBundleError: string | null = null;
 
-const DEFAULT_HUMAN_AUTHOR = "you";
-
 function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
@@ -182,7 +180,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           // HTTP-shape concern only — whitespace-only rejection lives in
           // the Annotation creation seam (PRD #140 rule 1/5).
           if (text === undefined) throw new Error("body is required");
-          const author = asString(body.author) ?? DEFAULT_HUMAN_AUTHOR;
+          const author = asString(body.author);
           const repliesTo = asString(body.replies_to);
           if (repliesTo) {
             const reply = await createReply(cwd, resolvedId, {
