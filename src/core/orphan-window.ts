@@ -1,5 +1,6 @@
 import type { DiffFile, DiffHunk } from "./diff-model.js";
 import type { Annotation } from "./types.js";
+import type { BoundaryRef, OrphanWindow } from "./expansion-state.js";
 
 export interface HunkExpansionRegion {
   fromStart: number;
@@ -41,6 +42,42 @@ export function computeOrphanWindows(
   }
 
   return result;
+}
+
+/**
+ * Bridges `computeOrphanWindows`' numeric-gap-keyed map onto the
+ * `BoundaryRef`-keyed `OrphanWindow[]` shape that
+ * `core/expansion-state.ts`' `seedFromOrphans` consumes. The TUI feeds
+ * the result into expansion state at planner-init so orphan annotations
+ * render inline with `±10` lines of surrounding context (PRD #108).
+ *
+ * Mapping rule: hunkIndex `0` → `'top'`, hunkIndex === `file.hunks.length`
+ * → `'bottom'`, otherwise the numeric hunk index. This matches the
+ * planner's boundary identity in `diff-rows.ts`.
+ */
+export function orphanSeedWindows(
+  file: DiffFile,
+  annotations: Annotation[],
+  opts: OrphanWindowOptions,
+): OrphanWindow[] {
+  const regions = computeOrphanWindows(file, annotations, opts);
+  if (regions.size === 0) return [];
+  const out: OrphanWindow[] = [];
+  for (const [hunkIndex, region] of regions) {
+    out.push({
+      file: file.name,
+      ref: hunkIndexToBoundaryRef(hunkIndex, file.hunks.length),
+      fromStart: region.fromStart,
+      fromEnd: region.fromEnd,
+    });
+  }
+  return out;
+}
+
+function hunkIndexToBoundaryRef(hunkIndex: number, hunkCount: number): BoundaryRef {
+  if (hunkIndex === 0) return "top";
+  if (hunkIndex === hunkCount) return "bottom";
+  return hunkIndex;
 }
 
 interface OrphanRegion extends HunkExpansionRegion {

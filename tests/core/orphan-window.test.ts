@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeOrphanWindows } from "../../src/core/orphan-window.js";
+import { computeOrphanWindows, orphanSeedWindows } from "../../src/core/orphan-window.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
 import type { Annotation } from "../../src/core/types.js";
 
@@ -170,5 +170,59 @@ describe("computeOrphanWindows", () => {
       OPTS,
     );
     expect(map.size).toBe(0);
+  });
+});
+
+describe("orphanSeedWindows", () => {
+  // Bridges computeOrphanWindows (numeric hunk-index gap keys) to the
+  // BoundaryRef-keyed OrphanWindow[] shape that core/expansion-state.ts'
+  // seedFromOrphans consumes. Mapping rule: hunkIndex 0 → 'top',
+  // hunkIndex === file.hunks.length → 'bottom', else numeric.
+
+  it("maps a leading-gap orphan (hunkIndex 0) to ref 'top'", () => {
+    const result = orphanSeedWindows(TWO_HUNKS, [ann("additions", 3)], OPTS);
+    expect(result).toEqual([
+      { file: "src/foo.ts", ref: "top", fromStart: 9, fromEnd: 9 },
+    ]);
+  });
+
+  it("maps a trailing-gap orphan (hunkIndex === hunks.length) to ref 'bottom'", () => {
+    const result = orphanSeedWindows(TWO_HUNKS, [ann("additions", 60)], OPTS);
+    expect(result).toEqual([
+      { file: "src/foo.ts", ref: "bottom", fromStart: 26, fromEnd: 51 },
+    ]);
+  });
+
+  it("maps a between-hunks orphan to its numeric hunkIndex", () => {
+    const result = orphanSeedWindows(TWO_HUNKS, [ann("additions", 25)], OPTS);
+    expect(result).toEqual([
+      { file: "src/foo.ts", ref: 1, fromStart: 21, fromEnd: 25 },
+    ]);
+  });
+
+  it("returns multiple OrphanWindow entries when multiple gaps have orphans", () => {
+    const result = orphanSeedWindows(
+      TWO_HUNKS,
+      [ann("additions", 3, { id: "top" }), ann("additions", 25, { id: "mid" }), ann("additions", 60, { id: "bot" })],
+      OPTS,
+    );
+    expect(result).toHaveLength(3);
+    expect(result.find((w) => w.ref === "top")).toBeDefined();
+    expect(result.find((w) => w.ref === 1)).toBeDefined();
+    expect(result.find((w) => w.ref === "bottom")).toBeDefined();
+  });
+
+  it("returns an empty list when the file has no orphan annotations", () => {
+    expect(orphanSeedWindows(TWO_HUNKS, [], OPTS)).toEqual([]);
+    expect(orphanSeedWindows(TWO_HUNKS, [ann("additions", 12)], OPTS)).toEqual([]);
+  });
+
+  it("returns an empty list for files with no hunks (binary / classifier-collapsed)", () => {
+    const file: DiffFile = { name: "img.png", type: "binary", hunks: [] };
+    const result = orphanSeedWindows(file, [ann("additions", 5, { file: "img.png" })], {
+      oldLineCount: 0,
+      newLineCount: 0,
+    });
+    expect(result).toEqual([]);
   });
 });
