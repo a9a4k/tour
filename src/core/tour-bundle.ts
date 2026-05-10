@@ -3,7 +3,7 @@ import { readAnnotations } from "./annotations-store.js";
 import { getDiff, gitShow, isShaResolvable } from "./git.js";
 import { parseDiff, type DiffHunk } from "./diff-model.js";
 import { fetchFileContents } from "./file-content-provider.js";
-import { computeOrphanWindows } from "./orphan-window.js";
+import { computeOrphanWindows, hunkIndexToBoundaryRef } from "./orphan-window.js";
 import { classifyFile, type FileClassification } from "./file-classifier.js";
 import type { Tour, Annotation } from "./types.js";
 import type { BoundaryRef } from "./expansion-state.js";
@@ -44,12 +44,6 @@ function lineCount(content: string): number {
   // Trailing newline doesn't add an empty trailing line.
   const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
   return trimmed.split("\n").length;
-}
-
-function hunkIndexToBoundaryRef(hunkIndex: number, hunkCount: number): BoundaryRef {
-  if (hunkIndex === 0) return "top";
-  if (hunkIndex === hunkCount) return "bottom";
-  return hunkIndex;
 }
 
 export async function loadTourBundle(cwd: string, tourId: string): Promise<TourBundle> {

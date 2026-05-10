@@ -72,7 +72,7 @@ export function orphanSeedWindows(
   return out;
 }
 
-function hunkIndexToBoundaryRef(hunkIndex: number, hunkCount: number): BoundaryRef {
+export function hunkIndexToBoundaryRef(hunkIndex: number, hunkCount: number): BoundaryRef {
   if (hunkIndex === 0) return "top";
   if (hunkIndex === hunkCount) return "bottom";
   return hunkIndex;
