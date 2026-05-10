@@ -10,6 +10,7 @@ import {
   spawnAdapter,
 } from "../../src/core/agent-adapter.js";
 import { CLAUDE_ADAPTER_SCRIPT } from "../../src/agents/claude.js";
+import { PI_ADAPTER_SCRIPT } from "../../src/agents/pi.js";
 import type { Annotation, Tour } from "../../src/core/types.js";
 
 function tour(over: Partial<Tour> = {}): Tour {
@@ -85,6 +86,16 @@ describe("ensureShippedAdapter (first-run bootstrap)", () => {
     ensureShippedAdapter("claude");
     const after = await readFile(path, "utf-8");
     expect(after).toBe("#!/usr/bin/env bash\n# user-customized\n");
+  });
+
+  it("writes the shipped pi adapter to ~/.config/tour/agents/pi.sh on first run", async () => {
+    ensureShippedAdapter("pi");
+    const path = join(fakeHome, ".config", "tour", "agents", "pi.sh");
+    expect(existsSync(path)).toBe(true);
+    const contents = await readFile(path, "utf-8");
+    expect(contents).toBe(PI_ADAPTER_SCRIPT);
+    const st = await stat(path);
+    expect(st.mode & 0o111).not.toBe(0);
   });
 
   it("is a no-op for adapter names not in the shipped registry", () => {
