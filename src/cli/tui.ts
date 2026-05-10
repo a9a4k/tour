@@ -10,6 +10,8 @@ import { generateId } from "../core/ids.js";
 import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
 import { fetchFileContents, type FileContentPair } from "../core/file-content-provider.js";
+import { orphanSeedWindows } from "../core/orphan-window.js";
+import type { OrphanWindow } from "../core/expansion-state.js";
 
 interface TuiArgs {
   tourId?: string;
@@ -26,6 +28,15 @@ interface LoadedBundle {
   classifications: Record<string, FileClassification>;
   replyLock: ReplyLock | null;
   fileContents: Map<string, FileContentPair>;
+  orphanWindows: OrphanWindow[];
+}
+
+function lineCount(content: string): number {
+  if (content.length === 0) return 0;
+  // Match webapp's lineCount (server.ts): trailing newline doesn't add an
+  // empty trailing line. Keeps both surfaces' orphan-window math identical.
+  const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
+  return trimmed.split("\n").length;
 }
 
 async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle> {
@@ -40,6 +51,7 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
   let files: DiffFile[] = [];
   let classifications: Record<string, FileClassification> = {};
   let fileContents: Map<string, FileContentPair> = new Map();
+  let orphanWindows: OrphanWindow[] = [];
 
   if (!snapshotLost) {
     rawDiff = await getDiff(tour.base_sha, tour.head_sha, cwd);
@@ -66,6 +78,21 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
       cwd,
       gitShow,
     });
+
+    // Pre-compute orphan-annotation auto-windows (issue #114). Each window
+    // mirrors a `±10`-line region around an Annotation whose anchor lives in
+    // Hidden context. The TUI App seeds these into the per-tour expansion
+    // state at bundle load so orphan annotations resolve to inline rows
+    // without user expansion.
+    for (const f of files) {
+      const contents = fileContents.get(f.name);
+      if (!contents) continue;
+      const windows = orphanSeedWindows(f, annotations, {
+        oldLineCount: lineCount(contents.oldContent),
+        newLineCount: lineCount(contents.newContent),
+      });
+      orphanWindows.push(...windows);
+    }
   }
 
   const replyLock = await readReplyLock(cwd, tourId);
@@ -79,6 +106,7 @@ async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle
     classifications,
     replyLock,
     fileContents,
+    orphanWindows,
   };
 }
 

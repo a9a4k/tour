@@ -12,7 +12,9 @@ import {
   expand,
   expandTop,
   expandBottom,
+  seedFromOrphans,
   type ExpansionState,
+  type OrphanWindow,
 } from "../core/expansion-state.js";
 import type { FileContentPair } from "../core/file-content-provider.js";
 import { DiffRows } from "./DiffRows.js";
@@ -69,6 +71,7 @@ export interface TourBundle {
   classifications: Record<string, FileClassification>;
   replyLock: ReplyLock | null;
   fileContents?: Map<string, FileContentPair>;
+  orphanWindows?: OrphanWindow[];
 }
 
 export type WriteAnnotationInput =
@@ -91,6 +94,7 @@ interface AppProps {
   classifications?: Record<string, FileClassification>;
   replyLock?: ReplyLock | null;
   fileContents?: Map<string, FileContentPair>;
+  orphanWindows?: OrphanWindow[];
   loadTour?: (id: string) => Promise<TourBundle>;
   loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
   writeAnnotation?: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
@@ -198,6 +202,7 @@ function App(props: AppProps) {
     classifications: props.classifications ?? {},
     replyLock: props.replyLock ?? null,
     fileContents: props.fileContents ?? new Map(),
+    orphanWindows: props.orphanWindows ?? [],
   });
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
@@ -215,7 +220,12 @@ function App(props: AppProps) {
   // Hidden-context expansion state (PRD #108, ADR 0013). Per-tour, in-memory
   // only. Reset on tour switch (sibling to collapsedOverrides), preserved on
   // watcher reload (the diff is SHA-pinned; gaps are unchanged).
-  const [expansion, setExpansion] = useState<ExpansionState>(() => emptyExpansion());
+  // Seeded at planner-init with orphan-annotation auto-windows (issue #114) so
+  // Annotations whose anchor lives in Hidden context render inline with `±10`
+  // lines of surrounding context the moment a tour opens.
+  const [expansion, setExpansion] = useState<ExpansionState>(() =>
+    seedFromOrphans(emptyExpansion(), props.orphanWindows ?? []),
+  );
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -262,7 +272,12 @@ function App(props: AppProps) {
       if (!props.loadTour || cancelled) return;
       try {
         const next = await props.loadTour(liveTour.id);
-        if (!cancelled) setBundle(next);
+        if (cancelled) return;
+        setBundle(next);
+        // Re-seed orphan windows on watcher reload (annotations may have
+        // changed; orphan windows recompute). seedFromOrphans unions per-side
+        // by max so manually expanded user state is preserved (issue #114).
+        setExpansion((prev) => seedFromOrphans(prev, next.orphanWindows ?? []));
       } catch {
         // transient — keep current bundle
       }
@@ -522,7 +537,11 @@ function App(props: AppProps) {
       setCursor(null);
       setCollapsedOverrides({});
       setCollapsedFolders(new Set());
-      setExpansion(emptyExpansion());
+      // Reset expansion fresh, then seed from the new tour's orphan windows
+      // (issue #114). Tour switch always wipes user-driven expansion per
+      // CONTEXT.md guidance; orphan windows are part of the new tour's
+      // planner-init state.
+      setExpansion(seedFromOrphans(emptyExpansion(), next.orphanWindows ?? []));
     } finally {
       closePicker();
     }

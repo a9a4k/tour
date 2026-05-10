@@ -168,6 +168,23 @@ describe("expansion-state", () => {
       expect(getBoundary(s, SEP("x", 1))).toEqual({ up: 5, down: 5 });
     });
 
+    it("unions with prior user expansion on the SAME boundary (max wins, no clobber)", () => {
+      // User Enter-expanded boundary 1 to {up: 10, down: 10}. Watcher
+      // reload then re-seeds with a smaller orphan window {fromStart: 4,
+      // fromEnd: 6}. The bigger user expansion must survive.
+      let s = expand(emptyExpansion(), SEP("x", 1), "symmetric-20", 100);
+      s = seedFromOrphans(s, [{ file: "x", ref: 1, fromStart: 4, fromEnd: 6 }]);
+      expect(getBoundary(s, SEP("x", 1))).toEqual({ up: 10, down: 10 });
+    });
+
+    it("on a same boundary, takes the larger of user expansion and orphan window per side", () => {
+      // User expansion {up: 10, down: 10}; orphan window asks for
+      // {fromStart: 15, fromEnd: 5}. Per-side max → {up: 15, down: 10}.
+      let s = expand(emptyExpansion(), SEP("x", 1), "symmetric-20", 100);
+      s = seedFromOrphans(s, [{ file: "x", ref: 1, fromStart: 15, fromEnd: 5 }]);
+      expect(getBoundary(s, SEP("x", 1))).toEqual({ up: 15, down: 10 });
+    });
+
     it("empty windows list returns the input state unchanged", () => {
       const s0 = expand(emptyExpansion(), SEP("x", 1), "symmetric-20", 100);
       const s1 = seedFromOrphans(s0, []);
