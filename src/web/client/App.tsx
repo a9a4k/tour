@@ -30,10 +30,10 @@ import {
   moveCursor,
   setCursorSide,
   validateCursor,
-  cursorFromAnnotation,
   type Cursor,
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
+import { nextAnnotationNavStep } from "./annotation-nav.js";
 import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "./cursor-css.js";
 import { syncCursorOverlay } from "./cursor-overlay.js";
 
@@ -313,11 +313,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }, []);
 
   const navigateBy = useCallback(
-    (delta: number) => {
-      if (currentIdx === -1) return;
-      const newIdx = Math.max(0, Math.min(topLevel.length - 1, currentIdx + delta));
-      if (newIdx === currentIdx) return;
-      const target = topLevel[newIdx];
+    (delta: -1 | 1) => {
+      const step = nextAnnotationNavStep({ topLevel, currentIdx, delta });
+      if (!step) return;
+      const { target, cursor: nextCursor } = step;
       setCurrentAnnotationId(target.id);
       setSelectedFile(target.file);
       setCollapsedOverrides((prev) =>
@@ -326,10 +325,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       revealFileAncestors(target.file);
       scrollAnnotationIntoView(target.id);
       // β-coupling per ADR 0012 (mirrors ADR 0011): annotation nav
-      // moves the line cursor too. Reverse direction (j/k/h/l) stays
-      // decoupled — line motion is for code reading, annotation motion
-      // is for engaging with conversation.
-      setCursor(cursorFromAnnotation(target));
+      // moves the line cursor too — and materializes it from null on
+      // first n/p so the same keystroke that moves currentAnnotationId
+      // also lights up the cursor at the target's anchor. Reverse
+      // direction (j/k/h/l/arrows) stays decoupled.
+      setCursor(nextCursor);
     },
     [topLevel, currentIdx, revealFileAncestors, scrollAnnotationIntoView],
   );
