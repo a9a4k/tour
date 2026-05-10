@@ -64,6 +64,7 @@ import {
 } from "../core/diff-pane-motion.js";
 import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
+import { scrollChildIntoView } from "./scroll-into-view.js";
 
 function flatRowId(r: FlatRow): string {
   return r.kind === "diff"
@@ -77,6 +78,16 @@ function flatRowId(r: FlatRow): string {
  * `findDescendantById` lookup, which was O(N²) across `pageMove`,
  * `jump`, and `step`'s `nearestRowIdx` — that O(N²) was the freeze the
  * user observed when pressing Space on a large diff.
+ *
+ * Each visited node has `updateFromLayout()` called on it. Under
+ * `viewportCulling={true}` opentui only cascades that refresh into the
+ * direct children of `ContentRenderable` (file-cards), so descendants
+ * inside a culled file would otherwise carry stale `_y` from the last
+ * frame the file was visible. The call is per-frame guarded inside
+ * opentui, so visiting an already-fresh node is essentially free.
+ * The DFS visits parents before children, so by the time we read a
+ * row's `.y` (which recurses through `parent.y`) every ancestor is
+ * fresh.
  */
 function buildRowYResolver(
   content: { getChildren(): unknown[] },
@@ -90,17 +101,22 @@ function buildRowYResolver(
     targets.add(id);
   }
   const idToY = new Map<string, number>();
-  const stack: Array<{ id?: string; y?: number; getChildren?: () => unknown[] }> = [
-    content as unknown as { getChildren: () => unknown[] },
-  ];
+  type Node = {
+    id?: string;
+    y?: number;
+    getChildren?: () => unknown[];
+    updateFromLayout?: () => void;
+  };
+  const stack: Node[] = [content as unknown as Node];
   while (stack.length > 0 && idToY.size < targets.size) {
     const node = stack.pop()!;
+    node.updateFromLayout?.();
     const id = node.id;
     if (id && targets.has(id)) {
       idToY.set(id, typeof node.y === "number" ? node.y : 0);
     }
     const kids = node.getChildren?.() ?? [];
-    for (const c of kids) stack.push(c as typeof node);
+    for (const c of kids) stack.push(c as Node);
   }
   return (i: number) => idToY.get(idAtIdx[i]) ?? 0;
 }
@@ -532,7 +548,12 @@ function App(props: AppProps) {
   // anchor but moves the visual position — re-fires the scroll.
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
-    diffScrollRef.current.scrollChildIntoView(
+    // Use the culling-safe helper instead of `sb.scrollChildIntoView`:
+    // under `viewportCulling={true}` opentui leaves stale positions
+    // inside off-screen file subtrees, and a cross-file `n`/`p` jump
+    // lands on the previous file otherwise.
+    scrollChildIntoView(
+      diffScrollRef.current,
       `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`,
     );
   }, [cursor, layout]);
@@ -937,6 +958,12 @@ function App(props: AppProps) {
   };
 
   useKeyboard((key) => {
+    // Ctrl+D — opentui's built-in debug overlay. Shows FPS, frame time,
+    // memory. Handle before composer/picker so it works even mid-edit.
+    if (key.ctrl && key.name === "d") {
+      renderer.toggleDebugOverlay();
+      return;
+    }
     if (composer) {
       // Esc cancels; Return / typing flows through to the focused <input>.
       if (key.name === "escape") {
@@ -1012,7 +1039,7 @@ function App(props: AppProps) {
         if (selectedRow?.kind !== "file") return;
         setSidebarFocused(false);
         if (diffScrollRef.current) {
-          diffScrollRef.current.scrollChildIntoView(`file-card-${selectedRow.path}`);
+          scrollChildIntoView(diffScrollRef.current, `file-card-${selectedRow.path}`);
         }
         // PRD US 20: explicit sidebar-driven file selection moves the
         // cursor to that file's first annotatable row. Folded files
@@ -1254,7 +1281,7 @@ function App(props: AppProps) {
                 setSelectedRowIdx(idx);
                 if (row.kind === "file") {
                   if (diffScrollRef.current) {
-                    diffScrollRef.current.scrollChildIntoView(`file-card-${row.path}`);
+                    scrollChildIntoView(diffScrollRef.current, `file-card-${row.path}`);
                   }
                   // Same semantics as the select-file action above (PRD
                   // US 20): clicking a file in the sidebar expresses "show
@@ -1308,7 +1335,17 @@ function App(props: AppProps) {
             <scrollbox
               ref={diffScrollRef}
               height="100%"
-              viewportCulling={false}
+              // viewportCulling=true skips render work for off-screen file
+              // cards. Previously off-limits because off-screen children
+              // carry stale `_y` under culling (commit 0f2d59d), which
+              // broke `scrollChildIntoView` for cross-file `n`/`p`
+              // autoscroll. The diff-pane scroll-into-view path now goes
+              // through `./scroll-into-view.ts`, which force-refreshes
+              // layout from Yoga before reading position; and
+              // `buildRowYResolver` does the same on every visited node.
+              // Both are per-frame guarded so already-fresh nodes are a
+              // no-op.
+              viewportCulling={true}
             >
               {files.map((file) => {
                 const collapsed = isFileCollapsed(file.name);
