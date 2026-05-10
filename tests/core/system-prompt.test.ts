@@ -17,8 +17,9 @@ describe("replyAgentSystemPrompt", () => {
     expect(prompt).toContain("may NOT edit code");
   });
 
-  it("contains the silent-exit guidance", () => {
+  it("contains the always-reply guidance", () => {
     const prompt = replyAgentSystemPrompt();
-    expect(prompt).toContain("Exit silently");
+    expect(prompt).toContain("Always reply");
+    expect(prompt).toContain("Never exit without writing a reply");
   });
 });

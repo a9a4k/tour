@@ -42,9 +42,8 @@ USER_PROMPT="A human reviewer just left a note in Tour \${TOUR_ID}. The JSON env
 \${ENVELOPE}
 </envelope>
 
-Read the triggering_annotation and the thread, then either:
-  - reply via: tour annotate \\"\${TOUR_ID}\\" --reply-to <triggering_annotation.id> --as-agent --author claude --body \\"<your reply>\\"
-  - or exit silently if the note is just an acknowledgment.
+Read the triggering_annotation and the thread, then reply via:
+  tour annotate \\"\${TOUR_ID}\\" --reply-to <triggering_annotation.id> --as-agent --author claude --body \\"<your reply>\\"
 
 Use the triggering_annotation.id from the envelope as the --reply-to argument."
 
