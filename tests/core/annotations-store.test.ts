@@ -3,6 +3,8 @@ import {
   appendAnnotation,
   appendAnnotations,
   readAnnotations,
+  buildAnnotation,
+  buildReply,
 } from "../../src/core/annotations-store.js";
 import type { Annotation } from "../../src/core/types.js";
 import { mkdtemp, mkdir } from "node:fs/promises";
@@ -127,5 +129,87 @@ describe("annotations-store", () => {
       expect(loaded[0].line_start).toBe(5);
       expect(loaded[0].line_end).toBe(15);
     });
+  });
+});
+
+describe("buildAnnotation", () => {
+  it("builds a top-level Annotation with the supplied fields and a fresh id + timestamp", () => {
+    const ann = buildAnnotation({
+      file: "src/main.ts",
+      side: "additions",
+      line_start: 7,
+      line_end: 9,
+      body: "looks good",
+      author: "human-1",
+      author_kind: "human",
+    });
+    expect(ann.file).toBe("src/main.ts");
+    expect(ann.side).toBe("additions");
+    expect(ann.line_start).toBe(7);
+    expect(ann.line_end).toBe(9);
+    expect(ann.body).toBe("looks good");
+    expect(ann.author).toBe("human-1");
+    expect(ann.author_kind).toBe("human");
+    expect(ann.replies_to).toBeUndefined();
+    expect(ann.id.length).toBeGreaterThan(0);
+    expect(typeof ann.created_at).toBe("string");
+  });
+
+  it("defaults author to 'unknown' when omitted", () => {
+    const ann = buildAnnotation({
+      file: "x.ts",
+      side: "deletions",
+      line_start: 1,
+      line_end: 1,
+      body: "b",
+      author_kind: "agent",
+    });
+    expect(ann.author).toBe("unknown");
+  });
+});
+
+describe("buildReply", () => {
+  const parent: Annotation = {
+    id: "parent-1",
+    file: "src/lib/x.ts",
+    side: "deletions",
+    line_start: 12,
+    line_end: 14,
+    body: "why?",
+    author: "agent-bot",
+    author_kind: "agent",
+    created_at: "2026-05-08T00:00:00Z",
+  };
+
+  it("inherits the parent's anchor (file, side, line range)", () => {
+    const reply = buildReply(
+      {
+        replies_to: parent.id,
+        body: "because of legacy compat",
+        author: "human-2",
+        author_kind: "human",
+      },
+      [parent],
+    );
+    expect(reply.file).toBe(parent.file);
+    expect(reply.side).toBe(parent.side);
+    expect(reply.line_start).toBe(parent.line_start);
+    expect(reply.line_end).toBe(parent.line_end);
+    expect(reply.replies_to).toBe(parent.id);
+    expect(reply.author_kind).toBe("human");
+    expect(reply.body).toBe("because of legacy compat");
+  });
+
+  it("throws when the parent id is not in the existing list", () => {
+    expect(() =>
+      buildReply(
+        {
+          replies_to: "missing",
+          body: "b",
+          author_kind: "human",
+        },
+        [parent],
+      ),
+    ).toThrow(/missing/);
   });
 });

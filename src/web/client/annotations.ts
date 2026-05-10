@@ -30,7 +30,11 @@ export function toPierreLineAnnotations(annotations: Annotation[], file: string)
       result.push({
         side: ann.side,
         lineNumber: line,
-        metadata: { annotation: ann, isAnchor: line === ann.line_end },
+        metadata: {
+          kind: "annotation",
+          annotation: ann,
+          isAnchor: line === ann.line_end,
+        },
       });
     }
   }

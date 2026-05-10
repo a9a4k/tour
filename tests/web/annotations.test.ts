@@ -26,7 +26,18 @@ describe("toPierreLineAnnotations", () => {
       "a.ts",
     );
     expect(out).toHaveLength(1);
-    expect(out[0].metadata.annotation.file).toBe("a.ts");
+    expect(out[0].metadata.kind).toBe("annotation");
+    if (out[0].metadata.kind === "annotation") {
+      expect(out[0].metadata.annotation.file).toBe("a.ts");
+    }
+  });
+
+  it("tags every emitted entry's metadata with kind:'annotation'", () => {
+    const out = toPierreLineAnnotations(
+      [ann({ line_start: 5, line_end: 8 })],
+      "src/main.ts",
+    );
+    expect(out.every((e) => e.metadata.kind === "annotation")).toBe(true);
   });
 
   it("preserves the annotation side as Pierre's AnnotationSide", () => {
@@ -40,7 +51,10 @@ describe("toPierreLineAnnotations", () => {
       "src/main.ts",
     );
     expect(out).toEqual([
-      expect.objectContaining({ lineNumber: 7, metadata: expect.objectContaining({ isAnchor: true }) }),
+      expect.objectContaining({
+        lineNumber: 7,
+        metadata: expect.objectContaining({ kind: "annotation", isAnchor: true }),
+      }),
     ]);
   });
 
@@ -57,7 +71,9 @@ describe("toPierreLineAnnotations", () => {
       [ann({ line_start: 5, line_end: 8 })],
       "src/main.ts",
     );
-    const anchors = out.filter((e) => e.metadata.isAnchor);
+    const anchors = out.filter(
+      (e) => e.metadata.kind === "annotation" && e.metadata.isAnchor,
+    );
     expect(anchors).toHaveLength(1);
     expect(anchors[0].lineNumber).toBe(8);
   });
@@ -66,7 +82,10 @@ describe("toPierreLineAnnotations", () => {
     const source = ann({ line_start: 5, line_end: 7, body: "shared body" });
     const out = toPierreLineAnnotations([source], "src/main.ts");
     for (const entry of out) {
-      expect(entry.metadata.annotation).toBe(source);
+      expect(entry.metadata.kind).toBe("annotation");
+      if (entry.metadata.kind === "annotation") {
+        expect(entry.metadata.annotation).toBe(source);
+      }
     }
   });
 });

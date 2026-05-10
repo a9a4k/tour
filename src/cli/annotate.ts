@@ -2,9 +2,10 @@ import {
   appendAnnotation,
   appendAnnotations,
   readAnnotations,
+  buildAnnotation,
+  buildReply,
 } from "../core/annotations-store.js";
 import { resolveIdPrefix } from "../core/tour-store.js";
-import { generateId } from "../core/ids.js";
 import { printOutput } from "./output.js";
 import type { Annotation, AuthorKind } from "../core/types.js";
 
@@ -57,21 +58,28 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
     }>;
     const existing = await readAnnotations(args.cwd, resolvedId);
     const annotations: Annotation[] = items.map((item) => {
+      const itemKind = item.author_kind ?? authorKind;
       if (item.replies_to !== undefined) {
-        return buildReply(item, existing, authorKind);
+        return buildReply(
+          {
+            replies_to: item.replies_to,
+            body: item.body,
+            author: item.author,
+            author_kind: itemKind,
+          },
+          existing,
+        );
       }
       const { start, end } = parseLine(item.line);
-      return {
-        id: generateId(),
+      return buildAnnotation({
         file: item.file,
         side: validateSide(item.side),
         line_start: start,
         line_end: end,
         body: item.body,
-        author: item.author ?? "unknown",
-        author_kind: item.author_kind ?? authorKind,
-        created_at: new Date().toISOString(),
-      };
+        author: item.author,
+        author_kind: itemKind,
+      });
     });
     await appendAnnotations(args.cwd, resolvedId, annotations);
     if (args.json) {
@@ -92,9 +100,9 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
         replies_to: args.replyTo,
         body: args.body,
         author: args.author,
+        author_kind: authorKind,
       },
       existing,
-      authorKind,
     );
     await appendAnnotation(args.cwd, resolvedId, reply);
     if (args.json) {
@@ -112,17 +120,15 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   }
 
   const { start, end } = parseLine(args.line);
-  const annotation: Annotation = {
-    id: generateId(),
+  const annotation = buildAnnotation({
     file: args.file,
     side: validateSide(args.side),
     line_start: start,
     line_end: end,
     body: args.body,
-    author: args.author ?? "unknown",
+    author: args.author,
     author_kind: authorKind,
-    created_at: new Date().toISOString(),
-  };
+  });
 
   await appendAnnotation(args.cwd, resolvedId, annotation);
 
@@ -131,39 +137,6 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   } else {
     console.log(`Added annotation to ${resolvedId}: ${args.file}:${start}`);
   }
-}
-
-interface ReplyInput {
-  replies_to?: string;
-  body: string;
-  author?: string;
-  author_kind?: AuthorKind;
-}
-
-function buildReply(
-  input: ReplyInput,
-  existing: Annotation[],
-  defaultKind: AuthorKind,
-): Annotation {
-  if (!input.replies_to) {
-    throw new Error("replies_to is required for a reply");
-  }
-  const parent = existing.find((a) => a.id === input.replies_to);
-  if (!parent) {
-    throw new Error(`No annotation with id "${input.replies_to}" in this tour`);
-  }
-  return {
-    id: generateId(),
-    file: parent.file,
-    side: parent.side,
-    line_start: parent.line_start,
-    line_end: parent.line_end,
-    body: input.body,
-    author: input.author ?? "unknown",
-    author_kind: input.author_kind ?? defaultKind,
-    replies_to: input.replies_to,
-    created_at: new Date().toISOString(),
-  };
 }
 
 function validateSide(side: string): "additions" | "deletions" {

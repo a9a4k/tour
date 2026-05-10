@@ -48,7 +48,18 @@ export interface TourData {
   snapshotLost: boolean;
 }
 
-export interface AnnotationMetadata {
-  annotation: Annotation;
-  isAnchor: boolean;
-}
+/**
+ * Per-line metadata threaded through Pierre's `lineAnnotations`. A
+ * tagged union so the same render slot can host an existing Annotation's
+ * card OR an inline composer for a new top-level Annotation at a
+ * specific line.
+ */
+export type AnnotationMetadata =
+  | { kind: "annotation"; annotation: Annotation; isAnchor: boolean }
+  | {
+      kind: "composer";
+      file: string;
+      side: "additions" | "deletions";
+      line_start: number;
+      line_end: number;
+    };

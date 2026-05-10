@@ -252,6 +252,89 @@ export function html(initialTourId?: string): string {
   }
   .annotation-block .ann-reply { margin-top: 8px; }
   .annotation-block .ann-reply:first-child { margin-top: 0; }
+  .annotation-block .ann-actions {
+    margin-top: 8px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .annotation-block .reply-button {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .annotation-block .reply-button:hover {
+    background: var(--canvas-subtle);
+    color: var(--fg-default);
+  }
+  .annotation-block .ann-reply-composer {
+    margin-top: 8px;
+    padding-left: 12px;
+    border-left: 2px solid var(--border-muted);
+  }
+  .composer {
+    margin: 4px 16px 4px 0;
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 8px 12px;
+    background: var(--canvas-subtle);
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  .composer-textarea {
+    width: 100%;
+    min-height: 64px;
+    background: var(--canvas-default);
+    color: var(--fg-default);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .composer-textarea:focus {
+    outline: 1px solid var(--border-accent);
+    outline-offset: 0;
+  }
+  .composer-error {
+    margin-top: 6px;
+    color: var(--fg-danger);
+    font-size: 12px;
+  }
+  .composer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .composer-cancel,
+  .composer-submit {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--fg-default);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .composer-cancel:hover { background: var(--canvas-subtle); }
+  .composer-submit {
+    background: var(--bg-accent-emphasis);
+    color: var(--fg-on-emphasis);
+    border-color: transparent;
+  }
+  .composer-submit:disabled {
+    background: var(--canvas-subtle);
+    color: var(--fg-muted);
+    cursor: default;
+  }
   .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }
