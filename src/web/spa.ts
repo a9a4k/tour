@@ -335,6 +335,31 @@ export function html(initialTourId?: string): string {
     color: var(--fg-muted);
     cursor: default;
   }
+  .reply-pill {
+    margin-top: 10px;
+    padding: 6px 10px;
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-muted);
+    border-radius: 4px;
+    color: var(--fg-muted);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .reply-pill.stale {
+    border-color: var(--fg-attention);
+    color: var(--fg-attention);
+    flex-wrap: wrap;
+  }
+  .reply-pill .reply-pill-icon { font-size: 14px; }
+  .reply-pill .reply-pill-hint { color: var(--fg-muted); font-size: 11px; }
+  .reply-pill code {
+    background: var(--bg-neutral-subtle);
+    border-radius: 3px;
+    padding: 0.1em 0.3em;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
   .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }

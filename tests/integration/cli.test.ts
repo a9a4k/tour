@@ -454,6 +454,48 @@ describe("CLI integration", () => {
     });
   });
 
+  describe("reply-system-prompt", () => {
+    it("prints the canonical system prompt to stdout", async () => {
+      const result = await run(["reply-system-prompt"], repo);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Tour's reply-agent");
+      expect(result.stdout).toContain("tour annotate --as-agent --reply-to");
+    });
+  });
+
+  describe("reply-cancel", () => {
+    it("is a no-op when no lock exists", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const result = await run(["reply-cancel", tour.id], repo);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("No reply in flight");
+    });
+
+    it("deletes the lockfile when one exists", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const lockPath = join(repo, ".tour", tour.id, ".reply-lock.json");
+      // Use pid=0 (no kill) to keep the test hermetic — we only assert the
+      // lockfile cleanup half of the verb.
+      await writeFile(
+        lockPath,
+        JSON.stringify({
+          agent: "fixture",
+          responding_to: "ann-1",
+          started_at: new Date().toISOString(),
+          pid: 0,
+        }),
+      );
+      const result = await run(["reply-cancel", tour.id, "--json"], repo);
+      expect(result.exitCode).toBe(0);
+      const out = JSON.parse(result.stdout);
+      expect(out.cancelled).toBe(true);
+      expect(out.agent).toBe("fixture");
+      expect(existsSync(lockPath)).toBe(false);
+    });
+  });
+
   describe("unknown command", () => {
     it("exits with error", async () => {
       const result = await run(["bogus"], repo);

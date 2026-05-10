@@ -4,6 +4,7 @@ import { AnnotationCard } from "./AnnotationCard.js";
 import { annotationCardSlot } from "./annotation-placement.js";
 import { DiffLine } from "./DiffLine.js";
 import { getSyntaxStyle, inferFiletype } from "./syntax.js";
+import type { ReplyLock } from "../core/reply-lock.js";
 
 interface DiffRowsProps {
   fileName: string;
@@ -11,6 +12,8 @@ interface DiffRowsProps {
   layout: "split" | "unified";
   currentAnnotationId: string | null;
   repliesCollapsed: boolean;
+  replyLock?: ReplyLock | null;
+  now?: number;
 }
 
 const LINE_NUMBER_WIDTH = 5;
@@ -45,6 +48,8 @@ export function DiffRows({
   layout,
   currentAnnotationId,
   repliesCollapsed,
+  replyLock,
+  now,
 }: DiffRowsProps) {
   const filetype = inferFiletype(fileName);
   const syntaxStyle = getSyntaxStyle();
@@ -69,6 +74,8 @@ export function DiffRows({
               isCurrent={row.id === currentAnnotationId}
               replies={row.replies}
               repliesCollapsed={repliesCollapsed}
+              replyLock={replyLock}
+              now={now}
             />
           );
           if (slot === "full") return card;

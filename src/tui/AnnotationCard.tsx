@@ -1,11 +1,14 @@
 import type { Annotation, AuthorKind } from "../core/types.js";
 import { theme } from "../core/theme.js";
+import { ageMs, isStale, type ReplyLock } from "../core/reply-lock.js";
 
 interface AnnotationCardProps {
   annotation: Annotation;
   isCurrent: boolean;
   replies?: Annotation[];
   repliesCollapsed?: boolean;
+  replyLock?: ReplyLock | null;
+  now?: number;
 }
 
 function rangeLabel(ann: Annotation): string {
@@ -21,14 +24,57 @@ function authorKindColor(kind: AuthorKind): string {
   return kind === "human" ? theme.fg.accent : theme.fg.muted;
 }
 
+interface PillProps {
+  lock: ReplyLock;
+  now: number;
+}
+
+function ReplyPill({ lock, now }: PillProps) {
+  const seconds = Math.floor(ageMs(lock, now) / 1000);
+  const stale = isStale(lock, now);
+  if (stale) {
+    return (
+      <box marginTop={1} paddingLeft={2} flexDirection="column">
+        <text fg={theme.fg.attention}>
+          {`⚠️ ${lock.agent} is taking unusually long…`}
+        </text>
+        <text fg={theme.fg.muted}>
+          {`  Run: tour reply-cancel <tour-id>`}
+        </text>
+      </box>
+    );
+  }
+  return (
+    <box marginTop={1} paddingLeft={2}>
+      <text fg={theme.fg.muted}>
+        {`✏️ ${lock.agent} is replying… (${seconds}s)`}
+      </text>
+    </box>
+  );
+}
+
+function pillTargetsThisCard(
+  annotation: Annotation,
+  replies: Annotation[] | undefined,
+  lock: ReplyLock,
+): boolean {
+  if (lock.responding_to === annotation.id) return true;
+  if (!replies) return false;
+  return replies.some((r) => r.id === lock.responding_to);
+}
+
 export function AnnotationCard({
   annotation,
   isCurrent,
   replies,
   repliesCollapsed,
+  replyLock,
+  now,
 }: AnnotationCardProps) {
   const visibleReplies = repliesCollapsed ? [] : replies ?? [];
   const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
+  const showPill =
+    replyLock && pillTargetsThisCard(annotation, replies, replyLock);
   return (
     <box
       id={`annotation-${annotation.id}`}
@@ -73,6 +119,7 @@ export function AnnotationCard({
           </text>
         </box>
       )}
+      {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
     </box>
   );
 }

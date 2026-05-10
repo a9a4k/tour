@@ -31,6 +31,9 @@ import {
 } from "./composer-state.js";
 import { shortId } from "../core/ids.js";
 import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
+import { TourWatcher } from "../core/watcher.js";
+import { ReplyRunner } from "../core/reply-runner.js";
+import type { ReplyLock } from "../core/reply-lock.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -45,6 +48,7 @@ export interface TourBundle {
   annotations: Annotation[];
   snapshotLost: boolean;
   classifications: Record<string, FileClassification>;
+  replyLock: ReplyLock | null;
 }
 
 export type WriteAnnotationInput =
@@ -65,9 +69,12 @@ interface AppProps {
   annotations: Annotation[];
   snapshotLost: boolean;
   classifications?: Record<string, FileClassification>;
+  replyLock?: ReplyLock | null;
   loadTour?: (id: string) => Promise<TourBundle>;
   loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
   writeAnnotation?: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
+  cwd?: string;
+  replyAgent?: string;
 }
 
 function statusIcon(type: string): string {
@@ -115,6 +122,8 @@ function fileCardBody(
   layout: "split" | "unified",
   currentAnnotationId: string | null,
   repliesCollapsed: boolean,
+  replyLock: ReplyLock | null,
+  now: number,
 ) {
   if (collapsed) return <text fg={theme.fg.muted}>{"[collapsed — c to expand]"}</text>;
   if (!hasHunks) return <text fg={theme.fg.muted}>{"[no textual changes]"}</text>;
@@ -125,6 +134,8 @@ function fileCardBody(
       layout={layout}
       currentAnnotationId={currentAnnotationId}
       repliesCollapsed={repliesCollapsed}
+      replyLock={replyLock}
+      now={now}
     />
   );
 }
@@ -177,6 +188,7 @@ function App(props: AppProps) {
     annotations: props.annotations,
     snapshotLost: props.snapshotLost,
     classifications: props.classifications ?? {},
+    replyLock: props.replyLock ?? null,
   });
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
@@ -199,7 +211,57 @@ function App(props: AppProps) {
   const liveDiff = bundle.diff;
   const liveSnapshotLost = bundle.snapshotLost;
   const liveClassifications = bundle.classifications;
+  const liveReplyLock = bundle.replyLock;
   const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
+
+  // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
+  // second only when a lock is present so we don't burn renders on the idle
+  // path.
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (!liveReplyLock) return;
+    const handle = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(handle);
+  }, [liveReplyLock]);
+
+  // Per-tour file watcher: drives both the bundle reload (so newly-written
+  // Annotations and lock-state changes show up) and the reply-agent runner
+  // (so a human-authored Annotation kicks off a dispatch). Inert when no
+  // loadTour is wired.
+  useEffect(() => {
+    if (!props.cwd || !props.loadTour) return;
+    const watcher = new TourWatcher(props.cwd, liveTour.id);
+    const runner = props.replyAgent
+      ? new ReplyRunner({ cwd: props.cwd, tourId: liveTour.id, agent: props.replyAgent })
+      : null;
+    if (runner) void runner.prime();
+
+    let cancelled = false;
+    const reload = async () => {
+      if (!props.loadTour || cancelled) return;
+      try {
+        const next = await props.loadTour(liveTour.id);
+        if (!cancelled) setBundle(next);
+      } catch {
+        // transient — keep current bundle
+      }
+    };
+
+    watcher.on((event) => {
+      if (event.type === "annotation-changed") {
+        if (runner) void runner.tick().catch(() => {});
+        void reload();
+      } else if (event.type === "reply-in-flight" || event.type === "reply-cleared") {
+        void reload();
+      }
+    });
+    watcher.start();
+
+    return () => {
+      cancelled = true;
+      watcher.stop();
+    };
+  }, [liveTour.id, props.cwd, props.replyAgent, props.loadTour]);
 
   const files = useMemo(
     () => sortFilesForStream(bundle.files),
@@ -744,6 +806,8 @@ function App(props: AppProps) {
                       layout,
                       currentAnnotationId,
                       repliesCollapsed,
+                      liveReplyLock,
+                      now,
                     )}
                   </box>
                 );
