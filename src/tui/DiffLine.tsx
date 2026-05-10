@@ -103,21 +103,25 @@ export function DiffLine({
         // it in a <box> so flex sizing comes from the box and <code> just
         // fills it. Same pattern as anomalyco/opentui#621's
         // DiffLineRenderable._contentBox.
-        <box flexGrow={1} minHeight={1}>
+        // bg lives on the wrapper, not <code>: <code> only paints behind
+        // characters, so a bg passed to it leaves the trailing whitespace
+        // unhighlighted. Painting on the flex-grown box fills the full row.
+        <box flexGrow={1} minHeight={1} backgroundColor={contentBg}>
           <code
             content={text}
             filetype={filetype}
             syntaxStyle={syntaxStyle}
-            bg={contentBg}
             drawUnstyledText
             wrapMode="word"
             width="100%"
           />
         </box>
       ) : (
-        <text bg={contentBg} wrapMode="word" flexGrow={1}>
-          {text}
-        </text>
+        // Same reason as above: wrap so the bg fills the row, not just the
+        // glyph cells. Matters for the empty side of pure +/- rows in split.
+        <box flexGrow={1} minHeight={1} backgroundColor={contentBg}>
+          <text wrapMode="word">{text}</text>
+        </box>
       )}
     </box>
   );
