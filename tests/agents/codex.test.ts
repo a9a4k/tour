@@ -42,9 +42,21 @@ const ENVELOPE: ReplyEnvelope = {
 };
 
 describe("codex buildArgs", () => {
-  it("uses the `exec` non-interactive subcommand", () => {
+  it("uses the `exec` non-interactive subcommand as the first positional", () => {
     const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
     expect(argv[0]).toBe("exec");
+  });
+
+  it("passes --skip-git-repo-check so codex runs inside Tour's pinned working tree", () => {
+    const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
+    expect(argv).toContain("--skip-git-repo-check");
+  });
+
+  it("places the prompt as the final positional after all flags", () => {
+    const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
+    const prompt = argv[argv.length - 1];
+    expect(prompt.startsWith("--")).toBe(false);
+    expect(argv.indexOf("--skip-git-repo-check")).toBeLessThan(argv.length - 1);
   });
 
   it("folds the system prompt into the prompt argument (codex has no --system-prompt flag)", () => {
