@@ -89,6 +89,27 @@ describe("flatRows", () => {
     expect(rows.every((r) => r.file === "x.txt")).toBe(true);
   });
 
+  it("skips a folded file in the middle so cross-file motion jumps over it", () => {
+    // Three files in stream order. The middle one is folded — the cursor
+    // should walk a.txt's rows directly into c.txt's rows with no b.txt
+    // entries appearing between them.
+    const fa = fileFromDiff(SIMPLE_DIFF, "a.txt");
+    const fb = fileFromDiff(SIMPLE_DIFF, "b.txt");
+    const fc = fileFromDiff(SIMPLE_DIFF, "c.txt");
+    const planned = new Map<string, PlannedRow[]>([
+      ["a.txt", plannedFor(SIMPLE_DIFF, [], "split")],
+      ["b.txt", plannedFor(SIMPLE_DIFF, [], "split")],
+      ["c.txt", plannedFor(SIMPLE_DIFF, [], "split")],
+    ]);
+    const rows = flatRows([fa, fb, fc], planned, (n) => n === "b.txt");
+    const fileSeq = rows.map((r) => r.file);
+    expect(fileSeq).not.toContain("b.txt");
+    // The boundary is direct: the last a.txt row is immediately followed
+    // by the first c.txt row.
+    const lastA = fileSeq.lastIndexOf("a.txt");
+    expect(fileSeq[lastA + 1]).toBe("c.txt");
+  });
+
   it("paired=true on a context row (both line numbers populated)", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, [], "split")]]);

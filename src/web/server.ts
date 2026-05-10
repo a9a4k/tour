@@ -5,8 +5,9 @@ import {
   buildAnnotation,
   buildReply,
 } from "../core/annotations-store.js";
-import { getDiff, isShaResolvable } from "../core/git.js";
+import { getDiff, gitShow, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
+import { fetchFileContents } from "../core/file-content-provider.js";
 import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
@@ -264,9 +265,16 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
           let diff = "";
           let diffModel = { files: [] as ReturnType<typeof parseDiff>["files"] };
+          let fileContents = new Map<string, { oldContent: string; newContent: string }>();
           if (!snapshotLost) {
             diff = await getDiff(tour.base_sha, tour.head_sha, cwd);
             diffModel = parseDiff(diff);
+            fileContents = await fetchFileContents(diffModel, {
+              baseSha: tour.base_sha,
+              headSha: tour.head_sha,
+              cwd,
+              gitShow,
+            });
           }
 
           const classifications = await Promise.all(
@@ -290,6 +298,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
               files: diffModel.files.map((f) => ({
                 ...f,
                 classification: classificationMap[f.name] ?? { collapsed: false },
+                ...fileContents.get(f.name),
               })),
             },
             snapshotLost,

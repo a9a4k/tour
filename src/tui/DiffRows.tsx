@@ -13,6 +13,18 @@ interface DiffRowsProps {
   layout: "split" | "unified";
   currentAnnotationId: string | null;
   cursor?: Cursor | null;
+  /** Mouse-click handler for cursor placement (issue #104). Side derivation
+   *  is UI-coordinate-dependent and lives at the click site:
+   *  - split: column index → side (left → deletions, right → additions);
+   *    single-side rows force the populated side regardless of column.
+   *  - unified: row type → side (deletion → deletions; addition / context
+   *    → additions per CONTEXT.md convention).
+   *  Hunk-header and annotation rows do not invoke the handler. */
+  onCursorClick?: (
+    file: string,
+    side: "additions" | "deletions",
+    lineNumber: number,
+  ) => void;
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
@@ -48,12 +60,43 @@ function rowId(file: string, side: "additions" | "deletions", lineNumber: number
   return `diff-row-${file}-${side}-${lineNumber}`;
 }
 
+function splitClickTarget(
+  row: DiffRow,
+  column: "left" | "right",
+): { side: "additions" | "deletions"; lineNumber: number } | null {
+  // Paired row: column maps directly to its side.
+  if (row.leftLineNumber !== null && row.rightLineNumber !== null) {
+    return column === "left"
+      ? { side: "deletions", lineNumber: row.leftLineNumber }
+      : { side: "additions", lineNumber: row.rightLineNumber };
+  }
+  // Single-side row: both columns force the populated side.
+  if (row.leftLineNumber !== null) return { side: "deletions", lineNumber: row.leftLineNumber };
+  if (row.rightLineNumber !== null) return { side: "additions", lineNumber: row.rightLineNumber };
+  return null;
+}
+
+function unifiedClickTarget(
+  row: DiffRow,
+): { side: "additions" | "deletions"; lineNumber: number } | null {
+  // Row type → side. Pure deletion rows address the deletions side;
+  // addition / context rows address the additions side (CONTEXT.md).
+  if (row.type === "deletion" && row.leftLineNumber !== null) {
+    return { side: "deletions", lineNumber: row.leftLineNumber };
+  }
+  if (row.rightLineNumber !== null) {
+    return { side: "additions", lineNumber: row.rightLineNumber };
+  }
+  return null;
+}
+
 export function DiffRows({
   fileName,
   rows,
   layout,
   currentAnnotationId,
   cursor,
+  onCursorClick,
   repliesCollapsed,
   replyLock,
   now,
@@ -125,9 +168,19 @@ export function DiffRows({
             row.leftLineNumber !== null ? rowId(fileName, "deletions", row.leftLineNumber) : undefined;
           const rightId =
             row.rightLineNumber !== null ? rowId(fileName, "additions", row.rightLineNumber) : undefined;
+          const leftClick = splitClickTarget(row, "left");
+          const rightClick = splitClickTarget(row, "right");
+          const onLeftMouseDown =
+            onCursorClick && leftClick
+              ? () => onCursorClick(fileName, leftClick.side, leftClick.lineNumber)
+              : undefined;
+          const onRightMouseDown =
+            onCursorClick && rightClick
+              ? () => onCursorClick(fileName, rightClick.side, rightClick.lineNumber)
+              : undefined;
           return (
             <box key={key} flexDirection="row" width="100%" minHeight={1}>
-              <box id={leftId} width="50%">
+              <box id={leftId} width="50%" onMouseDown={onLeftMouseDown}>
                 <DiffLine
                   gutter={splitGutter(row.leftLineNumber)}
                   text={row.leftText}
@@ -141,7 +194,7 @@ export function DiffRows({
                   width="100%"
                 />
               </box>
-              <box id={rightId} width="50%">
+              <box id={rightId} width="50%" onMouseDown={onRightMouseDown}>
                 <DiffLine
                   gutter={splitGutter(row.rightLineNumber)}
                   text={row.rightText}
@@ -167,17 +220,16 @@ export function DiffRows({
         // can be addressed from either side; pure +/- rows force their
         // populated side).
         const unifiedCursorActive = leftCursorActive || rightCursorActive;
-        // The id keys off the row's natural addressable side: pure deletion
-        // rows are deletions-side; everything else (context, addition) is
-        // additions-side.
-        let unifiedRowId: string | undefined;
-        if (row.type === "deletion" && row.leftLineNumber !== null) {
-          unifiedRowId = rowId(fileName, "deletions", row.leftLineNumber);
-        } else if (row.rightLineNumber !== null) {
-          unifiedRowId = rowId(fileName, "additions", row.rightLineNumber);
-        }
+        const unifiedTarget = unifiedClickTarget(row);
+        const unifiedRowId = unifiedTarget
+          ? rowId(fileName, unifiedTarget.side, unifiedTarget.lineNumber)
+          : undefined;
+        const onUnifiedMouseDown =
+          onCursorClick && unifiedTarget
+            ? () => onCursorClick(fileName, unifiedTarget.side, unifiedTarget.lineNumber)
+            : undefined;
         return (
-          <box key={key} id={unifiedRowId} width="100%">
+          <box key={key} id={unifiedRowId} width="100%" onMouseDown={onUnifiedMouseDown}>
             <DiffLine
               gutter={unifiedGutter(row)}
               text={text}

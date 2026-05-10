@@ -39,6 +39,7 @@ import {
   moveCursor,
   setCursorSide,
   validateCursor,
+  cursorFromAnnotation,
   type Cursor,
 } from "../core/cursor-state.js";
 
@@ -129,6 +130,11 @@ function fileCardBody(
   layout: "split" | "unified",
   currentAnnotationId: string | null,
   cursor: Cursor | null,
+  onCursorClick: (
+    file: string,
+    side: "additions" | "deletions",
+    lineNumber: number,
+  ) => void,
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
@@ -142,6 +148,7 @@ function fileCardBody(
       layout={layout}
       currentAnnotationId={currentAnnotationId}
       cursor={cursor}
+      onCursorClick={onCursorClick}
       repliesCollapsed={repliesCollapsed}
       replyLock={replyLock}
       now={now}
@@ -383,6 +390,22 @@ function App(props: AppProps) {
     );
   }, [cursor]);
 
+  // Sidebar follows the cursor's file. Deps are `[cursor?.file]` (not
+  // `[cursor]`) so in-file j/k motion leaves the sidebar untouched —
+  // sidebar selection is a per-file affordance, not a per-row one.
+  useEffect(() => {
+    if (!cursor) return;
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursor.file);
+    if (!located) return;
+    if (located.collapsedFolders !== collapsedFolders) {
+      setCollapsedFolders(located.collapsedFolders as Set<string>);
+    }
+    if (located.rowIdx !== safeRowIdx) {
+      setSelectedRowIdx(located.rowIdx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor?.file]);
+
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
   // semantics — already-visible rows don't move).
@@ -486,6 +509,9 @@ function App(props: AppProps) {
       }
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
+    // β-coupling per ADR 0011: annotation-nav also moves the line cursor.
+    // Reverse direction (`j`/`k`) stays decoupled.
+    setCursor(cursorFromAnnotation(ann));
   };
 
   const gotoPrevAnnotation = () => {
@@ -497,6 +523,30 @@ function App(props: AppProps) {
     if (currentAnnotationIdx < 0) return;
     if (currentAnnotationIdx >= liveTopLevel.length - 1) return;
     jumpToAnnotation(liveTopLevel[currentAnnotationIdx + 1]);
+  };
+
+  // Mouse click on a diff row → set cursor + side per the click site (issue
+  // #104). Side derivation lives in DiffRows.tsx (it's UI-coordinate-
+  // dependent). Sets preferredSide to the clicked side so subsequent
+  // keyboard motion preserves the user's mouse-expressed preference.
+  // Also focuses the diff pane and syncs the sidebar selection so cross-
+  // file consistency matches keyboard motion.
+  const onCursorClick = (
+    file: string,
+    side: "additions" | "deletions",
+    lineNumber: number,
+  ) => {
+    setSidebarFocused(false);
+    setCursor({ file, lineNumber, side, preferredSide: side });
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
+    if (located) {
+      if (located.collapsedFolders !== collapsedFolders) {
+        setCollapsedFolders(located.collapsedFolders as Set<string>);
+      }
+      if (located.rowIdx !== safeRowIdx) {
+        setSelectedRowIdx(located.rowIdx);
+      }
+    }
   };
 
   const openTopLevelComposer = () => {
@@ -832,6 +882,7 @@ function App(props: AppProps) {
                       layout,
                       currentAnnotationId,
                       cursor,
+                      onCursorClick,
                       repliesCollapsed,
                       liveReplyLock,
                       now,

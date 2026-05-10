@@ -67,3 +67,19 @@ export async function isShaResolvable(sha: string, cwd: string): Promise<boolean
     return false;
   }
 }
+
+export async function gitShow(
+  sha: string,
+  path: string,
+  cwd: string,
+): Promise<string> {
+  try {
+    const { stdout } = await exec("git", ["show", `${sha}:${path}`], {
+      cwd,
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    return stdout;
+  } catch {
+    return "";
+  }
+}
