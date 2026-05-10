@@ -58,6 +58,11 @@ function callDiffRows(args: {
   layout: "split" | "unified";
   cursor?: import("../../src/core/cursor-state.js").Cursor | null;
   fileName?: string;
+  onCursorClick?: (
+    file: string,
+    side: "additions" | "deletions",
+    lineNumber: number,
+  ) => void;
 }): unknown {
   return DiffRows({
     fileName: args.fileName ?? "x.txt",
@@ -65,6 +70,7 @@ function callDiffRows(args: {
     layout: args.layout,
     currentAnnotationId: null,
     cursor: args.cursor ?? null,
+    onCursorClick: args.onCursorClick,
   });
 }
 
@@ -288,6 +294,330 @@ index 1..2 100644
         .map((el) => el.props["id"])
         .filter((id): id is string => typeof id === "string");
       expect(ids).toContain(`diff-row-x.txt-additions-${addRow.rightLineNumber}`);
+    });
+  });
+
+  describe("mouse click → cursor (issue #104)", () => {
+    function findIdElement(tree: unknown, id: string): AnyElement | undefined {
+      return flatten(tree).find((el) => el.props["id"] === id);
+    }
+
+    it("split: clicking the left column of a paired row dispatches with deletions side + leftLineNumber", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      const leftWrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-deletions-${ctxRow.leftLineNumber}`,
+      );
+      expect(leftWrapper).toBeDefined();
+      const handler = leftWrapper!.props["onMouseDown"];
+      expect(typeof handler).toBe("function");
+      (handler as () => void)();
+      expect(onCursorClick).toHaveBeenCalledTimes(1);
+      expect(onCursorClick).toHaveBeenCalledWith("x.txt", "deletions", ctxRow.leftLineNumber);
+    });
+
+    it("split: clicking the right column of a paired row dispatches with additions side + rightLineNumber", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      const rightWrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
+      );
+      expect(rightWrapper).toBeDefined();
+      const handler = rightWrapper!.props["onMouseDown"];
+      expect(typeof handler).toBe("function");
+      (handler as () => void)();
+      expect(onCursorClick).toHaveBeenCalledTimes(1);
+      expect(onCursorClick).toHaveBeenCalledWith("x.txt", "additions", ctxRow.rightLineNumber);
+    });
+
+    it("split: a pure-addition change row dispatches additions on either column (single-side row force)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pureAddIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber === null &&
+          r.rightLineNumber !== null,
+      );
+      const pureAddRow = rows[pureAddIdx];
+      if (pureAddRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(pureAddIdx, pureAddIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      // The right (populated) wrapper carries the row id and must dispatch
+      // with the only valid side.
+      const rightWrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${pureAddRow.rightLineNumber}`,
+      );
+      expect(rightWrapper).toBeDefined();
+      (rightWrapper!.props["onMouseDown"] as () => void)();
+      expect(onCursorClick).toHaveBeenLastCalledWith(
+        "x.txt",
+        "additions",
+        pureAddRow.rightLineNumber,
+      );
+
+      // Find the empty left half (no row id, but the column box still renders
+      // and should map any click to the populated side).
+      const splitRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
+      );
+      expect(splitRowBox).toBeDefined();
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(isElement);
+      expect(halves.length).toBe(2);
+      const leftHalf = halves[0];
+      const leftHandler = leftHalf.props["onMouseDown"];
+      // Clicking the empty half should still position the cursor at the
+      // only valid side rather than being a dead zone.
+      expect(typeof leftHandler).toBe("function");
+      (leftHandler as () => void)();
+      expect(onCursorClick).toHaveBeenLastCalledWith(
+        "x.txt",
+        "additions",
+        pureAddRow.rightLineNumber,
+      );
+    });
+
+    it("split: a pure-deletion change row dispatches deletions on either column", () => {
+      const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,1 @@
+ ctx
+-only-del
+`;
+      const file = parseFile(diff);
+      const rows = planRows(file, [], "split");
+      const pureDelIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber === null,
+      );
+      const pureDelRow = rows[pureDelIdx];
+      if (pureDelRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(pureDelIdx, pureDelIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      const splitRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
+      );
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(isElement);
+      // Both halves must dispatch with deletions side + leftLineNumber.
+      (halves[0].props["onMouseDown"] as () => void)();
+      expect(onCursorClick).toHaveBeenLastCalledWith(
+        "x.txt",
+        "deletions",
+        pureDelRow.leftLineNumber,
+      );
+      (halves[1].props["onMouseDown"] as () => void)();
+      expect(onCursorClick).toHaveBeenLastCalledWith(
+        "x.txt",
+        "deletions",
+        pureDelRow.leftLineNumber,
+      );
+    });
+
+    it("unified: addition row click dispatches additions side + rightLineNumber", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const addIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "addition");
+      const addRow = rows[addIdx];
+      if (addRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(addIdx, addIdx + 1),
+        layout: "unified",
+        onCursorClick,
+      });
+      const wrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${addRow.rightLineNumber}`,
+      );
+      (wrapper!.props["onMouseDown"] as () => void)();
+      expect(onCursorClick).toHaveBeenCalledWith(
+        "x.txt",
+        "additions",
+        addRow.rightLineNumber,
+      );
+    });
+
+    it("unified: deletion row click dispatches deletions side + leftLineNumber", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const delIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "deletion");
+      const delRow = rows[delIdx];
+      if (delRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(delIdx, delIdx + 1),
+        layout: "unified",
+        onCursorClick,
+      });
+      const wrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-deletions-${delRow.leftLineNumber}`,
+      );
+      (wrapper!.props["onMouseDown"] as () => void)();
+      expect(onCursorClick).toHaveBeenCalledWith(
+        "x.txt",
+        "deletions",
+        delRow.leftLineNumber,
+      );
+    });
+
+    it("unified: context row click dispatches additions side (CONTEXT.md convention)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "unified",
+        onCursorClick,
+      });
+      const wrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
+      );
+      (wrapper!.props["onMouseDown"] as () => void)();
+      expect(onCursorClick).toHaveBeenCalledWith(
+        "x.txt",
+        "additions",
+        ctxRow.rightLineNumber,
+      );
+    });
+
+    it("hunk-header rows do NOT receive a click handler", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const hunkIdx = rows.findIndex((r) => r.kind === "hunk-header");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(hunkIdx, hunkIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      // Walk every element; none should carry an onMouseDown handler.
+      for (const el of flatten(tree)) {
+        expect(el.props["onMouseDown"]).toBeUndefined();
+      }
+    });
+
+    it("annotation card rows do NOT receive a click handler on their wrapper", () => {
+      const annDiff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,2 @@
+ ctx
+-old
++new
+`;
+      const file = parseFile(annDiff);
+      const annotation = {
+        id: "ann-1",
+        tour_id: "t",
+        file: "x.txt",
+        side: "additions" as const,
+        line_start: 2,
+        line_end: 2,
+        body: "n",
+        author: "u",
+        created_at: "2025-01-01T00:00:00Z",
+      };
+      const rows = planRows(file, [annotation], "split");
+      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      expect(annIdx).toBeGreaterThanOrEqual(0);
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      // No element in the annotation row's subtree should carry onMouseDown
+      // tied to onCursorClick.
+      for (const el of flatten(tree)) {
+        const handler = el.props["onMouseDown"];
+        if (typeof handler === "function") {
+          (handler as () => void)();
+        }
+      }
+      expect(onCursorClick).not.toHaveBeenCalled();
+    });
+
+    it("split: dispatched cursor + side compose into a top-level composer at the clicked anchor (smoke)", async () => {
+      const { buildTopLevelComposer } = await import("../../src/tui/composer-state.js");
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+
+      // Simulate the App-level wiring: capture the click into a Cursor and
+      // pass that cursor into buildTopLevelComposer.
+      let clickedCursor: import("../../src/core/cursor-state.js").Cursor | null = null;
+      const onCursorClick = (
+        f: string,
+        s: "additions" | "deletions",
+        ln: number,
+      ) => {
+        clickedCursor = { file: f, lineNumber: ln, side: s, preferredSide: s };
+      };
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "split",
+        onCursorClick,
+      });
+      const leftWrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-deletions-${ctxRow.leftLineNumber}`,
+      );
+      (leftWrapper!.props["onMouseDown"] as () => void)();
+
+      const composer = buildTopLevelComposer({
+        cursor: clickedCursor,
+        currentAnnotation: null,
+      });
+      expect(composer).not.toBeNull();
+      expect(composer!.kind).toBe("top-level");
+      if (composer!.kind !== "top-level") throw new Error("expected top-level");
+      expect(composer!.file).toBe("x.txt");
+      expect(composer!.side).toBe("deletions");
+      expect(composer!.line_start).toBe(ctxRow.leftLineNumber);
+      expect(composer!.line_end).toBe(ctxRow.leftLineNumber);
     });
   });
 

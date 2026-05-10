@@ -129,6 +129,11 @@ function fileCardBody(
   layout: "split" | "unified",
   currentAnnotationId: string | null,
   cursor: Cursor | null,
+  onCursorClick: (
+    file: string,
+    side: "additions" | "deletions",
+    lineNumber: number,
+  ) => void,
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
@@ -142,6 +147,7 @@ function fileCardBody(
       layout={layout}
       currentAnnotationId={currentAnnotationId}
       cursor={cursor}
+      onCursorClick={onCursorClick}
       repliesCollapsed={repliesCollapsed}
       replyLock={replyLock}
       now={now}
@@ -499,6 +505,30 @@ function App(props: AppProps) {
     jumpToAnnotation(liveTopLevel[currentAnnotationIdx + 1]);
   };
 
+  // Mouse click on a diff row → set cursor + side per the click site (issue
+  // #104). Side derivation lives in DiffRows.tsx (it's UI-coordinate-
+  // dependent). Sets preferredSide to the clicked side so subsequent
+  // keyboard motion preserves the user's mouse-expressed preference.
+  // Also focuses the diff pane and syncs the sidebar selection so cross-
+  // file consistency matches keyboard motion.
+  const onCursorClick = (
+    file: string,
+    side: "additions" | "deletions",
+    lineNumber: number,
+  ) => {
+    setSidebarFocused(false);
+    setCursor({ file, lineNumber, side, preferredSide: side });
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
+    if (located) {
+      if (located.collapsedFolders !== collapsedFolders) {
+        setCollapsedFolders(located.collapsedFolders as Set<string>);
+      }
+      if (located.rowIdx !== safeRowIdx) {
+        setSelectedRowIdx(located.rowIdx);
+      }
+    }
+  };
+
   const openTopLevelComposer = () => {
     const currentAnn =
       liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
@@ -832,6 +862,7 @@ function App(props: AppProps) {
                       layout,
                       currentAnnotationId,
                       cursor,
+                      onCursorClick,
                       repliesCollapsed,
                       liveReplyLock,
                       now,
