@@ -18,6 +18,7 @@ import {
   type OrphanWindow,
 } from "../core/expansion-state.js";
 import type { FileContentPair } from "../core/file-content-provider.js";
+import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
 import { DiffRows } from "./DiffRows.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import {
@@ -70,18 +71,6 @@ function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   return idx === -1 ? 0 : idx;
 }
 
-export interface TourBundle {
-  tour: Tour;
-  diff: string;
-  files: DiffFile[];
-  annotations: Annotation[];
-  snapshotLost: boolean;
-  classifications: Record<string, FileClassification>;
-  replyLock: ReplyLock | null;
-  fileContents?: Map<string, FileContentPair>;
-  orphanWindows?: OrphanWindow[];
-}
-
 export type WriteAnnotationInput =
   | {
       kind: "top-level";
@@ -94,20 +83,26 @@ export type WriteAnnotationInput =
   | { kind: "reply"; parent: Annotation; body: string };
 
 interface AppProps {
-  tour: Tour;
-  diff: string;
-  files: DiffFile[];
-  annotations: Annotation[];
-  snapshotLost: boolean;
-  classifications?: Record<string, FileClassification>;
+  bundle: TourBundle;
   replyLock?: ReplyLock | null;
-  fileContents?: Map<string, FileContentPair>;
-  orphanWindows?: OrphanWindow[];
   loadTour?: (id: string) => Promise<TourBundle>;
+  loadReplyLock?: (id: string) => Promise<ReplyLock | null>;
   loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
   writeAnnotation?: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
   cwd?: string;
   replyAgent?: string;
+}
+
+// Stitch BundleFile.orphanWindows (file-grouped, no `file` field) into the
+// flat OrphanWindow[] shape `seedFromOrphans` consumes.
+function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] {
+  const out: OrphanWindow[] = [];
+  for (const f of files) {
+    for (const w of f.orphanWindows) {
+      out.push({ file: f.name, ref: w.ref, fromStart: w.fromStart, fromEnd: w.fromEnd });
+    }
+  }
+  return out;
 }
 
 function statusIcon(type: string): string {
@@ -201,17 +196,8 @@ function fileRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "file" }>): str
 }
 
 function App(props: AppProps) {
-  const [bundle, setBundle] = useState<TourBundle>({
-    tour: props.tour,
-    diff: props.diff,
-    files: props.files,
-    annotations: props.annotations,
-    snapshotLost: props.snapshotLost,
-    classifications: props.classifications ?? {},
-    replyLock: props.replyLock ?? null,
-    fileContents: props.fileContents ?? new Map(),
-    orphanWindows: props.orphanWindows ?? [],
-  });
+  const [bundle, setBundle] = useState<TourBundle>(props.bundle);
+  const [replyLock, setReplyLock] = useState<ReplyLock | null>(props.replyLock ?? null);
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
@@ -232,7 +218,10 @@ function App(props: AppProps) {
   // Annotations whose anchor lives in Hidden context render inline with `±10`
   // lines of surrounding context the moment a tour opens.
   const [expansion, setExpansion] = useState<ExpansionState>(() =>
-    seedFromOrphans(emptyExpansion(), props.orphanWindows ?? []),
+    seedFromOrphans(
+      emptyExpansion(),
+      props.bundle.kind === "ok" ? flattenOrphanWindows(props.bundle.files) : [],
+    ),
   );
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -246,11 +235,26 @@ function App(props: AppProps) {
 
   const liveTour = bundle.tour;
   const liveAnnotations = bundle.annotations;
-  const liveDiff = bundle.diff;
-  const liveSnapshotLost = bundle.snapshotLost;
-  const liveClassifications = bundle.classifications;
-  const liveReplyLock = bundle.replyLock;
-  const liveFileContents = bundle.fileContents ?? new Map();
+  const liveDiff = bundle.kind === "ok" ? bundle.diff : "";
+  const liveSnapshotLost = bundle.kind === "snapshot-lost";
+  const liveFiles: DiffFile[] = bundle.kind === "ok" ? bundle.files : [];
+  const liveClassifications = useMemo<Record<string, FileClassification>>(() => {
+    if (bundle.kind !== "ok") return {};
+    const out: Record<string, FileClassification> = {};
+    for (const f of bundle.files) out[f.name] = f.classification;
+    return out;
+  }, [bundle]);
+  const liveFileContents = useMemo<Map<string, FileContentPair>>(() => {
+    if (bundle.kind !== "ok") return new Map();
+    const out = new Map<string, FileContentPair>();
+    for (const f of bundle.files) {
+      if (typeof f.oldContent === "string" && typeof f.newContent === "string") {
+        out.set(f.name, { oldContent: f.oldContent, newContent: f.newContent });
+      }
+    }
+    return out;
+  }, [bundle]);
+  const liveReplyLock = replyLock;
   const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
@@ -285,9 +289,21 @@ function App(props: AppProps) {
         // Re-seed orphan windows on watcher reload (annotations may have
         // changed; orphan windows recompute). seedFromOrphans unions per-side
         // by max so manually expanded user state is preserved (issue #114).
-        setExpansion((prev) => seedFromOrphans(prev, next.orphanWindows ?? []));
+        if (next.kind === "ok") {
+          setExpansion((prev) => seedFromOrphans(prev, flattenOrphanWindows(next.files)));
+        }
       } catch {
         // transient — keep current bundle
+      }
+    };
+    const reloadLock = async () => {
+      if (!props.loadReplyLock || cancelled) return;
+      try {
+        const next = await props.loadReplyLock(liveTour.id);
+        if (cancelled) return;
+        setReplyLock(next);
+      } catch {
+        // transient — keep current pill state
       }
     };
 
@@ -295,8 +311,13 @@ function App(props: AppProps) {
       if (event.type === "annotation-changed") {
         if (runner) void runner.tick().catch(() => {});
         void reload();
+        void reloadLock();
       } else if (event.type === "reply-in-flight" || event.type === "reply-cleared") {
-        void reload();
+        // Lock is OUT of the bundle (PRD #135) — fetched separately so a
+        // lock change doesn't trigger a full hydrate of diff + per-file
+        // contents. The whole-bundle reload on these events that this
+        // refactor exposes is left as a follow-up perf fix.
+        void reloadLock();
       }
     });
     watcher.start();
@@ -308,11 +329,11 @@ function App(props: AppProps) {
   }, [liveTour.id, props.cwd, props.replyAgent, props.loadTour]);
 
   const files = useMemo(
-    () => sortFilesForStream(bundle.files),
-    [bundle.files],
+    () => sortFilesForStream(liveFiles),
+    [liveFiles],
   );
 
-  const tree = useMemo(() => compress(buildTree(bundle.files)), [bundle.files]);
+  const tree = useMemo(() => compress(buildTree(liveFiles)), [liveFiles]);
 
   const annotationCounts = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
@@ -589,6 +610,15 @@ function App(props: AppProps) {
     try {
       const next = await props.loadTour(id);
       setBundle(next);
+      if (props.loadReplyLock) {
+        try {
+          setReplyLock(await props.loadReplyLock(id));
+        } catch {
+          setReplyLock(null);
+        }
+      } else {
+        setReplyLock(null);
+      }
       setSelectedRowIdx(0);
       setCurrentAnnotationId(null);
       setCursor(null);
@@ -598,7 +628,12 @@ function App(props: AppProps) {
       // (issue #114). Tour switch always wipes user-driven expansion per
       // CONTEXT.md guidance; orphan windows are part of the new tour's
       // planner-init state.
-      setExpansion(seedFromOrphans(emptyExpansion(), next.orphanWindows ?? []));
+      setExpansion(
+        seedFromOrphans(
+          emptyExpansion(),
+          next.kind === "ok" ? flattenOrphanWindows(next.files) : [],
+        ),
+      );
     } finally {
       closePicker();
     }
@@ -849,6 +884,11 @@ function App(props: AppProps) {
       if (props.loadTour) {
         const refreshed = await props.loadTour(liveTour.id);
         setBundle(refreshed);
+        if (refreshed.kind === "ok") {
+          setExpansion((prev) =>
+            seedFromOrphans(prev, flattenOrphanWindows(refreshed.files)),
+          );
+        }
       }
     } finally {
       setComposer(null);

@@ -1,113 +1,16 @@
 import { userInfo } from "node:os";
 import type { Tour, Annotation } from "../core/types.js";
-import type { DiffFile } from "../core/diff-model.js";
-import { getTour, listTours, resolveIdPrefix } from "../core/tour-store.js";
+import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import { appendAnnotation, readAnnotations } from "../core/annotations-store.js";
-import { getDiff, gitShow, isShaResolvable } from "../core/git.js";
-import { parseDiff } from "../core/diff-model.js";
-import { classifyFile, type FileClassification } from "../core/file-classifier.js";
 import { generateId } from "../core/ids.js";
 import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
-import { fetchFileContents, type FileContentPair } from "../core/file-content-provider.js";
-import { orphanSeedWindows } from "../core/orphan-window.js";
-import type { OrphanWindow } from "../core/expansion-state.js";
+import { loadTourBundle, type TourBundle } from "../core/tour-bundle.js";
 
 interface TuiArgs {
   tourId?: string;
   cwd: string;
   replyAgent?: string;
-}
-
-interface LoadedBundle {
-  tour: Tour;
-  diff: string;
-  files: DiffFile[];
-  annotations: Annotation[];
-  snapshotLost: boolean;
-  classifications: Record<string, FileClassification>;
-  replyLock: ReplyLock | null;
-  fileContents: Map<string, FileContentPair>;
-  orphanWindows: OrphanWindow[];
-}
-
-function lineCount(content: string): number {
-  if (content.length === 0) return 0;
-  // Match webapp's lineCount (server.ts): trailing newline doesn't add an
-  // empty trailing line. Keeps both surfaces' orphan-window math identical.
-  const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
-  return trimmed.split("\n").length;
-}
-
-async function loadTourBundle(cwd: string, tourId: string): Promise<LoadedBundle> {
-  const tour = await getTour(cwd, tourId);
-  const annotations = await readAnnotations(cwd, tourId);
-
-  const headResolvable = await isShaResolvable(tour.head_sha, cwd);
-  const baseResolvable = await isShaResolvable(tour.base_sha, cwd);
-  const snapshotLost = !headResolvable || !baseResolvable;
-
-  let rawDiff = "";
-  let files: DiffFile[] = [];
-  let classifications: Record<string, FileClassification> = {};
-  let fileContents: Map<string, FileContentPair> = new Map();
-  let orphanWindows: OrphanWindow[] = [];
-
-  if (!snapshotLost) {
-    rawDiff = await getDiff(tour.base_sha, tour.head_sha, cwd);
-    const model = parseDiff(rawDiff);
-    files = model.files;
-
-    const entries = await Promise.all(
-      model.files.map(async (f) => {
-        const isRenamed = f.type === "rename" || (!!f.prevName && f.prevName !== f.name);
-        const hasChanges = f.hunks.length > 0;
-        const isBinary = f.type === "binary";
-        const cls = await classifyFile(f.name, { cwd, isBinary, isRenamed, hasChanges });
-        return [f.name, cls] as const;
-      }),
-    );
-    classifications = Object.fromEntries(entries);
-
-    // Load full file contents per side for Hidden-context expansion (PRD #108).
-    // The webapp's bundle build does the same via the same provider; symmetry
-    // keeps the two surfaces resolving identical line text on expansion.
-    fileContents = await fetchFileContents(model, {
-      baseSha: tour.base_sha,
-      headSha: tour.head_sha,
-      cwd,
-      gitShow,
-    });
-
-    // Pre-compute orphan-annotation auto-windows (issue #114). Each window
-    // mirrors a `±10`-line region around an Annotation whose anchor lives in
-    // Hidden context. The TUI App seeds these into the per-tour expansion
-    // state at bundle load so orphan annotations resolve to inline rows
-    // without user expansion.
-    for (const f of files) {
-      const contents = fileContents.get(f.name);
-      if (!contents) continue;
-      const windows = orphanSeedWindows(f, annotations, {
-        oldLineCount: lineCount(contents.oldContent),
-        newLineCount: lineCount(contents.newContent),
-      });
-      orphanWindows.push(...windows);
-    }
-  }
-
-  const replyLock = await readReplyLock(cwd, tourId);
-
-  return {
-    tour,
-    diff: rawDiff,
-    files,
-    annotations,
-    snapshotLost,
-    classifications,
-    replyLock,
-    fileContents,
-    orphanWindows,
-  };
 }
 
 export type WriteAnnotationInput =
@@ -194,12 +97,16 @@ export async function tui(args: TuiArgs): Promise<void> {
     tourId = tours[tours.length - 1].id;
   }
 
-  const initial = await loadTourBundle(args.cwd, tourId);
+  const initialBundle = await loadTourBundle(args.cwd, tourId);
+  const initialReplyLock = await readReplyLock(args.cwd, tourId);
 
   const tuiModule = "../tui/app.js";
   const { startTui } = await import(/* @vite-ignore */ tuiModule) as {
-    startTui: (props: LoadedBundle & {
-      loadTour: (id: string) => Promise<LoadedBundle>;
+    startTui: (props: {
+      bundle: TourBundle;
+      replyLock: ReplyLock | null;
+      loadTour: (id: string) => Promise<TourBundle>;
+      loadReplyLock: (id: string) => Promise<ReplyLock | null>;
       loadTours: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
       writeAnnotation: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
       cwd: string;
@@ -207,8 +114,10 @@ export async function tui(args: TuiArgs): Promise<void> {
     }) => Promise<void>;
   };
   await startTui({
-    ...initial,
+    bundle: initialBundle,
+    replyLock: initialReplyLock,
     loadTour: (id) => loadTourBundle(args.cwd, id),
+    loadReplyLock: (id) => readReplyLock(args.cwd, id),
     writeAnnotation: (id, input) => writeAnnotationFromTui(args.cwd, id, input),
     loadTours: async () => {
       const tours = await listTours(args.cwd, { status: "all" });

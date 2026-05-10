@@ -1,3 +1,5 @@
+import type { TourBundle, BundleFile } from "../../core/tour-bundle.js";
+
 export type AuthorKind = "agent" | "human";
 
 export interface Annotation {
@@ -18,43 +20,17 @@ export interface FileClassification {
   reason?: string;
 }
 
-export interface OrphanWindow {
-  hunkIndex: number;
-  fromStart: number;
-  fromEnd: number;
-}
-
-export interface DiffFileInfo {
-  name: string;
-  prevName?: string;
-  type: string;
-  hunks: { content: { type: "context" | "addition" | "deletion" | "change" }[] }[];
-  classification?: FileClassification;
-  oldContent?: string;
-  newContent?: string;
-  orphanWindows?: OrphanWindow[];
-}
+// Re-export the bundle types from core so the webapp client speaks the
+// same vocabulary as the server (PRD #135). The bundle is a JSON-friendly
+// discriminated union — the wire format is the value `loadTourBundle`
+// returns, no translation layer.
+export type { TourBundle, BundleFile };
 
 export interface TourSummary {
   id: string;
   title: string;
   status: "open" | "closed";
   created_at: string;
-}
-
-export interface TourData {
-  id: string;
-  title: string;
-  status: "open" | "closed";
-  created_at: string;
-  base_sha: string;
-  head_sha: string;
-  base_source: string;
-  head_source: string;
-  annotations: Annotation[];
-  diff: string;
-  diffModel: { files: DiffFileInfo[] };
-  snapshotLost: boolean;
 }
 
 /**

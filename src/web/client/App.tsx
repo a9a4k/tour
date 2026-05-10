@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { FileDiff, MultiFileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileContents, FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
-import type { Annotation, AnnotationMetadata, DiffFileInfo, TourData, TourSummary } from "./types.js";
+import type { Annotation, AnnotationMetadata, BundleFile, TourBundle, TourSummary } from "./types.js";
 import {
   toPierreLineAnnotations,
   buildRangeBackgroundCSS,
@@ -95,16 +95,16 @@ interface AppProps {
 }
 
 interface LoadState {
-  tour: TourData | null;
+  bundle: TourBundle | null;
   error: string | null;
   loaded: boolean;
 }
 
-function defaultCollapsedFor(file: DiffFileInfo, annotations: Annotation[]): boolean {
-  const reason = file.classification?.reason;
+function defaultCollapsedFor(file: BundleFile, annotations: Annotation[]): boolean {
+  const reason = file.classification.reason;
   if (reason === "binary") return true;
   if (
-    file.classification?.collapsed === true &&
+    file.classification.collapsed === true &&
     !annotations.some((a) => a.file === file.name && isTopLevel(a))
   ) {
     return true;
@@ -129,7 +129,7 @@ function readAnnFromUrl(): string | null {
 export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl() ?? initialTourId);
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
-  const [state, setState] = useState<LoadState>({ tour: null, error: null, loaded: false });
+  const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
   const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -190,12 +190,12 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     setCursor(null);
     (async () => {
       const res = await fetch(`/api/tours/${tourId}`);
-      const data = (await res.json()) as TourData | { error: string };
+      const data = (await res.json()) as TourBundle | { error: string };
       if (cancelled) return;
       if ("error" in data) {
-        setState({ tour: null, error: data.error, loaded: true });
+        setState({ bundle: null, error: data.error, loaded: true });
       } else {
-        setState({ tour: data, error: null, loaded: true });
+        setState({ bundle: data, error: null, loaded: true });
       }
     })();
     return () => {
@@ -227,8 +227,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       const msg = JSON.parse(event.data) as { type: string };
       if (msg.type === "annotation-changed") {
         const res = await fetch(`/api/tours/${tourId}`);
-        const data = (await res.json()) as TourData | { error: string };
-        if (!("error" in data)) setState({ tour: data, error: null, loaded: true });
+        const data = (await res.json()) as TourBundle | { error: string };
+        if (!("error" in data)) setState({ bundle: data, error: null, loaded: true });
       } else if (msg.type === "reply-in-flight" || msg.type === "reply-cleared") {
         await refetchLock();
       }
@@ -247,8 +247,9 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     return () => clearInterval(handle);
   }, [replyLock]);
 
-  const tour = state.tour;
-  const annotations = useMemo(() => tour?.annotations ?? [], [tour?.annotations]);
+  const bundle = state.bundle;
+  const tourMeta = bundle?.tour ?? null;
+  const annotations = useMemo(() => bundle?.annotations ?? [], [bundle?.annotations]);
   const topLevel = useMemo(() => topLevelAnnotations(annotations), [annotations]);
   const repliesByRoot = useMemo(() => {
     const out = new Map<string, Annotation[]>();
@@ -262,14 +263,20 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     [annotations, currentAnnotationId],
   );
 
-  const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
-    if (!tour || !tour.diff) return [];
-    const raw = parsePatchFiles(tour.diff, tour.id).flatMap((p) => p.files);
-    return sortFilesForStream(raw);
-  }, [tour?.diff, tour?.id]);
+  const liveDiff = bundle && bundle.kind === "ok" ? bundle.diff : "";
+  const liveFiles = useMemo<BundleFile[]>(
+    () => (bundle && bundle.kind === "ok" ? bundle.files : []),
+    [bundle],
+  );
+  const snapshotLost = bundle?.kind === "snapshot-lost";
 
-  const modelFiles = useMemo(() => tour?.diffModel?.files ?? [], [tour?.diffModel?.files]);
-  const tree = useMemo(() => compress(buildTree(modelFiles)), [modelFiles]);
+  const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
+    if (!tourMeta || !liveDiff) return [];
+    const raw = parsePatchFiles(liveDiff, tourMeta.id).flatMap((p) => p.files);
+    return sortFilesForStream(raw);
+  }, [liveDiff, tourMeta?.id]);
+
+  const tree = useMemo(() => compress(buildTree(liveFiles)), [liveFiles]);
   const annotationCounts = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
     for (const a of topLevel) {
@@ -277,7 +284,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     }
     return out;
   }, [topLevel]);
-  const visibleRows = useMemo<VisibleRow<DiffFileInfo>[]>(
+  const visibleRows = useMemo<VisibleRow<BundleFile>[]>(
     () => flatten(tree, collapsedFolders, annotationCounts),
     [tree, collapsedFolders, annotationCounts],
   );
@@ -344,7 +351,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // (URL Tour updated, new data still fetching) doesn't anchor the new
   // URL's `ann=` against the previous Tour's annotations.
   useEffect(() => {
-    if (!tour || tour.id !== tourId) return;
+    if (!tourMeta || tourMeta.id !== tourId) return;
     if (topLevel.length === 0) {
       setCurrentAnnotationId((curr) => (curr === null ? curr : null));
       setSelectedFile((curr) => (curr === null ? curr : null));
@@ -366,7 +373,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
     }
-  }, [tour, tourId, topLevel, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
+  }, [tourMeta, tourId, topLevel, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
 
   // Mirror the current top-level Annotation cursor into the URL via
   // replaceState — chosen over pushState so the browser back button steps
@@ -380,7 +387,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // we don't strip-then-restore a valid `ann=` in a single cycle.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!tour || tour.id !== tourId) return;
+    if (!tourMeta || tourMeta.id !== tourId) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("tour") !== tourId) return;
     if (currentAnnotationId === null && topLevel.length > 0) return;
@@ -388,7 +395,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (currentAnnotationId === null) params.delete("ann");
     else params.set("ann", currentAnnotationId);
     window.history.replaceState(window.history.state, "", `/?${params.toString()}`);
-  }, [currentAnnotationId, tour, tourId, topLevel]);
+  }, [currentAnnotationId, tourMeta, tourId, topLevel]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -417,10 +424,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const isCollapsed = useCallback(
     (fileName: string): boolean => {
       if (fileName in collapsedOverrides) return collapsedOverrides[fileName];
-      const f = tour?.diffModel?.files.find((x) => x.name === fileName);
+      const f = liveFiles.find((x) => x.name === fileName);
       return f ? defaultCollapsedFor(f, annotations) : false;
     },
-    [collapsedOverrides, tour, annotations],
+    [collapsedOverrides, liveFiles, annotations],
   );
 
   const toggleCollapsed = useCallback(
@@ -680,9 +687,9 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const pickerRows = useMemo(() => {
     if (!tourList) return [];
     const counts: Record<string, number> = {};
-    if (tour) counts[tour.id] = tour.annotations.length;
+    if (bundle) counts[bundle.tour.id] = bundle.annotations.length;
     return buildPickerRows({ tours: tourList, annotationCounts: counts, now: Date.now() });
-  }, [tourList, tour]);
+  }, [tourList, bundle]);
 
   if (!state.loaded && !tourList) {
     return <div className="empty">Loading…</div>;
@@ -696,11 +703,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     return <div className="empty">Error: {state.error}</div>;
   }
 
-  if (!tour) {
+  if (!bundle || !tourMeta) {
     return <div className="empty">Loading…</div>;
   }
 
-  const titleIsEmpty = !tour.title;
+  const titleIsEmpty = !tourMeta.title;
 
   return (
     <>
@@ -717,10 +724,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
             ☰
           </button>
           <h1 className={titleIsEmpty ? "untitled" : undefined}>
-            {tour.title || "(untitled)"}
+            {tourMeta.title || "(untitled)"}
           </h1>
           <span className="tour-refs">
-            {tour.base_source} ← {tour.head_source}
+            {tourMeta.base_source} ← {tourMeta.head_source}
           </span>
         </div>
         <div className="tour-header-right">
@@ -758,12 +765,12 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           )}
         </aside>
         <main className="app-main">
-          {tour.snapshotLost ? (
+          {snapshotLost ? (
             <div className="banner">
               Snapshot lost — annotations preserved but diff cannot be displayed
             </div>
           ) : null}
-          {tour.snapshotLost ? (
+          {snapshotLost ? (
             <AnnotationList
               topLevel={topLevel}
               repliesByRoot={repliesByRoot}
@@ -782,9 +789,9 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
               <FileBlock
                 key={f.name}
                 fileDiff={f}
-                annotations={tour.annotations}
+                annotations={annotations}
                 repliesByRoot={repliesByRoot}
-                modelFile={tour.diffModel?.files.find((m) => m.name === f.name)}
+                modelFile={liveFiles.find((m) => m.name === f.name)}
                 registerRef={(el) => {
                   if (el) fileRefs.current.set(f.name, el);
                   else fileRefs.current.delete(f.name);
@@ -848,7 +855,7 @@ function LayoutToggle({ layout, onChange }: LayoutToggleProps): React.JSX.Elemen
 }
 
 interface FolderRowProps {
-  row: Extract<VisibleRow<DiffFileInfo>, { kind: "folder" }>;
+  row: Extract<VisibleRow<BundleFile>, { kind: "folder" }>;
   onToggle: (path: string) => void;
 }
 
@@ -869,7 +876,7 @@ function FolderRow({ row, onToggle }: FolderRowProps): React.JSX.Element {
 }
 
 interface FileRowProps {
-  row: Extract<VisibleRow<DiffFileInfo>, { kind: "file" }>;
+  row: Extract<VisibleRow<BundleFile>, { kind: "file" }>;
   selected: boolean;
   onSelect: (name: string) => void;
   registerRef: (el: HTMLButtonElement | null) => void;
@@ -896,7 +903,7 @@ interface FileBlockProps {
   fileDiff: FileDiffMetadata;
   annotations: Annotation[];
   repliesByRoot: Map<string, Annotation[]>;
-  modelFile: TourData["diffModel"]["files"][number] | undefined;
+  modelFile: BundleFile | undefined;
   registerRef: (el: HTMLDivElement | null) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -920,7 +927,7 @@ interface FileBlockProps {
 // lines on demand. Renamed files key the old side off prevName.
 function fileContentsFor(
   fileDiff: FileDiffMetadata,
-  modelFile: TourData["diffModel"]["files"][number] | undefined,
+  modelFile: BundleFile | undefined,
 ): { oldFile: FileContents; newFile: FileContents } | null {
   if (
     !modelFile ||

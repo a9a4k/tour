@@ -1,18 +1,14 @@
-import { listTours, getTour, resolveIdPrefix } from "../core/tour-store.js";
+import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
   readAnnotations,
   appendAnnotation,
   buildAnnotation,
   buildReply,
 } from "../core/annotations-store.js";
-import { getDiff, gitShow, isShaResolvable } from "../core/git.js";
-import { parseDiff } from "../core/diff-model.js";
-import { fetchFileContents } from "../core/file-content-provider.js";
-import { computeOrphanWindows } from "../core/orphan-window.js";
-import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { ReplyRunner } from "../core/reply-runner.js";
+import { loadTourBundle } from "../core/tour-bundle.js";
 import { html } from "./spa.js";
 import type { Annotation } from "../core/types.js";
 import { resolve, dirname } from "node:path";
@@ -57,13 +53,6 @@ function asString(v: unknown): string | undefined {
 function asInt(v: unknown): number | undefined {
   if (typeof v !== "number" || !Number.isInteger(v)) return undefined;
   return v;
-}
-
-function lineCount(content: string): number {
-  if (content.length === 0) return 0;
-  // Count physical lines: a trailing newline doesn't add an empty trailing line.
-  const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
-  return trimmed.split("\n").length;
 }
 
 /**
@@ -264,66 +253,8 @@ export async function startServer(args: ServeArgs): Promise<void> {
         const idOrPrefix = tourMatch[1];
         try {
           const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-          const tour = await getTour(cwd, resolvedId);
-          const annotations = await readAnnotations(cwd, resolvedId);
-
-          const headOk = await isShaResolvable(tour.head_sha, cwd);
-          const baseOk = await isShaResolvable(tour.base_sha, cwd);
-          const snapshotLost = !headOk || !baseOk;
-
-          let diff = "";
-          let diffModel = { files: [] as ReturnType<typeof parseDiff>["files"] };
-          let fileContents = new Map<string, { oldContent: string; newContent: string }>();
-          if (!snapshotLost) {
-            diff = await getDiff(tour.base_sha, tour.head_sha, cwd);
-            diffModel = parseDiff(diff);
-            fileContents = await fetchFileContents(diffModel, {
-              baseSha: tour.base_sha,
-              headSha: tour.head_sha,
-              cwd,
-              gitShow,
-            });
-          }
-
-          const classifications = await Promise.all(
-            diffModel.files.map(async (f) => {
-              const isRenamed = f.type === "rename" || (!!f.prevName && f.prevName !== f.name);
-              const hasChanges = f.hunks.length > 0;
-              const isBinary = f.type === "binary";
-              const classification = await classifyFile(f.name, { cwd, isBinary, isRenamed, hasChanges });
-              return { file: f.name, classification };
-            }),
-          );
-          const classificationMap = Object.fromEntries(
-            classifications.map((c) => [c.file, c.classification]),
-          );
-
-          return Response.json({
-            ...tour,
-            annotations,
-            diff,
-            diffModel: {
-              files: diffModel.files.map((f) => {
-                const contents = fileContents.get(f.name);
-                const orphanWindows = contents
-                  ? Array.from(
-                      computeOrphanWindows(f, annotations, {
-                        oldLineCount: lineCount(contents.oldContent),
-                        newLineCount: lineCount(contents.newContent),
-                      }),
-                      ([hunkIndex, region]) => ({ hunkIndex, ...region }),
-                    )
-                  : [];
-                return {
-                  ...f,
-                  classification: classificationMap[f.name] ?? { collapsed: false },
-                  ...contents,
-                  orphanWindows,
-                };
-              }),
-            },
-            snapshotLost,
-          });
+          const bundle = await loadTourBundle(cwd, resolvedId);
+          return Response.json(bundle);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return Response.json({ error: message }, { status: 404 });
