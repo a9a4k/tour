@@ -366,22 +366,15 @@ function App(props: AppProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTopLevel, liveTour.id]);
 
-  // Seed and validate the line cursor (ADR 0011). On first sight of a
-  // non-empty flat row sequence we pick the first top-level Annotation's
-  // anchor (preserves today's "land on first annotation" UX) or, failing
-  // that, the first row of the first non-folded file. On subsequent
-  // re-derivations (fold toggle, bundle reload, layout change) we
-  // validate-in-place: the anchor is preserved when it still resolves;
-  // when its row vanishes it snaps to the file's first remaining row;
-  // when the file is gone the cursor goes null and re-seeds from the
-  // initial-position rules. Tour-switch resets cursor explicitly in
-  // commitTour so a fresh seed runs against the new tour's flat rows.
+  // Validate the line cursor in place when the row sequence shifts under
+  // it (fold toggle, bundle reload, layout change). The anchor is
+  // preserved when it still resolves; when its row vanishes it snaps to
+  // the file's first remaining row; when the file is gone the cursor
+  // goes null and re-materializes lazily on next interaction. Lazy
+  // materialization rule (ADR 0011 Revisions): we never seed here —
+  // first j/k/h/l/arrows/a/n/p/click does, via the handlers below.
   useEffect(() => {
-    if (cursor === null) {
-      if (flatRowsList.length === 0) return;
-      setCursor(initialCursor({ topLevelAnnotations: liveTopLevel, flatRows: flatRowsList }));
-      return;
-    }
+    if (cursor === null) return;
     // Pass `files` so validateCursor can snap to the next file in stream
     // order when the cursor's file was folded out. Without `files` it
     // would null out instead of advancing.
@@ -631,10 +624,29 @@ function App(props: AppProps) {
     }
   };
 
+  // Lazy materialization (ADR 0011 Revisions). Returns the seeded
+  // cursor (or the existing one if already materialized) so the caller
+  // can chain into composer-open / motion in one step. setCursor is
+  // queued, so the returned value is what the caller should act on
+  // this tick. Surface parity with src/web/client/App.tsx.
+  const materializeCursor = (): Cursor | null => {
+    if (cursor) return cursor;
+    const seeded = initialCursor({
+      topLevelAnnotations: liveTopLevel,
+      flatRows: flatRowsList,
+    });
+    if (seeded) setCursor(seeded);
+    return seeded;
+  };
+
   const openTopLevelComposer = () => {
+    const activeCursor = materializeCursor();
     const currentAnn =
       liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
-    const state = buildTopLevelComposer({ cursor, currentAnnotation: currentAnn });
+    const state = buildTopLevelComposer({
+      cursor: activeCursor,
+      currentAnnotation: currentAnn,
+    });
     if (!state) return;
     setComposer(state);
   };
@@ -724,10 +736,25 @@ function App(props: AppProps) {
         sidebarFocused,
         rowCount: visibleRows.length,
         selectedRowKind: selectedRow?.kind ?? null,
-        cursorExists: cursor !== null,
         cursorOnInteractive: cursor?.interactive != null,
       },
     );
+
+    // Lazy materialization (ADR 0011 Revisions): the first j/k/h/l/arrow
+    // interaction with a null cursor SHOWS the cursor at the default
+    // target without moving past it. `a` materializes AND opens the
+    // composer in one step; n/p materialize via β-coupling inside
+    // jumpToAnnotation. Degraded states (no rows) yield null and the
+    // motion is a silent no-op.
+    const isMotion =
+      action.type === "cursor-down" ||
+      action.type === "cursor-up" ||
+      action.type === "cursor-side-left" ||
+      action.type === "cursor-side-right";
+    if (isMotion && cursor === null) {
+      materializeCursor();
+      return;
+    }
 
     switch (action.type) {
       case "quit":

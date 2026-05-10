@@ -11,35 +11,24 @@ const sidebar: KeymapContext = {
   sidebarFocused: true,
   rowCount: 3,
   selectedRowKind: "file",
-  cursorExists: true,
   cursorOnInteractive: false,
 };
 const sidebarFolder: KeymapContext = {
   sidebarFocused: true,
   rowCount: 3,
   selectedRowKind: "folder",
-  cursorExists: true,
   cursorOnInteractive: false,
 };
 const diffPane: KeymapContext = {
   sidebarFocused: false,
   rowCount: 3,
   selectedRowKind: "file",
-  cursorExists: true,
-  cursorOnInteractive: false,
-};
-const diffPaneNoCursor: KeymapContext = {
-  sidebarFocused: false,
-  rowCount: 3,
-  selectedRowKind: "file",
-  cursorExists: false,
   cursorOnInteractive: false,
 };
 const diffPaneInteractive: KeymapContext = {
   sidebarFocused: false,
   rowCount: 3,
   selectedRowKind: "file",
-  cursorExists: true,
   cursorOnInteractive: true,
 };
 
@@ -78,13 +67,12 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("return"), sidebar).type).toBe("select-file");
   });
 
-  it("j is a no-op when sidebar has no rows and cursor doesn't exist", () => {
+  it("j is a no-op when sidebar has no rows", () => {
     expect(
       dispatchKey(k("j"), {
         sidebarFocused: true,
         rowCount: 0,
         selectedRowKind: null,
-        cursorExists: false,
         cursorOnInteractive: false,
       }).type,
     ).toBe("noop");
@@ -106,13 +94,12 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c", { ctrl: true }), diffPane).type).toBe("quit");
   });
 
-  it("c is a no-op when no row is selected and no cursor exists", () => {
+  it("c is a no-op when no row is selected", () => {
     expect(
       dispatchKey(k("c"), {
         sidebarFocused: true,
         rowCount: 0,
         selectedRowKind: null,
-        cursorExists: false,
         cursorOnInteractive: false,
       }).type,
     ).toBe("noop");
@@ -152,13 +139,11 @@ describe("dispatchKey", () => {
   });
 
   it("right and left in the diff pane drive cursor side selection (not noop)", () => {
+    // Lazy materialization (ADR 0011 Revisions): the keymap dispatches
+    // motion actions unconditionally — the App's handler promotes a
+    // null cursor into the seeded state on first interaction.
     expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
     expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
-  });
-
-  it("right and left are no-ops in the diff pane when no cursor exists", () => {
-    expect(dispatchKey(k("right"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("left"), diffPaneNoCursor).type).toBe("noop");
   });
 
   it("n returns next-annotation regardless of pane focus", () => {
@@ -245,15 +230,16 @@ describe("dispatchKey", () => {
 });
 
 // ADR 0011: line cursor motion in the diff pane. j/k/up/down move the
-// cursor; h/l/left/right toggle side. Sidebar focus or absent cursor
-// suppresses these.
+// cursor; h/l/left/right toggle side. Sidebar focus suppresses these;
+// per ADR 0011 Revisions, motion fires unconditionally in the diff
+// pane and the App's handler lazily materializes a null cursor.
 describe("dispatchKey — line cursor (ADR 0011)", () => {
-  it("j and ArrowDown move the cursor down when diff pane focused and cursor exists", () => {
+  it("j and ArrowDown move the cursor down when diff pane focused", () => {
     expect(dispatchKey(k("j"), diffPane).type).toBe("cursor-down");
     expect(dispatchKey(k("down"), diffPane).type).toBe("cursor-down");
   });
 
-  it("k and ArrowUp move the cursor up when diff pane focused and cursor exists", () => {
+  it("k and ArrowUp move the cursor up when diff pane focused", () => {
     expect(dispatchKey(k("k"), diffPane).type).toBe("cursor-up");
     expect(dispatchKey(k("up"), diffPane).type).toBe("cursor-up");
   });
@@ -266,13 +252,6 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
   it("l and ArrowRight set cursor side to additions in the diff pane", () => {
     expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
     expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
-  });
-
-  it("j/k/h/l in diff pane are no-ops when cursor doesn't exist", () => {
-    expect(dispatchKey(k("j"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("k"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("h"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("l"), diffPaneNoCursor).type).toBe("noop");
   });
 
   it("h does not interfere with sidebar focus (no sidebar binding for h)", () => {
@@ -322,10 +301,6 @@ describe("dispatchKey — primary-action (PRD #107)", () => {
     // primary-action route is gated on `!sidebarFocused`.
     const sidebarWithInteractiveCursor = { ...sidebar, cursorOnInteractive: true };
     expect(dispatchKey(k("return"), sidebarWithInteractiveCursor).type).toBe("select-file");
-  });
-
-  it("Enter with no cursor anchored is a noop (no row to act on)", () => {
-    expect(dispatchKey(k("return"), diffPaneNoCursor).type).toBe("noop");
   });
 
   it("Ctrl+Enter is not consumed as primary-action (modifier guard)", () => {

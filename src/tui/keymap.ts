@@ -8,11 +8,6 @@ export interface KeymapContext {
   sidebarFocused: boolean;
   rowCount: number;
   selectedRowKind: "folder" | "file" | null;
-  /** Whether a line cursor is currently anchored. When false, diff-pane
-   *  motion (`j`/`k`/`h`/`l`/arrows) is a no-op so we don't promise
-   *  navigation we can't perform (empty Tour, all files folded,
-   *  snapshot-lost). */
-  cursorExists: boolean;
   /** Whether the line cursor sits on an interactive row (hunk-separator,
    *  file boundary, collapsed-file indicator). Only when this is true do
    *  Enter / Shift+Enter dispatch primary-action / primary-action-all in
@@ -107,13 +102,13 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     }
   }
 
-  // Diff-pane line cursor (ADR 0011). Only fires when the diff pane has
-  // focus AND a cursor is anchored — otherwise the keys are reserved for
-  // other surfaces (sidebar arrows, replies-collapse `c`) and would
-  // mis-fire. h/l also handle side toggle on paired rows; setCursorSide
-  // is layout-aware and degrades to a preferredSide-only update on
-  // single-side rows.
-  if (!ctx.sidebarFocused && !key.ctrl && !key.shift && ctx.cursorExists) {
+  // Diff-pane line cursor (ADR 0011 + ADR 0011 Revisions). Fires whenever
+  // the diff pane has focus — even when no cursor is materialized, since
+  // first interaction promotes a null cursor into the seeded state via
+  // the App's handler (lazy materialization, ADR 0012-aligned). h/l also
+  // handle side toggle on paired rows; setCursorSide is layout-aware and
+  // degrades to a preferredSide-only update on single-side rows.
+  if (!ctx.sidebarFocused && !key.ctrl && !key.shift) {
     if (key.name === "j" || key.name === "down") return { type: "cursor-down" };
     if (key.name === "k" || key.name === "up") return { type: "cursor-up" };
     if (key.name === "h" || key.name === "left") return { type: "cursor-side-left" };
