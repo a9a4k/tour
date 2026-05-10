@@ -41,8 +41,19 @@ export interface SpawnResult {
   error?: Error;
 }
 
+// Per-chunk callback for an observable stream. The runner attaches one to
+// each of stdout / stderr to drive the dispatch logger (ADR 0014); the
+// shared spawn helper also feeds the buffered `result.stdout` for the
+// stdout-as-reply contract (ADR 0012). Chunks are decoded utf8 strings.
+export type StreamListener = (chunk: string) => void;
+
 export interface SpawnedAdapter {
   pid: number;
+  // Register a per-chunk listener for stdout / stderr. May be called
+  // multiple times to attach multiple listeners; chunks are delivered in
+  // arrival order to all attached listeners.
+  onStdout: (cb: StreamListener) => void;
+  onStderr: (cb: StreamListener) => void;
   exit: Promise<SpawnResult>;
 }
 

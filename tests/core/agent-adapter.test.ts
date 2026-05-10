@@ -121,6 +121,8 @@ describe("spawnReplyAgent", () => {
         receivedAgentName = opts.envelope.tour.id;
         return {
           pid: 4242,
+          onStdout: () => {},
+          onStderr: () => {},
           exit: Promise.resolve({
             code: 0,
             signal: null,

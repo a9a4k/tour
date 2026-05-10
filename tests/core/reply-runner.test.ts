@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { stringify as stringifyTOML } from "smol-toml";
@@ -53,16 +54,53 @@ interface FixtureAdapter extends ShippedAdapter {
   invocations: SpawnOpts[];
 }
 
-// In-memory fake reply-agent: records each invocation and resolves the
-// exit promise with a caller-supplied SpawnResult. Replaces the prior
-// shell-script fixture with a TS-injected one (issue #88).
-function fixtureAdapter(result: SpawnResult): FixtureAdapter {
+// In-memory fake reply-agent: records each invocation, fires the canned
+// stdout / stderr through the per-chunk listeners (so the runner's dispatch
+// logger captures content — ADR 0014) once both listener slots have been
+// attached, then resolves the exit promise with the caller-supplied
+// SpawnResult. The "wait until both listeners attach" gate mirrors the
+// real spawn helper's behavior: a paused stream buffers data until a
+// `data` listener is attached. Without this gate, the runner's async
+// setup work between `spawn()` returning and `onStdout`/`onStderr` being
+// called would race the fixture's emission and chunks would be lost.
+function fixtureAdapter(
+  result: SpawnResult & { stderr?: string },
+): FixtureAdapter {
   const invocations: SpawnOpts[] = [];
   return {
     invocations,
     spawn(opts: SpawnOpts): SpawnedAdapter {
       invocations.push(opts);
-      return { pid: 1234, exit: Promise.resolve(result) };
+      const stdoutListeners: Array<(s: string) => void> = [];
+      const stderrListeners: Array<(s: string) => void> = [];
+      let stdoutAttached!: () => void;
+      let stderrAttached!: () => void;
+      const stdoutAttachedP = new Promise<void>((r) => {
+        stdoutAttached = r;
+      });
+      const stderrAttachedP = new Promise<void>((r) => {
+        stderrAttached = r;
+      });
+      const exit = (async (): Promise<SpawnResult> => {
+        await Promise.all([stdoutAttachedP, stderrAttachedP]);
+        if (result.stdout)
+          for (const cb of stdoutListeners) cb(result.stdout);
+        if (result.stderr)
+          for (const cb of stderrListeners) cb(result.stderr);
+        return result;
+      })();
+      return {
+        pid: 1234,
+        onStdout: (cb) => {
+          stdoutListeners.push(cb);
+          stdoutAttached();
+        },
+        onStderr: (cb) => {
+          stderrListeners.push(cb);
+          stderrAttached();
+        },
+        exit,
+      };
     },
   };
 }
@@ -304,5 +342,243 @@ describe("ReplyRunner", () => {
     const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
     expect(stderr).toContain("spawn failed");
     expect(stderr).toContain("ENOENT");
+  });
+
+  // ─── ADR 0014: per-dispatch reply-agent log files ────────────────────
+
+  describe("dispatch logs (ADR 0014)", () => {
+    const logsDir = (): string => join(dir, ".tour", tourId, "logs");
+    const logPathFor = (annId: string): string =>
+      join(logsDir(), `reply-${annId}.log`);
+
+    it("creates the logs/ subdir lazily on first dispatch and writes a log file keyed by triggering id", async () => {
+      const adapter = fixtureAdapter({
+        code: 0,
+        signal: null,
+        stdout: "fixture reply\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      // No logs/ subdir before first dispatch.
+      expect(existsSync(logsDir())).toBe(false);
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-aaaa", author_kind: "human" }),
+      );
+      await runner.tick();
+      expect(existsSync(logsDir())).toBe(true);
+      expect((await stat(logPathFor("ann-aaaa"))).isFile()).toBe(true);
+      // Filename uses the FULL triggering id, not shortId().
+      const log = await readFile(logPathFor("ann-aaaa"), "utf8");
+      expect(log).toContain("=== triggering: ann-aaaa");
+    });
+
+    it("on success, the log captures the stdout body, header, and exit-0 footer", async () => {
+      const adapter = fixtureAdapter({
+        code: 0,
+        signal: null,
+        stdout: "first reply line\nsecond reply line\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-bbbb", author_kind: "human" }),
+      );
+      await runner.tick();
+      const log = await readFile(logPathFor("ann-bbbb"), "utf8");
+      expect(log).toContain("=== reply-agent: fixture");
+      expect(log).toContain("=== triggering: ann-bbbb");
+      expect(log).toContain(`=== tour: ${tourId}`);
+      expect(log).toContain("=== pid: 1234");
+      expect(log).toMatch(/=== envelope-bytes: \d+/);
+      expect(log).toMatch(/=== system-prompt-bytes: \d+/);
+      expect(log).toContain("\n---\n");
+      expect(log).toContain("OUT: first reply line");
+      expect(log).toContain("OUT: second reply line");
+      expect(log).toMatch(/=== exit: code=0 signal=null duration_ms=\d+/);
+      // Reply still landed, byte-equivalent body (ADR 0012).
+      const annotations = await readAnnotations(dir, tourId);
+      const reply = annotations.find((a) => a.replies_to === "ann-bbbb");
+      expect(reply?.body).toBe("first reply line\nsecond reply line");
+    });
+
+    it("on non-zero exit, the log captures stderr and the runner's stderr message includes the log path", async () => {
+      const adapter = fixtureAdapter({
+        code: 1,
+        signal: null,
+        stdout: "",
+        stderr: "auth lookup failed\nplease re-login\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-cccc", author_kind: "human" }),
+      );
+      await runner.tick();
+      const path = logPathFor("ann-cccc");
+      const log = await readFile(path, "utf8");
+      expect(log).toContain("ERR: auth lookup failed");
+      expect(log).toContain("ERR: please re-login");
+      expect(log).toContain("=== exit: code=1 signal=null");
+      const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderr).toContain(`; see ${path}`);
+    });
+
+    it("on spawn-failed (ENOENT), the log has the meta header + error/exit footer and the stderr message points at it", async () => {
+      const adapter = fixtureAdapter({
+        code: null,
+        signal: null,
+        stdout: "",
+        error: new Error("spawn ENOENT"),
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-dddd", author_kind: "human" }),
+      );
+      await runner.tick();
+      const path = logPathFor("ann-dddd");
+      const log = await readFile(path, "utf8");
+      expect(log).toContain("=== reply-agent: fixture");
+      expect(log).toContain("=== triggering: ann-dddd");
+      expect(log).toContain("=== error: spawn ENOENT");
+      expect(log).toContain("=== exit: code=null signal=null duration_ms=");
+      const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderr).toContain(`; see ${path}`);
+    });
+
+    it("on empty-stdout success exit, the log captures stderr and the runner's stderr message includes the log path", async () => {
+      const adapter = fixtureAdapter({
+        code: 0,
+        signal: null,
+        stdout: "",
+        stderr: "model returned no body\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-eeee", author_kind: "human" }),
+      );
+      await runner.tick();
+      const path = logPathFor("ann-eeee");
+      const log = await readFile(path, "utf8");
+      expect(log).toContain("ERR: model returned no body");
+      expect(log).toContain("=== exit: code=0 signal=null");
+      const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderr).toContain("produced no output");
+      expect(stderr).toContain(`; see ${path}`);
+    });
+
+    it("the success path emits no new line on the parent's stderr", async () => {
+      const adapter = fixtureAdapter({
+        code: 0,
+        signal: null,
+        stdout: "fixture reply\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-ffff", author_kind: "human" }),
+      );
+      await runner.tick();
+      const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderr).toBe("");
+    });
+
+    it("interleaves stdout and stderr in arrival order with correct prefixes", async () => {
+      // The fixture fires stdout then stderr in microtask order; what we
+      // assert is that whichever arrives first appears first AND that both
+      // streams' lines carry their proper prefix.
+      const adapter = fixtureAdapter({
+        code: 0,
+        signal: null,
+        stdout: "stdout-1\nstdout-2\n",
+        stderr: "stderr-1\nstderr-2\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-gggg", author_kind: "human" }),
+      );
+      await runner.tick();
+      const log = await readFile(logPathFor("ann-gggg"), "utf8");
+      expect(log).toMatch(
+        /OUT: stdout-1\nOUT: stdout-2\nERR: stderr-1\nERR: stderr-2/,
+      );
+    });
+
+    it("user content containing ===, OUT:, ERR: substrings stays strictly after the line prefix", async () => {
+      const adapter = fixtureAdapter({
+        code: 0,
+        signal: null,
+        stdout: "=== fake header\nOUT: pretending\n",
+        stderr: "ERR: still ours\n",
+      });
+      const runner = new ReplyRunner({
+        cwd: dir,
+        tourId,
+        agent: "fixture",
+        adapter,
+      });
+      await runner.prime();
+      await appendAnnotation(
+        dir,
+        tourId,
+        mkAnn({ id: "ann-hhhh", author_kind: "human" }),
+      );
+      await runner.tick();
+      const log = await readFile(logPathFor("ann-hhhh"), "utf8");
+      expect(log).toContain("OUT: === fake header");
+      expect(log).toContain("OUT: OUT: pretending");
+      expect(log).toContain("ERR: ERR: still ours");
+    });
   });
 });

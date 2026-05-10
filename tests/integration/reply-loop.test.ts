@@ -67,13 +67,36 @@ const FIXTURE_BODY = "fixture: heard you.";
 
 const fixtureAdapter: ShippedAdapter = {
   spawn(_opts: SpawnOpts): SpawnedAdapter {
+    const stdoutListeners: Array<(s: string) => void> = [];
+    const stderrListeners: Array<(s: string) => void> = [];
+    let stdoutAttached!: () => void;
+    let stderrAttached!: () => void;
+    const stdoutAttachedP = new Promise<void>((r) => {
+      stdoutAttached = r;
+    });
+    const stderrAttachedP = new Promise<void>((r) => {
+      stderrAttached = r;
+    });
+    const exit = (async (): Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+      stdout: string;
+    }> => {
+      await Promise.all([stdoutAttachedP, stderrAttachedP]);
+      for (const cb of stdoutListeners) cb(FIXTURE_BODY);
+      return { code: 0, signal: null, stdout: FIXTURE_BODY };
+    })();
     return {
       pid: 0,
-      exit: Promise.resolve({
-        code: 0,
-        signal: null,
-        stdout: FIXTURE_BODY,
-      }),
+      onStdout: (cb) => {
+        stdoutListeners.push(cb);
+        stdoutAttached();
+      },
+      onStderr: (cb) => {
+        stderrListeners.push(cb);
+        stderrAttached();
+      },
+      exit,
     };
   },
 };
