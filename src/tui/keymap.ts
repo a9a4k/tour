@@ -27,6 +27,8 @@ export type KeyAction =
   | { type: "prev-annotation" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
+  | { type: "open-top-level-composer" }
+  | { type: "open-reply-composer" }
   | { type: "page-diff-down" }
   | { type: "page-diff-up" }
   | { type: "noop" };
@@ -49,6 +51,8 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "p") return { type: "prev-annotation" };
     if (key.name === "l") return { type: "toggle-layout" };
     if (key.name === "t") return { type: "open-picker" };
+    if (key.name === "a") return { type: "open-top-level-composer" };
+    if (key.name === "r") return { type: "open-reply-composer" };
   }
 
   if (ctx.sidebarFocused && ctx.rowCount > 0) {

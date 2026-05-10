@@ -22,6 +22,13 @@ import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
+import { Composer } from "./Composer.js";
+import {
+  buildReplyComposer,
+  buildTopLevelComposer,
+  type ComposerState,
+  type TopLevelAnchor,
+} from "./composer-state.js";
 import { shortId } from "../core/ids.js";
 import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
 
@@ -40,6 +47,17 @@ export interface TourBundle {
   classifications: Record<string, FileClassification>;
 }
 
+export type WriteAnnotationInput =
+  | {
+      kind: "top-level";
+      file: string;
+      side: "additions" | "deletions";
+      line_start: number;
+      line_end: number;
+      body: string;
+    }
+  | { kind: "reply"; parent: Annotation; body: string };
+
 interface AppProps {
   tour: Tour;
   diff: string;
@@ -49,6 +67,7 @@ interface AppProps {
   classifications?: Record<string, FileClassification>;
   loadTour?: (id: string) => Promise<TourBundle>;
   loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
+  writeAnnotation?: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
 }
 
 function statusIcon(type: string): string {
@@ -123,6 +142,33 @@ function fileRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "file" }>): str
   return ` ${indent}${icon} ${row.displayName}${badge} `;
 }
 
+// Fallback anchor for `a` (top-level annotate) when no annotation is selected.
+// Walks the planned rows for the file and picks the first row that has at
+// least one line number — typically the first context line of the first hunk.
+// Prefer the additions side; fall back to deletions for delete-only files.
+function firstAnnotatableAnchor(rows: PlannedRow[], fileName: string): TopLevelAnchor | null {
+  for (const row of rows) {
+    if (row.kind !== "diff-row") continue;
+    if (row.rightLineNumber !== null) {
+      return {
+        file: fileName,
+        side: "additions",
+        line_start: row.rightLineNumber,
+        line_end: row.rightLineNumber,
+      };
+    }
+    if (row.leftLineNumber !== null) {
+      return {
+        file: fileName,
+        side: "deletions",
+        line_start: row.leftLineNumber,
+        line_end: row.leftLineNumber,
+      };
+    }
+  }
+  return null;
+}
+
 function App(props: AppProps) {
   const [bundle, setBundle] = useState<TourBundle>({
     tour: props.tour,
@@ -143,6 +189,7 @@ function App(props: AppProps) {
   const [pickerCursor, setPickerCursor] = useState(0);
   const [pickerTours, setPickerTours] = useState<Tour[]>([]);
   const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
+  const [composer, setComposer] = useState<ComposerState | null>(null);
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -261,7 +308,7 @@ function App(props: AppProps) {
   };
 
   const footerHints =
-    "n/p: navigate  ·  j/k: rows  ·  c: collapse  ·  Space: page diff  ·  ←→: fold/expand  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
+    "n/p: navigate  ·  a: annotate  ·  r: reply  ·  c: collapse  ·  Space: page  ·  l: layout  ·  t: tour picker  ·  Tab: switch pane  ·  q: quit";
   const footer =
     liveTopLevel.length > 0
       ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
@@ -347,7 +394,76 @@ function App(props: AppProps) {
     jumpToAnnotation(liveTopLevel[currentAnnotationIdx + 1]);
   };
 
+  const openTopLevelComposer = () => {
+    const currentAnn =
+      liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
+    let fallback: TopLevelAnchor | null = null;
+    if (selectedRow?.kind === "file") {
+      const fileRows = plannedRowsByFile.get(selectedRow.file.name) ?? [];
+      fallback = firstAnnotatableAnchor(fileRows, selectedRow.file.name);
+    }
+    const state = buildTopLevelComposer({ currentAnnotation: currentAnn, fallback });
+    if (!state) return;
+    setComposer(state);
+  };
+
+  const openReplyComposer = () => {
+    const currentAnn =
+      liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
+    const state = buildReplyComposer({ currentAnnotation: currentAnn });
+    if (!state) return;
+    setComposer(state);
+  };
+
+  const cancelComposer = () => {
+    setComposer(null);
+  };
+
+  const submitComposer = async (body: string) => {
+    if (!composer) return;
+    const trimmed = body.trim();
+    // Empty submissions are silently treated as cancel — no zero-length notes.
+    if (trimmed.length === 0 || !props.writeAnnotation) {
+      setComposer(null);
+      return;
+    }
+    try {
+      if (composer.kind === "top-level") {
+        await props.writeAnnotation(liveTour.id, {
+          kind: "top-level",
+          file: composer.file,
+          side: composer.side,
+          line_start: composer.line_start,
+          line_end: composer.line_end,
+          body: trimmed,
+        });
+      } else {
+        await props.writeAnnotation(liveTour.id, {
+          kind: "reply",
+          parent: composer.parent,
+          body: trimmed,
+        });
+      }
+      // The CLI's `tour annotate` would let the watcher re-render. The TUI
+      // path skips the watcher loop and reloads the bundle directly so the
+      // new entry shows up immediately on submit.
+      if (props.loadTour) {
+        const refreshed = await props.loadTour(liveTour.id);
+        setBundle(refreshed);
+      }
+    } finally {
+      setComposer(null);
+    }
+  };
+
   useKeyboard((key) => {
+    if (composer) {
+      // Esc cancels; Return / typing flows through to the focused <input>.
+      if (key.name === "escape") {
+        cancelComposer();
+      }
+      return;
+    }
     if (pickerOpen) {
       if (key.ctrl || key.shift) return;
       if (key.name === "escape" || key.name === "t") {
@@ -475,6 +591,12 @@ function App(props: AppProps) {
       case "open-picker":
         void openPicker();
         return;
+      case "open-top-level-composer":
+        openTopLevelComposer();
+        return;
+      case "open-reply-composer":
+        openReplyComposer();
+        return;
       case "page-diff-down":
         diffScrollRef.current?.scrollBy(1, "viewport");
         return;
@@ -598,7 +720,7 @@ function App(props: AppProps) {
             <scrollbox
               ref={diffScrollRef}
               height="100%"
-              focused={!sidebarFocused}
+              focused={!sidebarFocused && composer === null}
               viewportCulling={false}
             >
               {files.map((file) => {
@@ -643,6 +765,8 @@ function App(props: AppProps) {
           cursor={pickerCursor}
         />
       )}
+
+      {composer && <Composer state={composer} onSubmit={(body) => void submitComposer(body)} />}
     </box>
   );
 }

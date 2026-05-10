@@ -156,6 +156,27 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("t", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
+  it("a returns open-top-level-composer regardless of pane focus", () => {
+    expect(dispatchKey(k("a"), sidebar).type).toBe("open-top-level-composer");
+    expect(dispatchKey(k("a"), diffPane).type).toBe("open-top-level-composer");
+    expect(dispatchKey(k("a"), sidebarFolder).type).toBe("open-top-level-composer");
+  });
+
+  it("Ctrl+A is not consumed as open-top-level-composer", () => {
+    expect(dispatchKey(k("a", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("a", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("r returns open-reply-composer regardless of pane focus", () => {
+    expect(dispatchKey(k("r"), sidebar).type).toBe("open-reply-composer");
+    expect(dispatchKey(k("r"), diffPane).type).toBe("open-reply-composer");
+  });
+
+  it("Ctrl+R is not consumed as open-reply-composer", () => {
+    expect(dispatchKey(k("r", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("r", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
   // Regression: opentui's KeyEvent uses .name (lowercase node-readline style),
   // not the browser KeyboardEvent's .key (TitleCase like "Tab", "ArrowDown").
   // If someone re-introduces the browser shape, this test catches it.
