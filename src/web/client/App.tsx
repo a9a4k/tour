@@ -346,17 +346,28 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // replaceState — chosen over pushState so the browser back button steps
   // over Tour switches, not over every n/p keystroke. Same gate as the
   // restorer above: writing during the in-flight Tour-switch window can
-  // leak the previous Tour's `ann=` into the new URL.
+  // leak the previous Tour's `ann=` into the new URL. When the cursor is
+  // null on a Tour with zero annotations and a stale `ann=` lingers,
+  // strip it so the URL self-heals and shared links can't propagate
+  // broken state. When cursor is null but topLevel is non-empty, the
+  // restorer is about to anchor — defer the URL write to that pass so
+  // we don't strip-then-restore a valid `ann=` in a single cycle.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!tour || tour.id !== tourId) return;
-    if (currentAnnotationId === null) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("tour") !== tourId) return;
-    if (params.get("ann") === currentAnnotationId) return;
-    params.set("ann", currentAnnotationId);
+    const current = params.get("ann");
+    if (currentAnnotationId === null) {
+      if (topLevel.length > 0) return;
+      if (current === null) return;
+      params.delete("ann");
+    } else {
+      if (current === currentAnnotationId) return;
+      params.set("ann", currentAnnotationId);
+    }
     window.history.replaceState(window.history.state, "", `/?${params.toString()}`);
-  }, [currentAnnotationId, tour, tourId]);
+  }, [currentAnnotationId, tour, tourId, topLevel]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
