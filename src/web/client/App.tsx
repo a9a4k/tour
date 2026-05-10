@@ -36,6 +36,7 @@ import {
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "./cursor-css.js";
 import { syncCursorOverlay } from "./cursor-overlay.js";
+import { syncHoverOverlay } from "./hover-overlay.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -564,6 +565,16 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (typeof document === "undefined") return;
     return syncCursorOverlay(document.body, cursor);
   }, [cursor, parsedFiles, layout, collapsedOverrides]);
+
+  // Hover affordance (ADR 0012). One delegated mouseover/mouseout pair on
+  // document toggles `data-tour-hover` on annotatable cells; the
+  // hover-tint + "+" gutter pseudo-element CSS keys off that attribute.
+  // Listeners re-register when composerOpen flips so the suppression
+  // takes effect immediately (and any in-flight attribute is stripped).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    return syncHoverOverlay(document.body, composerTarget !== null);
+  }, [composerTarget]);
 
   // Lazy materialization (ADR 0012). Returns the seeded cursor (or
   // existing one if already materialized) so the caller can chain into
