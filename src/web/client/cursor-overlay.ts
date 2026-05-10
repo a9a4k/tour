@@ -67,21 +67,19 @@ function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
     cursor.side === "additions"
       ? new Set(["addition", "change-addition", "context"])
       : new Set(["deletion", "change-deletion", "context"]);
-  // Issue #134: in Pierre's split layout the same `data-line` value can
-  // appear on BOTH columns when the sides have diverged (a context cell on
-  // the additions column at line N, and an unrelated context cell on the
-  // deletions column also at line N). Type filtering alone can't tell them
-  // apart for context rows, so we additionally scope by the column ancestor
-  // (`[data-additions]` / `[data-deletions]` <code> blocks rendered by
-  // `pierre/packages/diffs/.../DiffHunksRenderer.ts`). Cells that don't have
-  // a column ancestor (unified layout, or test fixtures that don't wrap
-  // cells in column containers) fall back to the type-only match.
-  const columnAttr = cursor.side === "additions" ? "data-additions" : "data-deletions";
+  // Pierre's split layout renders deletions and additions in two sibling
+  // <code> blocks under the file's shadow root, so the same `data-line`
+  // value can appear on both columns. The type filter alone can't tell
+  // paired context cells apart (both are "context"), so we additionally
+  // prefer the cell whose ancestor matches the cursor's column. Cells
+  // without a column ancestor (unified layout) fall back to the first
+  // type-matching cell.
+  const columnSelector = cursor.side === "additions" ? "[data-additions]" : "[data-deletions]";
   let fallback: Element | null = null;
   for (const cell of queryAllAcrossShadow(block, `[data-line="${cursor.lineNumber}"]`)) {
     const type = (cell as HTMLElement).dataset.lineType;
     if (!type || !types.has(type)) continue;
-    if (cell.closest(`[${columnAttr}]`)) return cell;
+    if (cell.closest(columnSelector)) return cell;
     fallback ??= cell;
   }
   return fallback;
