@@ -104,6 +104,13 @@ function readTourFromUrl(): string | null {
   return v && v.length > 0 ? v : null;
 }
 
+function readAnnFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get("ann");
+  return v && v.length > 0 ? v : null;
+}
+
 export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl() ?? initialTourId);
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
@@ -304,20 +311,27 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   // Re-anchor cursor to the current top-level Annotation by id (n/p navigates
   // top-level only; replies are not nav targets). On first sight of a
-  // non-empty list, anchor the tree to the first top-level annotation; on
-  // SSE reload with the same id present, do nothing; if gone, re-anchor.
+  // non-empty list, anchor the tree to the URL `?ann=` target when valid,
+  // else the first top-level annotation; on SSE reload with the same id
+  // present, do nothing; if gone, re-anchor. Gated on the loaded Tour
+  // matching the routing Tour id so the in-flight Tour-switch window
+  // (URL Tour updated, new data still fetching) doesn't anchor the new
+  // URL's `ann=` against the previous Tour's annotations.
   useEffect(() => {
+    if (!tour || tour.id !== tourId) return;
     if (topLevel.length === 0) {
       setCurrentAnnotationId((curr) => (curr === null ? curr : null));
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
     if (currentAnnotationId === null) {
-      const first = topLevel[0];
-      setCurrentAnnotationId(first.id);
-      setSelectedFile(first.file);
-      revealFileAncestors(first.file);
-      scrollAnnotationIntoView(first.id);
+      const fromUrl = readAnnFromUrl();
+      const target =
+        (fromUrl !== null && topLevel.find((a) => a.id === fromUrl)) || topLevel[0];
+      setCurrentAnnotationId(target.id);
+      setSelectedFile(target.file);
+      revealFileAncestors(target.file);
+      scrollAnnotationIntoView(target.id);
       return;
     }
     const found = topLevel.some((a) => a.id === currentAnnotationId);
@@ -327,7 +341,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
     }
-  }, [topLevel, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
+  }, [tour, tourId, topLevel, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
+
+  // Mirror the current top-level Annotation cursor into the URL via
+  // replaceState — chosen over pushState so the browser back button steps
+  // over Tour switches, not over every n/p keystroke. Same gate as the
+  // restorer above: writing during the in-flight Tour-switch window can
+  // leak the previous Tour's `ann=` into the new URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!tour || tour.id !== tourId) return;
+    if (currentAnnotationId === null) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tour") !== tourId) return;
+    if (params.get("ann") === currentAnnotationId) return;
+    params.set("ann", currentAnnotationId);
+    window.history.replaceState(window.history.state, "", `/?${params.toString()}`);
+  }, [currentAnnotationId, tour, tourId]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
