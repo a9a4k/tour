@@ -65,6 +65,46 @@ import {
 import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 
+function flatRowId(r: FlatRow): string {
+  return r.kind === "diff"
+    ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
+    : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
+}
+
+/**
+ * Build a `(rowIdx) => y` resolver for `flatRows` in a single pass over
+ * the scrollbox's renderable tree. Replaces the prior per-call
+ * `findDescendantById` lookup, which was O(N²) across `pageMove`,
+ * `jump`, and `step`'s `nearestRowIdx` — that O(N²) was the freeze the
+ * user observed when pressing Space on a large diff.
+ */
+function buildRowYResolver(
+  content: { getChildren(): unknown[] },
+  flatRows: FlatRow[],
+): (idx: number) => number {
+  const idAtIdx: string[] = new Array(flatRows.length);
+  const targets = new Set<string>();
+  for (let i = 0; i < flatRows.length; i++) {
+    const id = flatRowId(flatRows[i]);
+    idAtIdx[i] = id;
+    targets.add(id);
+  }
+  const idToY = new Map<string, number>();
+  const stack: Array<{ id?: string; y?: number; getChildren?: () => unknown[] }> = [
+    content as unknown as { getChildren: () => unknown[] },
+  ];
+  while (stack.length > 0 && idToY.size < targets.size) {
+    const node = stack.pop()!;
+    const id = node.id;
+    if (id && targets.has(id)) {
+      idToY.set(id, typeof node.y === "number" ? node.y : 0);
+    }
+    const kids = node.getChildren?.() ?? [];
+    for (const c of kids) stack.push(c as typeof node);
+  }
+  return (i: number) => idToY.get(idAtIdx[i]) ?? 0;
+}
+
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
   const idx = rows.findIndex((r) => r.id !== currentId);
@@ -1086,15 +1126,7 @@ function App(props: AppProps) {
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
-            rowY: (idx) => {
-              const r = flatRowsList[idx];
-              if (!r) return 0;
-              const id =
-                r.kind === "diff"
-                  ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
-                  : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
-              return sb.content.findDescendantById(id)?.y ?? 0;
-            },
+            rowY: buildRowYResolver(sb.content, flatRowsList),
           },
           dir,
           step,
@@ -1122,15 +1154,7 @@ function App(props: AppProps) {
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
-            rowY: (idx) => {
-              const r = flatRowsList[idx];
-              if (!r) return 0;
-              const id =
-                r.kind === "diff"
-                  ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
-                  : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
-              return sb.content.findDescendantById(id)?.y ?? 0;
-            },
+            rowY: buildRowYResolver(sb.content, flatRowsList),
           },
           target,
         );
@@ -1161,15 +1185,7 @@ function App(props: AppProps) {
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
-            rowY: (idx) => {
-              const r = flatRowsList[idx];
-              if (!r) return 0;
-              const id =
-                r.kind === "diff"
-                  ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
-                  : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
-              return sb.content.findDescendantById(id)?.y ?? 0;
-            },
+            rowY: buildRowYResolver(sb.content, flatRowsList),
           },
           dir,
           3,

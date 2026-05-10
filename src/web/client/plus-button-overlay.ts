@@ -1,4 +1,4 @@
-import { queryAllAcrossShadow } from "./dom-walk.js";
+import { queryAllAcrossShadow, shadowRootsDeep } from "./dom-walk.js";
 
 /**
  * Mounts a real-DOM `<button class="tour-plus-button">` next to every cell
@@ -93,7 +93,7 @@ export function syncPlusButtonOverlay(
   };
 
   observe(root);
-  for (const sr of shadowRootsUnder(root)) observe(sr);
+  for (const sr of shadowRootsDeep(root)) observe(sr);
 
   for (const cell of queryAllAcrossShadow(root, "[data-tour-cursor], [data-tour-hover]")) {
     addOrUpdate(cell as HTMLElement);
@@ -170,22 +170,3 @@ function findFile(cell: HTMLElement): string | null {
   return null;
 }
 
-function shadowRootsUnder(root: ParentNode): ShadowRoot[] {
-  const out: ShadowRoot[] = [];
-  const stack: ParentNode[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    const all =
-      node instanceof Element
-        ? [node, ...node.querySelectorAll("*")]
-        : [...node.querySelectorAll("*")];
-    for (const el of all) {
-      const shadow = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
-      if (shadow) {
-        out.push(shadow);
-        stack.push(shadow);
-      }
-    }
-  }
-  return out;
-}

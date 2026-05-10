@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileDiff, MultiFileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileContents, FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
@@ -33,7 +33,7 @@ import {
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { nextAnnotationNavStep } from "./annotation-nav.js";
-import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "./cursor-css.js";
+import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS } from "./cursor-css.js";
 import { syncCursorOverlay } from "./cursor-overlay.js";
 import { syncHoverOverlay } from "./hover-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
@@ -58,6 +58,19 @@ const COMMENT_AFFORDANCE_CSS = `
   [data-line][data-line-type="change-addition"],
   [data-line][data-line-type="change-deletion"] {
     cursor: pointer;
+  }
+`;
+
+// Workaround for @pierre/diffs split+wrap: library defines
+// --diffs-code-grid as "minmax(min-content, max-content) 1fr", which
+// expands on the split <pre> grid to two `1fr` content tracks. With
+// annotation rows spanning gutter+content, the auto-minimum on `1fr`
+// lets one side's track win extra width and the other side shrinks
+// when the container is narrow. Forcing `minmax(0, 1fr)` removes the
+// auto-minimum and pins both content columns to 50/50.
+const EQUAL_COLUMNS_CSS = `
+  [data-diff-type="split"][data-overflow="wrap"] {
+    --diffs-code-grid: minmax(min-content, max-content) minmax(0, 1fr);
   }
 `;
 
@@ -477,10 +490,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // Mirror the line cursor onto the rendered diff DOM as
   // data-tour-cursor / data-tour-cursor-side on the matching cell. The
   // outline CSS (CURSOR_OUTLINE_CSS) keys off these attributes so Pierre's
-  // per-file shadow root remains the natural CSS scope. useLayoutEffect
-  // (vs useEffect) so the attribute lands in the same paint cycle as the
-  // diff render — no flash of unstyled cursor on first j/k.
-  useLayoutEffect(() => {
+  // per-file shadow root remains the natural CSS scope. Plain useEffect
+  // (post-paint) so click→cursor-attr→outline does not block the input
+  // event; click already implies the cell is on screen, and the brief
+  // gap on the first keyboard motion is imperceptible.
+  useEffect(() => {
     if (typeof document === "undefined") return;
     return syncCursorOverlay(document.body, cursor);
   }, [cursor, parsedFiles, layout, collapsedOverrides]);
@@ -1056,17 +1070,21 @@ function FileBlock({
 
   const options = useMemo(() => {
     const rangeCSS = buildRangeBackgroundCSS(annotations, fileDiff.name);
-    const hoverCSS = buildHoverTintCSS(composerTarget !== null);
     const parts = [
       STICKY_HEADER_CSS,
       COMMENT_AFFORDANCE_CSS,
+      EQUAL_COLUMNS_CSS,
       CURSOR_OUTLINE_CSS,
-      hoverCSS,
+      HOVER_TINT_CSS,
       rangeCSS,
     ].filter((s) => s !== "");
     const unsafeCSS = parts.join("\n");
     return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
-  }, [annotations, fileDiff.name, collapsed, layout, composerTarget]);
+    // composerTarget intentionally omitted: the hover-tint CSS is
+    // composer-state-independent (suppression happens at the attribute
+    // layer in syncHoverOverlay), so changing composer state must not
+    // thrash Pierre's options reference and force a full file re-render.
+  }, [annotations, fileDiff.name, collapsed, layout]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {

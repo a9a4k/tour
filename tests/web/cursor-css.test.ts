@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "../../src/web/client/cursor-css.js";
+import { CURSOR_OUTLINE_CSS, HOVER_TINT_CSS } from "../../src/web/client/cursor-css.js";
 
 describe("CURSOR_OUTLINE_CSS", () => {
   it("targets the cursor-overlay attribute (data-tour-cursor='true')", () => {
@@ -17,37 +17,29 @@ describe("CURSOR_OUTLINE_CSS", () => {
   });
 });
 
-describe("buildHoverTintCSS", () => {
+describe("HOVER_TINT_CSS", () => {
   it("targets the hover-overlay attribute (data-tour-hover='true') on annotatable line types", () => {
-    const css = buildHoverTintCSS(false);
-    expect(css).toContain('[data-line-type="addition"][data-tour-hover="true"]');
-    expect(css).toContain('[data-line-type="deletion"][data-tour-hover="true"]');
-    expect(css).toContain('[data-line-type="change-addition"][data-tour-hover="true"]');
-    expect(css).toContain('[data-line-type="change-deletion"][data-tour-hover="true"]');
-    expect(css).toContain('[data-line-type="context"][data-tour-hover="true"]');
-    expect(css).toContain("background-image");
+    expect(HOVER_TINT_CSS).toContain('[data-line-type="addition"][data-tour-hover="true"]');
+    expect(HOVER_TINT_CSS).toContain('[data-line-type="deletion"][data-tour-hover="true"]');
+    expect(HOVER_TINT_CSS).toContain('[data-line-type="change-addition"][data-tour-hover="true"]');
+    expect(HOVER_TINT_CSS).toContain('[data-line-type="change-deletion"][data-tour-hover="true"]');
+    expect(HOVER_TINT_CSS).toContain('[data-line-type="context"][data-tour-hover="true"]');
+    expect(HOVER_TINT_CSS).toContain("background-image");
   });
 
   it("does NOT use the bare :hover pseudo-class — Pierre may paint its own and we control toggle via the listener", () => {
-    const css = buildHoverTintCSS(false);
-    expect(css).not.toContain(":hover");
+    expect(HOVER_TINT_CSS).not.toContain(":hover");
   });
 
   // Issue #137 / PRD #136: the `+` affordance is now a real-DOM <button>
   // mounted by plus-button-overlay.ts, not a CSS pseudo-element. This
   // rule block must not re-introduce a competing pseudo-element button.
   it("does NOT render a '+' button as a CSS pseudo-element (real-DOM button per issue #137)", () => {
-    const css = buildHoverTintCSS(false);
-    expect(css).not.toContain("::after");
-    expect(css).not.toContain('content: "+"');
-  });
-
-  it("returns empty string when composer is open (suppress mid-edit)", () => {
-    expect(buildHoverTintCSS(true)).toBe("");
+    expect(HOVER_TINT_CSS).not.toContain("::after");
+    expect(HOVER_TINT_CSS).not.toContain('content: "+"');
   });
 
   it("uses the shared range tint token (no hard-coded rgba)", () => {
-    const css = buildHoverTintCSS(false);
-    expect(css).toContain("rgba(56, 139, 253, 0.15)");
+    expect(HOVER_TINT_CSS).toContain("rgba(56, 139, 253, 0.15)");
   });
 });

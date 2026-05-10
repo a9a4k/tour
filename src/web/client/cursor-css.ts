@@ -38,13 +38,14 @@ export const CURSOR_OUTLINE_CSS = `
  * (no `pointer-events` gymnastics) and the affordance is reachable to
  * assistive tech.
  *
- * Composer-open suppression: returns empty so the rules don't fire even
- * if a stale `data-tour-hover` attribute lingered on a cell at the
- * moment the composer opened. The hover-overlay listener also clears
- * the attribute on its next sync; this is defence in depth.
+ * Composer-open suppression: handled entirely by `syncHoverOverlay`, which
+ * strips `data-tour-hover` from every cell the moment the composer
+ * opens. With no cell carrying the attribute the rule below has no
+ * matches, so we no longer need to gate the rule string itself —
+ * keeping the CSS stable means Pierre's `options` reference does not
+ * thrash when the composer toggles, sparing a full re-render.
  */
-export function buildHoverTintCSS(composerOpen: boolean): string {
-  if (composerOpen) return "";
+export const HOVER_TINT_CSS = (() => {
   const annotatableTypes = [
     "addition",
     "deletion",
@@ -60,4 +61,4 @@ export function buildHoverTintCSS(composerOpen: boolean): string {
       background-image: linear-gradient(${theme.bg.accentRange.web}, ${theme.bg.accentRange.web});
     }
   `;
-}
+})();

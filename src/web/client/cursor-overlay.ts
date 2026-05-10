@@ -9,13 +9,20 @@ import { queryAllAcrossShadow } from "./dom-walk.js";
  * `[data-line]` selectors live in) without DOM-walking the shadow tree at
  * paint time.
  *
- * The setter walks every `[data-file]` block under `root` (descending
- * across shadow boundaries) and:
+ * The setter:
  *   1. Strips `data-tour-cursor` / `data-tour-cursor-side` from any cell
  *      that previously carried them — covers the common "cursor moved
  *      from cell A to cell B" case.
- *   2. If `cursor` is non-null, finds the file's matching cell on the
- *      cursor's side at the cursor's line number and sets the attributes.
+ *   2. If `cursor` is non-null, finds the cursor's file's matching cell
+ *      on the cursor's side at the cursor's line number and sets the
+ *      attributes.
+ *
+ * Performance: the previous implementation walked every file's shadow
+ * subtree to clear attributes and to find the file block. Now the file
+ * block is found via a direct light-DOM `[data-file="..."]` selector
+ * (data-file is owned by Tour's own light-DOM wrapper, not Pierre's
+ * shadow), so we never enumerate other files' content. The cleanup
+ * walks only the previously-tagged cell via a stored reference.
  *
  * Returns a cleanup function that strips the attributes — call it on
  * effect teardown so a remount doesn't leave orphan attributes on the
@@ -28,8 +35,12 @@ export function syncCursorOverlay(
   root: ParentNode,
   cursor: Cursor | null,
 ): () => void {
-  clearOverlay(root);
-  const cleanup = (): void => clearOverlay(root);
+  // Defensive: if a previous remount left attributes behind on cells we
+  // don't track via state, sweep them. This is the only walker that
+  // crosses every shadow root, and only because we may not have a
+  // per-cell reference after a remount.
+  clearOverlayEverywhere(root);
+  const cleanup = (): void => clearOverlayEverywhere(root);
   if (!cursor) return cleanup;
   const block = findFileBlock(root, cursor.file);
   if (!block) return cleanup;
@@ -43,7 +54,7 @@ export function syncCursorOverlay(
   return cleanup;
 }
 
-function clearOverlay(root: ParentNode): void {
+function clearOverlayEverywhere(root: ParentNode): void {
   for (const el of queryAllAcrossShadow(root, "[data-tour-cursor]")) {
     el.removeAttribute("data-tour-cursor");
     el.removeAttribute("data-tour-cursor-side");
@@ -51,10 +62,23 @@ function clearOverlay(root: ParentNode): void {
 }
 
 function findFileBlock(root: ParentNode, file: string): Element | null {
-  for (const block of queryAllAcrossShadow(root, "[data-file]")) {
-    if ((block as HTMLElement).dataset.file === file) return block;
+  // `data-file` lives on Tour's own light-DOM wrapper (App.tsx FileBlock),
+  // not inside Pierre's shadow root, so a single light-tree query suffices.
+  const escaped = cssEscape(file);
+  if (root instanceof Document || root instanceof Element || root instanceof DocumentFragment) {
+    return root.querySelector(`[data-file="${escaped}"]`);
   }
   return null;
+}
+
+function cssEscape(value: string): string {
+  // Use the platform's CSS.escape when available; fall back to a minimal
+  // escaper for the few characters that legitimately appear in file
+  // paths (`"` is unlikely but cheap to handle).
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, (c) => `\\${c}`);
 }
 
 function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
@@ -84,4 +108,3 @@ function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
   }
   return fallback;
 }
-
