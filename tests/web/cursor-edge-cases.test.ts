@@ -183,7 +183,8 @@ describe("Pierre expandUnchanged: DOM-injected rows join the walkable set", () =
 
   it("newly-injected unchanged context cells appear as additional FlatRows on next walk", () => {
     // Initial state: a single addition row (chevron not yet clicked).
-    const block = fileBlock("x.ts", [cell(10, "addition")]);
+    const anchor = cell(10, "addition");
+    const block = fileBlock("x.ts", [anchor]);
     document.body.appendChild(block);
     const before = walkCursorRows(document.body);
     expect(before.map((r) => r.lineNumber)).toEqual([10]);
@@ -191,21 +192,22 @@ describe("Pierre expandUnchanged: DOM-injected rows join the walkable set", () =
     // Pierre user clicks chevron → unchanged context cells are inserted
     // before the existing row. Re-walk picks them up; no invalidation
     // handshake required (the walker is stateless).
-    block.insertBefore(cell(7, "context"), block.firstChild);
-    block.insertBefore(cell(8, "context"), block.firstChild?.nextSibling ?? null);
-    block.insertBefore(cell(9, "context"), block.firstChild?.nextSibling?.nextSibling ?? null);
+    block.insertBefore(cell(7, "context"), anchor);
+    block.insertBefore(cell(8, "context"), anchor);
+    block.insertBefore(cell(9, "context"), anchor);
     const after = walkCursorRows(document.body);
     expect(after.map((r) => r.lineNumber)).toEqual([7, 8, 9, 10]);
   });
 
   it("cursor anchor on a pre-existing row is invariant after chevron expansion (resolves on the new flat sequence)", () => {
-    const block = fileBlock("x.ts", [cell(10, "addition")]);
+    const anchor = cell(10, "addition");
+    const block = fileBlock("x.ts", [anchor]);
     document.body.appendChild(block);
     const cursor = baseCursor({ file: "x.ts", lineNumber: 10, side: "additions" });
 
     // Inject unchanged-context rows (Pierre expandUnchanged).
-    block.insertBefore(cell(7, "context"), block.firstChild);
-    block.insertBefore(cell(8, "context"), block.firstChild?.nextSibling ?? null);
+    block.insertBefore(cell(7, "context"), anchor);
+    block.insertBefore(cell(8, "context"), anchor);
 
     const flatAfter = walkCursorRows(document.body);
     const validated = validateWebappCursor(cursor, flatAfter, [{ name: "x.ts" }], () => false);
