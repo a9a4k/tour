@@ -65,61 +65,7 @@ import {
 import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import { scrollChildIntoView } from "./scroll-into-view.js";
-
-function flatRowId(r: FlatRow): string {
-  return r.kind === "diff"
-    ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
-    : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
-}
-
-/**
- * Build a `(rowIdx) => y` resolver for `flatRows` in a single pass over
- * the scrollbox's renderable tree. Replaces the prior per-call
- * `findDescendantById` lookup, which was O(N²) across `pageMove`,
- * `jump`, and `step`'s `nearestRowIdx` — that O(N²) was the freeze the
- * user observed when pressing Space on a large diff.
- *
- * Each visited node has `updateFromLayout()` called on it. Under
- * `viewportCulling={true}` opentui only cascades that refresh into the
- * direct children of `ContentRenderable` (file-cards), so descendants
- * inside a culled file would otherwise carry stale `_y` from the last
- * frame the file was visible. The call is per-frame guarded inside
- * opentui, so visiting an already-fresh node is essentially free.
- * The DFS visits parents before children, so by the time we read a
- * row's `.y` (which recurses through `parent.y`) every ancestor is
- * fresh.
- */
-function buildRowYResolver(
-  content: { getChildren(): unknown[] },
-  flatRows: FlatRow[],
-): (idx: number) => number {
-  const idAtIdx: string[] = new Array(flatRows.length);
-  const targets = new Set<string>();
-  for (let i = 0; i < flatRows.length; i++) {
-    const id = flatRowId(flatRows[i]);
-    idAtIdx[i] = id;
-    targets.add(id);
-  }
-  const idToY = new Map<string, number>();
-  type Node = {
-    id?: string;
-    y?: number;
-    getChildren?: () => unknown[];
-    updateFromLayout?: () => void;
-  };
-  const stack: Node[] = [content as unknown as Node];
-  while (stack.length > 0 && idToY.size < targets.size) {
-    const node = stack.pop()!;
-    node.updateFromLayout?.();
-    const id = node.id;
-    if (id && targets.has(id)) {
-      idToY.set(id, typeof node.y === "number" ? node.y : 0);
-    }
-    const kids = node.getChildren?.() ?? [];
-    for (const c of kids) stack.push(c as Node);
-  }
-  return (i: number) => idToY.get(idAtIdx[i]) ?? 0;
-}
+import { buildRowYResolver } from "./row-y-resolver.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -1154,7 +1100,7 @@ function App(props: AppProps) {
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
-            rowY: buildRowYResolver(sb.content, flatRowsList),
+            rowY: buildRowYResolver(sb, flatRowsList),
           },
           dir,
           step,
@@ -1182,7 +1128,7 @@ function App(props: AppProps) {
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
-            rowY: buildRowYResolver(sb.content, flatRowsList),
+            rowY: buildRowYResolver(sb, flatRowsList),
           },
           target,
         );
@@ -1213,7 +1159,7 @@ function App(props: AppProps) {
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
-            rowY: buildRowYResolver(sb.content, flatRowsList),
+            rowY: buildRowYResolver(sb, flatRowsList),
           },
           dir,
           3,
