@@ -1,4 +1,5 @@
 import type { Cursor } from "../../core/cursor-state.js";
+import { queryAllAcrossShadow } from "./dom-walk.js";
 
 /**
  * Mark the DOM cell that the line cursor is anchored on with
@@ -28,14 +29,15 @@ export function syncCursorOverlay(
   cursor: Cursor | null,
 ): () => void {
   clearOverlay(root);
-  if (!cursor) return () => clearOverlay(root);
+  const cleanup = (): void => clearOverlay(root);
+  if (!cursor) return cleanup;
   const block = findFileBlock(root, cursor.file);
-  if (!block) return () => clearOverlay(root);
+  if (!block) return cleanup;
   const cell = findCursorCell(block, cursor);
-  if (!cell) return () => clearOverlay(root);
+  if (!cell) return cleanup;
   cell.setAttribute("data-tour-cursor", "true");
   cell.setAttribute("data-tour-cursor-side", cursor.side);
-  return () => clearOverlay(root);
+  return cleanup;
 }
 
 function clearOverlay(root: ParentNode): void {
@@ -69,17 +71,3 @@ function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
   return null;
 }
 
-function queryAllAcrossShadow(root: ParentNode, selector: string): Element[] {
-  const out: Element[] = [];
-  const stack: ParentNode[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    for (const el of node.querySelectorAll(selector)) out.push(el);
-    const all = node instanceof Element ? [node, ...node.querySelectorAll("*")] : [...node.querySelectorAll("*")];
-    for (const el of all) {
-      const shadow = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
-      if (shadow) stack.push(shadow);
-    }
-  }
-  return out;
-}
