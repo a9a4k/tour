@@ -21,7 +21,7 @@ export function buildConversationTree(
   annotations: Annotation[],
 ): ConversationTree {
   const threads = buildThreads(annotations);
-  const out: ConversationTree = {
+  return {
     id: tour.id,
     ...(tour.title ? { title: tour.title } : {}),
     head_sha: tour.head_sha,
@@ -31,5 +31,4 @@ export function buildConversationTree(
     status: tour.status,
     annotations: threads.map((t) => ({ ...t.root, replies: t.replies })),
   };
-  return out;
 }
