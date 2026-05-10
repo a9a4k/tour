@@ -67,6 +67,29 @@ export function buildReply(input: BuildReplyInput, existing: Annotation[]): Anno
   };
 }
 
+// Build the agent's Reply Annotation under the stdout-as-reply contract
+// (ADR 0012 / PRD #94 / slice #95). Body is trimmed because the runner
+// captures stdout verbatim — surrounding whitespace from the inner CLI's
+// flush is not part of the reply.
+export function buildReplyAnnotation(
+  triggering: Annotation,
+  agentName: string,
+  body: string,
+): Annotation {
+  return {
+    id: generateId(),
+    file: triggering.file,
+    side: triggering.side,
+    line_start: triggering.line_start,
+    line_end: triggering.line_end,
+    body: body.trim(),
+    author: agentName,
+    author_kind: "agent",
+    replies_to: triggering.id,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export async function appendAnnotation(
   repoRoot: string,
   tourId: string,
