@@ -67,4 +67,9 @@ describe("PLUS_BUTTON_CSS", () => {
   it("uses the shared accent-emphasis token (GitHub PR `+` blue)", () => {
     expect(PLUS_BUTTON_CSS).toContain("#1f6feb");
   });
+
+  it("lifts the button on hover so the affordance feels interactive", () => {
+    expect(PLUS_BUTTON_CSS).toContain(".tour-plus-button:hover");
+    expect(PLUS_BUTTON_CSS).toContain("filter: brightness");
+  });
 });

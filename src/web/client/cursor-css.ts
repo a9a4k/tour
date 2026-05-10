@@ -109,6 +109,10 @@ export const PLUS_BUTTON_CSS = `
     cursor: pointer;
   }
 
+  .tour-plus-button:hover {
+    filter: brightness(1.15);
+  }
+
   .tour-plus-button:focus-visible {
     outline: 2px solid ${theme.fg.accent};
     outline-offset: 2px;
