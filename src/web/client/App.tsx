@@ -29,7 +29,6 @@ import {
   initialCursor,
   moveCursor,
   setCursorSide,
-  validateCursor,
   type Cursor,
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
@@ -37,6 +36,7 @@ import { nextAnnotationNavStep } from "./annotation-nav.js";
 import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "./cursor-css.js";
 import { syncCursorOverlay } from "./cursor-overlay.js";
 import { syncHoverOverlay } from "./hover-overlay.js";
+import { validateWebappCursor } from "./cursor-validation.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -546,14 +546,17 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }, [parsedFiles, plannedRowsByFile, isCollapsed]);
 
   // Validate-in-place when the row sequence shifts under the cursor's
-  // feet (fold toggle, bundle reload, layout switch). Lazy
+  // feet (collapse toggle, bundle reload, layout switch). The webapp
+  // policy differentiates "file collapsed" (anchor preserved — file is
+  // still in the bundle, only hidden) from "file removed from bundle"
+  // (anchor null — re-materializes on next interaction). Lazy-
   // materialization rule: we never seed here — first interaction does.
   useEffect(() => {
     if (cursor === null) return;
-    const validated = validateCursor(cursor, flatRowsList);
+    const validated = validateWebappCursor(cursor, flatRowsList, parsedFiles, isCollapsed);
     if (validated !== cursor) setCursor(validated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRowsList]);
+  }, [flatRowsList, parsedFiles, isCollapsed]);
 
   // Mirror the line cursor onto the rendered diff DOM as
   // data-tour-cursor / data-tour-cursor-side on the matching cell. The
