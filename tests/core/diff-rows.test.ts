@@ -661,6 +661,74 @@ index 1..2 100644
     expect(ctxLines).not.toContain("g13");
   });
 
+  // PRD #108 issue #113: classifier-collapsed file gets a single synthetic
+  // `collapsed-file` interactive row in place of its diff body. Pressing
+  // Enter on that row sets `fileExpanded: true` in expansion state, which
+  // makes the planner emit the file's normal diff rows.
+  describe("classifier-collapsed file (PRD #108 issue #113)", () => {
+    it("emits exactly one 'collapsed-file' interactive row when classifierCollapsed and fileExpanded is false", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split", { classifierCollapsed: true });
+      expect(rows.length).toBe(1);
+      expect(rows[0].kind).toBe("interactive");
+      if (rows[0].kind === "interactive") {
+        expect(rows[0].subKind).toBe("collapsed-file");
+        expect(rows[0].boundaryRef).toBe("top");
+        expect(rows[0].text).toContain("Enter to expand");
+        expect(rows[0].text).toContain("hidden");
+      }
+    });
+
+    it("emits normal diff rows when classifierCollapsed and expansion has fileExpanded=true", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const expansion = new Map([
+        ["x.txt", { fileExpanded: true, boundaries: new Map() }],
+      ]);
+      const rows = planRows(file, [], "split", {
+        classifierCollapsed: true,
+        expansion,
+      });
+      expect(rows.some((r) => r.kind === "diff-row")).toBe(true);
+      expect(rows.some((r) => r.kind === "hunk-header")).toBe(true);
+      expect(
+        rows.some(
+          (r) => r.kind === "interactive" && r.subKind === "collapsed-file",
+        ),
+      ).toBe(false);
+    });
+
+    it("does not emit a collapsed-file row when classifierCollapsed is false", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      expect(
+        rows.some(
+          (r) => r.kind === "interactive" && r.subKind === "collapsed-file",
+        ),
+      ).toBe(false);
+    });
+
+    it("collapsed-file row text includes the diff body line count", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split", { classifierCollapsed: true });
+      // SIMPLE_DIFF: -1,3 +1,4 → additionCount 4 + deletionCount 3 = 7
+      const collapsed = rows.find(
+        (r) => r.kind === "interactive" && r.subKind === "collapsed-file",
+      );
+      expect(collapsed).toBeDefined();
+      if (collapsed?.kind === "interactive") {
+        expect(collapsed.text).toBe("··· 7 lines hidden — Enter to expand ···");
+      }
+    });
+
+    it("suppresses annotation rows when collapsed (no diff rows means no anchors to attach to)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const a = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 });
+      const rows = planRows(file, [a], "split", { classifierCollapsed: true });
+      expect(rows.some((r) => r.kind === "annotation")).toBe(false);
+      expect(rows.length).toBe(1);
+    });
+  });
+
   it("'all' expansion fills the entire gap with context rows", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const expansion = new Map([

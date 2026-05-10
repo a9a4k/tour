@@ -12,6 +12,7 @@ import {
   expand,
   expandTop,
   expandBottom,
+  expandFile,
   seedFromOrphans,
   type ExpansionState,
   type OrphanWindow,
@@ -330,6 +331,22 @@ function App(props: AppProps) {
     return out;
   }, [liveDiff]);
 
+  // Returns true when the planner should emit a synthetic CollapsedFileRow
+  // in place of this file's diff body (PRD #108 issue #113). Mirror of the
+  // legacy isFileCollapsed-without-annotations rule, but kept distinct so
+  // the App can route the body to DiffRows always (the synthetic row IS
+  // the affordance the user clicks Enter on).
+  const isClassifierCollapsed = (fileName: string): boolean => {
+    const override = collapsedOverrides[fileName];
+    if (override === false) return false;
+    const cls = fileClassification(liveClassifications, fileName);
+    if (!cls.collapsed) return false;
+    if (cls.reason === "binary") return false;
+    const hasAnnotations = liveAnnotations.some((a) => a.file === fileName);
+    if (hasAnnotations) return false;
+    return true;
+  };
+
   const plannedRowsByFile = useMemo(() => {
     const out = new Map<string, PlannedRow[]>();
     for (const [name, meta] of fileMetadata) {
@@ -341,21 +358,33 @@ function App(props: AppProps) {
           oldContent: contents?.oldContent,
           newContent: contents?.newContent,
           expansion,
+          classifierCollapsed: isClassifierCollapsed(name),
         }),
       );
     }
     return out;
-  }, [fileMetadata, liveAnnotations, layout, liveFileContents, expansion]);
+    // isClassifierCollapsed reads from the deps below — listed explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    fileMetadata,
+    liveAnnotations,
+    layout,
+    liveFileContents,
+    expansion,
+    collapsedOverrides,
+    liveClassifications,
+  ]);
 
+  // Body-level visibility (binary placeholder + user-driven `c` collapse).
+  // A classifier-collapsed (non-binary) file is NOT body-collapsed any
+  // longer — its body always renders and the planner emits the synthetic
+  // CollapsedFileRow inside. `c` on a classifier-collapsed file thus
+  // toggles between "synthetic row visible" and "body hidden entirely".
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
     if (override !== undefined) return override;
     const cls = fileClassification(liveClassifications, fileName);
-    if (!cls.collapsed) return false;
-    if (cls.reason === "binary") return true;
-    const hasAnnotations = liveAnnotations.some((a) => a.file === fileName);
-    if (hasAnnotations) return false;
-    return true;
+    return cls.reason === "binary";
   };
 
   // Cross-file flat row sequence the line cursor walks (ADR 0011). Skips
@@ -676,10 +705,11 @@ function App(props: AppProps) {
     if (gapSize === 0) return;
     setExpansion((s) => expandBottom(s, file, all ? "all" : "symmetric-20", gapSize));
   };
-  // Collapsed-file expansion is delivered by PRD #108 slice #5; out of scope
-  // here per issue #112.
-  const expandCollapsedFile = (_file: string) => {
-    // slice #5
+  // Enter on a synthetic CollapsedFileRow flips fileExpanded → planner
+  // emits the file's normal diff body next render (PRD #108 issue #113).
+  // One-way; re-collapse goes through the parallel `c` toggle.
+  const expandCollapsedFile = (file: string) => {
+    setExpansion((s) => expandFile(s, file));
   };
 
   // Routes a primary-action / primary-action-all keystroke to the row-kind-

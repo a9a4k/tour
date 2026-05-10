@@ -36,7 +36,10 @@ export interface BoundaryExpansion {
 }
 
 export interface FileExpansion {
-  /** Flipped by the collapsed-file slice (PRD #108 slice #5); unused here. */
+  /** Set by `expandFile` (PRD #108 issue #113). When `true`, a classifier-
+   *  collapsed file emits its normal diff stream instead of the synthetic
+   *  CollapsedFileRow. One-way in this slice — re-collapse is not exposed
+   *  through a reducer (the App layer owns the parallel `c` toggle path). */
   fileExpanded: boolean;
   boundaries: Map<BoundaryRef, BoundaryExpansion>;
 }
@@ -96,6 +99,17 @@ export function expandBottom(
   gapSize: number,
 ): ExpansionState {
   return applyExpand(state, { file, ref: "bottom" }, mode, gapSize, "down");
+}
+
+export function expandFile(state: ExpansionState, file: string): ExpansionState {
+  const cur = state.get(file);
+  if (cur?.fileExpanded) return state;
+  const next: ExpansionState = new Map(state);
+  next.set(file, {
+    fileExpanded: true,
+    boundaries: cur?.boundaries ?? new Map<BoundaryRef, BoundaryExpansion>(),
+  });
+  return next;
 }
 
 export function seedFromOrphans(
