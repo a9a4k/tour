@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
-import { flatRows } from "../../src/core/flat-rows.js";
+import { flatRows, flatRowFromLines } from "../../src/core/flat-rows.js";
 import {
   planRows,
   type PlannedRow,
@@ -274,5 +274,57 @@ describe("flatRows interactive rows (PRD #107)", () => {
     const diffRows = flat.filter((r) => r.kind === "diff");
     expect(diffRows.length).toBeGreaterThan(0);
     for (const r of diffRows) expect(r.kind).toBe("diff");
+  });
+});
+
+describe("flatRowFromLines", () => {
+  it("paired row: both line numbers populated → paired=true, side=additions, lineNumber=right", () => {
+    const r = flatRowFromLines("x.txt", 5, 7);
+    expect(r).toEqual({
+      kind: "diff",
+      file: "x.txt",
+      lineNumber: 7,
+      side: "additions",
+      leftLineNumber: 5,
+      rightLineNumber: 7,
+      paired: true,
+    });
+  });
+
+  it("pure-addition row: left null → paired=false, side=additions, lineNumber=right", () => {
+    const r = flatRowFromLines("x.txt", null, 4);
+    expect(r).toEqual({
+      kind: "diff",
+      file: "x.txt",
+      lineNumber: 4,
+      side: "additions",
+      leftLineNumber: null,
+      rightLineNumber: 4,
+      paired: false,
+    });
+  });
+
+  it("pure-deletion row: right null → paired=false, side=deletions, lineNumber=left", () => {
+    const r = flatRowFromLines("x.txt", 9, null);
+    expect(r).toEqual({
+      kind: "diff",
+      file: "x.txt",
+      lineNumber: 9,
+      side: "deletions",
+      leftLineNumber: 9,
+      rightLineNumber: null,
+      paired: false,
+    });
+  });
+
+  it("threads file through unchanged", () => {
+    expect(flatRowFromLines("a/b/c.ts", 1, 1).file).toBe("a/b/c.ts");
+  });
+
+  it("context row (left===right) is paired and additions-side by default", () => {
+    const r = flatRowFromLines("x.txt", 3, 3);
+    expect(r.paired).toBe(true);
+    expect(r.side).toBe("additions");
+    expect(r.lineNumber).toBe(3);
   });
 });

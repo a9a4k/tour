@@ -49,6 +49,37 @@ export interface InteractiveFlatRow {
 
 export type FlatRow = DiffFlatRow | InteractiveFlatRow;
 
+/**
+ * Build a DiffFlatRow from `(file, leftLineNumber, rightLineNumber)`. Shared
+ * between the planRows-based walker (TUI + webapp v1) and the DOM-based
+ * walker `web/client/cursor-rows.ts` (webapp v2 — handles Pierre
+ * `expandUnchanged` chevron-revealed rows). Both surfaces must agree on
+ * paired/side/lineNumber semantics so the cursor reducers in
+ * `core/cursor-state.ts` resolve identically against either source.
+ */
+export function flatRowFromLines(
+  file: string,
+  leftLineNumber: number | null,
+  rightLineNumber: number | null,
+): DiffFlatRow {
+  const paired = leftLineNumber !== null && rightLineNumber !== null;
+  // Pure-deletion rows force the deletions side; everything else (paired
+  // rows and pure-additions rows) defaults to additions.
+  const side: "additions" | "deletions" =
+    rightLineNumber === null && leftLineNumber !== null ? "deletions" : "additions";
+  const lineNumber =
+    side === "additions" ? (rightLineNumber as number) : (leftLineNumber as number);
+  return {
+    kind: "diff",
+    file,
+    lineNumber,
+    side,
+    leftLineNumber,
+    rightLineNumber,
+    paired,
+  };
+}
+
 export function flatRows(
   files: DiffFile[],
   plannedRowsByFile: Map<string, PlannedRow[]>,
@@ -61,23 +92,7 @@ export function flatRows(
     if (!rows) continue;
     for (const row of rows) {
       if (row.kind === "diff-row") {
-        const left = row.leftLineNumber;
-        const right = row.rightLineNumber;
-        const paired = left !== null && right !== null;
-        // Pure-deletion rows force the deletions side; everything else
-        // (paired rows and pure-additions rows) defaults to additions.
-        const side: "additions" | "deletions" =
-          right === null && left !== null ? "deletions" : "additions";
-        const lineNumber = side === "additions" ? (right as number) : (left as number);
-        out.push({
-          kind: "diff",
-          file: file.name,
-          lineNumber,
-          side,
-          leftLineNumber: left,
-          rightLineNumber: right,
-          paired,
-        });
+        out.push(flatRowFromLines(file.name, row.leftLineNumber, row.rightLineNumber));
         continue;
       }
       if (row.kind === "interactive") {

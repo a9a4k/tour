@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FileDiff, MultiFileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileContents, FileDiffMetadata, DiffLineAnnotation } from "@pierre/diffs";
@@ -34,7 +34,8 @@ import {
   type Cursor,
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
-import { buildCursorOutlineCSS, buildHoverTintCSS } from "./cursor-css.js";
+import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "./cursor-css.js";
+import { syncCursorOverlay } from "./cursor-overlay.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -553,6 +554,17 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatRowsList]);
 
+  // Mirror the line cursor onto the rendered diff DOM as
+  // data-tour-cursor / data-tour-cursor-side on the matching cell. The
+  // outline CSS (CURSOR_OUTLINE_CSS) keys off these attributes so Pierre's
+  // per-file shadow root remains the natural CSS scope. useLayoutEffect
+  // (vs useEffect) so the attribute lands in the same paint cycle as the
+  // diff render — no flash of unstyled cursor on first j/k.
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+    return syncCursorOverlay(document.body, cursor);
+  }, [cursor, parsedFiles, layout, collapsedOverrides]);
+
   // Lazy materialization (ADR 0012). Returns the seeded cursor (or
   // existing one if already materialized) so the caller can chain into
   // composer-open / move actions in one step. setCursor is queued; the
@@ -765,7 +777,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 layout={layout}
                 composerTarget={composerTarget}
                 composerError={composerError}
-                cursor={cursor}
                 onOpenTopLevel={openTopLevelComposer}
                 onOpenReply={openReplyComposer}
                 onSubmit={submitComposer}
@@ -875,7 +886,6 @@ interface FileBlockProps {
   layout: Layout;
   composerTarget: ComposerTarget | null;
   composerError: string | null;
-  cursor: Cursor | null;
   onOpenTopLevel: (file: string, side: "additions" | "deletions", line: number) => void;
   onOpenReply: (replies_to: string) => void;
   onSubmit: (body: string) => void;
@@ -944,7 +954,6 @@ function FileBlock({
   layout,
   composerTarget,
   composerError,
-  cursor,
   onOpenTopLevel,
   onOpenReply,
   onSubmit,
@@ -978,18 +987,17 @@ function FileBlock({
 
   const options = useMemo(() => {
     const rangeCSS = buildRangeBackgroundCSS(annotations, fileDiff.name);
-    const cursorCSS = buildCursorOutlineCSS(cursor, fileDiff.name);
     const hoverCSS = buildHoverTintCSS(composerTarget !== null);
     const parts = [
       STICKY_HEADER_CSS,
       COMMENT_AFFORDANCE_CSS,
+      CURSOR_OUTLINE_CSS,
       hoverCSS,
       rangeCSS,
-      cursorCSS,
     ].filter((s) => s !== "");
     const unsafeCSS = parts.join("\n");
     return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
-  }, [annotations, fileDiff.name, collapsed, layout, cursor, composerTarget]);
+  }, [annotations, fileDiff.name, collapsed, layout, composerTarget]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {
@@ -1075,7 +1083,12 @@ function FileBlock({
   const contents = fileContentsFor(fileDiff, modelFile);
 
   return (
-    <div className="file-block" ref={registerRef} onClick={onWrapperClick}>
+    <div
+      className="file-block"
+      data-file={fileDiff.name}
+      ref={registerRef}
+      onClick={onWrapperClick}
+    >
       {contents ? (
         <MultiFileDiff<AnnotationMetadata>
           oldFile={contents.oldFile}
