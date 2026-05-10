@@ -63,6 +63,10 @@ describe("pi buildArgs", () => {
 
   it("does not pass any allow/deny tool configuration (zero tools, ADR 0012)", () => {
     const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
+    // claude-style allow/deny — never present in pi, pinned to lock the zero-tools contract.
+    expect(argv).not.toContain("--allowedTools");
+    expect(argv).not.toContain("--disallowedTools");
+    // Pre-port pi-specific gates that are no longer needed under stdout-as-reply.
     expect(argv).not.toContain("--tools");
     expect(argv).not.toContain("--no-extensions");
     expect(argv).not.toContain("--no-skills");

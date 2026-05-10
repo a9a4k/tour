@@ -7,9 +7,10 @@ const k = (name: string, mods: { ctrl?: boolean; shift?: boolean } = {}): KeyInp
   shift: mods.shift ?? false,
 });
 
-const sidebar: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "file" };
-const sidebarFolder: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "folder" };
-const diffPane: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file" };
+const sidebar: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "file", cursorExists: true };
+const sidebarFolder: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "folder", cursorExists: true };
+const diffPane: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file", cursorExists: true };
+const diffPaneNoCursor: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file", cursorExists: false };
 
 describe("dispatchKey", () => {
   it("q quits", () => {
@@ -46,12 +47,8 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("return"), sidebar).type).toBe("select-file");
   });
 
-  it("j is a no-op when sidebar is not focused", () => {
-    expect(dispatchKey(k("j"), diffPane).type).toBe("noop");
-  });
-
-  it("j is a no-op when there are no rows", () => {
-    expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type).toBe("noop");
+  it("j is a no-op when sidebar has no rows and cursor doesn't exist", () => {
+    expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null, cursorExists: false }).type).toBe("noop");
   });
 
   it("c on a file row toggles per-file diff collapse", () => {
@@ -70,9 +67,9 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c", { ctrl: true }), diffPane).type).toBe("quit");
   });
 
-  it("c is a no-op when no row is selected", () => {
+  it("c is a no-op when no row is selected and no cursor exists", () => {
     expect(
-      dispatchKey(k("c"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type,
+      dispatchKey(k("c"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null, cursorExists: false }).type,
     ).toBe("noop");
   });
 
@@ -97,7 +94,7 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("right"), sidebarFolder).type).toBe("expand-folder");
   });
 
-  it("right on a file row is a no-op", () => {
+  it("right on a file row in sidebar is a no-op (sidebar has no right binding for files)", () => {
     expect(dispatchKey(k("right"), sidebar).type).toBe("noop");
   });
 
@@ -109,9 +106,14 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("left"), sidebar).type).toBe("collapse-parent");
   });
 
-  it("right and left are no-ops when sidebar is not focused", () => {
-    expect(dispatchKey(k("right"), diffPane).type).toBe("noop");
-    expect(dispatchKey(k("left"), diffPane).type).toBe("noop");
+  it("right and left in the diff pane drive cursor side selection (not noop)", () => {
+    expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
+    expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
+  });
+
+  it("right and left are no-ops in the diff pane when no cursor exists", () => {
+    expect(dispatchKey(k("right"), diffPaneNoCursor).type).toBe("noop");
+    expect(dispatchKey(k("left"), diffPaneNoCursor).type).toBe("noop");
   });
 
   it("n returns next-annotation regardless of pane focus", () => {
@@ -124,15 +126,24 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("p"), diffPane).type).toBe("prev-annotation");
   });
 
-  it("l returns toggle-layout regardless of pane focus", () => {
-    expect(dispatchKey(k("l"), sidebar).type).toBe("toggle-layout");
-    expect(dispatchKey(k("l"), diffPane).type).toBe("toggle-layout");
-    expect(dispatchKey(k("l"), sidebarFolder).type).toBe("toggle-layout");
+  it("Shift-L toggles layout regardless of pane focus (l → L rebind, ADR 0011)", () => {
+    expect(dispatchKey(k("l", { shift: true }), sidebar).type).toBe("toggle-layout");
+    expect(dispatchKey(k("l", { shift: true }), diffPane).type).toBe("toggle-layout");
+    expect(dispatchKey(k("l", { shift: true }), sidebarFolder).type).toBe("toggle-layout");
   });
 
-  it("Ctrl+L is not consumed as toggle-layout", () => {
-    expect(dispatchKey(k("l", { ctrl: true }), sidebar).type).toBe("noop");
-    expect(dispatchKey(k("l", { ctrl: true }), diffPane).type).toBe("noop");
+  it("plain l is no longer toggle-layout (rebound to Shift-L per ADR 0011)", () => {
+    // In the diff pane, `l` becomes cursor-side-right; in the sidebar, it
+    // is a no-op (no consumer). The previous "always toggle-layout"
+    // behaviour is the regression we're guarding against.
+    expect(dispatchKey(k("l"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("l"), sidebarFolder).type).toBe("noop");
+    expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
+  });
+
+  it("Ctrl+Shift+L is not consumed as toggle-layout", () => {
+    expect(dispatchKey(k("l", { ctrl: true, shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("l", { ctrl: true, shift: true }), diffPane).type).toBe("noop");
   });
 
   it("Ctrl+N is not consumed as next-annotation", () => {
@@ -185,5 +196,54 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("ArrowDown"), sidebar).type).toBe("noop");
     expect(dispatchKey(k("Return"), sidebar).type).toBe("noop");
     expect(dispatchKey(k("Q"), sidebar).type).toBe("noop");
+  });
+});
+
+// ADR 0011: line cursor motion in the diff pane. j/k/up/down move the
+// cursor; h/l/left/right toggle side. Sidebar focus or absent cursor
+// suppresses these.
+describe("dispatchKey — line cursor (ADR 0011)", () => {
+  it("j and ArrowDown move the cursor down when diff pane focused and cursor exists", () => {
+    expect(dispatchKey(k("j"), diffPane).type).toBe("cursor-down");
+    expect(dispatchKey(k("down"), diffPane).type).toBe("cursor-down");
+  });
+
+  it("k and ArrowUp move the cursor up when diff pane focused and cursor exists", () => {
+    expect(dispatchKey(k("k"), diffPane).type).toBe("cursor-up");
+    expect(dispatchKey(k("up"), diffPane).type).toBe("cursor-up");
+  });
+
+  it("h and ArrowLeft set cursor side to deletions in the diff pane", () => {
+    expect(dispatchKey(k("h"), diffPane).type).toBe("cursor-side-left");
+    expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
+  });
+
+  it("l and ArrowRight set cursor side to additions in the diff pane", () => {
+    expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
+    expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
+  });
+
+  it("j/k/h/l in diff pane are no-ops when cursor doesn't exist", () => {
+    expect(dispatchKey(k("j"), diffPaneNoCursor).type).toBe("noop");
+    expect(dispatchKey(k("k"), diffPaneNoCursor).type).toBe("noop");
+    expect(dispatchKey(k("h"), diffPaneNoCursor).type).toBe("noop");
+    expect(dispatchKey(k("l"), diffPaneNoCursor).type).toBe("noop");
+  });
+
+  it("h does not interfere with sidebar focus (no sidebar binding for h)", () => {
+    expect(dispatchKey(k("h"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("h"), sidebarFolder).type).toBe("noop");
+  });
+
+  it("Ctrl-j/k/h/l are not consumed as cursor motion", () => {
+    expect(dispatchKey(k("j", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("k", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("h", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("l", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("sidebar j/k still drive file motion (focus-aware routing)", () => {
+    expect(dispatchKey(k("j"), sidebar).type).toBe("move-file-down");
+    expect(dispatchKey(k("k"), sidebar).type).toBe("move-file-up");
   });
 });

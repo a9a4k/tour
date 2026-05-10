@@ -56,12 +56,15 @@ function parseFile(rawDiff: string): FileDiffMetadata {
 function callDiffRows(args: {
   rows: PlannedRow[];
   layout: "split" | "unified";
+  cursor?: import("../../src/core/cursor-state.js").Cursor | null;
+  fileName?: string;
 }): unknown {
   return DiffRows({
-    fileName: "x.txt",
+    fileName: args.fileName ?? "x.txt",
     rows: args.rows,
     layout: args.layout,
     currentAnnotationId: null,
+    cursor: args.cursor ?? null,
   });
 }
 
@@ -176,6 +179,115 @@ index 1..2 100644
       const cells = diffLineCellsOf(tree);
       expect(cells.length).toBe(1);
       expect(cells[0].props["diffBg"]).toBeUndefined();
+    });
+  });
+
+  describe("cursor row matching (ADR 0011)", () => {
+    it("lights up the right (additions) cell on a paired row when cursor is on the additions side", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const lineNumber = ctxRow.rightLineNumber!;
+      const cursor = {
+        file: "x.txt",
+        lineNumber,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+      };
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBeFalsy();
+      expect(cells[1].props["cursorActive"]).toBe(true);
+    });
+
+    it("lights up the left (deletions) cell on a paired row when cursor is on the deletions side", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const lineNumber = ctxRow.leftLineNumber!;
+      const cursor = {
+        file: "x.txt",
+        lineNumber,
+        side: "deletions" as const,
+        preferredSide: "deletions" as const,
+      };
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBe(true);
+      expect(cells[1].props["cursorActive"]).toBeFalsy();
+    });
+
+    it("does not light up any cell when cursor is on a different file", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const cursor = {
+        file: "y.txt",
+        lineNumber: 1,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+      };
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      for (const cell of cells) expect(cell.props["cursorActive"]).toBeFalsy();
+    });
+
+    it("does not light up any cell when cursor is null", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split", cursor: null });
+      const cells = diffLineCellsOf(tree);
+      for (const cell of cells) expect(cell.props["cursorActive"]).toBeFalsy();
+    });
+
+    it("lights up the unified row when cursor matches either side", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const cursor = {
+        file: "x.txt",
+        lineNumber: ctxRow.rightLineNumber!,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+      };
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "unified", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["cursorActive"]).toBe(true);
+    });
+
+    it("emits a stable id `diff-row-${file}-${side}-${lineNumber}` on each addressable side wrapper (split)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const ids = flatten(tree)
+        .map((el) => el.props["id"])
+        .filter((id): id is string => typeof id === "string");
+      expect(ids).toContain(`diff-row-x.txt-deletions-${ctxRow.leftLineNumber}`);
+      expect(ids).toContain(`diff-row-x.txt-additions-${ctxRow.rightLineNumber}`);
+    });
+
+    it("emits a stable id on the unified row wrapper", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const addIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "addition");
+      const addRow = rows[addIdx];
+      if (addRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const tree = callDiffRows({ rows: rows.slice(addIdx, addIdx + 1), layout: "unified" });
+      const ids = flatten(tree)
+        .map((el) => el.props["id"])
+        .filter((id): id is string => typeof id === "string");
+      expect(ids).toContain(`diff-row-x.txt-additions-${addRow.rightLineNumber}`);
     });
   });
 

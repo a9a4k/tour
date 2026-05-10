@@ -8,6 +8,11 @@ export interface KeymapContext {
   sidebarFocused: boolean;
   rowCount: number;
   selectedRowKind: "folder" | "file" | null;
+  /** Whether a line cursor is currently anchored. When false, diff-pane
+   *  motion (`j`/`k`/`h`/`l`/arrows) is a no-op so we don't promise
+   *  navigation we can't perform (empty Tour, all files folded,
+   *  snapshot-lost). */
+  cursorExists: boolean;
 }
 
 export type KeyAction =
@@ -31,6 +36,10 @@ export type KeyAction =
   | { type: "open-reply-composer" }
   | { type: "page-diff-down" }
   | { type: "page-diff-up" }
+  | { type: "cursor-down" }
+  | { type: "cursor-up" }
+  | { type: "cursor-side-left" }
+  | { type: "cursor-side-right" }
   | { type: "noop" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
@@ -46,10 +55,15 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     return key.shift ? { type: "page-diff-up" } : { type: "page-diff-down" };
   }
 
+  // Layout toggle moved from `l` to Shift-L (ADR 0011): the lowercase pair
+  // `h`/`l` is now reserved for cursor side selection in the diff pane.
+  if (!key.ctrl && key.shift && key.name === "l") {
+    return { type: "toggle-layout" };
+  }
+
   if (!key.ctrl && !key.shift) {
     if (key.name === "n") return { type: "next-annotation" };
     if (key.name === "p") return { type: "prev-annotation" };
-    if (key.name === "l") return { type: "toggle-layout" };
     if (key.name === "t") return { type: "open-picker" };
     if (key.name === "a") return { type: "open-top-level-composer" };
     if (key.name === "r") return { type: "open-reply-composer" };
@@ -70,6 +84,19 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
       if (ctx.selectedRowKind === "folder") return { type: "collapse-folder" };
       if (ctx.selectedRowKind === "file") return { type: "collapse-parent" };
     }
+  }
+
+  // Diff-pane line cursor (ADR 0011). Only fires when the diff pane has
+  // focus AND a cursor is anchored — otherwise the keys are reserved for
+  // other surfaces (sidebar arrows, replies-collapse `c`) and would
+  // mis-fire. h/l also handle side toggle on paired rows; setCursorSide
+  // is layout-aware and degrades to a preferredSide-only update on
+  // single-side rows.
+  if (!ctx.sidebarFocused && !key.ctrl && !key.shift && ctx.cursorExists) {
+    if (key.name === "j" || key.name === "down") return { type: "cursor-down" };
+    if (key.name === "k" || key.name === "up") return { type: "cursor-up" };
+    if (key.name === "h" || key.name === "left") return { type: "cursor-side-left" };
+    if (key.name === "l" || key.name === "right") return { type: "cursor-side-right" };
   }
 
   // Outside the sidebar, `c` collapses just the Replies in every Thread —

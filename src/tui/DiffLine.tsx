@@ -3,7 +3,10 @@ import { theme } from "../core/theme.js";
 
 export const TINT_BG = theme.bg.accentRange.tui;
 export const ACCENT_FG = theme.fg.accent;
+export const CURSOR_FG = theme.fg.cursor;
+export const CURSOR_GUTTER_BG = theme.bg.cursorGutter.tui;
 export const GUTTER_CHAR = "▎";
+export const CURSOR_GLYPH = "▶";
 
 interface DiffLineProps {
   // Pre-formatted gutter text (line numbers + sign + trailing space).
@@ -24,6 +27,11 @@ interface DiffLineProps {
   // contentTinted=false so the diff bg shows on content); on context rows
   // diffBg is undefined so the annotation tint paints both cells.
   diffBg?: "addition" | "deletion";
+  // Line cursor (ADR 0011). When true, the gutter cell paints
+  // theme.bg.cursorGutter (winning over annotation tint and diff bg per the
+  // composition rule) and a leading `▶` glyph in theme.fg.cursor renders in
+  // the line-number column. Content area is untouched.
+  cursorActive?: boolean;
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
   width: string | number;
@@ -42,14 +50,23 @@ export function DiffLine({
   contentTinted,
   gutterAccent,
   diffBg,
+  cursorActive,
   filetype,
   syntaxStyle,
   width,
 }: DiffLineProps) {
   const diffColor = diffBgColor(diffBg);
-  const gutterBg = gutterTinted ? TINT_BG : diffColor;
+  // Composition rule (ADR 0011): cursor bg > annotation tint > +/- bg.
+  const gutterBg = cursorActive
+    ? CURSOR_GUTTER_BG
+    : gutterTinted
+      ? TINT_BG
+      : diffColor;
   const contentBg = contentTinted ? TINT_BG : diffColor;
   const showCode = !!filetype && text.length > 0;
+  // Drop one leading char so the total gutter width is preserved when the
+  // cursor glyph rides in front of the line number.
+  const gutterText = cursorActive && gutter.length > 0 ? gutter.slice(1) : gutter;
 
   return (
     // alignItems="flex-start" pins the line-number text to visual-line 1 when
@@ -69,8 +86,16 @@ export function DiffLine({
         flexShrink={0}
         backgroundColor={gutterAccent ? ACCENT_FG : undefined}
       />
-      <box alignSelf="stretch" flexShrink={0} backgroundColor={gutterBg}>
-        <text height={1} flexShrink={0}>{gutter}</text>
+      <box
+        alignSelf="stretch"
+        flexShrink={0}
+        flexDirection="row"
+        backgroundColor={gutterBg}
+      >
+        {cursorActive && (
+          <text height={1} flexShrink={0} fg={CURSOR_FG}>{CURSOR_GLYPH}</text>
+        )}
+        <text height={1} flexShrink={0}>{gutterText}</text>
       </box>
       {showCode ? (
         // <code> as a direct flex child reports a measure that includes a

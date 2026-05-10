@@ -60,6 +60,8 @@ describe("opencode buildArgs", () => {
     // The prior bash adapter materialised an opencode.json with permission
     // rules; with stdout-as-reply that machinery is gone. argv is just
     // `run <prompt>`.
+    expect(argv).not.toContain("--allowedTools");
+    expect(argv).not.toContain("--disallowedTools");
     expect(argv).not.toContain("--agent");
     expect(argv).not.toContain("--config");
     expect(argv.length).toBe(2);

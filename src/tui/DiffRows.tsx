@@ -5,13 +5,15 @@ import { annotationCardSlot } from "./annotation-placement.js";
 import { DiffLine } from "./DiffLine.js";
 import { getSyntaxStyle, inferFiletype } from "./syntax.js";
 import type { ReplyLock } from "../core/reply-lock.js";
+import type { Cursor } from "../core/cursor-state.js";
 
 interface DiffRowsProps {
   fileName: string;
   rows: PlannedRow[];
   layout: "split" | "unified";
   currentAnnotationId: string | null;
-  repliesCollapsed: boolean;
+  cursor?: Cursor | null;
+  repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
 }
@@ -42,11 +44,16 @@ function unifiedGutter(row: DiffRow): string {
   return `${pad(row.leftLineNumber)} ${pad(row.rightLineNumber)} ${unifiedSign(row)} `;
 }
 
+function rowId(file: string, side: "additions" | "deletions", lineNumber: number): string {
+  return `diff-row-${file}-${side}-${lineNumber}`;
+}
+
 export function DiffRows({
   fileName,
   rows,
   layout,
   currentAnnotationId,
+  cursor,
   repliesCollapsed,
   replyLock,
   now,
@@ -90,6 +97,17 @@ export function DiffRows({
           );
         }
 
+        const cursorOnFile =
+          cursor != null && cursor.file === fileName ? cursor : null;
+        const leftCursorActive =
+          cursorOnFile != null &&
+          cursorOnFile.side === "deletions" &&
+          cursorOnFile.lineNumber === row.leftLineNumber;
+        const rightCursorActive =
+          cursorOnFile != null &&
+          cursorOnFile.side === "additions" &&
+          cursorOnFile.lineNumber === row.rightLineNumber;
+
         if (layout === "split") {
           // Content tint only when both sides have a line number — i.e. a
           // context-paired row. One-sided rows (additions / deletions inside
@@ -103,30 +121,40 @@ export function DiffRows({
             row.type === "change" && row.leftLineNumber !== null ? "deletion" : undefined;
           const rightDiffBg =
             row.type === "change" && row.rightLineNumber !== null ? "addition" : undefined;
+          const leftId =
+            row.leftLineNumber !== null ? rowId(fileName, "deletions", row.leftLineNumber) : undefined;
+          const rightId =
+            row.rightLineNumber !== null ? rowId(fileName, "additions", row.rightLineNumber) : undefined;
           return (
             <box key={key} flexDirection="row" width="100%" minHeight={1}>
-              <DiffLine
-                gutter={splitGutter(row.leftLineNumber)}
-                text={row.leftText}
-                gutterTinted={!!row.leftTinted}
-                contentTinted={!!row.leftTinted && paired}
-                gutterAccent={!!row.leftGutter}
-                diffBg={leftDiffBg}
-                filetype={filetype}
-                syntaxStyle={syntaxStyle}
-                width="50%"
-              />
-              <DiffLine
-                gutter={splitGutter(row.rightLineNumber)}
-                text={row.rightText}
-                gutterTinted={!!row.rightTinted}
-                contentTinted={!!row.rightTinted && paired}
-                gutterAccent={!!row.rightGutter}
-                diffBg={rightDiffBg}
-                filetype={filetype}
-                syntaxStyle={syntaxStyle}
-                width="50%"
-              />
+              <box id={leftId} width="50%">
+                <DiffLine
+                  gutter={splitGutter(row.leftLineNumber)}
+                  text={row.leftText}
+                  gutterTinted={!!row.leftTinted}
+                  contentTinted={!!row.leftTinted && paired}
+                  gutterAccent={!!row.leftGutter}
+                  diffBg={leftDiffBg}
+                  cursorActive={leftCursorActive}
+                  filetype={filetype}
+                  syntaxStyle={syntaxStyle}
+                  width="100%"
+                />
+              </box>
+              <box id={rightId} width="50%">
+                <DiffLine
+                  gutter={splitGutter(row.rightLineNumber)}
+                  text={row.rightText}
+                  gutterTinted={!!row.rightTinted}
+                  contentTinted={!!row.rightTinted && paired}
+                  gutterAccent={!!row.rightGutter}
+                  diffBg={rightDiffBg}
+                  cursorActive={rightCursorActive}
+                  filetype={filetype}
+                  syntaxStyle={syntaxStyle}
+                  width="100%"
+                />
+              </box>
             </box>
           );
         }
@@ -134,19 +162,35 @@ export function DiffRows({
         const text = row.type === "deletion" ? row.leftText : row.rightText;
         const isPlusMinus = row.type === "addition" || row.type === "deletion";
         const unifiedDiffBg = isPlusMinus ? row.type : undefined;
+        // Unified rows have one DiffLine; the cursor visual lights up
+        // whenever the cursor matches either side (a unified context row
+        // can be addressed from either side; pure +/- rows force their
+        // populated side).
+        const unifiedCursorActive = leftCursorActive || rightCursorActive;
+        // The id keys off the row's natural addressable side: pure deletion
+        // rows are deletions-side; everything else (context, addition) is
+        // additions-side.
+        let unifiedRowId: string | undefined;
+        if (row.type === "deletion" && row.leftLineNumber !== null) {
+          unifiedRowId = rowId(fileName, "deletions", row.leftLineNumber);
+        } else if (row.rightLineNumber !== null) {
+          unifiedRowId = rowId(fileName, "additions", row.rightLineNumber);
+        }
         return (
-          <DiffLine
-            key={key}
-            gutter={unifiedGutter(row)}
-            text={text}
-            gutterTinted={!!row.rightTinted}
-            contentTinted={!!row.rightTinted && !isPlusMinus}
-            gutterAccent={!!row.rightGutter}
-            diffBg={unifiedDiffBg}
-            filetype={filetype}
-            syntaxStyle={syntaxStyle}
-            width="100%"
-          />
+          <box key={key} id={unifiedRowId} width="100%">
+            <DiffLine
+              gutter={unifiedGutter(row)}
+              text={text}
+              gutterTinted={!!row.rightTinted}
+              contentTinted={!!row.rightTinted && !isPlusMinus}
+              gutterAccent={!!row.rightGutter}
+              diffBg={unifiedDiffBg}
+              cursorActive={unifiedCursorActive}
+              filetype={filetype}
+              syntaxStyle={syntaxStyle}
+              width="100%"
+            />
+          </box>
         );
       })}
     </>
