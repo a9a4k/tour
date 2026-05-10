@@ -1,10 +1,16 @@
 import { listTours, getTour, resolveIdPrefix } from "../core/tour-store.js";
-import { readAnnotations } from "../core/annotations-store.js";
+import {
+  readAnnotations,
+  appendAnnotation,
+  buildAnnotation,
+  buildReply,
+} from "../core/annotations-store.js";
 import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
 import { html } from "./spa.js";
+import type { Annotation } from "../core/types.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +42,62 @@ declare const Bun: {
 
 let cachedClientBundle: string | null = null;
 let cachedClientBundleError: string | null = null;
+
+const DEFAULT_HUMAN_AUTHOR = "you";
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function asInt(v: unknown): number | undefined {
+  if (typeof v !== "number" || !Number.isInteger(v)) return undefined;
+  return v;
+}
+
+/**
+ * Build a human-authored Annotation from a webapp POST body. Mirrors the
+ * `tour annotate --as-human [--reply-to]` CLI surface (PRD #73 / Slice 3
+ * #77). Throws on missing / malformed fields so the route returns 400.
+ *
+ * Exported for unit tests; the route handler does the disk write.
+ */
+export async function createHumanAnnotation(
+  cwd: string,
+  tourId: string,
+  body: Record<string, unknown>,
+): Promise<Annotation> {
+  const text = asString(body.body);
+  if (!text || text.trim().length === 0) {
+    throw new Error("body is required");
+  }
+  const author = asString(body.author) ?? DEFAULT_HUMAN_AUTHOR;
+  const repliesTo = asString(body.replies_to);
+  if (repliesTo) {
+    const existing = await readAnnotations(cwd, tourId);
+    return buildReply(
+      { replies_to: repliesTo, body: text, author, author_kind: "human" },
+      existing,
+    );
+  }
+  const file = asString(body.file);
+  if (!file) throw new Error("file is required");
+  const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
+  if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
+  const start = asInt(body.line_start);
+  const end = asInt(body.line_end);
+  if (start === undefined) throw new Error("line_start is required");
+  if (end === undefined) throw new Error("line_end is required");
+  if (end < start) throw new Error("line_end must be >= line_start");
+  return buildAnnotation({
+    file,
+    side,
+    line_start: start,
+    line_end: end,
+    body: text,
+    author,
+    author_kind: "human",
+  });
+}
 
 async function getClientBundle(): Promise<{ js: string | null; error: string | null }> {
   if (cachedClientBundle !== null) return { js: cachedClientBundle, error: null };
@@ -137,6 +199,21 @@ export async function startServer(args: ServeArgs): Promise<void> {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return Response.json({ error: message }, { status: 404 });
+        }
+      }
+
+      const annotateMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/annotations$/);
+      if (annotateMatch && req.method === "POST") {
+        const idOrPrefix = annotateMatch[1];
+        try {
+          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+          const body = (await req.json()) as Record<string, unknown>;
+          const ann = await createHumanAnnotation(cwd, resolvedId, body);
+          await appendAnnotation(cwd, resolvedId, ann);
+          return Response.json(ann, { status: 201 });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: message }, { status: 400 });
         }
       }
 

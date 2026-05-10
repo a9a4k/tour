@@ -178,6 +178,64 @@ describe("Webapp integration", () => {
     expect(res.headers.get("content-type")).toContain("application/javascript");
   });
 
+  it("POST /api/tours/:id/annotations creates a human-authored top-level annotation (Issue #77)", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: "hello.txt",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "Top-level human reply via webapp",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const ann = await res.json() as Record<string, unknown>;
+    expect(ann.author_kind).toBe("human");
+    expect(ann.file).toBe("hello.txt");
+    expect(ann.body).toBe("Top-level human reply via webapp");
+    expect(ann.replies_to).toBeUndefined();
+    expect(typeof ann.id).toBe("string");
+  });
+
+  it("POST /api/tours/:id/annotations with replies_to creates a Reply that inherits the parent anchor (Issue #77)", async () => {
+    const tourRes = await fetch(`${baseUrl}/api/tours/${tourId}`);
+    const data = await tourRes.json() as { annotations: Array<{ id: string }> };
+    const parentId = data.annotations[0].id;
+
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        replies_to: parentId,
+        body: "Webapp reply body",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const reply = await res.json() as Record<string, unknown>;
+    expect(reply.author_kind).toBe("human");
+    expect(reply.replies_to).toBe(parentId);
+    expect(reply.body).toBe("Webapp reply body");
+  });
+
+  it("POST /api/tours/:id/annotations rejects an empty body with 400 (Issue #77)", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: "hello.txt",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json() as { error?: string };
+    expect(data.error).toBeDefined();
+  });
+
   it("SSE endpoint connects and receives events on annotation change", async () => {
     const controller = new AbortController();
     const res = await fetch(`${baseUrl}/api/tours/${tourId}/events`, {

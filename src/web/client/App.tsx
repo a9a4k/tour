@@ -33,7 +33,39 @@ const STICKY_HEADER_CSS = `
   }
 `;
 
+// Pointer cursor on annotatable diff lines so the click-to-comment
+// affordance reads visually. Pierre paints additions / deletions /
+// change-* per-cell via [data-line-type] — same selector list the
+// range-tint CSS already uses (annotations.ts).
+const COMMENT_AFFORDANCE_CSS = `
+  [data-line][data-line-type="addition"],
+  [data-line][data-line-type="deletion"],
+  [data-line][data-line-type="change-addition"],
+  [data-line][data-line-type="change-deletion"] {
+    cursor: pointer;
+  }
+`;
+
 type Layout = "split" | "unified";
+
+type ComposerTarget =
+  | {
+      kind: "top-level";
+      file: string;
+      side: "additions" | "deletions";
+      line_start: number;
+      line_end: number;
+    }
+  | { kind: "reply"; replies_to: string };
+
+interface PostBody {
+  body: string;
+  file?: string;
+  side?: "additions" | "deletions";
+  line_start?: number;
+  line_end?: number;
+  replies_to?: string;
+}
 
 const BASE_DIFF_OPTIONS = {
   theme: { dark: "github-dark-default", light: "github-light-default" } as const,
@@ -81,6 +113,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [layout, setLayout] = useState<Layout>("split");
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [composerTarget, setComposerTarget] = useState<ComposerTarget | null>(null);
+  const [composerError, setComposerError] = useState<string | null>(null);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -121,6 +155,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     setCurrentAnnotationId(null);
     setCollapsedOverrides({});
     setCollapsedFolders(new Set());
+    setComposerTarget(null);
+    setComposerError(null);
     (async () => {
       const res = await fetch(`/api/tours/${tourId}`);
       const data = (await res.json()) as TourData | { error: string };
@@ -330,6 +366,65 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     [isCollapsed],
   );
 
+  const closeComposer = useCallback(() => {
+    setComposerTarget(null);
+    setComposerError(null);
+  }, []);
+
+  const openTopLevelComposer = useCallback(
+    (file: string, side: "additions" | "deletions", line: number) => {
+      setComposerError(null);
+      setComposerTarget({
+        kind: "top-level",
+        file,
+        side,
+        line_start: line,
+        line_end: line,
+      });
+    },
+    [],
+  );
+
+  const openReplyComposer = useCallback((replies_to: string) => {
+    setComposerError(null);
+    setComposerTarget({ kind: "reply", replies_to });
+  }, []);
+
+  const submitComposer = useCallback(
+    async (body: string) => {
+      if (!tourId || !composerTarget) return;
+      const trimmed = body.trim();
+      if (trimmed.length === 0) return;
+      const payload: PostBody =
+        composerTarget.kind === "reply"
+          ? { body: trimmed, replies_to: composerTarget.replies_to }
+          : {
+              body: trimmed,
+              file: composerTarget.file,
+              side: composerTarget.side,
+              line_start: composerTarget.line_start,
+              line_end: composerTarget.line_end,
+            };
+      try {
+        const res = await fetch(`/api/tours/${tourId}/annotations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          setComposerError(data.error ?? `HTTP ${res.status}`);
+          return;
+        }
+        closeComposer();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setComposerError(message);
+      }
+    },
+    [tourId, composerTarget, closeComposer],
+  );
+
   const commitTour = useCallback(
     (id: string) => {
       setPickerOpen(false);
@@ -445,6 +540,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
               repliesByRoot={repliesByRoot}
               currentAnnotationId={currentAnnotationId}
               registerAnnotationRef={registerAnnotationRef}
+              composerTarget={composerTarget}
+              composerError={composerError}
+              onOpenReply={openReplyComposer}
+              onSubmit={submitComposer}
+              onCancel={closeComposer}
             />
           ) : (
             parsedFiles.map((f) => (
@@ -463,6 +563,12 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 currentAnnotationId={currentAnnotationId}
                 registerAnnotationRef={registerAnnotationRef}
                 layout={layout}
+                composerTarget={composerTarget}
+                composerError={composerError}
+                onOpenTopLevel={openTopLevelComposer}
+                onOpenReply={openReplyComposer}
+                onSubmit={submitComposer}
+                onCancel={closeComposer}
               />
             ))
           )}
@@ -564,6 +670,32 @@ interface FileBlockProps {
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   layout: Layout;
+  composerTarget: ComposerTarget | null;
+  composerError: string | null;
+  onOpenTopLevel: (file: string, side: "additions" | "deletions", line: number) => void;
+  onOpenReply: (replies_to: string) => void;
+  onSubmit: (body: string) => void;
+  onCancel: () => void;
+}
+
+function sideFromLineType(t: string | undefined): "additions" | "deletions" | null {
+  if (t === "addition" || t === "change-addition") return "additions";
+  if (t === "deletion" || t === "change-deletion") return "deletions";
+  return null;
+}
+
+function findAnnotatableLine(path: EventTarget[]): { line: number; side: "additions" | "deletions" } | null {
+  for (const node of path) {
+    if (!(node instanceof HTMLElement)) continue;
+    const lineAttr = node.dataset.line;
+    if (lineAttr === undefined) continue;
+    const side = sideFromLineType(node.dataset.lineType);
+    if (!side) return null;
+    const line = Number(lineAttr);
+    if (!Number.isFinite(line)) return null;
+    return { line, side };
+  }
+  return null;
 }
 
 function FileBlock({
@@ -577,41 +709,111 @@ function FileBlock({
   currentAnnotationId,
   registerAnnotationRef,
   layout,
+  composerTarget,
+  composerError,
+  onOpenTopLevel,
+  onOpenReply,
+  onSubmit,
+  onCancel,
 }: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
 
-  const lineAnns = useMemo<DiffLineAnnotation<AnnotationMetadata>[]>(
-    () => toPierreLineAnnotations(annotations, fileDiff.name),
-    [annotations, fileDiff.name],
-  );
+  const lineAnns = useMemo<DiffLineAnnotation<AnnotationMetadata>[]>(() => {
+    const base = toPierreLineAnnotations(annotations, fileDiff.name);
+    if (
+      composerTarget &&
+      composerTarget.kind === "top-level" &&
+      composerTarget.file === fileDiff.name
+    ) {
+      base.push({
+        side: composerTarget.side,
+        lineNumber: composerTarget.line_end,
+        metadata: {
+          kind: "composer",
+          file: composerTarget.file,
+          side: composerTarget.side,
+          line_start: composerTarget.line_start,
+          line_end: composerTarget.line_end,
+        },
+      });
+    }
+    return base;
+  }, [annotations, fileDiff.name, composerTarget]);
 
   const options = useMemo(() => {
     const rangeCSS = buildRangeBackgroundCSS(annotations, fileDiff.name);
-    const unsafeCSS = rangeCSS ? `${STICKY_HEADER_CSS}\n${rangeCSS}` : STICKY_HEADER_CSS;
+    const baseCSS = `${STICKY_HEADER_CSS}\n${COMMENT_AFFORDANCE_CSS}`;
+    const unsafeCSS = rangeCSS ? `${baseCSS}\n${rangeCSS}` : baseCSS;
     return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
   }, [annotations, fileDiff.name, collapsed, layout]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {
-      if (!ann.metadata?.isAnchor) return null;
-      const a = ann.metadata.annotation;
+      const meta = ann.metadata;
+      if (!meta) return null;
+      if (meta.kind === "composer") {
+        return (
+          <Composer
+            placeholder="Leave a comment"
+            submitLabel="Comment"
+            error={composerError}
+            onSubmit={onSubmit}
+            onCancel={onCancel}
+          />
+        );
+      }
+      if (!meta.isAnchor) return null;
+      const a = meta.annotation;
+      const isReplying =
+        composerTarget?.kind === "reply" && composerTarget.replies_to === a.id;
       return (
         <AnnotationCard
           annotation={a}
           replies={repliesByRoot.get(a.id) ?? []}
           isCurrent={a.id === currentAnnotationId}
           registerRef={registerAnnotationRef}
+          replying={isReplying}
+          composerError={isReplying ? composerError : null}
+          onOpenReply={() => onOpenReply(a.id)}
+          onSubmitReply={onSubmit}
+          onCancelReply={onCancel}
         />
       );
     },
-    [currentAnnotationId, registerAnnotationRef, repliesByRoot],
+    [
+      currentAnnotationId,
+      registerAnnotationRef,
+      repliesByRoot,
+      composerTarget,
+      composerError,
+      onSubmit,
+      onCancel,
+      onOpenReply,
+    ],
   );
 
   const onWrapperClick = (e: React.MouseEvent) => {
-    const onHeader = e.nativeEvent.composedPath().some(
+    const path = e.nativeEvent.composedPath();
+    const onHeader = path.some(
       (n) => n instanceof HTMLElement && n.dataset.diffsHeader === "default",
     );
-    if (onHeader) onToggleCollapsed();
+    if (onHeader) {
+      onToggleCollapsed();
+      return;
+    }
+    if (collapsed) return;
+    // Ignore clicks inside an annotation card or a composer (those manage
+    // their own affordances). Otherwise route to the top-level composer.
+    const insideCard = path.some(
+      (n) =>
+        n instanceof HTMLElement &&
+        (n.classList?.contains("annotation-block") ||
+          n.classList?.contains("composer")),
+    );
+    if (insideCard) return;
+    const hit = findAnnotatableLine(path);
+    if (!hit) return;
+    onOpenTopLevel(fileDiff.name, hit.side, hit.line);
   };
 
   return (
@@ -638,6 +840,11 @@ interface AnnotationCardProps {
   replies?: Annotation[];
   isCurrent: boolean;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
+  replying?: boolean;
+  composerError?: string | null;
+  onOpenReply?: () => void;
+  onSubmitReply?: (body: string) => void;
+  onCancelReply?: () => void;
 }
 
 function AnnotationCard({
@@ -645,6 +852,11 @@ function AnnotationCard({
   replies,
   isCurrent,
   registerRef,
+  replying,
+  composerError,
+  onOpenReply,
+  onSubmitReply,
+  onCancelReply,
 }: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
@@ -686,6 +898,109 @@ function AnnotationCard({
           ))}
         </div>
       ) : null}
+      {replying ? (
+        <div className="ann-reply-composer">
+          <Composer
+            placeholder="Reply…"
+            submitLabel="Reply"
+            error={composerError ?? null}
+            onSubmit={(body) => onSubmitReply?.(body)}
+            onCancel={() => onCancelReply?.()}
+          />
+        </div>
+      ) : onOpenReply ? (
+        <div className="ann-actions">
+          <button
+            type="button"
+            className="reply-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenReply();
+            }}
+          >
+            Reply
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface ComposerProps {
+  placeholder: string;
+  submitLabel: string;
+  error: string | null;
+  onSubmit: (body: string) => void;
+  onCancel: () => void;
+}
+
+function Composer({
+  placeholder,
+  submitLabel,
+  error,
+  onSubmit,
+  onCancel,
+}: ComposerProps): React.JSX.Element {
+  const [value, setValue] = useState<string>("");
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    taRef.current?.focus();
+  }, []);
+
+  const trimmed = value.trim();
+  const canSubmit = trimmed.length > 0;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onSubmit(value);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+      return;
+    }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      submit();
+    }
+  };
+
+  return (
+    <div
+      className="composer"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <textarea
+        ref={taRef}
+        className="composer-textarea"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        rows={3}
+      />
+      {error ? <div className="composer-error">{error}</div> : null}
+      <div className="composer-actions">
+        <button
+          type="button"
+          className="composer-cancel"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="composer-submit"
+          disabled={!canSubmit}
+          onClick={submit}
+        >
+          {submitLabel}
+        </button>
+      </div>
     </div>
   );
 }
@@ -695,6 +1010,11 @@ interface AnnotationListProps {
   repliesByRoot: Map<string, Annotation[]>;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
+  composerTarget: ComposerTarget | null;
+  composerError: string | null;
+  onOpenReply: (replies_to: string) => void;
+  onSubmit: (body: string) => void;
+  onCancel: () => void;
 }
 
 function AnnotationList({
@@ -702,19 +1022,33 @@ function AnnotationList({
   repliesByRoot,
   currentAnnotationId,
   registerAnnotationRef,
+  composerTarget,
+  composerError,
+  onOpenReply,
+  onSubmit,
+  onCancel,
 }: AnnotationListProps): React.JSX.Element {
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
     <>
-      {topLevel.map((a) => (
-        <AnnotationCard
-          key={a.id}
-          annotation={a}
-          replies={repliesByRoot.get(a.id) ?? []}
-          isCurrent={a.id === currentAnnotationId}
-          registerRef={registerAnnotationRef}
-        />
-      ))}
+      {topLevel.map((a) => {
+        const isReplying =
+          composerTarget?.kind === "reply" && composerTarget.replies_to === a.id;
+        return (
+          <AnnotationCard
+            key={a.id}
+            annotation={a}
+            replies={repliesByRoot.get(a.id) ?? []}
+            isCurrent={a.id === currentAnnotationId}
+            registerRef={registerAnnotationRef}
+            replying={isReplying}
+            composerError={isReplying ? composerError : null}
+            onOpenReply={() => onOpenReply(a.id)}
+            onSubmitReply={onSubmit}
+            onCancelReply={onCancel}
+          />
+        );
+      })}
     </>
   );
 }

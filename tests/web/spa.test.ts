@@ -262,4 +262,23 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tour-id\s*\{[^}]*color:\s*var\(--fg-muted\)/);
     expect(out).toMatch(/\.tour-refs\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
+
+  it("styles the inline composer card with shared theme tokens (Issue #77)", () => {
+    const out = html();
+    expect(out).toMatch(/\.composer\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
+    expect(out).toMatch(/\.composer\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
+    expect(out).toMatch(/\.composer-textarea\s*\{[^}]*background:\s*var\(--canvas-default\)/);
+    expect(out).toMatch(/\.composer-textarea\s*\{[^}]*resize:\s*vertical/);
+    expect(out).toMatch(/\.composer-submit\s*\{[^}]*background:\s*var\(--bg-accent-emphasis\)/);
+    expect(out).toMatch(/\.composer-submit:disabled\s*\{/);
+    expect(out).toMatch(/\.composer-error\s*\{[^}]*color:\s*var\(--fg-danger\)/);
+  });
+
+  it("styles the per-card Reply button as a subtle bordered chip (Issue #77)", () => {
+    const out = html();
+    expect(out).toMatch(/\.reply-button\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
+    expect(out).toMatch(/\.reply-button\s*\{[^}]*color:\s*var\(--fg-muted\)/);
+    expect(out).toMatch(/\.reply-button:hover\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
+    expect(out).toMatch(/\.ann-reply-composer\s*\{[^}]*border-left:\s*2px solid var\(--border-muted\)/);
+  });
 });

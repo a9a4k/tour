@@ -1,6 +1,7 @@
 import { readFile, appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Annotation } from "./types.js";
+import type { Annotation, AuthorKind } from "./types.js";
+import { generateId } from "./ids.js";
 
 function annotationsPath(repoRoot: string, tourId: string): string {
   return join(repoRoot, ".tour", tourId, "annotations.jsonl");
@@ -8,6 +9,62 @@ function annotationsPath(repoRoot: string, tourId: string): string {
 
 function isValidAuthorKind(v: unknown): v is "agent" | "human" {
   return v === "agent" || v === "human";
+}
+
+export interface BuildAnnotationInput {
+  file: string;
+  side: "additions" | "deletions";
+  line_start: number;
+  line_end: number;
+  body: string;
+  author?: string;
+  author_kind: AuthorKind;
+}
+
+export function buildAnnotation(input: BuildAnnotationInput): Annotation {
+  return {
+    id: generateId(),
+    file: input.file,
+    side: input.side,
+    line_start: input.line_start,
+    line_end: input.line_end,
+    body: input.body,
+    author: input.author ?? "unknown",
+    author_kind: input.author_kind,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export interface BuildReplyInput {
+  replies_to: string;
+  body: string;
+  author?: string;
+  author_kind: AuthorKind;
+}
+
+/**
+ * Build a Reply Annotation from a parent already in the tour. The Reply
+ * inherits the parent's `(file, side, line_start, line_end)` anchor so
+ * readers don't need to walk the chain to resolve where the Reply paints
+ * its cues — see PRD #73 / Slice 1 (#75).
+ */
+export function buildReply(input: BuildReplyInput, existing: Annotation[]): Annotation {
+  const parent = existing.find((a) => a.id === input.replies_to);
+  if (!parent) {
+    throw new Error(`No annotation with id "${input.replies_to}" in this tour`);
+  }
+  return {
+    id: generateId(),
+    file: parent.file,
+    side: parent.side,
+    line_start: parent.line_start,
+    line_end: parent.line_end,
+    body: input.body,
+    author: input.author ?? "unknown",
+    author_kind: input.author_kind,
+    replies_to: input.replies_to,
+    created_at: new Date().toISOString(),
+  };
 }
 
 export async function appendAnnotation(
