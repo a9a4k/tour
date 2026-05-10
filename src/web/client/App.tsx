@@ -14,6 +14,7 @@ import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
 import { shortId } from "../../core/ids.js";
+import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import {
   buildTree,
   compress,
@@ -56,7 +57,7 @@ function defaultCollapsedFor(file: DiffFileInfo, annotations: Annotation[]): boo
   if (reason === "binary") return true;
   if (
     file.classification?.collapsed === true &&
-    !annotations.some((a) => a.file === file.name && a.replies_to === undefined)
+    !annotations.some((a) => a.file === file.name && isTopLevel(a))
   ) {
     return true;
   }
@@ -151,40 +152,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   const tour = state.tour;
   const annotations = useMemo(() => tour?.annotations ?? [], [tour?.annotations]);
-  const topLevel = useMemo(
-    () => annotations.filter((a) => a.replies_to === undefined),
-    [annotations],
-  );
+  const topLevel = useMemo(() => topLevelAnnotations(annotations), [annotations]);
   const repliesByRoot = useMemo(() => {
     const out = new Map<string, Annotation[]>();
-    const byId = new Map<string, Annotation>();
-    for (const a of annotations) byId.set(a.id, a);
-    for (const a of annotations) {
-      if (a.replies_to === undefined) continue;
-      let cursor: Annotation | undefined = a;
-      const seen = new Set<string>([a.id]);
-      while (cursor && cursor.replies_to !== undefined) {
-        const parent: Annotation | undefined = byId.get(cursor.replies_to);
-        if (!parent || seen.has(parent.id)) {
-          cursor = undefined;
-          break;
-        }
-        seen.add(parent.id);
-        cursor = parent;
-      }
-      if (!cursor) continue;
-      const list = out.get(cursor.id) ?? [];
-      list.push(a);
-      out.set(cursor.id, list);
-    }
-    for (const list of out.values()) {
-      list.sort((x, y) => {
-        if (x.created_at < y.created_at) return -1;
-        if (x.created_at > y.created_at) return 1;
-        if (x.id < y.id) return -1;
-        if (x.id > y.id) return 1;
-        return 0;
-      });
+    for (const t of buildThreads(annotations)) {
+      out.set(t.root.id, t.replies);
     }
     return out;
   }, [annotations]);
@@ -469,7 +441,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           ) : null}
           {tour.snapshotLost ? (
             <AnnotationList
-              annotations={tour.annotations}
+              topLevel={topLevel}
+              repliesByRoot={repliesByRoot}
               currentAnnotationId={currentAnnotationId}
               registerAnnotationRef={registerAnnotationRef}
             />
@@ -718,32 +691,30 @@ function AnnotationCard({
 }
 
 interface AnnotationListProps {
-  annotations: Annotation[];
+  topLevel: Annotation[];
+  repliesByRoot: Map<string, Annotation[]>;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
 }
 
 function AnnotationList({
-  annotations,
+  topLevel,
+  repliesByRoot,
   currentAnnotationId,
   registerAnnotationRef,
 }: AnnotationListProps): React.JSX.Element {
-  if (annotations.length === 0) return <div className="empty">No annotations</div>;
+  if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
     <>
-      {annotations
-        .filter((a) => a.replies_to === undefined)
-        .map((a) => (
-          <AnnotationCard
-            key={a.id}
-            annotation={a}
-            replies={annotations
-              .filter((r) => r.replies_to === a.id)
-              .sort((x, y) => x.created_at.localeCompare(y.created_at))}
-            isCurrent={a.id === currentAnnotationId}
-            registerRef={registerAnnotationRef}
-          />
-        ))}
+      {topLevel.map((a) => (
+        <AnnotationCard
+          key={a.id}
+          annotation={a}
+          replies={repliesByRoot.get(a.id) ?? []}
+          isCurrent={a.id === currentAnnotationId}
+          registerRef={registerAnnotationRef}
+        />
+      ))}
     </>
   );
 }

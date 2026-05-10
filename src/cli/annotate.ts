@@ -83,19 +83,19 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   }
 
   if (args.replyTo) {
+    if (!args.body) {
+      throw new Error("--body is required (with --reply-to)");
+    }
     const existing = await readAnnotations(args.cwd, resolvedId);
     const reply = buildReply(
       {
         replies_to: args.replyTo,
-        body: args.body ?? "",
+        body: args.body,
         author: args.author,
       },
       existing,
       authorKind,
     );
-    if (!args.body) {
-      throw new Error("--body is required (with --reply-to)");
-    }
     await appendAnnotation(args.cwd, resolvedId, reply);
     if (args.json) {
       printOutput(reply, true);

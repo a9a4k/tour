@@ -23,7 +23,7 @@ import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
 import { shortId } from "../core/ids.js";
-import { topLevelAnnotations } from "../core/threads.js";
+import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -63,9 +63,7 @@ function statusIcon(type: string): string {
 }
 
 function annotationCountForFile(annotations: Annotation[], fileName: string): number {
-  return annotations.filter(
-    (a) => a.file === fileName && a.replies_to === undefined,
-  ).length;
+  return annotations.filter((a) => a.file === fileName && isTopLevel(a)).length;
 }
 
 function fileClassification(classifications: Record<string, FileClassification> | undefined, fileName: string): FileClassification {

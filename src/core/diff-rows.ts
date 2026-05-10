@@ -1,6 +1,6 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
-import { buildThreads } from "./threads.js";
+import { buildThreads, topLevelAnnotations } from "./threads.js";
 
 export type PlannedRow = DiffRow | HunkHeaderRow | AnnotationRow;
 
@@ -167,7 +167,7 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
   // Only top-level annotations get cards; replies render nested inside the
   // root's card. Reply anchors are inherited from the root, so a reply would
   // produce a duplicate card at the same line if interleaved here.
-  const tops = annotations.filter((a) => a.replies_to === undefined);
+  const tops = topLevelAnnotations(annotations);
   if (tops.length === 0) return rows;
 
   const replies = repliesByRoot(annotations);

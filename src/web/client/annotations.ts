@@ -1,4 +1,5 @@
 import { theme } from "../../core/theme.js";
+import { isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import type { Annotation, AnnotationMetadata } from "./types.js";
 
 export interface PierreLineAnnotation {
@@ -24,7 +25,7 @@ export function toPierreLineAnnotations(annotations: Annotation[], file: string)
   const result: PierreLineAnnotation[] = [];
   for (const ann of annotations) {
     if (ann.file !== file) continue;
-    if (ann.replies_to !== undefined) continue;
+    if (!isTopLevel(ann)) continue;
     for (let line = ann.line_start; line <= ann.line_end; line++) {
       result.push({
         side: ann.side,
@@ -62,7 +63,7 @@ export function buildRangeBackgroundCSS(annotations: Annotation[], file: string)
   const deletionLines = new Set<number>();
   for (const ann of annotations) {
     if (ann.file !== file) continue;
-    if (ann.replies_to !== undefined) continue;
+    if (!isTopLevel(ann)) continue;
     const target = ann.side === "additions" ? additionLines : deletionLines;
     for (let line = ann.line_start; line <= ann.line_end; line++) target.add(line);
   }
@@ -94,7 +95,7 @@ function rangeRule(lines: Set<number>, types: string[]): string {
  * - prevId no longer present at top level: 0 (sensible default).
  */
 export function resolveCursorById(annotations: Annotation[], prevId: string | null): number {
-  const tops = annotations.filter((a) => a.replies_to === undefined);
+  const tops = topLevelAnnotations(annotations);
   if (tops.length === 0) return -1;
   if (prevId === null) return 0;
   const idx = tops.findIndex((a) => a.id === prevId);
