@@ -218,9 +218,9 @@ describe("validateCursor", () => {
   });
 });
 
-// β-coupling (ADR 0011 / issue #103): pressing n/p moves the line cursor to
-// the target annotation's anchor. The pure helper computes the cursor from
-// the annotation; app.tsx wires it into the n/p navigation handlers.
+// β-coupling per ADR 0011: n/p annotation-nav moves the line cursor to the
+// target annotation's anchor. The pure helper computes the cursor; app.tsx
+// wires it into the navigation handler.
 describe("cursorFromAnnotation", () => {
   it("anchors to the annotation's (file, side, line_start)", () => {
     const a = ann({

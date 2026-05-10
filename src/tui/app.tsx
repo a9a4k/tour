@@ -487,10 +487,8 @@ function App(props: AppProps) {
       }
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
-    // β-coupling (ADR 0011 / issue #103): annotation-nav also moves the
-    // line cursor so a follow-up `a` lands a sibling top-level on the same
-    // line. The reverse direction stays decoupled — `j`/`k` line motion
-    // does not touch currentAnnotationId.
+    // β-coupling per ADR 0011: annotation-nav also moves the line cursor.
+    // Reverse direction (`j`/`k`) stays decoupled.
     setCursor(cursorFromAnnotation(ann));
   };
 
