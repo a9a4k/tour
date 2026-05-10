@@ -102,12 +102,10 @@ export function DiffRows({
         const leftCursorActive =
           cursorOnFile != null &&
           cursorOnFile.side === "deletions" &&
-          row.leftLineNumber !== null &&
           cursorOnFile.lineNumber === row.leftLineNumber;
         const rightCursorActive =
           cursorOnFile != null &&
           cursorOnFile.side === "additions" &&
-          row.rightLineNumber !== null &&
           cursorOnFile.lineNumber === row.rightLineNumber;
 
         if (layout === "split") {

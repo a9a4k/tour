@@ -361,11 +361,8 @@ function App(props: AppProps) {
   // initial-position rules. Tour-switch resets cursor explicitly in
   // commitTour so a fresh seed runs against the new tour's flat rows.
   useEffect(() => {
-    if (flatRowsList.length === 0) {
-      if (cursor !== null) setCursor(null);
-      return;
-    }
     if (cursor === null) {
+      if (flatRowsList.length === 0) return;
       setCursor(initialCursor({ topLevelAnnotations: liveTopLevel, flatRows: flatRowsList }));
       return;
     }

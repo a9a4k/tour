@@ -23,17 +23,10 @@ export function initialCursor(args: {
   flatRows: FlatRow[];
 }): Cursor | null {
   if (args.flatRows.length === 0) return null;
-  if (args.topLevelAnnotations.length > 0) {
-    const a = args.topLevelAnnotations[0];
+  const a = args.topLevelAnnotations[0];
+  if (a) {
     const target = args.flatRows.find((r) => rowMatchesAnchor(r, a.file, a.side, a.line_start));
-    if (target) {
-      return {
-        file: a.file,
-        lineNumber: a.line_start,
-        side: a.side,
-        preferredSide: a.side,
-      };
-    }
+    if (target) return cursorFromRow(target, a.side);
   }
   return cursorFromRow(args.flatRows[0], args.flatRows[0].side);
 }
