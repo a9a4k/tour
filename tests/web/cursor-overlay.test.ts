@@ -80,6 +80,38 @@ describe("syncCursorOverlay: attribute placement", () => {
     expect(ctx.getAttribute("data-tour-cursor")).toBe("true");
     expect(ctx.getAttribute("data-tour-cursor-side")).toBe("deletions");
   });
+
+  // Issue #134. In Pierre's split layout, each file's shadow root holds two
+  // sibling <code> blocks: data-deletions first, then data-additions. When
+  // the same line number appears as a context cell on BOTH columns (because
+  // the two sides have diverged due to upstream additions/deletions), the
+  // type filter alone ("context" accepts either side) plus document-order
+  // traversal landed the outline on the deletions cell even when the cursor
+  // was anchored on the additions side. Scoping by the column container
+  // disambiguates.
+  it("disambiguates by column when the same line number is a context cell on both columns (issue #134)", () => {
+    const leftCtx = cell({ line: 60, type: "context" });
+    const rightCtx = cell({ line: 60, type: "context" });
+    const dels = el("code", { "data-deletions": "" }, [leftCtx]);
+    const adds = el("code", { "data-additions": "" }, [rightCtx]);
+    document.body.appendChild(el("div", { "data-file": "x.ts" }, [dels, adds]));
+    syncCursorOverlay(document.body, cur({ file: "x.ts", lineNumber: 60, side: "additions" }));
+    expect(rightCtx.getAttribute("data-tour-cursor")).toBe("true");
+    expect(rightCtx.getAttribute("data-tour-cursor-side")).toBe("additions");
+    expect(leftCtx.hasAttribute("data-tour-cursor")).toBe(false);
+  });
+
+  it("disambiguates by column on the deletions side too (issue #134, mirror case)", () => {
+    const leftCtx = cell({ line: 60, type: "context" });
+    const rightCtx = cell({ line: 60, type: "context" });
+    const dels = el("code", { "data-deletions": "" }, [leftCtx]);
+    const adds = el("code", { "data-additions": "" }, [rightCtx]);
+    document.body.appendChild(el("div", { "data-file": "x.ts" }, [dels, adds]));
+    syncCursorOverlay(document.body, cur({ file: "x.ts", lineNumber: 60, side: "deletions" }));
+    expect(leftCtx.getAttribute("data-tour-cursor")).toBe("true");
+    expect(leftCtx.getAttribute("data-tour-cursor-side")).toBe("deletions");
+    expect(rightCtx.hasAttribute("data-tour-cursor")).toBe(false);
+  });
 });
 
 describe("syncCursorOverlay: cleanup on cursor change", () => {
