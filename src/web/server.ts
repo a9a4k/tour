@@ -52,7 +52,6 @@ function asInt(v: unknown): number | undefined {
   return v;
 }
 
-
 async function getClientBundle(): Promise<{ js: string | null; error: string | null }> {
   if (cachedClientBundle !== null) return { js: cachedClientBundle, error: null };
   if (cachedClientBundleError !== null) return { js: null, error: cachedClientBundleError };
@@ -185,34 +184,33 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
           const author = asString(body.author) ?? DEFAULT_HUMAN_AUTHOR;
           const repliesTo = asString(body.replies_to);
-          let ann;
           if (repliesTo) {
-            ann = await createReply(cwd, resolvedId, {
+            const reply = await createReply(cwd, resolvedId, {
               replies_to: repliesTo,
               body: text,
               author,
               author_kind: "human",
             });
-          } else {
-            const file = asString(body.file);
-            if (!file) throw new Error("file is required");
-            const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
-            if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
-            const start = asInt(body.line_start);
-            const end = asInt(body.line_end);
-            if (start === undefined) throw new Error("line_start is required");
-            if (end === undefined) throw new Error("line_end is required");
-            if (end < start) throw new Error("line_end must be >= line_start");
-            ann = await createAnnotation(cwd, resolvedId, {
-              file,
-              side,
-              line_start: start,
-              line_end: end,
-              body: text,
-              author,
-              author_kind: "human",
-            });
+            return Response.json(reply, { status: 201 });
           }
+          const file = asString(body.file);
+          if (!file) throw new Error("file is required");
+          const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
+          if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
+          const start = asInt(body.line_start);
+          const end = asInt(body.line_end);
+          if (start === undefined) throw new Error("line_start is required");
+          if (end === undefined) throw new Error("line_end is required");
+          if (end < start) throw new Error("line_end must be >= line_start");
+          const ann = await createAnnotation(cwd, resolvedId, {
+            file,
+            side,
+            line_start: start,
+            line_end: end,
+            body: text,
+            author,
+            author_kind: "human",
+          });
           return Response.json(ann, { status: 201 });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
