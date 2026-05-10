@@ -148,11 +148,43 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tree-icon\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
-  it("lays out the tour-header as a row so the hamburger / content / controls sit side-by-side (Issue #69)", () => {
+  it("lays out the tour-header as a wrapping flex row with two clusters (Issue #92)", () => {
     const out = html();
     expect(out).toMatch(/\.tour-header\s*\{[^}]*display:\s*flex/);
-    // align-items: stretch lets the hamburger button span both lines.
-    expect(out).toMatch(/\.tour-header\s*\{[^}]*align-items:\s*stretch/);
+    // Group-wrap: when the row can't fit, the right cluster drops to row 2.
+    // align-items: stretch is gone — the single-line shape no longer hosts a
+    // 2-line content column, so the hamburger doesn't need to stretch.
+    expect(out).toMatch(/\.tour-header\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(out).not.toMatch(/\.tour-header\s*\{[^}]*align-items:\s*stretch/);
+  });
+
+  it("anchors the right cluster to the right edge via margin-left: auto (Issue #92)", () => {
+    // With flex-wrap: wrap, margin-left: auto on the right cluster pushes it
+    // to the right edge whether it sits on the same row as the left cluster
+    // or wraps to its own row. justify-content: space-between would not
+    // survive the wrap (single child on a line ignores it).
+    expect(html()).toMatch(/\.tour-header-right\s*\{[^}]*margin-left:\s*auto/);
+  });
+
+  it("removes the old vertical-stack content/controls columns (Issue #92)", () => {
+    // The 2-line shape (.tour-header-content + .tour-header-controls as
+    // column flex containers) is replaced by .tour-header-left /
+    // .tour-header-right rows. Old line1 wrapper for h1+id is gone too.
+    const out = html();
+    expect(out).not.toMatch(/\.tour-header-content\s*\{/);
+    expect(out).not.toMatch(/\.tour-header-controls\s*\{/);
+    expect(out).not.toMatch(/\.tour-header-line1\s*\{/);
+  });
+
+  it("removes the .tour-id rule — short-id no longer rendered in header (Issue #92)", () => {
+    expect(html()).not.toMatch(/\.tour-id\s*\{/);
+  });
+
+  it("ellipsizes the sources string on overflow (Issue #92)", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-refs\s*\{[^}]*overflow:\s*hidden/);
+    expect(out).toMatch(/\.tour-refs\s*\{[^}]*text-overflow:\s*ellipsis/);
+    expect(out).toMatch(/\.tour-refs\s*\{[^}]*white-space:\s*nowrap/);
   });
 
   it("styles the segmented layout toggle and highlights the active button", () => {
@@ -262,18 +294,17 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.picker-button\s*\{[^}]*min-height:\s*32px/);
   });
 
-  it("declares two-column header layout: content left, controls right (Issue #69)", () => {
+  it("declares left/right cluster rows with intrinsic widths (Issue #92)", () => {
     const out = html();
-    expect(out).toMatch(/\.tour-header-content\s*\{[^}]*flex:\s*1/);
-    expect(out).toMatch(/\.tour-header-content\s*\{[^}]*flex-direction:\s*column/);
-    expect(out).toMatch(/\.tour-header-controls\s*\{[^}]*flex-direction:\s*column/);
-    expect(out).toMatch(/\.tour-header-controls\s*\{[^}]*align-items:\s*flex-end/);
+    // Left cluster takes available space (so its title can ellipsize), right
+    // cluster shrinks to its content (so the controls don't smear).
+    expect(out).toMatch(/\.tour-header-left\s*\{[^}]*display:\s*flex/);
+    expect(out).toMatch(/\.tour-header-left\s*\{[^}]*min-width:\s*0/);
+    expect(out).toMatch(/\.tour-header-right\s*\{[^}]*display:\s*flex/);
   });
 
-  it("styles the muted #shortId and base ← head refs (Issue #69)", () => {
-    const out = html();
-    expect(out).toMatch(/\.tour-id\s*\{[^}]*color:\s*var\(--fg-muted\)/);
-    expect(out).toMatch(/\.tour-refs\s*\{[^}]*color:\s*var\(--fg-muted\)/);
+  it("styles the muted base ← head refs (Issue #92)", () => {
+    expect(html()).toMatch(/\.tour-refs\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
   it("styles the inline composer card with shared theme tokens (Issue #77)", () => {

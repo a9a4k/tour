@@ -103,21 +103,15 @@ export function html(initialTourId?: string): string {
     padding-right: 16px;
     border-bottom: 1px solid var(--border-default);
     display: flex;
-    align-items: stretch;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 12px;
   }
-  .tour-header-content {
-    flex: 1;
-    min-width: 0;
+  .tour-header-left {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-  }
-  .tour-header-line1 {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
+    gap: 12px;
+    flex: 1 1 auto;
     min-width: 0;
   }
   .tour-header h1 {
@@ -126,14 +120,9 @@ export function html(initialTourId?: string): string {
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    flex: 0 1 auto;
   }
   .tour-header h1.untitled { color: var(--fg-muted); font-weight: 400; }
-  .tour-id {
-    color: var(--fg-muted);
-    font-size: 13px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    flex-shrink: 0;
-  }
   .tour-refs {
     color: var(--fg-muted);
     font-size: 13px;
@@ -141,13 +130,14 @@ export function html(initialTourId?: string): string {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
   }
-  .tour-header-controls {
+  .tour-header-right {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 4px;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
     flex-shrink: 0;
   }
   .picker-button {

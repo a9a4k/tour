@@ -13,7 +13,6 @@ import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icon
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
-import { shortId } from "../../core/ids.js";
 import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
@@ -530,40 +529,36 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }
 
   const titleIsEmpty = !tour.title;
-  const headerShortId = shortId(tour.id);
 
   return (
     <>
       <div className="tour-header">
-        <button
-          ref={pickerButtonRef}
-          type="button"
-          className="picker-button"
-          aria-label="Switch tour"
-          title="Switch tour"
-          onClick={openPicker}
-        >
-          ☰
-        </button>
-        <div className="tour-header-content">
-          <div className="tour-header-line1">
-            <h1 className={titleIsEmpty ? "untitled" : undefined}>
-              {tour.title || "(untitled)"}
-            </h1>
-            <span className="tour-id">#{headerShortId}</span>
-          </div>
+        <div className="tour-header-left">
+          <button
+            ref={pickerButtonRef}
+            type="button"
+            className="picker-button"
+            aria-label="Switch tour"
+            title="Switch tour"
+            onClick={openPicker}
+          >
+            ☰
+          </button>
+          <h1 className={titleIsEmpty ? "untitled" : undefined}>
+            {tour.title || "(untitled)"}
+          </h1>
           <span className="tour-refs">
             {tour.base_source} ← {tour.head_source}
           </span>
         </div>
-        <div className="tour-header-controls">
-          <LayoutToggle layout={layout} onChange={setLayout} />
+        <div className="tour-header-right">
           <SequencePill
             idx={currentIdx}
             total={topLevel.length}
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
           />
+          <LayoutToggle layout={layout} onChange={setLayout} />
         </div>
       </div>
       <div className="app-body">
