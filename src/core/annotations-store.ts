@@ -6,6 +6,10 @@ function annotationsPath(repoRoot: string, tourId: string): string {
   return join(repoRoot, ".tour", tourId, "annotations.jsonl");
 }
 
+function isValidAuthorKind(v: unknown): v is "agent" | "human" {
+  return v === "agent" || v === "human";
+}
+
 export async function appendAnnotation(
   repoRoot: string,
   tourId: string,
@@ -39,9 +43,19 @@ export async function readAnnotations(
   const annotations: Annotation[] = [];
   for (const line of content.split("\n")) {
     if (!line.trim()) continue;
+    let parsed: unknown;
     try {
-      annotations.push(JSON.parse(line) as Annotation);
-    } catch {}
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const ann = parsed as Annotation;
+    if (!isValidAuthorKind(ann.author_kind)) {
+      throw new Error(
+        `Annotation ${ann.id ?? "(no id)"} in tour ${tourId} is missing or has invalid "author_kind" — pre-bidirectional .tour/ data is not supported`,
+      );
+    }
+    annotations.push(ann);
   }
   return annotations;
 }

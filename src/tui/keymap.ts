@@ -22,6 +22,7 @@ export type KeyAction =
   | { type: "expand-folder" }
   | { type: "collapse-folder" }
   | { type: "collapse-parent" }
+  | { type: "toggle-replies-collapse" }
   | { type: "next-annotation" }
   | { type: "prev-annotation" }
   | { type: "toggle-layout" }
@@ -65,6 +66,13 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
       if (ctx.selectedRowKind === "folder") return { type: "collapse-folder" };
       if (ctx.selectedRowKind === "file") return { type: "collapse-parent" };
     }
+  }
+
+  // Outside the sidebar, `c` collapses just the Replies in every Thread —
+  // the parent Annotation stays visible. Whole-Thread collapse is reachable
+  // via the existing sidebar file-level collapse.
+  if (!ctx.sidebarFocused && !key.ctrl && !key.shift && key.name === "c") {
+    return { type: "toggle-replies-collapse" };
   }
 
   return { type: "noop" };

@@ -14,6 +14,7 @@ const ann = (over: Partial<Annotation>): Annotation => ({
   line_end: 1,
   body: "looks good",
   author: "agent",
+  author_kind: "agent",
   created_at: "2026-05-08T00:00:00Z",
   ...over,
 });

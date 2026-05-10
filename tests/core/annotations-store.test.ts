@@ -19,6 +19,7 @@ function makeAnnotation(overrides?: Partial<Annotation>): Annotation {
     line_end: 10,
     body: "Consider extracting this into a helper.",
     author: "claude-code",
+    author_kind: "agent",
     created_at: new Date().toISOString(),
     ...overrides,
   };
@@ -85,6 +86,33 @@ describe("annotations-store", () => {
       expect(loaded).toHaveLength(2);
       expect(loaded[0].id).toBe("good");
       expect(loaded[1].id).toBe("also-good");
+    });
+
+    it("throws on pre-bidirectional data missing author_kind (no silent fallback)", async () => {
+      const path = join(dir, ".tour", tourId, "annotations.jsonl");
+      // Synthesise a pre-schema-break record (no author_kind field).
+      const legacy = JSON.stringify({
+        id: "legacy",
+        file: "x.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "before bidirectional",
+        author: "agent",
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      appendFileSync(path, legacy + "\n");
+      await expect(readAnnotations(dir, tourId)).rejects.toThrow(/author_kind/);
+    });
+
+    it("throws on records with an invalid author_kind value", async () => {
+      const path = join(dir, ".tour", tourId, "annotations.jsonl");
+      const bad = JSON.stringify({
+        ...makeAnnotation({ id: "bad" }),
+        author_kind: "robot",
+      });
+      appendFileSync(path, bad + "\n");
+      await expect(readAnnotations(dir, tourId)).rejects.toThrow(/author_kind/);
     });
   });
 

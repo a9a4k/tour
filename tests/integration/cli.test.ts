@@ -225,6 +225,95 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Invalid side");
     });
+
+    it("defaults author_kind to agent (no flag)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "default kind",
+        "--json",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      const ann = JSON.parse(r.stdout);
+      expect(ann.author_kind).toBe("agent");
+    });
+
+    it("--as-human sets author_kind to human", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "human note",
+        "--as-human",
+        "--json",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      const ann = JSON.parse(r.stdout);
+      expect(ann.author_kind).toBe("human");
+    });
+
+    it("--reply-to creates a reply that inherits the parent's anchor", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = JSON.parse((await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1-3",
+        "--body", "root note",
+        "--json",
+      ], repo)).stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--reply-to", root.id,
+        "--body", "thanks!",
+        "--as-human",
+        "--json",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      const reply = JSON.parse(r.stdout);
+      expect(reply.replies_to).toBe(root.id);
+      expect(reply.author_kind).toBe("human");
+      expect(reply.file).toBe(root.file);
+      expect(reply.side).toBe(root.side);
+      expect(reply.line_start).toBe(root.line_start);
+      expect(reply.line_end).toBe(root.line_end);
+    });
+
+    it("--reply-to with unknown id fails cleanly", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--reply-to", "ghost-id",
+        "--body", "no parent",
+      ], repo);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("ghost-id");
+    });
+
+    it("--as-agent and --as-human together is rejected", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "ambiguous",
+        "--as-agent",
+        "--as-human",
+      ], repo);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("mutually exclusive");
+    });
   });
 
   describe("close", () => {

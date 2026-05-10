@@ -10,6 +10,7 @@ interface DiffRowsProps {
   rows: PlannedRow[];
   layout: "split" | "unified";
   currentAnnotationId: string | null;
+  repliesCollapsed: boolean;
 }
 
 const LINE_NUMBER_WIDTH = 5;
@@ -38,7 +39,13 @@ function unifiedGutter(row: DiffRow): string {
   return `${pad(row.leftLineNumber)} ${pad(row.rightLineNumber)} ${unifiedSign(row)} `;
 }
 
-export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRowsProps) {
+export function DiffRows({
+  fileName,
+  rows,
+  layout,
+  currentAnnotationId,
+  repliesCollapsed,
+}: DiffRowsProps) {
   const filetype = inferFiletype(fileName);
   const syntaxStyle = getSyntaxStyle();
 
@@ -60,6 +67,8 @@ export function DiffRows({ fileName, rows, layout, currentAnnotationId }: DiffRo
               key={`ann-${row.id}`}
               annotation={row.annotation}
               isCurrent={row.id === currentAnnotationId}
+              replies={row.replies}
+              repliesCollapsed={repliesCollapsed}
             />
           );
           if (slot === "full") return card;

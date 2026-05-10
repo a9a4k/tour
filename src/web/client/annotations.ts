@@ -15,11 +15,16 @@ export interface PierreLineAnnotation {
  * below the discussed code. renderAnnotation uses this flag to render the
  * body once; non-anchor entries leave only the gutter indicator on every
  * line in the range.
+ *
+ * Replies are filtered out: they inherit the parent's anchor and render
+ * nested inside the root annotation's card, so emitting Pierre entries for
+ * them would produce a duplicate card at the same line.
  */
 export function toPierreLineAnnotations(annotations: Annotation[], file: string): PierreLineAnnotation[] {
   const result: PierreLineAnnotation[] = [];
   for (const ann of annotations) {
     if (ann.file !== file) continue;
+    if (ann.replies_to !== undefined) continue;
     for (let line = ann.line_start; line <= ann.line_end; line++) {
       result.push({
         side: ann.side,
@@ -57,6 +62,7 @@ export function buildRangeBackgroundCSS(annotations: Annotation[], file: string)
   const deletionLines = new Set<number>();
   for (const ann of annotations) {
     if (ann.file !== file) continue;
+    if (ann.replies_to !== undefined) continue;
     const target = ann.side === "additions" ? additionLines : deletionLines;
     for (let line = ann.line_start; line <= ann.line_end; line++) target.add(line);
   }
@@ -77,19 +83,20 @@ function rangeRule(lines: Set<number>, types: string[]): string {
 }
 
 /**
- * Resolve the sequence cursor to an index in the current annotations list,
- * anchored by id. The reviewer's cursor is the *annotation* they're reading,
- * not its position — when the agent appends or removes entries, we re-locate
- * the same id rather than blindly preserving the index.
+ * Resolve the sequence cursor to an index in the current top-level
+ * annotations list, anchored by id. n/p navigates top-level Annotations only
+ * (Replies are not navigation targets), so the cursor index is in
+ * `topLevelAnnotations(annotations)` rather than the raw list.
  *
- * - Empty list: -1 (no cursor).
+ * - Empty top-level list: -1 (no cursor).
  * - prevId is null (initial state): 0.
- * - prevId still present: its new index.
- * - prevId no longer present: 0 (sensible default rather than getting stuck).
+ * - prevId still present at top level: its new index.
+ * - prevId no longer present at top level: 0 (sensible default).
  */
 export function resolveCursorById(annotations: Annotation[], prevId: string | null): number {
-  if (annotations.length === 0) return -1;
+  const tops = annotations.filter((a) => a.replies_to === undefined);
+  if (tops.length === 0) return -1;
   if (prevId === null) return 0;
-  const idx = annotations.findIndex((a) => a.id === prevId);
+  const idx = tops.findIndex((a) => a.id === prevId);
   return idx === -1 ? 0 : idx;
 }

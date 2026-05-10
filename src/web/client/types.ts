@@ -1,3 +1,5 @@
+export type AuthorKind = "agent" | "human";
+
 export interface Annotation {
   id: string;
   file: string;
@@ -6,6 +8,8 @@ export interface Annotation {
   line_end: number;
   body: string;
   author: string;
+  author_kind: AuthorKind;
+  replies_to?: string;
   created_at: string;
 }
 
