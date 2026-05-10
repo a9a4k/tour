@@ -101,7 +101,6 @@ interface PostBody {
 const BASE_DIFF_OPTIONS = {
   hunkSeparators: "metadata" as const,
   overflow: "wrap" as const,
-  expandUnchanged: true,
   expansionLineCount: 20,
 };
 
