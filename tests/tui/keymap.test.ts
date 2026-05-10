@@ -106,14 +106,9 @@ describe("dispatchKey", () => {
   });
 
   it("right and left in the diff pane drive cursor side selection (not noop)", () => {
-    expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
-    expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
-  });
-
-  it("right and left in the diff pane drive cursor side selection even without a materialized cursor (lazy materialization)", () => {
     // Lazy materialization (ADR 0011 Revisions): the keymap dispatches
-    // motion actions unconditionally; the App's handler promotes a null
-    // cursor into the seeded state on first interaction.
+    // motion actions unconditionally — the App's handler promotes a
+    // null cursor into the seeded state on first interaction.
     expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
     expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
   });
@@ -202,15 +197,16 @@ describe("dispatchKey", () => {
 });
 
 // ADR 0011: line cursor motion in the diff pane. j/k/up/down move the
-// cursor; h/l/left/right toggle side. Sidebar focus or absent cursor
-// suppresses these.
+// cursor; h/l/left/right toggle side. Sidebar focus suppresses these;
+// per ADR 0011 Revisions, motion fires unconditionally in the diff
+// pane and the App's handler lazily materializes a null cursor.
 describe("dispatchKey — line cursor (ADR 0011)", () => {
-  it("j and ArrowDown move the cursor down when diff pane focused and cursor exists", () => {
+  it("j and ArrowDown move the cursor down when diff pane focused", () => {
     expect(dispatchKey(k("j"), diffPane).type).toBe("cursor-down");
     expect(dispatchKey(k("down"), diffPane).type).toBe("cursor-down");
   });
 
-  it("k and ArrowUp move the cursor up when diff pane focused and cursor exists", () => {
+  it("k and ArrowUp move the cursor up when diff pane focused", () => {
     expect(dispatchKey(k("k"), diffPane).type).toBe("cursor-up");
     expect(dispatchKey(k("up"), diffPane).type).toBe("cursor-up");
   });
@@ -223,17 +219,6 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
   it("l and ArrowRight set cursor side to additions in the diff pane", () => {
     expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
     expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
-  });
-
-  it("j/k/h/l in diff pane fire cursor motion even without a materialized cursor (lazy materialization)", () => {
-    // ADR 0011 Revisions: the keymap is unconditional in the diff pane;
-    // the App's handler is responsible for promoting a null cursor into
-    // the seeded state on first interaction. Degraded states (no flat
-    // rows at all) yield a null seed, so motion is a silent no-op.
-    expect(dispatchKey(k("j"), diffPane).type).toBe("cursor-down");
-    expect(dispatchKey(k("k"), diffPane).type).toBe("cursor-up");
-    expect(dispatchKey(k("h"), diffPane).type).toBe("cursor-side-left");
-    expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
   });
 
   it("h does not interfere with sidebar focus (no sidebar binding for h)", () => {

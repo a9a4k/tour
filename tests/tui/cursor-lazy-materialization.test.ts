@@ -5,7 +5,6 @@ import { planRows, type PlannedRow } from "../../src/core/diff-rows.js";
 import {
   initialCursor,
   cursorFromAnnotation,
-  type Cursor,
 } from "../../src/core/cursor-state.js";
 import { buildTopLevelComposer } from "../../src/tui/composer-state.js";
 import { dispatchKey, type KeyInput, type KeymapContext } from "../../src/tui/keymap.js";
@@ -182,34 +181,3 @@ describe("n/p from null cursor materializes via β-coupling", () => {
   });
 });
 
-describe("first interaction is the only path from null → cursor", () => {
-  // The seeding effect that previously materialized the cursor on first
-  // sight of a non-empty flatRowsList is gone: tour load leaves cursor
-  // null. validateCursor on a null cursor is also a no-op (existing
-  // contract preserved).
-  it("an existing seed effect equivalent (initialCursor on a non-empty flat row sequence) is what motion now invokes inline", () => {
-    const f = fileFromName("a.txt");
-    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
-    const flat = flatRows([f], planned, () => false);
-    // initialCursor still produces a non-null cursor for a populated bundle
-    // — just no longer auto-applied via useEffect.
-    expect(initialCursor({ topLevelAnnotations: [], flatRows: flat })).not.toBeNull();
-  });
-});
-
-describe("watcher reload preserves null when cursor was null", () => {
-  // Tour load + bundle reload (annotations only changed): cursor stays
-  // null because no first interaction has fired yet. validateCursor on a
-  // null cursor returns null — the no-op contract.
-  it("a null cursor stays null across a benign bundle reload", () => {
-    const f = fileFromName("a.txt");
-    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
-    const flat = flatRows([f], planned, () => false);
-    const c: Cursor | null = null;
-    // App's validate-in-place effect short-circuits on null:
-    // `if (cursor === null) return;` — the cursor remains null until the
-    // user interacts. This test documents the contract.
-    expect(c).toBeNull();
-    expect(flat.length).toBeGreaterThan(0);
-  });
-});

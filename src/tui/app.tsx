@@ -547,20 +547,23 @@ function App(props: AppProps) {
     }
   };
 
+  // Lazy materialization (ADR 0011 Revisions). Returns the seeded
+  // cursor (or the existing one if already materialized) so the caller
+  // can chain into composer-open / motion in one step. setCursor is
+  // queued, so the returned value is what the caller should act on
+  // this tick. Surface parity with src/web/client/App.tsx.
+  const materializeCursor = (): Cursor | null => {
+    if (cursor) return cursor;
+    const seeded = initialCursor({
+      topLevelAnnotations: liveTopLevel,
+      flatRows: flatRowsList,
+    });
+    if (seeded) setCursor(seeded);
+    return seeded;
+  };
+
   const openTopLevelComposer = () => {
-    // Lazy materialization (ADR 0011 Revisions): `a` from a null cursor
-    // materializes at the default target AND opens the composer in one
-    // step. setCursor is queued so we can't read it back this tick —
-    // pass the just-seeded cursor through to buildTopLevelComposer
-    // directly so the composer anchor matches the materialized cursor.
-    let activeCursor = cursor;
-    if (activeCursor === null) {
-      activeCursor = initialCursor({
-        topLevelAnnotations: liveTopLevel,
-        flatRows: flatRowsList,
-      });
-      if (activeCursor) setCursor(activeCursor);
-    }
+    const activeCursor = materializeCursor();
     const currentAnn =
       liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
     const state = buildTopLevelComposer({
@@ -661,8 +664,7 @@ function App(props: AppProps) {
 
     // Lazy materialization (ADR 0011 Revisions): the first j/k/h/l/arrow
     // interaction with a null cursor SHOWS the cursor at the default
-    // target (first top-level Annotation if any, else first annotatable
-    // row) without moving past it. `a` materializes AND opens the
+    // target without moving past it. `a` materializes AND opens the
     // composer in one step; n/p materialize via β-coupling inside
     // jumpToAnnotation. Degraded states (no rows) yield null and the
     // motion is a silent no-op.
@@ -672,11 +674,7 @@ function App(props: AppProps) {
       action.type === "cursor-side-left" ||
       action.type === "cursor-side-right";
     if (isMotion && cursor === null) {
-      const seeded = initialCursor({
-        topLevelAnnotations: liveTopLevel,
-        flatRows: flatRowsList,
-      });
-      if (seeded) setCursor(seeded);
+      materializeCursor();
       return;
     }
 
