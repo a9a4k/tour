@@ -81,11 +81,9 @@ function interactiveRowId(
   return `interactive-row-${file}-${subKind}-${boundaryRef}`;
 }
 
-function interactivePadGutter(): string {
-  // Match the split-side gutter footprint (LINE_NUMBER_WIDTH + " ") so the
-  // interactive row's text aligns with the diff column on its right.
-  return " ".repeat(LINE_NUMBER_WIDTH + 1);
-}
+// Match the split-side gutter footprint (LINE_NUMBER_WIDTH + " ") so the
+// interactive row's text aligns with the diff column on its right.
+const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 1);
 
 function splitClickTarget(
   row: DiffRow,
@@ -148,12 +146,12 @@ export function DiffRows({
           // bg in the line-number column on the active side, consistent
           // with the diff-row treatment. The text body (e.g. "··· N
           // hidden ···") comes from the planner.
-          const cursorOnFile = cursor?.file === fileName ? cursor : null;
           const cursorActive =
-            cursorOnFile != null &&
-            cursorOnFile.interactive != null &&
-            cursorOnFile.interactive.subKind === row.subKind &&
-            cursorOnFile.interactive.boundaryRef === row.boundaryRef;
+            cursor != null &&
+            cursor.file === fileName &&
+            cursor.interactive != null &&
+            cursor.interactive.subKind === row.subKind &&
+            cursor.interactive.boundaryRef === row.boundaryRef;
           const id = interactiveRowId(fileName, row.subKind, row.boundaryRef);
           const onMouseDown = onInteractiveClick
             ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
@@ -161,7 +159,7 @@ export function DiffRows({
           return (
             <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
               <DiffLine
-                gutter={interactivePadGutter()}
+                gutter={INTERACTIVE_PAD_GUTTER}
                 text={row.text ?? ""}
                 gutterTinted={false}
                 contentTinted={false}

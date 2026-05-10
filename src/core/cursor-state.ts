@@ -1,9 +1,5 @@
 import type { Annotation } from "./types.js";
-import type {
-  FlatRow,
-  DiffFlatRow,
-  InteractiveFlatRow,
-} from "./flat-rows.js";
+import type { FlatRow, DiffFlatRow } from "./flat-rows.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 
 /**
@@ -229,7 +225,12 @@ function cursorFromRow(
   preferredSide: "additions" | "deletions",
 ): Cursor {
   if (row.kind === "interactive") {
-    return cursorFromInteractiveRow(row, preferredSide);
+    return cursorOnInteractive({
+      file: row.file,
+      subKind: row.subKind,
+      boundaryRef: row.boundaryRef,
+      preferredSide,
+    });
   }
   // Paired rows honour preferredSide. Single-side rows force their populated
   // side (a deletion-only row can't anchor an additions-side cursor).
@@ -243,18 +244,5 @@ function cursorFromRow(
     lineNumber,
     side: effective,
     preferredSide,
-  };
-}
-
-function cursorFromInteractiveRow(
-  row: InteractiveFlatRow,
-  preferredSide: "additions" | "deletions",
-): Cursor {
-  return {
-    file: row.file,
-    lineNumber: 0,
-    side: preferredSide,
-    preferredSide,
-    interactive: { subKind: row.subKind, boundaryRef: row.boundaryRef },
   };
 }

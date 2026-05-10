@@ -594,9 +594,8 @@ function App(props: AppProps) {
   // Stub handlers for interactive-row primary actions (PRD #107). The
   // routing primitive ships in this slice; the actual expansion behaviour
   // — revealing ±10 lines into a hunk gap, expanding a classifier-collapsed
-  // file's body — is delivered by PRD #108 (issue #108). Stubs intentionally
-  // do nothing observable so the keymap + dispatch surface can be tested
-  // independently.
+  // file's body — is delivered by PRD #108. Stubs intentionally do nothing
+  // observable so the keymap + dispatch surface can be tested independently.
   const expandHunkBoundary = (_boundaryRef: BoundaryRef, _all: boolean) => {
     // PRD #108
   };
