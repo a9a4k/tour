@@ -56,7 +56,7 @@ import {
   cursorOnInteractive,
   type Cursor,
 } from "../core/cursor-state.js";
-import { step as stepDiffPane } from "../core/diff-pane-motion.js";
+import { step as stepDiffPane, pageMove as pageMoveDiffPane } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
@@ -993,11 +993,39 @@ function App(props: AppProps) {
         openReplyComposer();
         return;
       case "page-diff-down":
-        diffScrollRef.current?.scrollBy(1, "viewport");
+      case "page-diff-up": {
+        const dir = action.type === "page-diff-down" ? "down" : "up";
+        const sb = diffScrollRef.current;
+        if (!sb) return;
+        // Page motion (PRD #126, issue #129): pane scrolls one viewport
+        // AND cursor moves with it so its screen-relative offset is
+        // preserved. Bumping a document bound snaps the cursor to the
+        // last/first eligible row instead of stranding it mid-pane.
+        const result = pageMoveDiffPane(
+          {
+            cursor,
+            flatRows: flatRowsList,
+            scrollTop: sb.scrollTop,
+            viewportHeight: sb.viewport.height,
+            contentHeight: sb.scrollHeight,
+            rowY: (idx) => {
+              const r = flatRowsList[idx];
+              if (!r) return 0;
+              const id =
+                r.kind === "diff"
+                  ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
+                  : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
+              return sb.content.findDescendantById(id)?.y ?? 0;
+            },
+          },
+          dir,
+        );
+        setCursor(result.cursor);
+        if (result.scrollTop !== sb.scrollTop) {
+          sb.scrollTo(result.scrollTop);
+        }
         return;
-      case "page-diff-up":
-        diffScrollRef.current?.scrollBy(-1, "viewport");
-        return;
+      }
       case "cursor-down":
       case "cursor-up": {
         const dir = action.type === "cursor-down" ? "down" : "up";
@@ -1018,6 +1046,7 @@ function App(props: AppProps) {
             flatRows: flatRowsList,
             scrollTop: sb.scrollTop,
             viewportHeight: sb.viewport.height,
+            contentHeight: sb.scrollHeight,
             rowY: (idx) => {
               const r = flatRowsList[idx];
               if (!r) return 0;

@@ -220,7 +220,7 @@ function rowMatchesAnchor(
   return row.leftLineNumber === lineNumber;
 }
 
-function cursorFromRow(
+export function cursorFromRow(
   row: FlatRow,
   preferredSide: "additions" | "deletions",
 ): Cursor {
