@@ -7,10 +7,9 @@ const k = (name: string, mods: { ctrl?: boolean; shift?: boolean } = {}): KeyInp
   shift: mods.shift ?? false,
 });
 
-const sidebar: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "file", cursorExists: true };
-const sidebarFolder: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "folder", cursorExists: true };
-const diffPane: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file", cursorExists: true };
-const diffPaneNoCursor: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file", cursorExists: false };
+const sidebar: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "file" };
+const sidebarFolder: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "folder" };
+const diffPane: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file" };
 
 describe("dispatchKey", () => {
   it("q quits", () => {
@@ -47,8 +46,8 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("return"), sidebar).type).toBe("select-file");
   });
 
-  it("j is a no-op when sidebar has no rows and cursor doesn't exist", () => {
-    expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null, cursorExists: false }).type).toBe("noop");
+  it("j is a no-op when sidebar has no rows", () => {
+    expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type).toBe("noop");
   });
 
   it("c on a file row toggles per-file diff collapse", () => {
@@ -67,9 +66,9 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c", { ctrl: true }), diffPane).type).toBe("quit");
   });
 
-  it("c is a no-op when no row is selected and no cursor exists", () => {
+  it("c is a no-op when no row is selected", () => {
     expect(
-      dispatchKey(k("c"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null, cursorExists: false }).type,
+      dispatchKey(k("c"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null }).type,
     ).toBe("noop");
   });
 
@@ -111,9 +110,12 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
   });
 
-  it("right and left are no-ops in the diff pane when no cursor exists", () => {
-    expect(dispatchKey(k("right"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("left"), diffPaneNoCursor).type).toBe("noop");
+  it("right and left in the diff pane drive cursor side selection even without a materialized cursor (lazy materialization)", () => {
+    // Lazy materialization (ADR 0011 Revisions): the keymap dispatches
+    // motion actions unconditionally; the App's handler promotes a null
+    // cursor into the seeded state on first interaction.
+    expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
+    expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
   });
 
   it("n returns next-annotation regardless of pane focus", () => {
@@ -223,11 +225,15 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
     expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
   });
 
-  it("j/k/h/l in diff pane are no-ops when cursor doesn't exist", () => {
-    expect(dispatchKey(k("j"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("k"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("h"), diffPaneNoCursor).type).toBe("noop");
-    expect(dispatchKey(k("l"), diffPaneNoCursor).type).toBe("noop");
+  it("j/k/h/l in diff pane fire cursor motion even without a materialized cursor (lazy materialization)", () => {
+    // ADR 0011 Revisions: the keymap is unconditional in the diff pane;
+    // the App's handler is responsible for promoting a null cursor into
+    // the seeded state on first interaction. Degraded states (no flat
+    // rows at all) yield a null seed, so motion is a silent no-op.
+    expect(dispatchKey(k("j"), diffPane).type).toBe("cursor-down");
+    expect(dispatchKey(k("k"), diffPane).type).toBe("cursor-up");
+    expect(dispatchKey(k("h"), diffPane).type).toBe("cursor-side-left");
+    expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
   });
 
   it("h does not interfere with sidebar focus (no sidebar binding for h)", () => {
