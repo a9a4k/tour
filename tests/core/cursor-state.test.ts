@@ -105,13 +105,13 @@ describe("moveCursor", () => {
     expect(next?.lineNumber).toBe(1);
   });
 
-  it("stops at the last row (no cross-EOF in this slice)", () => {
+  it("stops at the last row of the flat sequence (stream extremity)", () => {
     const c: Cursor = { file: "x.txt", lineNumber: 3, side: "additions", preferredSide: "additions" };
     const next = moveCursor(c, "down", rows);
     expect(next?.lineNumber).toBe(3);
   });
 
-  it("stops at the first row", () => {
+  it("stops at the first row of the flat sequence (stream extremity)", () => {
     const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
     const next = moveCursor(c, "up", rows);
     expect(next?.lineNumber).toBe(1);
@@ -140,6 +140,67 @@ describe("moveCursor", () => {
     expect(next?.preferredSide).toBe("deletions");
     expect(next?.side).toBe("additions");
     expect(next?.lineNumber).toBe(2);
+  });
+
+  describe("cross-file motion (#102)", () => {
+    const multi: FlatRow[] = [
+      pairedFlat("a.txt", 1, 1),
+      pairedFlat("a.txt", 2, 2),
+      pairedFlat("b.txt", 10, 10),
+      pairedFlat("b.txt", 11, 11),
+    ];
+
+    it("descends into the next file when pressing down on the last row of file A", () => {
+      const c: Cursor = { file: "a.txt", lineNumber: 2, side: "additions", preferredSide: "additions" };
+      const next = moveCursor(c, "down", multi);
+      expect(next?.file).toBe("b.txt");
+      expect(next?.lineNumber).toBe(10);
+    });
+
+    it("ascends into the previous file when pressing up on the first row of file B", () => {
+      const c: Cursor = { file: "b.txt", lineNumber: 10, side: "additions", preferredSide: "additions" };
+      const next = moveCursor(c, "up", multi);
+      expect(next?.file).toBe("a.txt");
+      expect(next?.lineNumber).toBe(2);
+    });
+
+    it("stops at the very first row of the first file (stream extremity)", () => {
+      const c: Cursor = { file: "a.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const next = moveCursor(c, "up", multi);
+      expect(next).toEqual(c);
+    });
+
+    it("stops at the very last row of the last file (stream extremity)", () => {
+      const c: Cursor = { file: "b.txt", lineNumber: 11, side: "additions", preferredSide: "additions" };
+      const next = moveCursor(c, "down", multi);
+      expect(next).toEqual(c);
+    });
+
+    it("preserves preferredSide across a file boundary", () => {
+      const c: Cursor = { file: "a.txt", lineNumber: 2, side: "deletions", preferredSide: "deletions" };
+      const next = moveCursor(c, "down", multi);
+      expect(next?.file).toBe("b.txt");
+      expect(next?.preferredSide).toBe("deletions");
+      // Next-file row is paired so preferredSide wins for effective side too.
+      expect(next?.side).toBe("deletions");
+    });
+
+    it("skips folded files (cursor jumps over them as if they weren't in the list)", () => {
+      // Folded files contribute zero rows to flatRows, so c→a.txt#2 + down
+      // skips the folded b.txt entirely and lands on the first row of c.txt.
+      // The flat-rows builder is responsible for the omission; moveCursor
+      // just sees a flat sequence with no b.txt entries.
+      const skipping: FlatRow[] = [
+        pairedFlat("a.txt", 1, 1),
+        pairedFlat("a.txt", 2, 2),
+        // b.txt would be here but is folded → omitted
+        pairedFlat("c.txt", 5, 5),
+      ];
+      const c: Cursor = { file: "a.txt", lineNumber: 2, side: "additions", preferredSide: "additions" };
+      const next = moveCursor(c, "down", skipping);
+      expect(next?.file).toBe("c.txt");
+      expect(next?.lineNumber).toBe(5);
+    });
   });
 });
 

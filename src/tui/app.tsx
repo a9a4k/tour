@@ -383,6 +383,24 @@ function App(props: AppProps) {
     );
   }, [cursor]);
 
+  // Sidebar follows the cursor's file (PRD #100 UX 6 / issue #102). Fires
+  // only when cursor.file changes — in-file j/k motion leaves the sidebar
+  // untouched. revealAndLocate uncollapses ancestor folders when the
+  // cursor lands inside a collapsed subtree, so the file is reachable in
+  // the flattened sidebar list.
+  useEffect(() => {
+    if (!cursor) return;
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursor.file);
+    if (!located) return;
+    if (located.collapsedFolders !== collapsedFolders) {
+      setCollapsedFolders(located.collapsedFolders as Set<string>);
+    }
+    if (located.rowIdx !== safeRowIdx) {
+      setSelectedRowIdx(located.rowIdx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor?.file]);
+
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
   // semantics — already-visible rows don't move).
