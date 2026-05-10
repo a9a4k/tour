@@ -60,10 +60,8 @@ export function orphanSeedWindows(
   annotations: Annotation[],
   opts: OrphanWindowOptions,
 ): OrphanWindow[] {
-  const regions = computeOrphanWindows(file, annotations, opts);
-  if (regions.size === 0) return [];
   const out: OrphanWindow[] = [];
-  for (const [hunkIndex, region] of regions) {
+  for (const [hunkIndex, region] of computeOrphanWindows(file, annotations, opts)) {
     out.push({
       file: file.name,
       ref: hunkIndexToBoundaryRef(hunkIndex, file.hunks.length),
