@@ -428,7 +428,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           altKey: e.altKey,
         },
         {
-          cursorExists: cursor !== null,
           composerOpen: composerTarget !== null,
           pickerOpen,
           focusInEditable,
@@ -436,6 +435,18 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       );
       if (action.type === "noop") return;
       e.preventDefault();
+      // Lazy materialization rule (ADR 0012): the first j/k/h/l just
+      // SHOWS the cursor at the default target, no move past it. `a`
+      // materializes AND opens the composer (handled inline below).
+      const motion =
+        action.type === "move-down" ||
+        action.type === "move-up" ||
+        action.type === "set-side-additions" ||
+        action.type === "set-side-deletions";
+      if (motion && !cursor) {
+        materializeCursor();
+        return;
+      }
       switch (action.type) {
         case "open-picker":
           openPicker();
@@ -450,57 +461,27 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           navigateBy(-1);
           return;
         case "move-down":
-          // Lazy materialization rule (ADR 0012): the first j/k just
-          // SHOWS the cursor at the default target, no move past it.
-          if (!cursor) {
-            materializeCursor();
-            return;
-          }
           setCursor((c) => moveCursor(c, "down", flatRowsList));
           return;
         case "move-up":
-          if (!cursor) {
-            materializeCursor();
-            return;
-          }
           setCursor((c) => moveCursor(c, "up", flatRowsList));
           return;
         case "set-side-additions":
-          if (!cursor) {
-            materializeCursor();
-            return;
-          }
           setCursor((c) => setCursorSide(c, "additions", flatRowsList));
           return;
         case "set-side-deletions":
-          if (!cursor) {
-            materializeCursor();
-            return;
-          }
           setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
           return;
         case "annotate-at-cursor": {
-          if (!cursor) return;
+          const c = cursor ?? materializeCursor();
+          if (!c) return;
           setComposerError(null);
           setComposerTarget({
             kind: "top-level",
-            file: cursor.file,
-            side: cursor.side,
-            line_start: cursor.lineNumber,
-            line_end: cursor.lineNumber,
-          });
-          return;
-        }
-        case "materialize-and-annotate": {
-          const seeded = materializeCursor();
-          if (!seeded) return;
-          setComposerError(null);
-          setComposerTarget({
-            kind: "top-level",
-            file: seeded.file,
-            side: seeded.side,
-            line_start: seeded.lineNumber,
-            line_end: seeded.lineNumber,
+            file: c.file,
+            side: c.side,
+            line_start: c.lineNumber,
+            line_end: c.lineNumber,
           });
           return;
         }

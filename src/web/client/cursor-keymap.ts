@@ -11,9 +11,6 @@
  */
 
 export interface CursorKeymapContext {
-  /** Whether a cursor is currently anchored. When false, motion keys
-   *  materialize the cursor at the default target rather than no-op. */
-  cursorExists: boolean;
   /** Inline composer is open — j/k/h/l/arrows route to the textarea, not
    *  the cursor. `n`/`p`/`L` still fire so the reviewer can navigate
    *  even mid-edit (matches the tour-picker rule). */
@@ -31,7 +28,6 @@ export type CursorAction =
   | { type: "set-side-additions" }
   | { type: "set-side-deletions" }
   | { type: "annotate-at-cursor" }
-  | { type: "materialize-and-annotate" }
   | { type: "nav-next-annotation" }
   | { type: "nav-prev-annotation" }
   | { type: "toggle-layout" }
@@ -71,12 +67,9 @@ export function dispatchCursorKey(
     if (e.key === "t") return { type: "open-picker" };
     if (e.key === "n") return { type: "nav-next-annotation" };
     if (e.key === "p") return { type: "nav-prev-annotation" };
-    if (e.key === "a") {
-      // `a` materializes the cursor if null AND opens composer in one step.
-      return ctx.cursorExists
-        ? { type: "annotate-at-cursor" }
-        : { type: "materialize-and-annotate" };
-    }
+    // `a` opens the composer at the cursor anchor; the App-side handler
+    // materializes the cursor first if it's still null (lazy materialization).
+    if (e.key === "a") return { type: "annotate-at-cursor" };
   }
 
   // Cursor motion / side selection. Suppressed when the composer is open

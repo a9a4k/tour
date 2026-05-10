@@ -6,7 +6,6 @@ import {
 } from "../../src/web/client/cursor-keymap.js";
 
 const baseCtx: CursorKeymapContext = {
-  cursorExists: true,
   composerOpen: false,
   pickerOpen: false,
   focusInEditable: false,
@@ -79,16 +78,10 @@ describe("dispatchCursorKey: layout rebind", () => {
 });
 
 describe("dispatchCursorKey: annotate-at-cursor", () => {
-  it("a → annotate-at-cursor when cursor exists", () => {
+  it("a → annotate-at-cursor (App-side handler materializes the cursor on null)", () => {
     expect(dispatchCursorKey(key({ key: "a" }), baseCtx)).toEqual({
       type: "annotate-at-cursor",
     });
-  });
-
-  it("a → materialize-and-annotate when cursor is null", () => {
-    expect(
-      dispatchCursorKey(key({ key: "a" }), { ...baseCtx, cursorExists: false }),
-    ).toEqual({ type: "materialize-and-annotate" });
   });
 });
 
