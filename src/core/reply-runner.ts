@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { appendFile } from "node:fs/promises";
 import {
   createReply,
   readAnnotations,
@@ -182,6 +183,12 @@ export class ReplyRunner {
     }
     const body = result.stdout.trim();
     if (body === "") {
+      // Empty stdout is a normal dispatch completion (ADR 0015) — the seam
+      // would reject the empty body anyway (PRD #140 rule 1/5), so we
+      // short-circuit, record a rejection entry in the dispatch log (header
+      // already carries agent + triggering id), and skip the write. The
+      // lock clears via the caller's finally.
+      await appendFile(logPath, "=== rejected: empty body — no reply written\n");
       process.stderr.write(
         `reply-agent ${agent}: produced no output — no reply written; see ${logPath}\n`,
       );

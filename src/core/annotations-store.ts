@@ -11,6 +11,15 @@ function isValidAuthorKind(v: unknown): v is "agent" | "human" {
   return v === "agent" || v === "human";
 }
 
+// PRD #140 rule (1/5): body must be non-empty after trimming. Whitespace-
+// only bodies reject at the seam so every surface (CLI / TUI / webapp /
+// reply-runner) gets the same wording (slice 2 / #142).
+function validateBody(body: string): void {
+  if (body.trim().length === 0) {
+    throw new Error("Annotation body must not be empty or whitespace-only");
+  }
+}
+
 interface BuildAnnotationInput {
   file: string;
   side: "additions" | "deletions";
@@ -112,6 +121,7 @@ export async function createAnnotation(
   tourId: string,
   request: CreateAnnotationRequest,
 ): Promise<Annotation> {
+  validateBody(request.body);
   const ann = buildAnnotation(request);
   await appendAnnotation(repoRoot, tourId, ann);
   return ann;
@@ -125,6 +135,7 @@ export async function createReply(
   tourId: string,
   request: CreateReplyRequest,
 ): Promise<Annotation> {
+  validateBody(request.body);
   const existing = await readAnnotations(repoRoot, tourId);
   const reply = buildReply(request, existing);
   await appendAnnotation(repoRoot, tourId, reply);
@@ -139,6 +150,7 @@ export async function createAnnotations(
   tourId: string,
   requests: CreateRequest[],
 ): Promise<Annotation[]> {
+  for (const req of requests) validateBody(req.body);
   const existing = await readAnnotations(repoRoot, tourId);
   const built: Annotation[] = requests.map((req) => {
     if (req.kind === "reply") {

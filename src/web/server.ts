@@ -179,9 +179,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
           const body = (await req.json()) as Record<string, unknown>;
           const text = asString(body.body);
-          if (!text || text.trim().length === 0) {
-            throw new Error("body is required");
-          }
+          // HTTP-shape concern only — whitespace-only rejection lives in
+          // the Annotation creation seam (PRD #140 rule 1/5).
+          if (text === undefined) throw new Error("body is required");
           const author = asString(body.author) ?? DEFAULT_HUMAN_AUTHOR;
           const repliesTo = asString(body.replies_to);
           if (repliesTo) {

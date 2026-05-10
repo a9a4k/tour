@@ -79,6 +79,21 @@ describe("annotations-store", () => {
       expect(ann.author).toBe("unknown");
     });
 
+    it("rejects whitespace-only body and writes nothing (slice 2 / #142)", async () => {
+      await expect(
+        createAnnotation(dir, tourId, {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "   \n\t  ",
+          author_kind: "agent",
+        }),
+      ).rejects.toThrow(/body/i);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toEqual([]);
+    });
+
     it("appends across multiple invocations", async () => {
       const a = await createAnnotation(dir, tourId, {
         file: "a.ts", side: "additions", line_start: 1, line_end: 1,
@@ -135,6 +150,21 @@ describe("annotations-store", () => {
       ).rejects.toThrow(/no-such-id/);
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded).toEqual([]);
+    });
+
+    it("rejects whitespace-only reply body and writes nothing (slice 2 / #142)", async () => {
+      const parent = makeAnnotation({ id: "p-trim" });
+      await seedAnnotation(dir, tourId, parent);
+      await expect(
+        createReply(dir, tourId, {
+          replies_to: "p-trim",
+          body: "  \t \n ",
+          author_kind: "agent",
+        }),
+      ).rejects.toThrow(/body/i);
+      // Only the seeded parent is on disk; no reply landed.
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["p-trim"]);
     });
 
     it("always re-reads annotations.jsonl (caller cannot bypass with stale in-memory data)", async () => {
@@ -205,6 +235,25 @@ describe("annotations-store", () => {
       expect(results[0].replies_to).toBeUndefined();
       expect(results[1].replies_to).toBe("p1");
       expect(results[1].side).toBe("deletions"); // inherits parent's anchor
+    });
+
+    it("rejects whole batch (no write) when any item has a whitespace-only body (slice 2 / #142)", async () => {
+      await expect(
+        createAnnotations(dir, tourId, [
+          {
+            kind: "top-level",
+            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+            body: "valid", author_kind: "agent",
+          },
+          {
+            kind: "top-level",
+            file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+            body: "   \n  ", author_kind: "agent",
+          },
+        ]),
+      ).rejects.toThrow(/body/i);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded).toEqual([]);
     });
 
     it("rejects whole batch (no write) when any reply parent is missing", async () => {

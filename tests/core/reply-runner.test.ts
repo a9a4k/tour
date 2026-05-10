@@ -486,7 +486,7 @@ describe("ReplyRunner", () => {
       expect(stderr).toContain(`; see ${path}`);
     });
 
-    it("on empty-stdout success exit, the log captures stderr and the runner's stderr message includes the log path", async () => {
+    it("on empty-stdout success exit, the log captures stderr, records a rejection entry, the lock clears, and no Annotation is written (slice 2 / #142)", async () => {
       const adapter = fixtureAdapter({
         code: 0,
         signal: null,
@@ -510,9 +510,18 @@ describe("ReplyRunner", () => {
       const log = await readFile(path, "utf8");
       expect(log).toContain("ERR: model returned no body");
       expect(log).toContain("=== exit: code=0 signal=null");
+      // Rejection entry — header already carries agent + triggering id, so
+      // the line itself just records the outcome.
+      expect(log).toContain("=== rejected: empty body — no reply written");
       const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
       expect(stderr).toContain("produced no output");
       expect(stderr).toContain(`; see ${path}`);
+      // Lock clears via the normal release path — empty-stdout is a normal
+      // dispatch completion, not a stale-lock recovery case (ADR 0015).
+      expect(await readReplyLock(dir, tourId)).toBeNull();
+      // No Reply Annotation lands on disk.
+      const annotations = await readAnnotations(dir, tourId);
+      expect(annotations.find((a) => a.replies_to === "ann-eeee")).toBeUndefined();
     });
 
     it("the success path emits no new line on the parent's stderr", async () => {
