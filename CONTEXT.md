@@ -48,6 +48,10 @@ _Avoid_: view mode, diff style, view
 A synthetic commit object capturing uncommitted changes at the moment a Tour is created, so the Diff stays pinned even as the working tree keeps moving.
 _Avoid_: stash, WIP commit
 
+**Tour bundle**:
+Everything required to render a pinned Tour at open time — the Tour TOML, its Annotations, the parsed Diff, per-side file contents, file classifications, and orphan-annotation auto-windows — packaged as one value computed fresh on every open. Never persisted. Discriminated by `kind`: `ok` carries the full payload; `snapshot-lost` carries just the Tour + Annotations so the surface can render the snapshot-lost banner without per-file machinery. The Reply lock is **not** part of the bundle (lock changes are O(read one file) and fetched on their own watcher event without re-running the full hydrate pipeline).
+_Avoid_: payload, snapshot (collides with Working-tree snapshot), state
+
 **Hidden context**:
 The unchanged lines between hunks in a Tour's Diff that aren't part of any hunk's visible context window (git's `-U3` default). Surfaces in three places: between consecutive hunks, before the first hunk (file-top boundary), after the last hunk (file-bottom boundary). The hunk-separator row visualises the count (`··· N hidden ···`) and is the keyboard target for revealing it. Anchor of an Annotation may live inside Hidden context; revealing it is a render-time concern, not a data concern (the SHA, file, and line numbers are unchanged).
 _Avoid_: hidden lines, collapsed lines, gap, missing context
