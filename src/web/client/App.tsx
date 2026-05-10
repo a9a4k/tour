@@ -36,6 +36,7 @@ import { nextAnnotationNavStep } from "./annotation-nav.js";
 import { CURSOR_OUTLINE_CSS, buildHoverTintCSS } from "./cursor-css.js";
 import { syncCursorOverlay } from "./cursor-overlay.js";
 import { syncHoverOverlay } from "./hover-overlay.js";
+import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 
 const STICKY_HEADER_CSS = `
@@ -486,9 +487,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   // Hover affordance (ADR 0012). One delegated mouseover/mouseout pair on
   // document toggles `data-tour-hover` on annotatable cells; the
-  // hover-tint + "+" gutter pseudo-element CSS keys off that attribute.
-  // Listeners re-register when composerOpen flips so the suppression
-  // takes effect immediately (and any in-flight attribute is stripped).
+  // hover-tint CSS rule and the plus-button overlay both key off that
+  // attribute. Listeners re-register when composerOpen flips so the
+  // suppression takes effect immediately (and any in-flight attribute is
+  // stripped).
   useEffect(() => {
     if (typeof document === "undefined") return;
     return syncHoverOverlay(document.body, composerTarget !== null);
@@ -617,13 +619,40 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         line_start: line,
         line_end: line,
       });
-      // Click-to-annotate also sets the cursor at the clicked anchor
-      // (ADR 0012). preferredSide tracks the clicked side so subsequent
-      // keyboard motion preserves the user's mouse-expressed preference.
+      // Opening the composer also pins the cursor at the anchor (ADR 0012).
+      // preferredSide tracks the chosen side so subsequent keyboard motion
+      // preserves the user's mouse-expressed preference.
       setCursor({ file, lineNumber: line, side, preferredSide: side });
     },
     [],
   );
+
+  // Issue #137 / PRD #136: row click no longer opens the composer; it
+  // only moves the Line cursor. The composer is reached via the gutter
+  // `+` button (plus-button-overlay) or the keyboard `a` shortcut.
+  const setCursorFromRowClick = useCallback(
+    (file: string, side: "additions" | "deletions", line: number) => {
+      setCursor({ file, lineNumber: line, side, preferredSide: side });
+    },
+    [],
+  );
+
+  // Plus-button overlay (PRD #136). Mounts a real-DOM `<button>` next to
+  // any cell currently flagged with `data-tour-cursor` or `data-tour-hover`
+  // (the cursor + hover overlays already publish both). Clicking the
+  // button opens the top-level composer at that cell's anchor — the only
+  // mouse path to the composer post-#137. Suppressed while the composer
+  // is open. Re-attaches on parsedFiles / layout / collapsedOverrides /
+  // composerTarget changes so Pierre's shadow-root rebuilds and the
+  // composer-open flip both pick up new observer scopes / cleared state.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    return syncPlusButtonOverlay(
+      document.body,
+      ({ file, side, line }) => openTopLevelComposer(file, side, line),
+      composerTarget !== null,
+    );
+  }, [composerTarget, openTopLevelComposer, parsedFiles, layout, collapsedOverrides]);
 
   const openReplyComposer = useCallback((replies_to: string) => {
     setComposerError(null);
@@ -817,7 +846,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 layout={layout}
                 composerTarget={composerTarget}
                 composerError={composerError}
-                onOpenTopLevel={openTopLevelComposer}
+                onRowClick={setCursorFromRowClick}
                 onOpenReply={openReplyComposer}
                 onSubmit={submitComposer}
                 onCancel={closeComposer}
@@ -926,7 +955,7 @@ interface FileBlockProps {
   layout: Layout;
   composerTarget: ComposerTarget | null;
   composerError: string | null;
-  onOpenTopLevel: (file: string, side: "additions" | "deletions", line: number) => void;
+  onRowClick: (file: string, side: "additions" | "deletions", line: number) => void;
   onOpenReply: (replies_to: string) => void;
   onSubmit: (body: string) => void;
   onCancel: () => void;
@@ -994,7 +1023,7 @@ function FileBlock({
   layout,
   composerTarget,
   composerError,
-  onOpenTopLevel,
+  onRowClick,
   onOpenReply,
   onSubmit,
   onCancel,
@@ -1100,7 +1129,9 @@ function FileBlock({
     }
     if (collapsed) return;
     // Ignore clicks inside an annotation card or a composer (those manage
-    // their own affordances). Otherwise route to the top-level composer.
+    // their own affordances). Issue #137: a row click now only seeds the
+    // Line cursor; the composer is reached via the gutter `+` button
+    // (plus-button-overlay) or the keyboard `a` shortcut.
     const insideCard = path.some(
       (n) =>
         n instanceof HTMLElement &&
@@ -1110,7 +1141,7 @@ function FileBlock({
     if (insideCard) return;
     const hit = findAnnotatableLine(path);
     if (!hit) return;
-    onOpenTopLevel(fileDiff.name, hit.side, hit.line);
+    onRowClick(fileDiff.name, hit.side, hit.line);
   };
 
   const headerMetadata = () => (
