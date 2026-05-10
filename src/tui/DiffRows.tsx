@@ -135,7 +135,7 @@ export function DiffRows({
       {rows.map((row, idx) => {
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
-          const hidden = (row.expandUp ?? 0) + (row.expandDown ?? 0);
+          const hidden = row.expandUp + row.expandDown;
           const suffix = hidden > 0 ? ` ··· ${hidden} hidden ···` : "";
           return (
             <text key={key} fg={theme.fg.muted}>

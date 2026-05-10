@@ -2,7 +2,6 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
 import { buildThreads, topLevelAnnotations } from "./threads.js";
 import {
-  emptyExpansion,
   getBoundary,
   type BoundaryRef as ExpansionBoundaryRef,
   type ExpansionState,
@@ -113,13 +112,7 @@ function stripTrailingNewline(s: string): string {
 function splitLines(s: string): string[] {
   if (!s) return [];
   const trimmed = s.endsWith("\n") ? s.slice(0, -1) : s;
-  return trimmed.split("\n");
-}
-
-function lineCountOf(s: string): number {
-  if (!s) return 0;
-  const trimmed = s.endsWith("\n") ? s.slice(0, -1) : s;
-  return trimmed === "" ? 0 : trimmed.split("\n").length;
+  return trimmed === "" ? [] : trimmed.split("\n");
 }
 
 function gapBefore(file: FileDiffMetadata, hunkIndex: number): {
@@ -194,7 +187,7 @@ function walkHunks(
 ): PlannedRow[] {
   const rows: PlannedRow[] = [];
   const { oldContent, newContent } = options;
-  const newLineCount = newContent !== undefined ? lineCountOf(newContent) : 0;
+  const newLineCount = newContent !== undefined ? splitLines(newContent).length : 0;
 
   // boundary-top: file's first hunk doesn't start at line 1.
   if (file.hunks.length > 0 && file.hunks[0].additionStart > 1) {
@@ -469,7 +462,3 @@ function findAnchorRowIndex(rows: PlannedRow[], ann: Annotation): number {
   }
   return -1;
 }
-
-// Re-export for ergonomic imports at boundary-touching call sites.
-export { emptyExpansion };
-export type { ExpansionState };
