@@ -33,11 +33,13 @@ describe("buildHoverTintCSS", () => {
     expect(css).not.toContain(":hover");
   });
 
-  it("renders a '+' button as ::after on the hovered row", () => {
+  // Issue #137 / PRD #136: the `+` affordance is now a real-DOM <button>
+  // mounted by plus-button-overlay.ts, not a CSS pseudo-element. This
+  // rule block must not re-introduce a competing pseudo-element button.
+  it("does NOT render a '+' button as a CSS pseudo-element (real-DOM button per issue #137)", () => {
     const css = buildHoverTintCSS(false);
-    expect(css).toContain("[data-tour-hover=\"true\"]");
-    expect(css).toContain("::after");
-    expect(css).toContain("\"+\"");
+    expect(css).not.toContain("::after");
+    expect(css).not.toContain('content: "+"');
   });
 
   it("returns empty string when composer is open (suppress mid-edit)", () => {

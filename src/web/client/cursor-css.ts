@@ -23,23 +23,20 @@ export const CURSOR_OUTLINE_CSS = `
 `;
 
 /**
- * Hover affordance (ADR 0012). Two rule blocks:
+ * Hover affordance (ADR 0012). Soft background tint on annotatable rows
+ * that the hover-overlay listener has marked with `data-tour-hover="true"`.
+ * Scoped by `data-line-type` to addition / deletion / change-addition /
+ * change-deletion / context — the same set `findAnnotatableLine` accepts.
+ * We deliberately do NOT use the bare `:hover` pseudo-class because Pierre
+ * paints its own `:hover` defaults; the attribute-keyed selector keeps the
+ * two stylesheets out of each other's way and lets the JS listener gate
+ * suppression while the composer is open.
  *
- * 1. Soft background tint on annotatable rows that the hover-overlay
- *    listener has marked with `data-tour-hover="true"`. Scoped by
- *    `data-line-type` to addition / deletion / change-addition /
- *    change-deletion / context — the same set `findAnnotatableLine`
- *    accepts. We deliberately do NOT use the bare `:hover` pseudo-class
- *    because Pierre paints its own `:hover` defaults; the attribute-
- *    keyed selector keeps the two stylesheets out of each other's way
- *    and lets the JS listener gate suppression while the composer is
- *    open.
- *
- * 2. A `+` button rendered as a CSS `::after` pseudo-element on the
- *    hovered row — pseudo-element approach avoids React tree changes
- *    and DOM injection. Click on the `+` is the same as click on the
- *    row (no separate event target); the existing `onWrapperClick`
- *    delegate routes both via `findAnnotatableLine`.
+ * The `+` affordance used to live on this rule as a `::after` pseudo-
+ * element. Issue #137 / PRD #136 promoted it to a real-DOM `<button>`
+ * mounted by `plus-button-overlay.ts` so the click target is unambiguous
+ * (no `pointer-events` gymnastics) and the affordance is reachable to
+ * assistive tech.
  *
  * Composer-open suppression: returns empty so the rules don't fire even
  * if a stale `data-tour-hover` attribute lingered on a cell at the
@@ -61,25 +58,6 @@ export function buildHoverTintCSS(composerOpen: boolean): string {
   return `
     ${tintSelectors} {
       background-image: linear-gradient(${theme.bg.accentRange.web}, ${theme.bg.accentRange.web});
-    }
-    [data-tour-hover="true"]::after {
-      content: "+";
-      position: absolute;
-      right: 4px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 16px;
-      height: 16px;
-      line-height: 16px;
-      text-align: center;
-      border-radius: 4px;
-      background-color: ${theme.bg.accentEmphasis};
-      color: ${theme.fg.onEmphasis};
-      font-weight: 600;
-      pointer-events: none;
-    }
-    [data-tour-hover="true"] {
-      position: relative;
     }
   `;
 }
