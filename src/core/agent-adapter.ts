@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Annotation, Tour } from "./types.js";
 import { buildThreads } from "./threads.js";
+import { SHIPPED_ADAPTERS } from "../agents/index.js";
 
 // JSON envelope handed to the adapter on stdin. Contains everything an agent
 // needs to compose a reply without re-reading the tour's filesystem state.
@@ -15,6 +16,22 @@ export interface ReplyEnvelope {
 
 export function adapterPath(name: string): string {
   return join(homedir(), ".config", "tour", "agents", `${name}.sh`);
+}
+
+// First-run bootstrap for shipped adapters. If `name` is in the shipped
+// registry and no user-side script exists yet, write it (chmod 0755). If
+// the user already has a file there — even an edited or replaced one — do
+// nothing: the user owns that path. Names not in the registry (custom
+// agents) are no-ops; the caller's `assertAdapterExists` reports the
+// missing-adapter error in that case.
+export function ensureShippedAdapter(name: string): void {
+  const script = SHIPPED_ADAPTERS[name];
+  if (script === undefined) return;
+  const path = adapterPath(name);
+  if (existsSync(path)) return;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, script);
+  chmodSync(path, 0o755);
 }
 
 // Hard-fails at startup if the named adapter isn't present at the expected

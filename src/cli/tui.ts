@@ -7,7 +7,7 @@ import { getDiff, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { classifyFile, type FileClassification } from "../core/file-classifier.js";
 import { generateId } from "../core/ids.js";
-import { assertAdapterExists } from "../core/agent-adapter.js";
+import { assertAdapterExists, ensureShippedAdapter } from "../core/agent-adapter.js";
 import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
 
 interface TuiArgs {
@@ -134,7 +134,10 @@ function humanAuthor(): string {
 export async function tui(args: TuiArgs): Promise<void> {
   // Hard-fail at startup if the requested reply-agent's adapter is missing,
   // per the PRD. Misconfiguration must surface up-front, not at first reply.
+  // Shipped adapters (e.g. `claude`) are bootstrapped to ~/.config/tour/agents
+  // on first run; user-installed custom adapters are left alone.
   if (args.replyAgent) {
+    ensureShippedAdapter(args.replyAgent);
     assertAdapterExists(args.replyAgent);
   }
 

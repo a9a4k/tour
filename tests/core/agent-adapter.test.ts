@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, chmod, readFile } from "node:fs/promises";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtemp, mkdir, writeFile, chmod, readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   assertAdapterExists,
   buildEnvelope,
+  ensureShippedAdapter,
   spawnAdapter,
 } from "../../src/core/agent-adapter.js";
+import { CLAUDE_ADAPTER_SCRIPT } from "../../src/agents/claude.js";
 import type { Annotation, Tour } from "../../src/core/types.js";
 
 function tour(over: Partial<Tour> = {}): Tour {
@@ -45,6 +48,49 @@ describe("assertAdapterExists", () => {
     expect(() => assertAdapterExists("definitely-not-installed-xyz")).toThrow(
       /not found at/,
     );
+  });
+});
+
+describe("ensureShippedAdapter (first-run bootstrap)", () => {
+  let savedHome: string | undefined;
+  let fakeHome: string;
+
+  beforeEach(async () => {
+    fakeHome = await mkdtemp(join(tmpdir(), "tour-fakehome-"));
+    savedHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+  });
+
+  afterEach(() => {
+    if (savedHome !== undefined) process.env.HOME = savedHome;
+    else delete process.env.HOME;
+  });
+
+  it("writes the shipped claude adapter to ~/.config/tour/agents/claude.sh on first run", async () => {
+    ensureShippedAdapter("claude");
+    const path = join(fakeHome, ".config", "tour", "agents", "claude.sh");
+    expect(existsSync(path)).toBe(true);
+    const contents = await readFile(path, "utf-8");
+    expect(contents).toBe(CLAUDE_ADAPTER_SCRIPT);
+    const st = await stat(path);
+    // Owner-executable. Node masks the high bits on some platforms; checking
+    // the +x bit is the portable assertion.
+    expect(st.mode & 0o111).not.toBe(0);
+  });
+
+  it("does not overwrite a user-edited adapter script on subsequent runs", async () => {
+    ensureShippedAdapter("claude");
+    const path = join(fakeHome, ".config", "tour", "agents", "claude.sh");
+    await writeFile(path, "#!/usr/bin/env bash\n# user-customized\n");
+    ensureShippedAdapter("claude");
+    const after = await readFile(path, "utf-8");
+    expect(after).toBe("#!/usr/bin/env bash\n# user-customized\n");
+  });
+
+  it("is a no-op for adapter names not in the shipped registry", () => {
+    ensureShippedAdapter("custom-not-shipped");
+    const path = join(fakeHome, ".config", "tour", "agents", "custom-not-shipped.sh");
+    expect(existsSync(path)).toBe(false);
   });
 });
 

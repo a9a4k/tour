@@ -1,4 +1,4 @@
-import { assertAdapterExists } from "../core/agent-adapter.js";
+import { assertAdapterExists, ensureShippedAdapter } from "../core/agent-adapter.js";
 
 interface ServeArgs {
   port: number;
@@ -10,6 +10,7 @@ interface ServeArgs {
 
 export async function serve(args: ServeArgs): Promise<void> {
   if (args.replyAgent) {
+    ensureShippedAdapter(args.replyAgent);
     assertAdapterExists(args.replyAgent);
   }
   const serverModule = "../web/server.js";
