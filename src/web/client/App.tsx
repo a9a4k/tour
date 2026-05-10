@@ -23,6 +23,18 @@ import {
   sortFilesForStream,
   type VisibleRow,
 } from "../../core/file-tree.js";
+import { flatRows as buildFlatRows } from "../../core/flat-rows.js";
+import { planRows } from "../../core/diff-rows.js";
+import {
+  initialCursor,
+  moveCursor,
+  setCursorSide,
+  validateCursor,
+  cursorFromAnnotation,
+  type Cursor,
+} from "../../core/cursor-state.js";
+import { dispatchCursorKey } from "./cursor-keymap.js";
+import { buildCursorOutlineCSS, buildHoverTintCSS } from "./cursor-css.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -126,6 +138,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [composerTarget, setComposerTarget] = useState<ComposerTarget | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
+  // Lazy-materialized line cursor (ADR 0012). Null on tour load and on
+  // every tour switch; first j/k/h/l/arrows/a/n/p/click materializes it
+  // at the default target so first paint isn't competing with the
+  // currentAnnotationId accent.
+  const [cursor, setCursor] = useState<Cursor | null>(null);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -168,6 +185,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     setCollapsedFolders(new Set());
     setComposerTarget(null);
     setComposerError(null);
+    setCursor(null);
     (async () => {
       const res = await fetch(`/api/tours/${tourId}`);
       const data = (await res.json()) as TourData | { error: string };
@@ -306,6 +324,11 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       );
       revealFileAncestors(target.file);
       scrollAnnotationIntoView(target.id);
+      // β-coupling per ADR 0012 (mirrors ADR 0011): annotation nav
+      // moves the line cursor too. Reverse direction (j/k/h/l) stays
+      // decoupled — line motion is for code reading, annotation motion
+      // is for engaging with conversation.
+      setCursor(cursorFromAnnotation(target));
     },
     [topLevel, currentIdx, revealFileAncestors, scrollAnnotationIntoView],
   );
@@ -384,35 +407,97 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     requestAnimationFrame(() => back?.focus());
   }, []);
 
-  // Global keydown: n / p step the sequence cursor; l flips diff layout;
-  // t toggles the tour picker. While the picker is open, n / p / l are inert
-  // (the picker owns input). No-op when focus is in an editable element so
-  // the shortcuts never steal text input.
+  // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
+  // side selection, annotate-at-cursor (a), annotation nav (n/p, with
+  // β-coupling to the line cursor), layout toggle (Shift-L, rebound
+  // from the previous lowercase l), and picker open (t) all flow
+  // through the pure dispatchCursorKey classifier so the keymap
+  // contract is testable independent of React state plumbing.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== "n" && e.key !== "p" && e.key !== "l" && e.key !== "t") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
-      if (t) {
-        const tag = t.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
-      }
-      if (pickerOpen) {
-        // Picker handles its own keys (including `t` to close). Block n/p/l.
+      const focusInEditable = !!(
+        t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      );
+      const action = dispatchCursorKey(
+        {
+          key: e.key,
+          shiftKey: e.shiftKey,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+        },
+        {
+          composerOpen: composerTarget !== null,
+          pickerOpen,
+          focusInEditable,
+        },
+      );
+      if (action.type === "noop") return;
+      e.preventDefault();
+      // Lazy materialization rule (ADR 0012): the first j/k/h/l just
+      // SHOWS the cursor at the default target, no move past it. `a`
+      // materializes AND opens the composer (handled inline below).
+      const motion =
+        action.type === "move-down" ||
+        action.type === "move-up" ||
+        action.type === "set-side-additions" ||
+        action.type === "set-side-deletions";
+      if (motion && !cursor) {
+        materializeCursor();
         return;
       }
-      e.preventDefault();
-      if (e.key === "t") {
-        openPicker();
-      } else if (e.key === "l") {
-        setLayout((prev) => (prev === "split" ? "unified" : "split"));
-      } else {
-        navigateBy(e.key === "n" ? 1 : -1);
+      switch (action.type) {
+        case "open-picker":
+          openPicker();
+          return;
+        case "toggle-layout":
+          setLayout((prev) => (prev === "split" ? "unified" : "split"));
+          return;
+        case "nav-next-annotation":
+          navigateBy(1);
+          return;
+        case "nav-prev-annotation":
+          navigateBy(-1);
+          return;
+        case "move-down":
+          setCursor((c) => moveCursor(c, "down", flatRowsList));
+          return;
+        case "move-up":
+          setCursor((c) => moveCursor(c, "up", flatRowsList));
+          return;
+        case "set-side-additions":
+          setCursor((c) => setCursorSide(c, "additions", flatRowsList));
+          return;
+        case "set-side-deletions":
+          setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
+          return;
+        case "annotate-at-cursor": {
+          const c = cursor ?? materializeCursor();
+          if (!c) return;
+          setComposerError(null);
+          setComposerTarget({
+            kind: "top-level",
+            file: c.file,
+            side: c.side,
+            line_start: c.lineNumber,
+            line_end: c.lineNumber,
+          });
+          return;
+        }
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [navigateBy, pickerOpen, openPicker]);
+  }, [
+    navigateBy,
+    pickerOpen,
+    openPicker,
+    cursor,
+    composerTarget,
+    flatRowsList,
+    materializeCursor,
+  ]);
 
   const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) annotationRefs.current.set(id, el);
@@ -435,6 +520,50 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     [isCollapsed],
   );
 
+  // Cursor walk sequence (ADR 0012). Per-file planned rows are built
+  // from each Pierre-parsed file + the annotation list + the active
+  // layout (split vs unified differ in pairing). The flat-rows builder
+  // skips folded files and hunk-header / annotation rows, leaving a
+  // walkable sequence indexed by moveCursor. Pierre's expandUnchanged
+  // (PRD #106) chevron-revealed rows are DOM-only and not in this
+  // list; v1 walks the patch's context rows only.
+  const plannedRowsByFile = useMemo(() => {
+    const out = new Map<string, ReturnType<typeof planRows>>();
+    for (const f of parsedFiles) {
+      out.set(f.name, planRows(f, annotations, layout));
+    }
+    return out;
+  }, [parsedFiles, annotations, layout]);
+
+  const flatRowsList = useMemo(() => {
+    return buildFlatRows(
+      parsedFiles.map((f) => ({ name: f.name, type: "change", hunks: [] })),
+      plannedRowsByFile,
+      isCollapsed,
+    );
+  }, [parsedFiles, plannedRowsByFile, isCollapsed]);
+
+  // Validate-in-place when the row sequence shifts under the cursor's
+  // feet (fold toggle, bundle reload, layout switch). Lazy
+  // materialization rule: we never seed here — first interaction does.
+  useEffect(() => {
+    if (cursor === null) return;
+    const validated = validateCursor(cursor, flatRowsList);
+    if (validated !== cursor) setCursor(validated);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatRowsList]);
+
+  // Lazy materialization (ADR 0012). Returns the seeded cursor (or
+  // existing one if already materialized) so the caller can chain into
+  // composer-open / move actions in one step. setCursor is queued; the
+  // returned value is what the caller should act on this tick.
+  const materializeCursor = useCallback((): Cursor | null => {
+    if (cursor) return cursor;
+    const seeded = initialCursor({ topLevelAnnotations: topLevel, flatRows: flatRowsList });
+    if (seeded) setCursor(seeded);
+    return seeded;
+  }, [cursor, topLevel, flatRowsList]);
+
   const closeComposer = useCallback(() => {
     setComposerTarget(null);
     setComposerError(null);
@@ -450,6 +579,10 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         line_start: line,
         line_end: line,
       });
+      // Click-to-annotate also sets the cursor at the clicked anchor
+      // (ADR 0012). preferredSide tracks the clicked side so subsequent
+      // keyboard motion preserves the user's mouse-expressed preference.
+      setCursor({ file, lineNumber: line, side, preferredSide: side });
     },
     [],
   );
@@ -632,6 +765,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 layout={layout}
                 composerTarget={composerTarget}
                 composerError={composerError}
+                cursor={cursor}
                 onOpenTopLevel={openTopLevelComposer}
                 onOpenReply={openReplyComposer}
                 onSubmit={submitComposer}
@@ -741,6 +875,7 @@ interface FileBlockProps {
   layout: Layout;
   composerTarget: ComposerTarget | null;
   composerError: string | null;
+  cursor: Cursor | null;
   onOpenTopLevel: (file: string, side: "additions" | "deletions", line: number) => void;
   onOpenReply: (replies_to: string) => void;
   onSubmit: (body: string) => void;
@@ -772,9 +907,13 @@ function fileContentsFor(
   };
 }
 
+// Per ADR 0012: context rows annotate as side="additions" (CONTEXT.md
+// convention). Click-to-annotate used to silently drop context rows; the
+// cursor walks them, so click resolution must too.
 function sideFromLineType(t: string | undefined): "additions" | "deletions" | null {
   if (t === "addition" || t === "change-addition") return "additions";
   if (t === "deletion" || t === "change-deletion") return "deletions";
+  if (t === "context") return "additions";
   return null;
 }
 
@@ -805,6 +944,7 @@ function FileBlock({
   layout,
   composerTarget,
   composerError,
+  cursor,
   onOpenTopLevel,
   onOpenReply,
   onSubmit,
@@ -838,10 +978,18 @@ function FileBlock({
 
   const options = useMemo(() => {
     const rangeCSS = buildRangeBackgroundCSS(annotations, fileDiff.name);
-    const baseCSS = `${STICKY_HEADER_CSS}\n${COMMENT_AFFORDANCE_CSS}`;
-    const unsafeCSS = rangeCSS ? `${baseCSS}\n${rangeCSS}` : baseCSS;
+    const cursorCSS = buildCursorOutlineCSS(cursor, fileDiff.name);
+    const hoverCSS = buildHoverTintCSS(composerTarget !== null);
+    const parts = [
+      STICKY_HEADER_CSS,
+      COMMENT_AFFORDANCE_CSS,
+      hoverCSS,
+      rangeCSS,
+      cursorCSS,
+    ].filter((s) => s !== "");
+    const unsafeCSS = parts.join("\n");
     return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
-  }, [annotations, fileDiff.name, collapsed, layout]);
+  }, [annotations, fileDiff.name, collapsed, layout, cursor, composerTarget]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {

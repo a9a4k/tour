@@ -8,6 +8,7 @@ import {
 import { getDiff, gitShow, isShaResolvable } from "../core/git.js";
 import { parseDiff } from "../core/diff-model.js";
 import { fetchFileContents } from "../core/file-content-provider.js";
+import { computeOrphanWindows } from "../core/orphan-window.js";
 import { classifyFile } from "../core/file-classifier.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
@@ -56,6 +57,13 @@ function asString(v: unknown): string | undefined {
 function asInt(v: unknown): number | undefined {
   if (typeof v !== "number" || !Number.isInteger(v)) return undefined;
   return v;
+}
+
+function lineCount(content: string): number {
+  if (content.length === 0) return 0;
+  // Count physical lines: a trailing newline doesn't add an empty trailing line.
+  const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
+  return trimmed.split("\n").length;
 }
 
 /**
@@ -295,11 +303,24 @@ export async function startServer(args: ServeArgs): Promise<void> {
             annotations,
             diff,
             diffModel: {
-              files: diffModel.files.map((f) => ({
-                ...f,
-                classification: classificationMap[f.name] ?? { collapsed: false },
-                ...fileContents.get(f.name),
-              })),
+              files: diffModel.files.map((f) => {
+                const contents = fileContents.get(f.name);
+                const orphanWindows = contents
+                  ? Array.from(
+                      computeOrphanWindows(f, annotations, {
+                        oldLineCount: lineCount(contents.oldContent),
+                        newLineCount: lineCount(contents.newContent),
+                      }),
+                      ([hunkIndex, region]) => ({ hunkIndex, ...region }),
+                    )
+                  : [];
+                return {
+                  ...f,
+                  classification: classificationMap[f.name] ?? { collapsed: false },
+                  ...contents,
+                  orphanWindows,
+                };
+              }),
             },
             snapshotLost,
           });

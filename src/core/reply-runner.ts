@@ -17,6 +17,7 @@ import {
   type ShippedAdapter,
 } from "./agent-adapter.js";
 import { replyAgentSystemPrompt } from "./system-prompt.js";
+import { createDispatchLogger } from "./dispatch-logger.js";
 import type { Annotation } from "./types.js";
 
 export interface ReplyRunnerOptions {
@@ -95,12 +96,15 @@ export class ReplyRunner {
       const tour = await getTour(this.opts.cwd, this.opts.tourId);
       const envelope = buildEnvelope(tour, annotations, triggering);
       const tourDir = join(this.opts.cwd, ".tour", this.opts.tourId);
+      const systemPrompt = replyAgentSystemPrompt();
+      const logPath = join(tourDir, "logs", `reply-${triggering.id}.log`);
 
       // Write a placeholder lock with pid=0 first so the renderer's pill
       // surfaces *before* the spawn returns. started_at is captured once so
       // the pill's age counter is stable across the placeholder/patch
       // sequence.
       const startedAt = new Date().toISOString();
+      const startedAtMs = Date.now();
       const lockBase = {
         agent: this.opts.agent,
         responding_to: triggering.id,
@@ -114,7 +118,7 @@ export class ReplyRunner {
       const spawned = spawnReplyAgent({
         agent: this.opts.agent,
         envelope,
-        systemPrompt: replyAgentSystemPrompt(),
+        systemPrompt,
         cwd: this.opts.cwd,
         tourDir,
         adapter: this.opts.adapter,
@@ -124,8 +128,30 @@ export class ReplyRunner {
         pid: spawned.pid,
       });
 
+      const logger = await createDispatchLogger(logPath, {
+        agent: this.opts.agent,
+        triggeringId: triggering.id,
+        tourId: this.opts.tourId,
+        startedAt,
+        pid: spawned.pid,
+        envelopeBytes: Buffer.byteLength(JSON.stringify(envelope), "utf8"),
+        systemPromptBytes: Buffer.byteLength(systemPrompt, "utf8"),
+      });
+      spawned.onStdout((chunk) => {
+        void logger.onStdout(chunk);
+      });
+      spawned.onStderr((chunk) => {
+        void logger.onStderr(chunk);
+      });
+
       const result = await spawned.exit;
-      await this.persistReply(triggering, result);
+      await logger.finalize({
+        code: result.code,
+        signal: result.signal,
+        durationMs: Date.now() - startedAtMs,
+        error: result.error,
+      });
+      await this.persistReply(triggering, result, logPath);
     } finally {
       await deleteReplyLock(this.opts.cwd, this.opts.tourId);
       this.inFlight = false;
@@ -134,28 +160,31 @@ export class ReplyRunner {
 
   // Stdout-as-reply contract (ADR 0012): trim, then write iff the agent
   // exited cleanly with a non-empty body. Spawn errors, non-zero exits and
-  // empty stdout all log a clear stderr line and skip the write.
+  // empty stdout all log a clear stderr line and skip the write. Each
+  // failure-mode line carries a `; see <log path>` suffix (ADR 0014) so the
+  // user can inspect the dispatch log to find out *why*.
   private async persistReply(
     triggering: Annotation,
     result: { code: number | null; stdout: string; error?: Error },
+    logPath: string,
   ): Promise<void> {
     const agent = this.opts.agent;
     if (result.error) {
       process.stderr.write(
-        `reply-agent ${agent}: spawn failed: ${result.error.message}\n`,
+        `reply-agent ${agent}: spawn failed: ${result.error.message}; see ${logPath}\n`,
       );
       return;
     }
     if (result.code !== 0) {
       process.stderr.write(
-        `reply-agent ${agent}: exited with code ${result.code} — no reply written\n`,
+        `reply-agent ${agent}: exited with code ${result.code} — no reply written; see ${logPath}\n`,
       );
       return;
     }
     const body = result.stdout.trim();
     if (body === "") {
       process.stderr.write(
-        `reply-agent ${agent}: produced no output — no reply written\n`,
+        `reply-agent ${agent}: produced no output — no reply written; see ${logPath}\n`,
       );
       return;
     }

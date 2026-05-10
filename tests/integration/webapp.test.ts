@@ -115,6 +115,17 @@ describe("Webapp integration", () => {
     expect(hello!.newContent).toBe("hello world\n");
   });
 
+  it("GET /api/tours/:id ships per-file orphanWindows for orphan annotation auto-expansion", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      diffModel: { files: Array<{ name: string; orphanWindows?: unknown[] }> };
+    };
+    const hello = data.diffModel.files.find((f) => f.name === "hello.txt");
+    expect(hello).toBeDefined();
+    expect(Array.isArray(hello!.orphanWindows)).toBe(true);
+  });
+
   it("GET /api/tours/:id with prefix returns tour", async () => {
     const prefix = tourId.slice(0, 11);
     const res = await fetch(`${baseUrl}/api/tours/${prefix}`);

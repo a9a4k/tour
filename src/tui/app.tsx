@@ -40,6 +40,7 @@ import {
   setCursorSide,
   validateCursor,
   cursorFromAnnotation,
+  cursorAtFirstFileRow,
   type Cursor,
 } from "../core/cursor-state.js";
 
@@ -373,7 +374,10 @@ function App(props: AppProps) {
       setCursor(initialCursor({ topLevelAnnotations: liveTopLevel, flatRows: flatRowsList }));
       return;
     }
-    const validated = validateCursor(cursor, flatRowsList);
+    // Pass `files` so validateCursor can snap to the next file in stream
+    // order when the cursor's file was folded out. Without `files` it
+    // would null out instead of advancing.
+    const validated = validateCursor(cursor, flatRowsList, files);
     if (validated !== cursor) setCursor(validated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatRowsList, liveTopLevel]);
@@ -382,13 +386,14 @@ function App(props: AppProps) {
   // scrollbox to scroll the row into view (block:nearest semantics so an
   // already-visible row doesn't move). Side toggle on a paired row is a
   // no-op vertically and a no-op-or-nudge horizontally per scrollbox
-  // semantics.
+  // semantics. `layout` is in deps so a Shift-L flip — which preserves the
+  // anchor but moves the visual position — re-fires the scroll.
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
     diffScrollRef.current.scrollChildIntoView(
       `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`,
     );
-  }, [cursor]);
+  }, [cursor, layout]);
 
   // Sidebar follows the cursor's file. Deps are `[cursor?.file]` (not
   // `[cursor]`) so in-file j/k motion leaves the sidebar untouched —
@@ -668,6 +673,12 @@ function App(props: AppProps) {
         if (diffScrollRef.current) {
           diffScrollRef.current.scrollChildIntoView(`file-card-${selectedRow.path}`);
         }
+        // PRD US 20: explicit sidebar-driven file selection moves the
+        // cursor to that file's first annotatable row. Folded files
+        // contribute no rows so cursor goes null. currentAnnotationId is
+        // unchanged — annotation focus is independent of code-reading
+        // position.
+        setCursor(cursorAtFirstFileRow(selectedRow.path, flatRowsList));
         return;
       }
       case "toggle-collapse": {
@@ -809,8 +820,15 @@ function App(props: AppProps) {
               const onRowMouseDown = () => {
                 setSidebarFocused(true);
                 setSelectedRowIdx(idx);
-                if (row.kind === "file" && diffScrollRef.current) {
-                  diffScrollRef.current.scrollChildIntoView(`file-card-${row.path}`);
+                if (row.kind === "file") {
+                  if (diffScrollRef.current) {
+                    diffScrollRef.current.scrollChildIntoView(`file-card-${row.path}`);
+                  }
+                  // Same semantics as the select-file action above (PRD
+                  // US 20): clicking a file in the sidebar expresses "show
+                  // me from the top." A folded click yields null since
+                  // the file contributes no flat rows.
+                  setCursor(cursorAtFirstFileRow(row.path, flatRowsList));
                 }
               };
               if (row.kind === "folder") {

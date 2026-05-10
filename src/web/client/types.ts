@@ -18,6 +18,12 @@ export interface FileClassification {
   reason?: string;
 }
 
+export interface OrphanWindow {
+  hunkIndex: number;
+  fromStart: number;
+  fromEnd: number;
+}
+
 export interface DiffFileInfo {
   name: string;
   prevName?: string;
@@ -26,6 +32,7 @@ export interface DiffFileInfo {
   classification?: FileClassification;
   oldContent?: string;
   newContent?: string;
+  orphanWindows?: OrphanWindow[];
 }
 
 export interface TourSummary {

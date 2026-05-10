@@ -6,6 +6,7 @@ import {
   validateCursor,
   resolveCursorRowIdx,
   cursorFromAnnotation,
+  cursorAtFirstFileRow,
   type Cursor,
 } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
@@ -268,7 +269,9 @@ describe("validateCursor", () => {
     expect(validateCursor(c, [])).toBeNull();
   });
 
-  it("returns null when the cursor's file has no rows", () => {
+  it("returns null when the cursor's file has no rows and no files context is given", () => {
+    // Without `files` the function can't pick a deterministic neighbour,
+    // so it falls through to null. App.tsx always passes files.
     const rows = [pairedFlat("y.txt", 1, 1)];
     const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
     expect(validateCursor(c, rows)).toBeNull();
@@ -276,6 +279,101 @@ describe("validateCursor", () => {
 
   it("returns null when input is null", () => {
     expect(validateCursor(null, [pairedFlat("x.txt", 1, 1)])).toBeNull();
+  });
+
+  // When the cursor's file becomes folded (`c` on the cursor's file in
+  // the sidebar) the row sequence loses every row from that file.
+  // validateCursor must snap to the next file in stream order so the
+  // cursor never points at an invisible row, falling back to the previous
+  // file at the tail and to null when no file in the bundle has any row.
+  describe("stream-order snap when cursor's file is gone", () => {
+    it("snaps to the first row of the next file in stream order", () => {
+      const rows = [pairedFlat("a.txt", 5, 5), pairedFlat("c.txt", 7, 7)];
+      const files = [{ name: "a.txt" }, { name: "b.txt" }, { name: "c.txt" }];
+      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const v = validateCursor(c, rows, files);
+      expect(v?.file).toBe("c.txt");
+      expect(v?.lineNumber).toBe(7);
+    });
+
+    it("falls back to the previous file when cursor was at the tail of stream order", () => {
+      const rows = [pairedFlat("a.txt", 5, 5)];
+      const files = [{ name: "a.txt" }, { name: "b.txt" }];
+      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const v = validateCursor(c, rows, files);
+      expect(v?.file).toBe("a.txt");
+      expect(v?.lineNumber).toBe(5);
+    });
+
+    it("returns null when no other file has rows (every other file folded too)", () => {
+      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      expect(validateCursor(c, [], [{ name: "a.txt" }, { name: "b.txt" }])).toBeNull();
+    });
+
+    it("preserves anchor when a sibling (non-cursor) file folds", () => {
+      // cursor.file still has rows; b.txt was folded → its rows are absent.
+      // The anchor still resolves so validateCursor is a no-op.
+      const rows = [pairedFlat("a.txt", 5, 5)];
+      const files = [{ name: "a.txt" }, { name: "b.txt" }];
+      const c: Cursor = { file: "a.txt", lineNumber: 5, side: "additions", preferredSide: "additions" };
+      expect(validateCursor(c, rows, files)).toEqual(c);
+    });
+
+    it("preserves preferredSide on the snapped row", () => {
+      const rows = [pairedFlat("c.txt", 1, 1)];
+      const files = [{ name: "b.txt" }, { name: "c.txt" }];
+      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" };
+      const v = validateCursor(c, rows, files);
+      expect(v?.preferredSide).toBe("deletions");
+    });
+  });
+});
+
+// Explicit sidebar-driven file selection (mouse click or arrow-then-
+// Return) moves the cursor to that file's first annotatable row — "show
+// me from the top" per PRD US 20. Folded files have no rows and the
+// cursor goes null.
+describe("cursorAtFirstFileRow", () => {
+  it("returns a cursor on the file's first row in stream order", () => {
+    const rows = [
+      pairedFlat("x.txt", 5, 7),
+      pairedFlat("x.txt", 6, 8),
+      pairedFlat("y.txt", 1, 1),
+    ];
+    expect(cursorAtFirstFileRow("y.txt", rows)).toEqual({
+      file: "y.txt",
+      lineNumber: 1,
+      side: "additions",
+      preferredSide: "additions",
+    });
+  });
+
+  it("picks the file's first row, not just any matching row", () => {
+    const rows = [
+      pairedFlat("x.txt", 5, 7),
+      pairedFlat("x.txt", 6, 8),
+    ];
+    const c = cursorAtFirstFileRow("x.txt", rows);
+    expect(c?.lineNumber).toBe(7);
+  });
+
+  it("returns null when the file has no rows in the flat sequence (folded, no hunks)", () => {
+    const rows = [pairedFlat("x.txt", 1, 1)];
+    expect(cursorAtFirstFileRow("y.txt", rows)).toBeNull();
+  });
+
+  it("returns null when the flat sequence is empty (snapshot-lost / empty tour)", () => {
+    expect(cursorAtFirstFileRow("anything.txt", [])).toBeNull();
+  });
+
+  it("preserves the row's natural side on a pure-deletion file row", () => {
+    const rows: FlatRow[] = [
+      flat({ file: "x.txt", side: "deletions", lineNumber: 5, leftLineNumber: 5, rightLineNumber: null }),
+    ];
+    const c = cursorAtFirstFileRow("x.txt", rows);
+    expect(c?.side).toBe("deletions");
+    expect(c?.preferredSide).toBe("deletions");
+    expect(c?.lineNumber).toBe(5);
   });
 });
 
