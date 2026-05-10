@@ -7,10 +7,41 @@ const k = (name: string, mods: { ctrl?: boolean; shift?: boolean } = {}): KeyInp
   shift: mods.shift ?? false,
 });
 
-const sidebar: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "file", cursorExists: true };
-const sidebarFolder: KeymapContext = { sidebarFocused: true, rowCount: 3, selectedRowKind: "folder", cursorExists: true };
-const diffPane: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file", cursorExists: true };
-const diffPaneNoCursor: KeymapContext = { sidebarFocused: false, rowCount: 3, selectedRowKind: "file", cursorExists: false };
+const sidebar: KeymapContext = {
+  sidebarFocused: true,
+  rowCount: 3,
+  selectedRowKind: "file",
+  cursorExists: true,
+  cursorOnInteractive: false,
+};
+const sidebarFolder: KeymapContext = {
+  sidebarFocused: true,
+  rowCount: 3,
+  selectedRowKind: "folder",
+  cursorExists: true,
+  cursorOnInteractive: false,
+};
+const diffPane: KeymapContext = {
+  sidebarFocused: false,
+  rowCount: 3,
+  selectedRowKind: "file",
+  cursorExists: true,
+  cursorOnInteractive: false,
+};
+const diffPaneNoCursor: KeymapContext = {
+  sidebarFocused: false,
+  rowCount: 3,
+  selectedRowKind: "file",
+  cursorExists: false,
+  cursorOnInteractive: false,
+};
+const diffPaneInteractive: KeymapContext = {
+  sidebarFocused: false,
+  rowCount: 3,
+  selectedRowKind: "file",
+  cursorExists: true,
+  cursorOnInteractive: true,
+};
 
 describe("dispatchKey", () => {
   it("q quits", () => {
@@ -48,7 +79,15 @@ describe("dispatchKey", () => {
   });
 
   it("j is a no-op when sidebar has no rows and cursor doesn't exist", () => {
-    expect(dispatchKey(k("j"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null, cursorExists: false }).type).toBe("noop");
+    expect(
+      dispatchKey(k("j"), {
+        sidebarFocused: true,
+        rowCount: 0,
+        selectedRowKind: null,
+        cursorExists: false,
+        cursorOnInteractive: false,
+      }).type,
+    ).toBe("noop");
   });
 
   it("c on a file row toggles per-file diff collapse", () => {
@@ -69,7 +108,13 @@ describe("dispatchKey", () => {
 
   it("c is a no-op when no row is selected and no cursor exists", () => {
     expect(
-      dispatchKey(k("c"), { sidebarFocused: true, rowCount: 0, selectedRowKind: null, cursorExists: false }).type,
+      dispatchKey(k("c"), {
+        sidebarFocused: true,
+        rowCount: 0,
+        selectedRowKind: null,
+        cursorExists: false,
+        cursorOnInteractive: false,
+      }).type,
     ).toBe("noop");
   });
 
@@ -245,5 +290,47 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
   it("sidebar j/k still drive file motion (focus-aware routing)", () => {
     expect(dispatchKey(k("j"), sidebar).type).toBe("move-file-down");
     expect(dispatchKey(k("k"), sidebar).type).toBe("move-file-up");
+  });
+});
+
+// ADR 0013 / PRD #107: Enter dispatches primary-action when the cursor
+// sits on an interactive row in the diff pane; Shift+Enter dispatches
+// primary-action-all. Diff-row Enter is a noop (Enter is reserved for
+// interactive-row actions, not an alias for `a`). Sidebar Enter retains
+// select-file.
+describe("dispatchKey — primary-action (PRD #107)", () => {
+  it("Enter on a cursor-on-interactive row dispatches primary-action", () => {
+    expect(dispatchKey(k("return"), diffPaneInteractive).type).toBe("primary-action");
+  });
+
+  it("Shift+Enter on a cursor-on-interactive row dispatches primary-action-all", () => {
+    expect(dispatchKey(k("return", { shift: true }), diffPaneInteractive).type).toBe(
+      "primary-action-all",
+    );
+  });
+
+  it("Enter on a regular diff row dispatches noop (Enter is reserved for interactive-row actions)", () => {
+    expect(dispatchKey(k("return"), diffPane).type).toBe("noop");
+  });
+
+  it("Shift+Enter on a regular diff row also dispatches noop", () => {
+    expect(dispatchKey(k("return", { shift: true }), diffPane).type).toBe("noop");
+  });
+
+  it("sidebar-focused Enter retains select-file regardless of cursor-on-interactive bit", () => {
+    // Even with cursorOnInteractive=true, sidebar focus wins — the
+    // primary-action route is gated on `!sidebarFocused`.
+    const sidebarWithInteractiveCursor = { ...sidebar, cursorOnInteractive: true };
+    expect(dispatchKey(k("return"), sidebarWithInteractiveCursor).type).toBe("select-file");
+  });
+
+  it("Enter with no cursor anchored is a noop (no row to act on)", () => {
+    expect(dispatchKey(k("return"), diffPaneNoCursor).type).toBe("noop");
+  });
+
+  it("Ctrl+Enter is not consumed as primary-action (modifier guard)", () => {
+    expect(dispatchKey(k("return", { ctrl: true }), diffPaneInteractive).type).toBe(
+      "noop",
+    );
   });
 });

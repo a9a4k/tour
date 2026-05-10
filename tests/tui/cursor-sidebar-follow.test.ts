@@ -14,6 +14,7 @@ const f = (name: string): F => ({ name });
 
 function pairedFlat(file: string, left: number, right: number): FlatRow {
   return {
+    kind: "diff",
     file,
     lineNumber: right,
     side: "additions",

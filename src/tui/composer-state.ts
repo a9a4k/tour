@@ -17,6 +17,12 @@ export function buildTopLevelComposer(args: {
   cursor: Cursor | null;
   currentAnnotation: Annotation | null;
 }): ComposerState | null {
+  // Interactive rows are not annotatable (PRD #107 US 9). `a` on an
+  // interactive cursor falls through to the silent no-op path — we don't
+  // even fall back to currentAnnotation here, because the user pressed `a`
+  // with deliberate cursor placement and silently jumping to a different
+  // anchor would be surprising.
+  if (args.cursor && args.cursor.interactive) return null;
   if (args.cursor) {
     return {
       kind: "top-level",

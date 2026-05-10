@@ -41,8 +41,10 @@ import {
   validateCursor,
   cursorFromAnnotation,
   cursorAtFirstFileRow,
+  cursorOnInteractive,
   type Cursor,
 } from "../core/cursor-state.js";
+import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -136,6 +138,11 @@ function fileCardBody(
     side: "additions" | "deletions",
     lineNumber: number,
   ) => void,
+  onInteractiveClick: (
+    file: string,
+    subKind: InteractiveSubKind,
+    boundaryRef: BoundaryRef,
+  ) => void,
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
@@ -150,6 +157,7 @@ function fileCardBody(
       currentAnnotationId={currentAnnotationId}
       cursor={cursor}
       onCursorClick={onCursorClick}
+      onInteractiveClick={onInteractiveClick}
       repliesCollapsed={repliesCollapsed}
       replyLock={replyLock}
       now={now}
@@ -440,7 +448,7 @@ function App(props: AppProps) {
   }, [liveTopLevel, currentAnnotationId]);
 
   const footerHints =
-    "j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: annotate  ·  r: reply  ·  c: collapse  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  q: quit";
+    "j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: annotate  ·  r: reply  ·  Enter: expand  ·  S+Enter: expand all  ·  c: collapse  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  q: quit";
   const footer =
     liveTopLevel.length > 0
       ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
@@ -554,6 +562,76 @@ function App(props: AppProps) {
     }
   };
 
+  // Mouse click on an interactive row (PRD #107 US 16): set cursor with
+  // `interactive` populated, no `side`. preferredSide carries forward
+  // from the existing cursor so a subsequent move back onto a paired diff
+  // row honours the user's last h/l preference.
+  const onInteractiveClick = (
+    file: string,
+    subKind: InteractiveSubKind,
+    boundaryRef: BoundaryRef,
+  ) => {
+    setSidebarFocused(false);
+    setCursor((prev) =>
+      cursorOnInteractive({
+        file,
+        subKind,
+        boundaryRef,
+        preferredSide: prev?.preferredSide ?? "additions",
+      }),
+    );
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
+    if (located) {
+      if (located.collapsedFolders !== collapsedFolders) {
+        setCollapsedFolders(located.collapsedFolders as Set<string>);
+      }
+      if (located.rowIdx !== safeRowIdx) {
+        setSelectedRowIdx(located.rowIdx);
+      }
+    }
+  };
+
+  // Stub handlers for interactive-row primary actions (PRD #107). The
+  // routing primitive ships in this slice; the actual expansion behaviour
+  // — revealing ±10 lines into a hunk gap, expanding a classifier-collapsed
+  // file's body — is delivered by PRD #108 (issue #108). Stubs intentionally
+  // do nothing observable so the keymap + dispatch surface can be tested
+  // independently.
+  const expandHunkBoundary = (_boundaryRef: BoundaryRef, _all: boolean) => {
+    // PRD #108
+  };
+  const expandTopBoundary = (_all: boolean) => {
+    // PRD #108
+  };
+  const expandBottomBoundary = (_all: boolean) => {
+    // PRD #108
+  };
+  const expandCollapsedFile = (_file: string) => {
+    // PRD #108
+  };
+
+  // Routes a primary-action / primary-action-all keystroke to the row-kind-
+  // specific handler. Pure dispatch table — the actual expansion behaviour
+  // lives in the stubs above.
+  const dispatchPrimaryAction = (all: boolean) => {
+    if (!cursor || !cursor.interactive) return;
+    const { subKind, boundaryRef } = cursor.interactive;
+    switch (subKind) {
+      case "hunk-separator":
+        expandHunkBoundary(boundaryRef, all);
+        return;
+      case "boundary-top":
+        expandTopBoundary(all);
+        return;
+      case "boundary-bottom":
+        expandBottomBoundary(all);
+        return;
+      case "collapsed-file":
+        expandCollapsedFile(cursor.file);
+        return;
+    }
+  };
+
   const openTopLevelComposer = () => {
     const currentAnn =
       liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
@@ -648,6 +726,7 @@ function App(props: AppProps) {
         rowCount: visibleRows.length,
         selectedRowKind: selectedRow?.kind ?? null,
         cursorExists: cursor !== null,
+        cursorOnInteractive: cursor?.interactive != null,
       },
     );
 
@@ -777,6 +856,12 @@ function App(props: AppProps) {
       case "cursor-side-right":
         setCursor((c) => setCursorSide(c, "additions", flatRowsList));
         return;
+      case "primary-action":
+        dispatchPrimaryAction(false);
+        return;
+      case "primary-action-all":
+        dispatchPrimaryAction(true);
+        return;
     }
   });
 
@@ -901,6 +986,7 @@ function App(props: AppProps) {
                       currentAnnotationId,
                       cursor,
                       onCursorClick,
+                      onInteractiveClick,
                       repliesCollapsed,
                       liveReplyLock,
                       now,

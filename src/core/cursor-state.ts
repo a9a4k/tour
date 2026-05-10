@@ -1,22 +1,36 @@
 import type { Annotation } from "./types.js";
-import type { FlatRow } from "./flat-rows.js";
+import type {
+  FlatRow,
+  DiffFlatRow,
+  InteractiveFlatRow,
+} from "./flat-rows.js";
+import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 
 /**
  * A semantic anchor (file, line, side) plus a sticky `preferredSide` the
  * user toggles with h/l. Layout, fold state, and bundle reloads only change
  * how the cursor RESOLVES against the diff — the anchor itself is invariant.
+ *
+ * `interactive` (ADR 0013) is set when the cursor sits on a hunk-separator,
+ * file-top / file-bottom boundary, or collapsed-file synthetic row. When
+ * present, `lineNumber` and `side` are unused (existing fields retained for
+ * ABI simplicity but ignored — `preferredSide` is still tracked so a
+ * subsequent move back onto a paired diff row honours the user's last
+ * h/l preference).
  */
 export interface Cursor {
   file: string;
   lineNumber: number;
   side: "additions" | "deletions";
   preferredSide: "additions" | "deletions";
+  interactive?: { subKind: InteractiveSubKind; boundaryRef: BoundaryRef };
 }
 
 /**
  * Initial cursor: first top-level Annotation's anchor if any, else first
- * row of the first non-folded file. Returns null when no rows are
- * addressable (empty Tour, all files folded, snapshot lost).
+ * DIFF row of the first non-folded file. Returns null when no diff row is
+ * addressable (empty Tour, all files folded, snapshot lost). Per PRD #107
+ * US 14, initial position never lands on an interactive row by default.
  */
 export function initialCursor(args: {
   topLevelAnnotations: Annotation[];
@@ -25,10 +39,17 @@ export function initialCursor(args: {
   if (args.flatRows.length === 0) return null;
   const a = args.topLevelAnnotations[0];
   if (a) {
-    const target = args.flatRows.find((r) => rowMatchesAnchor(r, a.file, a.side, a.line_start));
+    const target = args.flatRows.find(
+      (r): r is DiffFlatRow =>
+        r.kind === "diff" && rowMatchesAnchor(r, a.file, a.side, a.line_start),
+    );
     if (target) return cursorFromRow(target, a.side);
   }
-  return cursorFromRow(args.flatRows[0], args.flatRows[0].side);
+  const firstDiff = args.flatRows.find(
+    (r): r is DiffFlatRow => r.kind === "diff",
+  );
+  if (!firstDiff) return null;
+  return cursorFromRow(firstDiff, firstDiff.side);
 }
 
 export function moveCursor(
@@ -50,12 +71,20 @@ export function setCursorSide(
   flatRows: FlatRow[],
 ): Cursor | null {
   if (!cursor) return null;
+  // Interactive rows have no side concept — h/l is a silent no-op there
+  // (PRD #107 US 10). preferredSide is preserved untouched so the next
+  // diff-row landing honours the user's last side choice.
+  if (cursor.interactive) return cursor;
   const idx = resolveCursorRowIdx(cursor, flatRows);
   if (idx === -1) return cursor;
+  const row = flatRows[idx];
+  // Should never happen — a non-interactive cursor that resolves must land
+  // on a diff row — but the union narrows guard against future row kinds.
+  if (row.kind !== "diff") return cursor;
   // preferredSide always updates; effective side snaps to whatever the row
   // actually offers (paired rows honour the new side, single-side rows force
   // their populated side).
-  return cursorFromRow(flatRows[idx], side);
+  return cursorFromRow(row, side);
 }
 
 /**
@@ -67,6 +96,11 @@ export function setCursorSide(
  * from the bundle), `files` is consulted to snap to the next file in
  * stream order — falling back to the previous file when the cursor's file
  * was the last one. Returns null when no valid row exists in the bundle.
+ *
+ * Interactive cursors (ADR 0013) preserve identity by `(file, subKind,
+ * boundaryRef)` — the same boundary still resolves across SHA-stable
+ * bundle reloads. When the boundary is gone (hunk count changed,
+ * file removed, file folded) the same fallback rules apply.
  */
 export function validateCursor(
   cursor: Cursor | null,
@@ -94,18 +128,46 @@ export function validateCursor(
 
 /**
  * Cursor at a file's first annotatable row in stream order, or null when
- * the file has no rows (folded, classified-no-textual, snapshot-lost,
+ * the file has no diff row (folded, classified-no-textual, snapshot-lost,
  * empty tour). Used by sidebar-driven file selection (PRD US 20) — the
  * explicit "show me from the top" gesture distinct from j/k cross-file
  * motion which lands on the immediate-next row, not the file's first.
+ *
+ * Skips interactive rows: "annotatable" specifically means a real diff row
+ * (PRD #107 US 14 — initial position never lands on an interactive row).
  */
 export function cursorAtFirstFileRow(
   file: string,
   flatRows: FlatRow[],
 ): Cursor | null {
-  const r = flatRows.find((row) => row.file === file);
+  const r = flatRows.find(
+    (row): row is DiffFlatRow => row.kind === "diff" && row.file === file,
+  );
   if (!r) return null;
   return cursorFromRow(r, r.side);
+}
+
+/**
+ * Cursor anchored to an interactive row by `(file, subKind, boundaryRef)`.
+ * Used by mouse click on an interactive row (PRD #107 US 16) — sets
+ * cursor.interactive, no `side`. preferredSide carries forward so a
+ * subsequent move back onto a paired diff row honours the user's last
+ * h/l preference.
+ */
+export function cursorOnInteractive(args: {
+  file: string;
+  subKind: InteractiveSubKind;
+  boundaryRef: BoundaryRef;
+  preferredSide?: "additions" | "deletions";
+}): Cursor {
+  const preferredSide = args.preferredSide ?? "additions";
+  return {
+    file: args.file,
+    lineNumber: 0,
+    side: preferredSide,
+    preferredSide,
+    interactive: { subKind: args.subKind, boundaryRef: args.boundaryRef },
+  };
 }
 
 export function resolveCursorRowIdx(
@@ -113,8 +175,22 @@ export function resolveCursorRowIdx(
   flatRows: FlatRow[],
 ): number {
   if (!cursor) return -1;
+  if (cursor.interactive) {
+    const target = cursor.interactive;
+    for (let i = 0; i < flatRows.length; i++) {
+      const r = flatRows[i];
+      if (r.kind !== "interactive") continue;
+      if (r.file !== cursor.file) continue;
+      if (r.subKind !== target.subKind) continue;
+      if (r.boundaryRef !== target.boundaryRef) continue;
+      return i;
+    }
+    return -1;
+  }
   for (let i = 0; i < flatRows.length; i++) {
-    if (rowMatchesAnchor(flatRows[i], cursor.file, cursor.side, cursor.lineNumber)) {
+    const r = flatRows[i];
+    if (r.kind !== "diff") continue;
+    if (rowMatchesAnchor(r, cursor.file, cursor.side, cursor.lineNumber)) {
       return i;
     }
   }
@@ -138,7 +214,7 @@ export function cursorFromAnnotation(a: Annotation): Cursor {
 }
 
 function rowMatchesAnchor(
-  row: FlatRow,
+  row: DiffFlatRow,
   file: string,
   side: "additions" | "deletions",
   lineNumber: number,
@@ -148,7 +224,13 @@ function rowMatchesAnchor(
   return row.leftLineNumber === lineNumber;
 }
 
-function cursorFromRow(row: FlatRow, preferredSide: "additions" | "deletions"): Cursor {
+function cursorFromRow(
+  row: FlatRow,
+  preferredSide: "additions" | "deletions",
+): Cursor {
+  if (row.kind === "interactive") {
+    return cursorFromInteractiveRow(row, preferredSide);
+  }
   // Paired rows honour preferredSide. Single-side rows force their populated
   // side (a deletion-only row can't anchor an additions-side cursor).
   const effective: "additions" | "deletions" = row.paired ? preferredSide : row.side;
@@ -161,5 +243,18 @@ function cursorFromRow(row: FlatRow, preferredSide: "additions" | "deletions"): 
     lineNumber,
     side: effective,
     preferredSide,
+  };
+}
+
+function cursorFromInteractiveRow(
+  row: InteractiveFlatRow,
+  preferredSide: "additions" | "deletions",
+): Cursor {
+  return {
+    file: row.file,
+    lineNumber: 0,
+    side: preferredSide,
+    preferredSide,
+    interactive: { subKind: row.subKind, boundaryRef: row.boundaryRef },
   };
 }

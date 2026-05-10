@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
 import { flatRows } from "../../src/core/flat-rows.js";
-import { planRows, type PlannedRow } from "../../src/core/diff-rows.js";
+import {
+  planRows,
+  type PlannedRow,
+  type InteractiveRow,
+} from "../../src/core/diff-rows.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
 import type { Annotation } from "../../src/core/types.js";
 
@@ -170,5 +174,105 @@ describe("flatRows", () => {
 
   it("returns an empty list when there are no files", () => {
     expect(flatRows([], new Map(), () => false)).toEqual([]);
+  });
+});
+
+// ADR 0013 / PRD #107: the cursor walks `diff` rows AND `interactive`
+// rows. Interactive rows come from the planner (PRD #108) — these tests
+// drive the flat-rows builder with synthetic InteractiveRow planner
+// output to lock in the FlatRow shape and the pass-through semantics.
+describe("flatRows interactive rows (PRD #107)", () => {
+  function interactive(parts: {
+    subKind: InteractiveRow["subKind"];
+    boundaryRef: InteractiveRow["boundaryRef"];
+    text?: string;
+  }): InteractiveRow {
+    return { kind: "interactive", subKind: parts.subKind, boundaryRef: parts.boundaryRef, text: parts.text };
+  }
+
+  it("emits a hunk-separator interactive FlatRow when the planner emits one", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      ...plannedFor(SIMPLE_DIFF, [], "split"),
+      interactive({ subKind: "hunk-separator", boundaryRef: 1, text: "··· 12 hidden ···" }),
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    const interactiveRow = flat.find((r) => r.kind === "interactive");
+    expect(interactiveRow).toBeDefined();
+    expect(interactiveRow!.kind).toBe("interactive");
+    if (interactiveRow!.kind !== "interactive") throw new Error("narrow");
+    expect(interactiveRow!.subKind).toBe("hunk-separator");
+    expect(interactiveRow!.boundaryRef).toBe(1);
+    expect(interactiveRow!.file).toBe("x.txt");
+  });
+
+  it("preserves the order of all four interactive subKinds in stream order", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      interactive({ subKind: "boundary-top", boundaryRef: "top" }),
+      interactive({ subKind: "hunk-separator", boundaryRef: 1 }),
+      interactive({ subKind: "boundary-bottom", boundaryRef: "bottom" }),
+      interactive({ subKind: "collapsed-file", boundaryRef: "top" }),
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    const subKinds = flat
+      .filter((r) => r.kind === "interactive")
+      .map((r) => (r.kind === "interactive" ? r.subKind : null));
+    expect(subKinds).toEqual([
+      "boundary-top",
+      "hunk-separator",
+      "boundary-bottom",
+      "collapsed-file",
+    ]);
+  });
+
+  it("interactive rows carry no `side` or `lineNumber`", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      interactive({ subKind: "hunk-separator", boundaryRef: 0 }),
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    const r = flat[0];
+    expect(r.kind).toBe("interactive");
+    if (r.kind !== "interactive") throw new Error("narrow");
+    expect((r as unknown as { side?: unknown }).side).toBeUndefined();
+    expect((r as unknown as { lineNumber?: unknown }).lineNumber).toBeUndefined();
+  });
+
+  it("boundaryRef survives identical re-runs of the builder (idempotent)", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      interactive({ subKind: "hunk-separator", boundaryRef: 2 }),
+      interactive({ subKind: "boundary-top", boundaryRef: "top" }),
+    ];
+    const map = new Map([["x.txt", rows]]);
+    const a = flatRows([f], map, () => false);
+    const b = flatRows([f], map, () => false);
+    expect(a.map((r) => (r.kind === "interactive" ? r.boundaryRef : null))).toEqual(
+      b.map((r) => (r.kind === "interactive" ? r.boundaryRef : null)),
+    );
+  });
+
+  it("a folded file contributes zero rows including its interactive rows", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      ...plannedFor(SIMPLE_DIFF, [], "split"),
+      interactive({ subKind: "hunk-separator", boundaryRef: 0 }),
+      interactive({ subKind: "boundary-bottom", boundaryRef: "bottom" }),
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => true);
+    expect(flat).toEqual([]);
+  });
+
+  it("diff rows continue to carry kind: 'diff' when interleaved with interactive rows", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      interactive({ subKind: "boundary-top", boundaryRef: "top" }),
+      ...plannedFor(SIMPLE_DIFF, [], "split"),
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    const diffRows = flat.filter((r) => r.kind === "diff");
+    expect(diffRows.length).toBeGreaterThan(0);
+    for (const r of diffRows) expect(r.kind).toBe("diff");
   });
 });

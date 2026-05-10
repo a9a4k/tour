@@ -13,6 +13,11 @@ export interface KeymapContext {
    *  navigation we can't perform (empty Tour, all files folded,
    *  snapshot-lost). */
   cursorExists: boolean;
+  /** Whether the line cursor sits on an interactive row (hunk-separator,
+   *  file boundary, collapsed-file indicator). Only when this is true do
+   *  Enter / Shift+Enter dispatch primary-action / primary-action-all in
+   *  the diff pane (PRD #107). On a regular diff row Enter is a noop. */
+  cursorOnInteractive: boolean;
 }
 
 export type KeyAction =
@@ -40,6 +45,8 @@ export type KeyAction =
   | { type: "cursor-up" }
   | { type: "cursor-side-left" }
   | { type: "cursor-side-right" }
+  | { type: "primary-action" }
+  | { type: "primary-action-all" }
   | { type: "noop" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
@@ -67,6 +74,20 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "t") return { type: "open-picker" };
     if (key.name === "a") return { type: "open-top-level-composer" };
     if (key.name === "r") return { type: "open-reply-composer" };
+  }
+
+  // Diff-pane Enter / Shift+Enter (ADR 0013): only fires when the cursor
+  // sits on an interactive row (hunk-separator, file boundary, collapsed-
+  // file indicator). On a regular diff row Enter is a noop — `Enter` is
+  // reserved for interactive-row actions, not an alias for `a`. The
+  // sidebar-focused `Enter` route below still wins (see below).
+  if (
+    !ctx.sidebarFocused &&
+    !key.ctrl &&
+    ctx.cursorOnInteractive &&
+    key.name === "return"
+  ) {
+    return key.shift ? { type: "primary-action-all" } : { type: "primary-action" };
   }
 
   if (ctx.sidebarFocused && ctx.rowCount > 0) {

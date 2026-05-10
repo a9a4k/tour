@@ -621,6 +621,131 @@ index 1..2 100644
     });
   });
 
+  // ADR 0013 / PRD #107: cursor's `▶` glyph + gutter bg renders on
+  // interactive rows consistent with #100's gutter-confined visual
+  // treatment. The interactive row text body comes from the planner;
+  // this slice's responsibility is only the cursor visual.
+  describe("interactive-row cursor visual (PRD #107)", () => {
+    function findIdElement(tree: unknown, id: string): AnyElement | undefined {
+      return flatten(tree).find((el) => el.props["id"] === id);
+    }
+
+    it("renders an interactive row with cursorActive=true when cursor matches (file, subKind, boundaryRef)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "hunk-separator",
+          boundaryRef: 1,
+          text: "··· 12 hidden ···",
+        },
+      ];
+      const cursor = {
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "hunk-separator" as const, boundaryRef: 1 },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["cursorActive"]).toBe(true);
+    });
+
+    it("does not light up an interactive row when the cursor's interactive anchor differs", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "hunk-separator", boundaryRef: 1 },
+      ];
+      const cursor = {
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "hunk-separator" as const, boundaryRef: 99 },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBeFalsy();
+    });
+
+    it("does not light up an interactive row when cursor is on a different file", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "boundary-top", boundaryRef: "top" },
+      ];
+      const cursor = {
+        file: "y.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "boundary-top" as const, boundaryRef: "top" as const },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBeFalsy();
+    });
+
+    it("does not light up when cursor is a regular diff cursor (no interactive field)", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "hunk-separator", boundaryRef: 0 },
+      ];
+      const cursor = {
+        file: "x.txt",
+        lineNumber: 5,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBeFalsy();
+    });
+
+    it("emits a stable id `interactive-row-${file}-${subKind}-${boundaryRef}` on the row wrapper", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "hunk-separator", boundaryRef: 1 },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-hunk-separator-1");
+      expect(wrapper).toBeDefined();
+    });
+
+    it("mouse click dispatches onInteractiveClick(file, subKind, boundaryRef)", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "boundary-bottom", boundaryRef: "bottom" },
+      ];
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.txt",
+        rows,
+        layout: "split",
+        currentAnnotationId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-boundary-bottom-bottom");
+      expect(wrapper).toBeDefined();
+      const handler = wrapper!.props["onMouseDown"];
+      expect(typeof handler).toBe("function");
+      (handler as () => void)();
+      expect(onInteractiveClick).toHaveBeenCalledWith(
+        "x.txt",
+        "boundary-bottom",
+        "bottom",
+      );
+    });
+
+    it("interactive row does not pass diffBg / annotation tint props (it has no source content)", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "hunk-separator", boundaryRef: 0 },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["diffBg"]).toBeUndefined();
+      expect(cells[0].props["gutterTinted"]).toBe(false);
+      expect(cells[0].props["contentTinted"]).toBe(false);
+      expect(cells[0].props["gutterAccent"]).toBe(false);
+    });
+  });
+
   it("uses semantic diff-bg props sourced from the theme (no hard-coded hex passed to DiffLine)", () => {
     // The DiffRows wrapper passes the semantic "addition"/"deletion" tag;
     // the actual color is resolved inside DiffLine from the theme. Assert

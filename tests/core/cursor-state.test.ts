@@ -7,13 +7,22 @@ import {
   resolveCursorRowIdx,
   cursorFromAnnotation,
   cursorAtFirstFileRow,
+  cursorOnInteractive,
   type Cursor,
 } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 import type { Annotation } from "../../src/core/types.js";
 
-function flat(parts: Partial<FlatRow> & Pick<FlatRow, "file" | "lineNumber" | "side">): FlatRow {
+function flat(parts: {
+  file: string;
+  lineNumber: number;
+  side: "additions" | "deletions";
+  leftLineNumber?: number | null;
+  rightLineNumber?: number | null;
+  paired?: boolean;
+}): FlatRow {
   return {
+    kind: "diff",
     file: parts.file,
     lineNumber: parts.lineNumber,
     side: parts.side,
@@ -25,12 +34,26 @@ function flat(parts: Partial<FlatRow> & Pick<FlatRow, "file" | "lineNumber" | "s
 
 function pairedFlat(file: string, left: number, right: number): FlatRow {
   return {
+    kind: "diff",
     file,
     lineNumber: right,
     side: "additions",
     leftLineNumber: left,
     rightLineNumber: right,
     paired: true,
+  };
+}
+
+function interactiveFlat(parts: {
+  file: string;
+  subKind: "hunk-separator" | "boundary-top" | "boundary-bottom" | "collapsed-file";
+  boundaryRef: number | "top" | "bottom";
+}): FlatRow {
+  return {
+    kind: "interactive",
+    file: parts.file,
+    subKind: parts.subKind,
+    boundaryRef: parts.boundaryRef,
   };
 }
 
@@ -443,5 +466,173 @@ describe("resolveCursorRowIdx", () => {
 
   it("returns -1 when cursor is null", () => {
     expect(resolveCursorRowIdx(null, [pairedFlat("x.txt", 1, 1)])).toBe(-1);
+  });
+});
+
+// ADR 0013 / PRD #107: cursor extends to walk interactive rows alongside
+// diff rows. Anchor identity is `(file, subKind, boundaryRef)` instead
+// of `(file, side, lineNumber)`. h/l side toggle is a no-op there;
+// `a` (top-level annotate) is also a no-op (composer-state's job —
+// covered separately).
+describe("interactive-row cursor support (PRD #107)", () => {
+  it("moveCursor lands on an interactive row in the stream", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      pairedFlat("x.txt", 2, 2),
+    ];
+    const c: Cursor = {
+      file: "x.txt",
+      lineNumber: 1,
+      side: "additions",
+      preferredSide: "additions",
+    };
+    const next = moveCursor(c, "down", rows);
+    expect(next?.interactive).toBeDefined();
+    expect(next?.interactive?.subKind).toBe("hunk-separator");
+    expect(next?.interactive?.boundaryRef).toBe(1);
+    expect(next?.file).toBe("x.txt");
+  });
+
+  it("moveCursor leaves an interactive row back onto a diff row", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      pairedFlat("x.txt", 5, 5),
+    ];
+    const c: Cursor = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "hunk-separator",
+      boundaryRef: 1,
+    });
+    const next = moveCursor(c, "down", rows);
+    expect(next?.interactive).toBeUndefined();
+    expect(next?.lineNumber).toBe(5);
+  });
+
+  it("moveCursor preserves preferredSide across a diff→interactive→diff hop", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      pairedFlat("x.txt", 2, 2),
+    ];
+    const c: Cursor = {
+      file: "x.txt",
+      lineNumber: 1,
+      side: "deletions",
+      preferredSide: "deletions",
+    };
+    const onInteractive = moveCursor(c, "down", rows);
+    expect(onInteractive?.preferredSide).toBe("deletions");
+    const back = moveCursor(onInteractive, "down", rows);
+    expect(back?.preferredSide).toBe("deletions");
+    expect(back?.side).toBe("deletions");
+  });
+
+  it("setCursorSide is a no-op on interactive rows (preferredSide preserved)", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 0 }),
+    ];
+    const c: Cursor = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "hunk-separator",
+      boundaryRef: 0,
+      preferredSide: "additions",
+    });
+    expect(setCursorSide(c, "deletions", rows)).toBe(c);
+  });
+
+  it("validateCursor preserves an interactive anchor when its boundary still resolves", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+    ];
+    const c: Cursor = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "boundary-top",
+      boundaryRef: "top",
+    });
+    expect(validateCursor(c, rows)).toBe(c);
+  });
+
+  it("validateCursor snaps interactive cursor to file's first row when its boundary is gone", () => {
+    const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
+    const c: Cursor = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "hunk-separator",
+      boundaryRef: 7,
+    });
+    const v = validateCursor(c, rows);
+    expect(v?.interactive).toBeUndefined();
+    expect(v?.file).toBe("x.txt");
+    expect(v?.lineNumber).toBe(1);
+  });
+
+  it("resolveCursorRowIdx resolves an interactive anchor by (file, subKind, boundaryRef)", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 0 }),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+    ];
+    const c: Cursor = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "hunk-separator",
+      boundaryRef: 1,
+    });
+    expect(resolveCursorRowIdx(c, rows)).toBe(2);
+  });
+
+  it("resolveCursorRowIdx returns -1 when an interactive anchor doesn't match any row", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 0 }),
+    ];
+    const c: Cursor = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "hunk-separator",
+      boundaryRef: 99,
+    });
+    expect(resolveCursorRowIdx(c, rows)).toBe(-1);
+  });
+
+  it("initialCursor never lands on an interactive row by default (PRD US 14)", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+      pairedFlat("x.txt", 5, 5),
+    ];
+    const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
+    expect(cursor?.interactive).toBeUndefined();
+    expect(cursor?.lineNumber).toBe(5);
+  });
+
+  it("initialCursor returns null when only interactive rows exist (no diff anchor)", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "collapsed-file", boundaryRef: "top" }),
+    ];
+    expect(initialCursor({ topLevelAnnotations: [], flatRows: rows })).toBeNull();
+  });
+
+  it("cursorAtFirstFileRow skips interactive rows to land on the first diff row", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+      pairedFlat("x.txt", 5, 5),
+    ];
+    const c = cursorAtFirstFileRow("x.txt", rows);
+    expect(c?.interactive).toBeUndefined();
+    expect(c?.lineNumber).toBe(5);
+  });
+
+  it("cursorOnInteractive builds a cursor with interactive populated and no resolvable side", () => {
+    const c = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "collapsed-file",
+      boundaryRef: "top",
+    });
+    expect(c.interactive).toEqual({ subKind: "collapsed-file", boundaryRef: "top" });
+    expect(c.file).toBe("x.txt");
+  });
+
+  it("n/p selectors don't target interactive rows (cursorFromAnnotation produces no interactive cursor)", () => {
+    const a = ann({ id: "a1", side: "additions", line_start: 5, line_end: 5 });
+    const c = cursorFromAnnotation(a);
+    expect(c.interactive).toBeUndefined();
   });
 });

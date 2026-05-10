@@ -1,4 +1,9 @@
-import type { PlannedRow, DiffRow } from "../core/diff-rows.js";
+import type {
+  PlannedRow,
+  DiffRow,
+  InteractiveSubKind,
+  BoundaryRef,
+} from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
 import { annotationCardSlot } from "./annotation-placement.js";
@@ -24,6 +29,14 @@ interface DiffRowsProps {
     file: string,
     side: "additions" | "deletions",
     lineNumber: number,
+  ) => void;
+  /** Mouse-click handler for an interactive row (PRD #107). No `side`
+   *  argument — interactive rows are addressed by `(file, subKind,
+   *  boundaryRef)`. */
+  onInteractiveClick?: (
+    file: string,
+    subKind: InteractiveSubKind,
+    boundaryRef: BoundaryRef,
   ) => void;
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
@@ -58,6 +71,20 @@ function unifiedGutter(row: DiffRow): string {
 
 function rowId(file: string, side: "additions" | "deletions", lineNumber: number): string {
   return `diff-row-${file}-${side}-${lineNumber}`;
+}
+
+function interactiveRowId(
+  file: string,
+  subKind: InteractiveSubKind,
+  boundaryRef: BoundaryRef,
+): string {
+  return `interactive-row-${file}-${subKind}-${boundaryRef}`;
+}
+
+function interactivePadGutter(): string {
+  // Match the split-side gutter footprint (LINE_NUMBER_WIDTH + " ") so the
+  // interactive row's text aligns with the diff column on its right.
+  return " ".repeat(LINE_NUMBER_WIDTH + 1);
 }
 
 function splitClickTarget(
@@ -97,6 +124,7 @@ export function DiffRows({
   currentAnnotationId,
   cursor,
   onCursorClick,
+  onInteractiveClick,
   repliesCollapsed,
   replyLock,
   now,
@@ -113,6 +141,37 @@ export function DiffRows({
             <text key={key} fg={theme.fg.muted}>
               {row.header}
             </text>
+          );
+        }
+        if (row.kind === "interactive") {
+          // Interactive row visual (ADR 0013): cursor's `▶` glyph + gutter
+          // bg in the line-number column on the active side, consistent
+          // with the diff-row treatment. The text body (e.g. "··· N
+          // hidden ···") comes from the planner.
+          const cursorOnFile = cursor?.file === fileName ? cursor : null;
+          const cursorActive =
+            cursorOnFile != null &&
+            cursorOnFile.interactive != null &&
+            cursorOnFile.interactive.subKind === row.subKind &&
+            cursorOnFile.interactive.boundaryRef === row.boundaryRef;
+          const id = interactiveRowId(fileName, row.subKind, row.boundaryRef);
+          const onMouseDown = onInteractiveClick
+            ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
+            : undefined;
+          return (
+            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
+              <DiffLine
+                gutter={interactivePadGutter()}
+                text={row.text ?? ""}
+                gutterTinted={false}
+                contentTinted={false}
+                gutterAccent={false}
+                cursorActive={cursorActive}
+                filetype={filetype}
+                syntaxStyle={syntaxStyle}
+                width="100%"
+              />
+            </box>
           );
         }
         if (row.kind === "annotation") {

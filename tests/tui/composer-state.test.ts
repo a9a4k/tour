@@ -105,6 +105,37 @@ describe("buildTopLevelComposer", () => {
     });
     expect(state).toBeNull();
   });
+
+  // ADR 0013 / PRD #107 US 9: interactive rows are not annotatable. `a`
+  // on an interactive cursor falls through to the silent no-op path —
+  // even when a fallback `currentAnnotation` is available, we don't
+  // silently retarget the composer to a different anchor.
+  it("returns null when the cursor sits on an interactive row", () => {
+    const c: Cursor = {
+      file: "src/foo.ts",
+      lineNumber: 0,
+      side: "additions",
+      preferredSide: "additions",
+      interactive: { subKind: "hunk-separator", boundaryRef: 1 },
+    };
+    expect(
+      buildTopLevelComposer({ cursor: c, currentAnnotation: null }),
+    ).toBeNull();
+  });
+
+  it("returns null on interactive cursor even when a current annotation exists (no silent retarget)", () => {
+    const c: Cursor = {
+      file: "src/foo.ts",
+      lineNumber: 0,
+      side: "additions",
+      preferredSide: "additions",
+      interactive: { subKind: "boundary-top", boundaryRef: "top" },
+    };
+    const a = ann({ id: "a1", line_start: 10, line_end: 10 });
+    expect(
+      buildTopLevelComposer({ cursor: c, currentAnnotation: a }),
+    ).toBeNull();
+  });
 });
 
 describe("buildReplyComposer", () => {

@@ -2,7 +2,11 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import type { Annotation } from "./types.js";
 import { buildThreads, topLevelAnnotations } from "./threads.js";
 
-export type PlannedRow = DiffRow | HunkHeaderRow | AnnotationRow;
+export type PlannedRow =
+  | DiffRow
+  | HunkHeaderRow
+  | AnnotationRow
+  | InteractiveRow;
 
 export interface DiffRow {
   kind: "diff-row";
@@ -28,6 +32,34 @@ export interface AnnotationRow {
   annotation: Annotation;
   replies: Annotation[];
   id: string;
+}
+
+/** An interactive row family the line cursor walks alongside diff rows
+ *  (ADR 0013). Three sub-kinds: hunk-separator gaps between hunks,
+ *  synthetic file-top / file-bottom boundaries when a file has Hidden
+ *  context at its edges, and the synthetic indicator row a classifier-
+ *  collapsed file emits in place of its diff body. boundaryRef is opaque
+ *  to the cursor: numeric for hunk-separators (gap index = next hunk's
+ *  index), `'top'` / `'bottom'` for file boundaries, `'top'` for
+ *  collapsed-file rows. The planner emits the visible content (the
+ *  `··· N hidden ···` string etc.); this slice ships only the row
+ *  family + cursor routing — actual expansion handlers stub out and are
+ *  filled in by PRD #108. */
+export type InteractiveSubKind =
+  | "hunk-separator"
+  | "boundary-top"
+  | "boundary-bottom"
+  | "collapsed-file";
+
+export type BoundaryRef = number | "top" | "bottom";
+
+export interface InteractiveRow {
+  kind: "interactive";
+  subKind: InteractiveSubKind;
+  boundaryRef: BoundaryRef;
+  /** Optional human-readable body the planner can fill in (e.g. "··· 12
+   *  hidden ···"); the cursor visual works regardless. */
+  text?: string;
 }
 
 export function planRows(
