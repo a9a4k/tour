@@ -8,6 +8,7 @@ import {
   deleteReplyLock,
 } from "./reply-lock.js";
 import { buildEnvelope, spawnAdapter } from "./agent-adapter.js";
+import { buildThreads } from "./threads.js";
 import type { Annotation } from "./types.js";
 
 export interface ReplyRunnerOptions {
@@ -31,18 +32,37 @@ export class ReplyRunner {
   private readonly seen = new Set<string>();
   private inFlight = false;
   private initialized = false;
+  private primePromise: Promise<void> | null = null;
 
   constructor(opts: ReplyRunnerOptions) {
     this.opts = opts;
   }
 
   // Seed the seen-set from the current annotations file so that pre-existing
-  // human-authored Annotations don't fire the agent on first launch. Call
-  // once before wiring up the watcher.
-  async prime(): Promise<void> {
-    const annotations = await this.readSafely();
-    for (const a of annotations) this.seen.add(a.id);
-    this.initialized = true;
+  // entries don't all re-fire on first launch. Per-thread exception: if a
+  // thread's last entry is `author_kind === "human"`, the agent owes a reply
+  // — leave the trailing human entry OUT of seen so the next tick() picks it
+  // up and dispatches. Handles both (a) the user wrote during prime() race
+  // and (b) the user wrote while the server was off, then started the server.
+  //
+  // Memoized so concurrent prime()/tick() calls await the same promise rather
+  // than racing parallel reads of the file.
+  prime(): Promise<void> {
+    if (!this.primePromise) {
+      this.primePromise = (async () => {
+        const annotations = await this.readSafely();
+        for (const a of annotations) this.seen.add(a.id);
+        for (const t of buildThreads(annotations)) {
+          const chain = [t.root, ...t.replies];
+          const last = chain[chain.length - 1];
+          if (last && last.author_kind === "human") {
+            this.seen.delete(last.id);
+          }
+        }
+        this.initialized = true;
+      })();
+    }
+    return this.primePromise;
   }
 
   async tick(): Promise<void> {

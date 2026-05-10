@@ -75,8 +75,32 @@ describe("ReplyRunner", () => {
     ({ dir, markerFile, adapter } = await makeRepo());
   });
 
-  it("does not dispatch on initial prime", async () => {
-    await appendAnnotation(dir, tourId, mkAnn({ id: "a1", author_kind: "human" }));
+  it("does not dispatch on prime when every thread ends with an agent reply", async () => {
+    await appendAnnotation(
+      dir,
+      tourId,
+      mkAnn({ id: "root1", author_kind: "agent", created_at: "2026-05-10T12:00:00Z" }),
+    );
+    await appendAnnotation(
+      dir,
+      tourId,
+      mkAnn({
+        id: "h1",
+        author_kind: "human",
+        replies_to: "root1",
+        created_at: "2026-05-10T12:00:01Z",
+      }),
+    );
+    await appendAnnotation(
+      dir,
+      tourId,
+      mkAnn({
+        id: "a1",
+        author_kind: "agent",
+        replies_to: "root1",
+        created_at: "2026-05-10T12:00:02Z",
+      }),
+    );
     const runner = new ReplyRunner({
       cwd: dir,
       tourId,
@@ -85,7 +109,40 @@ describe("ReplyRunner", () => {
     });
     await runner.prime();
     await runner.tick();
+    await new Promise((r) => setTimeout(r, 100));
     expect(existsSync(markerFile)).toBe(false);
+  });
+
+  it("DOES dispatch on prime when a thread ends with an unanswered human reply", async () => {
+    // The startup-race scenario: server restarts while a human reply is the
+    // last entry on disk. The previous behaviour swallowed it (everything on
+    // disk was added to `seen`). The fix: each thread's trailing human entry
+    // is left out of seen so the next tick() picks it up.
+    await appendAnnotation(
+      dir,
+      tourId,
+      mkAnn({ id: "root1", author_kind: "agent", created_at: "2026-05-10T12:00:00Z" }),
+    );
+    await appendAnnotation(
+      dir,
+      tourId,
+      mkAnn({
+        id: "h1",
+        author_kind: "human",
+        replies_to: "root1",
+        created_at: "2026-05-10T12:00:01Z",
+      }),
+    );
+    const runner = new ReplyRunner({
+      cwd: dir,
+      tourId,
+      agent: "fixture",
+      adapterPath: adapter,
+    });
+    await runner.prime();
+    await runner.tick();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(existsSync(markerFile)).toBe(true);
   });
 
   it("dispatches when a new human-authored annotation appears", async () => {
