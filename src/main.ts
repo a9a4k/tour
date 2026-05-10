@@ -11,7 +11,6 @@ import { pickup } from "./cli/pickup.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
 import { replyCancel } from "./cli/reply-cancel.js";
-import { replySystemPrompt } from "./cli/reply-system-prompt.js";
 import { listTours } from "./core/tour-store.js";
 
 declare const __EMBEDDED_VERSION__: string;
@@ -73,7 +72,6 @@ Usage:
   tour prune --older-than <duration> [--json]
   tour pickup <id> [--json]
   tour reply-cancel <id> [--json]       (kill a stuck reply-agent + clear the lock)
-  tour reply-system-prompt              (print canonical reply-agent system prompt)
   tour --version
   tour --help
 `;
@@ -196,10 +194,6 @@ async function main(): Promise<void> {
         await replyCancel({ tourId, json, cwd });
         break;
       }
-
-      case "reply-system-prompt":
-        replySystemPrompt();
-        break;
 
       case "help":
       case "--help":

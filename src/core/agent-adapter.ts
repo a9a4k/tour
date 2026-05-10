@@ -1,50 +1,14 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 import type { Annotation, Tour } from "./types.js";
 import { buildThreads } from "./threads.js";
-import { SHIPPED_ADAPTERS } from "../agents/index.js";
+import { SHIPPED_ADAPTERS, availableShippedAgents } from "../agents/index.js";
 
-// JSON envelope handed to the adapter on stdin. Contains everything an agent
-// needs to compose a reply without re-reading the tour's filesystem state.
+// JSON envelope handed to a shipped reply-agent's argv-builder. Contains
+// everything an agent needs to compose a reply without re-reading the
+// tour's filesystem state.
 export interface ReplyEnvelope {
   tour: Tour;
   triggering_annotation: Annotation;
   thread: Annotation[];
-}
-
-export function adapterPath(name: string): string {
-  return join(homedir(), ".config", "tour", "agents", `${name}.sh`);
-}
-
-// First-run bootstrap for shipped adapters. If `name` is in the shipped
-// registry and no user-side script exists yet, write it (chmod 0755). If
-// the user already has a file there — even an edited or replaced one — do
-// nothing: the user owns that path. Names not in the registry (custom
-// agents) are no-ops; the caller's `assertAdapterExists` reports the
-// missing-adapter error in that case.
-export function ensureShippedAdapter(name: string): void {
-  const script = SHIPPED_ADAPTERS[name];
-  if (script === undefined) return;
-  const path = adapterPath(name);
-  if (existsSync(path)) return;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, script);
-  chmodSync(path, 0o755);
-}
-
-// Hard-fails at startup if the named adapter isn't present at the expected
-// path — per the PRD, misconfiguration must surface up-front, not at first
-// human reply.
-export function assertAdapterExists(name: string): void {
-  const path = adapterPath(name);
-  if (!existsSync(path)) {
-    throw new Error(
-      `Reply agent "${name}" not found at ${path}. ` +
-        `Drop an adapter script there (chmod +x), or omit --reply-agent.`,
-    );
-  }
 }
 
 export function buildEnvelope(
@@ -61,45 +25,55 @@ export function buildEnvelope(
   return { tour, triggering_annotation: triggering, thread: chain };
 }
 
-export interface SpawnOptions {
-  agent: string;
+export interface SpawnOpts {
   envelope: ReplyEnvelope;
+  systemPrompt: string;
   cwd: string;
   tourDir: string;
-  // Optional override for tests; defaults to the file at adapterPath(agent).
-  adapterPath?: string;
+}
+
+export interface SpawnResult {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  // Set when the spawn itself failed (e.g. ENOENT for an inner CLI not on
+  // PATH). The runner surfaces this on stderr instead of swallowing it.
+  error?: Error;
 }
 
 export interface SpawnedAdapter {
-  child: ChildProcess;
   pid: number;
-  exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+  exit: Promise<SpawnResult>;
 }
 
-// Spawns the adapter as a child process with the JSON envelope on stdin and
-// TOUR_* vars in env. The caller is responsible for the lockfile lifecycle —
-// this module only owns the spawn path so it can be mocked in tests.
-export function spawnAdapter(opts: SpawnOptions): SpawnedAdapter {
-  const path = opts.adapterPath ?? adapterPath(opts.agent);
-  const child = spawn(path, [], {
-    cwd: opts.cwd,
-    env: {
-      ...process.env,
-      TOUR_ID: opts.envelope.tour.id,
-      TOUR_HEAD_SHA: opts.envelope.tour.head_sha,
-      TOUR_BASE_SHA: opts.envelope.tour.base_sha,
-      TOUR_DIR: opts.tourDir,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  if (child.stdin) {
-    child.stdin.write(JSON.stringify(opts.envelope));
-    child.stdin.end();
+export interface ShippedAdapter {
+  spawn(opts: SpawnOpts): SpawnedAdapter;
+}
+
+export interface SpawnReplyAgentOptions {
+  agent: string;
+  envelope: ReplyEnvelope;
+  systemPrompt: string;
+  cwd: string;
+  tourDir: string;
+  // Test-only override that bypasses the registry. Replaces the prior
+  // shell-script `adapterPath` seam.
+  adapter?: ShippedAdapter;
+}
+
+// Resolves the named shipped adapter from the registry (or uses the
+// override) and spawns its inner CLI. Throws on unknown name.
+export function spawnReplyAgent(opts: SpawnReplyAgentOptions): SpawnedAdapter {
+  const adapter = opts.adapter ?? SHIPPED_ADAPTERS[opts.agent];
+  if (!adapter) {
+    throw new Error(
+      `Unknown reply-agent "${opts.agent}". Available agents: ${availableShippedAgents().join(", ")}`,
+    );
   }
-  const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
-    (resolve) => {
-      child.on("exit", (code, signal) => resolve({ code, signal }));
-    },
-  );
-  return { child, pid: child.pid ?? 0, exit };
+  return adapter.spawn({
+    envelope: opts.envelope,
+    systemPrompt: opts.systemPrompt,
+    cwd: opts.cwd,
+    tourDir: opts.tourDir,
+  });
 }

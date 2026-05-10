@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { readAnnotations } from "./annotations-store.js";
+import { appendAnnotation, readAnnotations } from "./annotations-store.js";
 import { getTour } from "./tour-store.js";
 import { shouldDispatchReply } from "./reply-dispatch.js";
 import {
@@ -7,21 +7,29 @@ import {
   writeReplyLock,
   deleteReplyLock,
 } from "./reply-lock.js";
-import { buildEnvelope, spawnAdapter } from "./agent-adapter.js";
+import {
+  buildEnvelope,
+  spawnReplyAgent,
+  type ShippedAdapter,
+} from "./agent-adapter.js";
+import { replyAgentSystemPrompt } from "./system-prompt.js";
+import { generateId } from "./ids.js";
 import type { Annotation } from "./types.js";
 
 export interface ReplyRunnerOptions {
   cwd: string;
   tourId: string;
   agent: string;
-  // Optional override so tests can supply a fake adapter without dropping a
-  // real script under the user's $HOME/.config/tour/agents.
-  adapterPath?: string;
+  // Optional override so tests can supply a fake adapter without touching
+  // the shipped registry. Replaces the prior shell-script `adapterPath`
+  // seam.
+  adapter?: ShippedAdapter;
 }
 
 // Watches an in-memory snapshot of the tour's annotations, dispatches the
-// adapter once when a new human-authored Annotation appears, holds the
-// per-tour single-flight lock, and clears it when the adapter exits.
+// shipped reply-agent once when a new human-authored Annotation appears,
+// holds the per-tour single-flight lock, captures the agent's stdout, and
+// writes that as the Reply Annotation (ADR 0012) when usable.
 //
 // Drives off explicit `tick()` calls — caller (renderer) wires this to the
 // watcher's `annotation-changed` event so the runner re-reads
@@ -86,10 +94,9 @@ export class ReplyRunner {
       const tourDir = join(this.opts.cwd, ".tour", this.opts.tourId);
 
       // Write a placeholder lock with pid=0 first so the renderer's pill
-      // surfaces *before* the spawn returns — fs.spawn is fast but the pill
-      // needs to be visible from the moment of the human's reply, not from
-      // the moment the child is up. started_at is captured once so the
-      // pill's age counter is stable across the placeholder/patch sequence.
+      // surfaces *before* the spawn returns. started_at is captured once so
+      // the pill's age counter is stable across the placeholder/patch
+      // sequence.
       const startedAt = new Date().toISOString();
       const lockBase = {
         agent: this.opts.agent,
@@ -101,24 +108,66 @@ export class ReplyRunner {
         pid: 0,
       });
 
-      const spawned = spawnAdapter({
+      const spawned = spawnReplyAgent({
         agent: this.opts.agent,
         envelope,
+        systemPrompt: replyAgentSystemPrompt(),
         cwd: this.opts.cwd,
         tourDir,
-        adapterPath: this.opts.adapterPath,
+        adapter: this.opts.adapter,
       });
-      // Now patch the pid in. The renderer reads the lock per pill render
-      // tick, so the eventual-consistency is fine.
       await writeReplyLock(this.opts.cwd, this.opts.tourId, {
         ...lockBase,
         pid: spawned.pid,
       });
 
-      await spawned.exit;
+      const result = await spawned.exit;
+      await this.persistReply(triggering, result);
     } finally {
       await deleteReplyLock(this.opts.cwd, this.opts.tourId);
       this.inFlight = false;
     }
+  }
+
+  // Stdout-as-reply contract (ADR 0012): trim, then write iff the agent
+  // exited cleanly with a non-empty body. Spawn errors, non-zero exits and
+  // empty stdout all log a clear stderr line and skip the write.
+  private async persistReply(
+    triggering: Annotation,
+    result: { code: number | null; stdout: string; error?: Error },
+  ): Promise<void> {
+    const agent = this.opts.agent;
+    if (result.error) {
+      process.stderr.write(
+        `reply-agent ${agent}: spawn failed: ${result.error.message}\n`,
+      );
+      return;
+    }
+    if (result.code !== 0) {
+      process.stderr.write(
+        `reply-agent ${agent}: exited with code ${result.code} — no reply written\n`,
+      );
+      return;
+    }
+    const body = result.stdout.trim();
+    if (body === "") {
+      process.stderr.write(
+        `reply-agent ${agent}: produced no output — no reply written\n`,
+      );
+      return;
+    }
+    const reply: Annotation = {
+      id: generateId(),
+      file: triggering.file,
+      side: triggering.side,
+      line_start: triggering.line_start,
+      line_end: triggering.line_end,
+      body,
+      author: agent,
+      author_kind: "agent",
+      replies_to: triggering.id,
+      created_at: new Date().toISOString(),
+    };
+    await appendAnnotation(this.opts.cwd, this.opts.tourId, reply);
   }
 }
