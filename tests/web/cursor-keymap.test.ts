@@ -86,6 +86,14 @@ describe("dispatchCursorKey: annotate-at-cursor", () => {
 });
 
 describe("dispatchCursorKey: annotation navigation (β-coupling)", () => {
+  // β-coupling per ADR 0012 (mirrors ADR 0011): the keymap classifies
+  // n/p as nav-next/prev-annotation; the App-side handler routes the
+  // dispatch to navigateBy, which calls setCursor(cursorFromAnnotation
+  // (target)) so the line cursor materializes at the navigated-to
+  // anchor on the same keystroke. The asymmetric rule is enforced
+  // here at the dispatcher: motion keys (j/k/h/l/arrows) classify as
+  // move-*/set-side-* — never as nav-* — so j/k/h/l never touch
+  // currentAnnotationId (App handler reads action.type).
   it("n → nav-next-annotation", () => {
     expect(dispatchCursorKey(key({ key: "n" }), baseCtx)).toEqual({
       type: "nav-next-annotation",
@@ -102,6 +110,18 @@ describe("dispatchCursorKey: annotation navigation (β-coupling)", () => {
     expect(dispatchCursorKey(key({ key: "t" }), baseCtx)).toEqual({
       type: "open-picker",
     });
+  });
+
+  it("j / k / h / l / arrows never classify as nav-* (the asymmetric β-rule)", () => {
+    // The reverse direction stays decoupled — line motion does NOT
+    // change currentAnnotationId. Dispatcher-level guard: a motion key
+    // never routes through the nav-next/prev path.
+    const motionKeys = ["j", "k", "h", "l", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"];
+    for (const k of motionKeys) {
+      const a = dispatchCursorKey(key({ key: k }), baseCtx);
+      expect(a.type).not.toBe("nav-next-annotation");
+      expect(a.type).not.toBe("nav-prev-annotation");
+    }
   });
 });
 
