@@ -3,6 +3,7 @@ import type { Annotation } from "./types.js";
 import { buildThreads, topLevelAnnotations } from "./threads.js";
 import {
   getBoundary,
+  getFileExpanded,
   type BoundaryRef as ExpansionBoundaryRef,
   type ExpansionState,
 } from "./expansion-state.js";
@@ -78,6 +79,12 @@ export interface PlanRowsOptions {
   oldContent?: string;
   newContent?: string;
   expansion?: ExpansionState;
+  /** When `true`, the planner emits a single synthetic `collapsed-file`
+   *  interactive row in place of the file's diff body unless
+   *  `expansion[file].fileExpanded` is set (PRD #108 issue #113). The App
+   *  layer combines its classifier flags + user-toggle state into this
+   *  single boolean so the planner stays a pure mapping. */
+  classifierCollapsed?: boolean;
 }
 
 export function planRows(
@@ -86,9 +93,30 @@ export function planRows(
   layout: "split" | "unified",
   options: PlanRowsOptions = {},
 ): PlannedRow[] {
+  if (options.classifierCollapsed) {
+    const fileExpanded = options.expansion
+      ? getFileExpanded(options.expansion, file.name)
+      : false;
+    if (!fileExpanded) {
+      return [collapsedFileRow(file)];
+    }
+  }
   const diffRows = walkHunks(file, layout, options);
   applyAnnotationFlags(diffRows, annotations, layout);
   return interleaveAnnotations(diffRows, annotations);
+}
+
+function collapsedFileRow(file: FileDiffMetadata): InteractiveRow {
+  const hidden = file.hunks.reduce(
+    (sum, h) => sum + h.additionCount + h.deletionCount,
+    0,
+  );
+  return {
+    kind: "interactive",
+    subKind: "collapsed-file",
+    boundaryRef: "top",
+    text: `··· ${hidden} lines hidden — Enter to expand ···`,
+  };
 }
 
 function repliesByRoot(annotations: Annotation[]): Map<string, Annotation[]> {

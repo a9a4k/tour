@@ -4,8 +4,10 @@ import {
   expand,
   expandTop,
   expandBottom,
+  expandFile,
   seedFromOrphans,
   getBoundary,
+  getFileExpanded,
   type BoundaryKey,
 } from "../../src/core/expansion-state.js";
 
@@ -172,6 +174,46 @@ describe("expansion-state", () => {
       const s0 = expand(emptyExpansion(), SEP("x", 1), "symmetric-20", 100);
       const s1 = seedFromOrphans(s0, []);
       expect(s1).toBe(s0);
+    });
+  });
+
+  describe("expandFile (collapsed-file flip — PRD #108 issue #113)", () => {
+    it("flips fileExpanded from false to true on a fresh state", () => {
+      const s = expandFile(emptyExpansion(), "x.txt");
+      expect(getFileExpanded(s, "x.txt")).toBe(true);
+    });
+
+    it("returns a new state and does not mutate the input", () => {
+      const s0 = emptyExpansion();
+      const s1 = expandFile(s0, "x.txt");
+      expect(s1).not.toBe(s0);
+      expect(s0.size).toBe(0);
+      expect(getFileExpanded(s0, "x.txt")).toBe(false);
+    });
+
+    it("is a no-op when already expanded (returns input by reference)", () => {
+      const s1 = expandFile(emptyExpansion(), "x.txt");
+      const s2 = expandFile(s1, "x.txt");
+      expect(s2).toBe(s1);
+    });
+
+    it("preserves existing boundaries on the file", () => {
+      let s = expand(emptyExpansion(), { file: "x.txt", ref: 1 }, "symmetric-20", 100);
+      s = expandFile(s, "x.txt");
+      expect(getBoundary(s, { file: "x.txt", ref: 1 })).toEqual({ up: 10, down: 10 });
+      expect(getFileExpanded(s, "x.txt")).toBe(true);
+    });
+
+    it("only affects the named file", () => {
+      const s = expandFile(emptyExpansion(), "x.txt");
+      expect(getFileExpanded(s, "y.txt")).toBe(false);
+    });
+
+    it("composes with a later expand on a hunk-separator without losing fileExpanded", () => {
+      let s = expandFile(emptyExpansion(), "x.txt");
+      s = expand(s, { file: "x.txt", ref: 1 }, "symmetric-20", 100);
+      expect(getFileExpanded(s, "x.txt")).toBe(true);
+      expect(getBoundary(s, { file: "x.txt", ref: 1 })).toEqual({ up: 10, down: 10 });
     });
   });
 

@@ -733,6 +733,58 @@ index 1..2 100644
       );
     });
 
+    // PRD #108 issue #113: classifier-collapsed file's synthetic indicator
+    // row renders through the same generic interactive-row pipeline.
+    it("renders a collapsed-file row with the planner's `··· N lines hidden — Enter to expand ···` text", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "collapsed-file",
+          boundaryRef: "top",
+          text: "··· 42 lines hidden — Enter to expand ···",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["text"]).toBe("··· 42 lines hidden — Enter to expand ···");
+    });
+
+    it("lights up cursor on a collapsed-file row when the cursor's interactive anchor matches", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "collapsed-file",
+          boundaryRef: "top",
+          text: "··· 42 lines hidden — Enter to expand ···",
+        },
+      ];
+      const cursor = {
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "collapsed-file" as const, boundaryRef: "top" as const },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBe(true);
+    });
+
+    it("emits the collapsed-file row id `interactive-row-${file}-collapsed-file-top`", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "collapsed-file",
+          boundaryRef: "top",
+          text: "··· 1 lines hidden — Enter to expand ···",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-collapsed-file-top");
+      expect(wrapper).toBeDefined();
+    });
+
     it("interactive row does not pass diffBg / annotation tint props (it has no source content)", () => {
       const rows: PlannedRow[] = [
         { kind: "interactive", subKind: "hunk-separator", boundaryRef: 0 },
