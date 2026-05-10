@@ -49,11 +49,11 @@ A synthetic commit object capturing uncommitted changes at the moment a Tour is 
 _Avoid_: stash, WIP commit
 
 **Hidden context**:
-The unchanged lines between hunks in a Tour's Diff that aren't part of any hunk's visible context window (git's `-U3` default). Revealed via **Expand context** on the hunk separator — GitHub-style expand-up / expand-down chevrons that lazily inject the unchanged region into the rendered diff. Anchor of an Annotation may live inside Hidden context; revealing it is a render-time concern, not a data concern (the SHA, file, and line numbers are unchanged).
+The unchanged lines between hunks in a Tour's Diff that aren't part of any hunk's visible context window (git's `-U3` default). Surfaces in three places: between consecutive hunks, before the first hunk (file-top boundary), after the last hunk (file-bottom boundary). The hunk-separator row visualises the count (`··· N hidden ···`) and is the keyboard target for revealing it. Anchor of an Annotation may live inside Hidden context; revealing it is a render-time concern, not a data concern (the SHA, file, and line numbers are unchanged).
 _Avoid_: hidden lines, collapsed lines, gap, missing context
 
 **Expand context**:
-The act of revealing some or all of a stretch of Hidden context. Granularities: a fixed batch (mirrors GitHub's per-click 20 lines) or the entire stretch (mirrors GitHub's shift-click "expand all"). State is per-renderer-session (in-memory), not persisted.
+The act of revealing some or all of a stretch of Hidden context. **Webapp**: click Pierre's chevrons on the hunk separator (Pierre's `expandUnchanged: true`, `expansionLineCount: 20`); follows GitHub's two-chevron model. **TUI**: cursor walks onto the hunk-separator row and presses `Enter` to reveal a symmetric 10-above + 10-below window (20 lines total) per press, or `Shift+Enter` to reveal the entire gap. The cursor's annotation-anchor scope is unchanged — `a` (top-level annotate) is a no-op when the cursor sits on a hunk-separator row. The same `Enter` primitive also expands collapsed-by-classifier files (lockfiles / generated / vendored): the file-collapsed indicator becomes a cursor-walkable interactive row, unifying "expand hidden context" and "expand hidden file" under one gesture. Orphan annotations (anchors that fall in Hidden context) are auto-windowed at planner-init time with a ±10 line region around each anchor so the sidebar count and the diff stream stay honest. State is per-renderer-session (in-memory): preserved across watcher-driven bundle reloads (diff is SHA-pinned), reset on tour switch and webapp page reload.
 _Avoid_: load context, show context, unfold
 
 **Line cursor** (TUI only):
