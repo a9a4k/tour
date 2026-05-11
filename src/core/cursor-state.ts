@@ -27,6 +27,9 @@ export interface Cursor {
  * DIFF row of the first non-folded file. Returns null when no diff row is
  * addressable (empty Tour, all files folded, snapshot lost). Per PRD #107
  * US 14, initial position never lands on an interactive row by default.
+ * Per issue #170 the seeded cursor uses `line_end` to mirror
+ * `cursorFromAnnotation` (n/p β-coupling), so single-line annotations are
+ * unchanged and multiline annotations seed at the bottom of the range.
  */
 export function initialCursor(args: {
   topLevelAnnotations: Annotation[];
@@ -37,9 +40,9 @@ export function initialCursor(args: {
   if (a) {
     const target = args.flatRows.find(
       (r): r is DiffFlatRow =>
-        r.kind === "diff" && rowMatchesAnchor(r, a.file, a.side, a.line_start),
+        r.kind === "diff" && rowMatchesAnchor(r, a.file, a.side, a.line_end),
     );
-    if (target) return cursorFromRow(target, a.side);
+    if (target) return cursorFromAnnotation(a);
   }
   const firstDiff = args.flatRows.find(
     (r): r is DiffFlatRow => r.kind === "diff",

@@ -87,6 +87,18 @@ describe("initialCursor", () => {
     expect(cursor).toEqual({ file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
   });
 
+  it("seeds at line_end (not line_start) for multi-line annotations (#170)", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      pairedFlat("x.txt", 2, 2),
+      pairedFlat("x.txt", 3, 3),
+      pairedFlat("x.txt", 4, 4),
+    ];
+    const a = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 2, line_end: 4 });
+    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
+    expect(cursor).toEqual({ file: "x.txt", lineNumber: 4, side: "additions", preferredSide: "additions" });
+  });
+
   it("falls back to the first row when there are no annotations", () => {
     const rows: FlatRow[] = [pairedFlat("x.txt", 5, 5)];
     const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
