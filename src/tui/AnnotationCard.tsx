@@ -84,7 +84,7 @@ export function AnnotationCard({
       flexDirection="column"
       paddingX={1}
     >
-      <box>
+      <box flexDirection="row" flexWrap="wrap">
         {isCurrent ? (
           <text fg={theme.fg.accent} bold>
             {"● "}
