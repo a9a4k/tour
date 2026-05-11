@@ -77,7 +77,7 @@ export function AnnotationCard({
       id={`annotation-${annotation.id}`}
       borderStyle="single"
       borderColor={theme.fg.accent}
-      backgroundColor={isCurrent ? theme.bg.accentCurrent.tui : undefined}
+      backgroundColor={isCurrent ? theme.bg.accentCurrent.tui : theme.bg.accentSubtle.tui}
       flexDirection="column"
       paddingX={1}
     >
