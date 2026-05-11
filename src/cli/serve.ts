@@ -2,6 +2,7 @@ import { assertShippedAgent } from "../agents/index.js";
 
 interface ServeArgs {
   port: number;
+  portExplicit: boolean;
   open: boolean;
   tourId?: string;
   cwd: string;

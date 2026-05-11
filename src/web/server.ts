@@ -9,11 +9,13 @@ import { ReplyRunner } from "../core/reply-runner.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { html } from "./spa.js";
 import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
+import { bindWithFallback } from "./bind-with-fallback.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 interface ServeArgs {
   port: number;
+  portExplicit: boolean;
   open: boolean;
   tourId?: string;
   cwd: string;
@@ -165,7 +167,7 @@ function contentTypeFor(path: string): string {
 }
 
 export async function startServer(args: ServeArgs): Promise<void> {
-  const { port, cwd, replyAgent } = args;
+  const { port, portExplicit, cwd, replyAgent } = args;
   const watchers = new Map<string, TourWatcher>();
   const runners = new Map<string, ReplyRunner>();
 
@@ -195,9 +197,12 @@ export async function startServer(args: ServeArgs): Promise<void> {
     return w;
   }
 
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
+  const { resource: server, boundPort, preferredWasBusy } = await bindWithFallback(
     port,
+    portExplicit,
+    (tryPort) => Bun.serve({
+    hostname: "127.0.0.1",
+    port: tryPort,
     async fetch(req) {
       const url = new URL(req.url);
 
@@ -357,10 +362,15 @@ export async function startServer(args: ServeArgs): Promise<void> {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     },
-  });
+  }),
+  );
 
-  const url = `http://127.0.0.1:${server.port}`;
-  console.log(`Tour server running at ${url}`);
+  const url = `http://127.0.0.1:${boundPort}`;
+  if (preferredWasBusy) {
+    console.log(`Tour server: port ${port} busy, listening on ${url}`);
+  } else {
+    console.log(`Tour server running at ${url}`);
+  }
 
   if (args.open) {
     const { execFile: openExec } = await import("node:child_process");

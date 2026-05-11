@@ -60,7 +60,7 @@ const USAGE = `tour — local code review tool with AI annotations
 Usage:
   tour                                  (open TUI for most recent tour)
   tour tui [<id>] [--reply-agent <name>]   (open TUI for a specific tour)
-  tour serve [--port 7777] [--open] [<id>] [--reply-agent <name>] (start webapp)
+  tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
   tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
@@ -87,7 +87,7 @@ function firstRunBanner(): string {
 
   Then open:
     tour                                  # TUI
-    tour serve                            # webapp at http://127.0.0.1:7777
+    tour serve                            # webapp at http://127.0.0.1:8687
 
   Docs: https://github.com/a9a4k/tour`;
 }
@@ -177,15 +177,18 @@ async function main(): Promise<void> {
         });
         break;
 
-      case "serve":
+      case "serve": {
+        const portFlag = flag(flags, "port");
         await serve({
-          port: parseInt(flag(flags, "port") ?? "7777", 10),
+          port: portFlag !== undefined ? parseInt(portFlag, 10) : 8687,
+          portExplicit: portFlag !== undefined,
           open: boolFlag(flags, "open"),
           tourId: positional[0],
           cwd,
           replyAgent: flag(flags, "reply-agent"),
         });
         break;
+      }
 
       // Hidden — exercised only by scripts/smoke-binary.sh. Not advertised
       // in USAGE to keep the user-facing surface small. Exits 0 if the

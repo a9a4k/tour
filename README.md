@@ -30,7 +30,7 @@ tour --version
 cd your-repo
 tour create --head HEAD              # tour the latest commit
 tour                                  # open the TUI
-tour serve --open                     # or open the webapp at http://127.0.0.1:7777
+tour serve --open                     # or open the webapp at http://127.0.0.1:8687
 ```
 
 Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tour.toml` and an append-only `annotations.jsonl`.
@@ -62,7 +62,7 @@ tour close <id>                                       # mark closed; keeps files
 tour delete <id>                                      # remove the tour
 tour prune --older-than 30d                           # bulk-delete by age
 tour tui [<id>]                                       # explicit TUI launch
-tour serve [--port 7777] [--open] [<id>]              # webapp
+tour serve [--port 8687] [--open] [<id>]              # webapp (8687 = TOUR on T9, auto-falls-back on collision)
 ```
 
 `--head WIP` snapshots uncommitted work to a synthetic commit so the diff stays pinned.
