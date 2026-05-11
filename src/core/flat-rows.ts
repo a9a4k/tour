@@ -105,16 +105,29 @@ export function flatRows(
         continue;
       }
       if (row.kind === "hunk-header") {
-        // Hunk-header rows ARE cursor-addressable as `subKind: 'hunk-separator'`
-        // interactive rows (PRD #108, ADR 0013) — pressing Enter on one
-        // expands the hidden gap above this hunk. The boundaryRef is the
-        // hunk's index (gap before hunk i has key i).
-        out.push({
-          kind: "interactive",
-          file: file.name,
-          subKind: "hunk-separator",
-          boundaryRef: row.hunkIndex,
-        });
+        // Hunk-header rows are cursor-addressable iff `gapAbove > 0` (PRD
+        // #151, ADR 0018) — inert hunk-headers (first hunk at line 1; or
+        // hunks adjacent in head with no hidden context between them) skip.
+        // First-hunk interactive hunk-headers tag as `boundary-top` /
+        // `"top"` so dispatch routes to the file-top reducer path; mid-file
+        // hunk-headers tag as `hunk-separator` / `hunkIndex` (existing
+        // convention).
+        if (row.gapAbove <= 0) continue;
+        if (row.hunkIndex === 0) {
+          out.push({
+            kind: "interactive",
+            file: file.name,
+            subKind: "boundary-top",
+            boundaryRef: "top",
+          });
+        } else {
+          out.push({
+            kind: "interactive",
+            file: file.name,
+            subKind: "hunk-separator",
+            boundaryRef: row.hunkIndex,
+          });
+        }
         continue;
       }
       // annotation rows are not cursor-addressable.

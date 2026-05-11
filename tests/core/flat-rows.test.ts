@@ -70,20 +70,26 @@ describe("flatRows", () => {
     expect(rows[rows.length - 1].file).toBe("z.txt");
   });
 
-  it("emits cursor-walkable rows for diff-row + hunk-header but skips annotation rows", () => {
+  it("emits cursor-walkable rows for diff-row but skips annotation and inert hunk-header rows", () => {
+    // PRD #151: hunk-headers are cursor-addressable iff `gapAbove > 0`.
+    // SIMPLE_DIFF's first hunk starts at line 1, so its hunk-header is
+    // inert and excluded from the flat stream.
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const annotations = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
     const planned = new Map<string, PlannedRow[]>([
       ["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")],
     ]);
     const rows = flatRows([f], planned, () => false);
-    // Hunk-headers are cursor-addressable as `hunk-separator` interactive
-    // rows (PRD #108, ADR 0013). Annotation rows still skip.
     const cursorables = planned
       .get("x.txt")!
-      .filter((r) => r.kind === "diff-row" || r.kind === "hunk-header");
+      .filter(
+        (r) =>
+          r.kind === "diff-row" ||
+          (r.kind === "hunk-header" && r.gapAbove > 0),
+      );
     expect(rows.length).toBe(cursorables.length);
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "hunk-separator")).toBe(true);
+    // No interactive rows expected — first hunk's gapAbove is 0.
+    expect(rows.some((r) => r.kind === "interactive")).toBe(false);
   });
 
   it("contributes zero entries from a folded file", () => {
@@ -282,6 +288,71 @@ describe("flatRows interactive rows (PRD #107)", () => {
     const diffRows = flat.filter((r) => r.kind === "diff");
     expect(diffRows.length).toBeGreaterThan(0);
     for (const r of diffRows) expect(r.kind).toBe("diff");
+  });
+});
+
+// PRD #151 / ADR 0018: hunk-header rows are cursor-addressable iff
+// gapAbove > 0. First-hunk interactive hunk-headers tag as `boundary-top` /
+// `"top"`; mid-file interactive hunk-headers tag as `hunk-separator` /
+// `hunkIndex`. gap-mid-top passes through.
+describe("flatRows gap-row family (PRD #151)", () => {
+  it("skips a hunk-header with gapAbove === 0", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "hunk-header", header: "@@ -1,3 +1,3 @@", hunkIndex: 0, gapAbove: 0 },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(0);
+  });
+
+  it("includes a first-hunk hunk-header with gapAbove > 0 as boundary-top / 'top'", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "hunk-header", header: "@@ -5,3 +5,3 @@", hunkIndex: 0, gapAbove: 4 },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(1);
+    expect(flat[0].kind).toBe("interactive");
+    if (flat[0].kind !== "interactive") throw new Error("narrow");
+    expect(flat[0].subKind).toBe("boundary-top");
+    expect(flat[0].boundaryRef).toBe("top");
+  });
+
+  it("includes a mid-file hunk-header with gapAbove > 0 as hunk-separator / hunkIndex", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "hunk-header", header: "@@ -10,3 +10,3 @@", hunkIndex: 3, gapAbove: 12 },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(1);
+    expect(flat[0].kind).toBe("interactive");
+    if (flat[0].kind !== "interactive") throw new Error("narrow");
+    expect(flat[0].subKind).toBe("hunk-separator");
+    expect(flat[0].boundaryRef).toBe(3);
+  });
+
+  it("passes through gap-mid-top interactive rows into the cursor stream", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "interactive", subKind: "gap-mid-top", boundaryRef: 2 },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(1);
+    if (flat[0].kind !== "interactive") throw new Error("narrow");
+    expect(flat[0].subKind).toBe("gap-mid-top");
+    expect(flat[0].boundaryRef).toBe(2);
+  });
+
+  it("passes through boundary-bottom interactive rows unchanged", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "interactive", subKind: "boundary-bottom", boundaryRef: "bottom" },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(1);
+    if (flat[0].kind !== "interactive") throw new Error("narrow");
+    expect(flat[0].subKind).toBe("boundary-bottom");
+    expect(flat[0].boundaryRef).toBe("bottom");
   });
 });
 

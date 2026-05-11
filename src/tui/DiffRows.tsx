@@ -4,6 +4,7 @@ import type {
   InteractiveSubKind,
   BoundaryRef,
 } from "../core/diff-rows.js";
+import { GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
 import { annotationCardSlot } from "./annotation-placement.js";
@@ -135,12 +136,53 @@ export function DiffRows({
       {rows.map((row, idx) => {
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
-          const hidden = row.expandUp + row.expandDown;
-          const suffix = hidden > 0 ? ` ··· ${hidden} hidden ···` : "";
+          const interactive = row.gapAbove > 0;
+          if (!interactive) {
+            return (
+              <text key={key} fg={theme.fg.muted}>
+                {row.header}
+              </text>
+            );
+          }
+          // Promoted to first-class interactive row (PRD #151, ADR 0018).
+          // Direction glyph per D1 (row position == end of gap):
+          //   hunkIndex===0 → `↑` (file-top, lines reveal toward line 1)
+          //   gapAbove > 2N → `↓` (mid-file large, paired with gap-mid-top above)
+          //   else          → `↕` (mid-file small, symmetric)
+          const isFirstHunk = row.hunkIndex === 0;
+          let glyph: "↑" | "↓" | "↕";
+          if (isFirstHunk) glyph = "↑";
+          else if (row.gapAbove > GAP_TWO_ROW_THRESHOLD) glyph = "↓";
+          else glyph = "↕";
+          const text = `${row.header} ${glyph} ··· ${row.gapAbove} hidden ···`;
+          const subKind: InteractiveSubKind = isFirstHunk
+            ? "boundary-top"
+            : "hunk-separator";
+          const boundaryRef: BoundaryRef = isFirstHunk ? "top" : row.hunkIndex;
+          const cursorActive =
+            cursor != null &&
+            cursor.file === fileName &&
+            cursor.interactive != null &&
+            cursor.interactive.subKind === subKind &&
+            cursor.interactive.boundaryRef === boundaryRef;
+          const id = interactiveRowId(fileName, subKind, boundaryRef);
+          const onMouseDown = onInteractiveClick
+            ? () => onInteractiveClick(fileName, subKind, boundaryRef)
+            : undefined;
           return (
-            <text key={key} fg={theme.fg.muted}>
-              {`${row.header}${suffix}`}
-            </text>
+            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
+              <DiffLine
+                gutter={INTERACTIVE_PAD_GUTTER}
+                text={text}
+                gutterTinted={false}
+                contentTinted={false}
+                gutterAccent={false}
+                cursorActive={cursorActive}
+                filetype={filetype}
+                syntaxStyle={syntaxStyle}
+                width="100%"
+              />
+            </box>
           );
         }
         if (row.kind === "interactive") {

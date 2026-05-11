@@ -436,8 +436,8 @@ index 1..2 100644
 
 // PRD #108 (issue #112). The planner gains `oldContent`, `newContent`, and
 // `expansion` parameters, learns to emit synthetic file-top / file-bottom
-// boundary rows, attaches `expandUp` / `expandDown` line counts to the
-// hunk-header, and emits expanded `context` rows from the file contents
+// boundary rows, attaches `gapAbove` line counts to the hunk-header
+// (PRD #151), and emits expanded `context` rows from the file contents
 // when expansion state requests them.
 describe("planRows hidden-context expansion (PRD #108)", () => {
   // A file with two hunks separated by a 10-line gap.
@@ -500,21 +500,21 @@ index 1..2 100644
       "ctx15",
     ].join("\n") + "\n";
 
-  it("hunk-header carries expandUp + expandDown line counts (sum = remaining gap size)", () => {
+  it("hunk-header carries gapAbove line count (= remaining gap size)", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split");
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers.length).toBe(2);
-    // First hunk has no preceding gap (gap is computed only between hunks).
-    expect(headers[0].expandUp + headers[0].expandDown).toBe(0);
+    // First hunk starts at line 1 → no file-top gap.
+    expect(headers[0].gapAbove).toBe(0);
     // Second hunk's preceding gap: lines 4..13 = 10 hidden lines.
-    expect(headers[1].expandUp + headers[1].expandDown).toBe(10);
+    expect(headers[1].gapAbove).toBe(10);
   });
 
-  it("emits a boundary-top interactive row when first hunk's additionStart > 1", () => {
-    // first hunk starts at line 5
+  // PRD #151: boundary-top no longer emitted; first hunk's hunk-header absorbs it.
+  it("does NOT emit a boundary-top row when first hunk's additionStart > 1 (folded into hunk-header)", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -528,10 +528,14 @@ index 1..2 100644
     const top = rows.find(
       (r) => r.kind === "interactive" && r.subKind === "boundary-top",
     );
-    expect(top).toBeDefined();
-    if (top?.kind === "interactive") {
-      expect(top.boundaryRef).toBe("top");
-    }
+    expect(top).toBeUndefined();
+    // The first hunk's hunk-header carries the file-top gap as gapAbove.
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(0);
+    expect(headers[0].gapAbove).toBe(4); // lines 1..4 hidden above hunk starting at line 5
   });
 
   it("does NOT emit a boundary-top row when first hunk's additionStart === 1", () => {
@@ -595,7 +599,7 @@ index 1..2 100644
     expect(ctxLines).not.toContain("g8");
   });
 
-  it("expandUp + expandDown shrinks as expansion reveals lines from the gap", () => {
+  it("gapAbove shrinks as expansion reveals lines from the gap", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const expansion = new Map([
       [
@@ -615,7 +619,7 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     // gap was 10; revealed 4 + 4 = 8; remaining = 2.
-    expect(headers[1].expandUp + headers[1].expandDown).toBe(2);
+    expect(headers[1].gapAbove).toBe(2);
   });
 
   it("renamed file uses prevName content for deletion-side expansion via oldContent", () => {
@@ -755,6 +759,259 @@ index 1..2 100644
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].expandUp + headers[1].expandDown).toBe(0);
+    expect(headers[1].gapAbove).toBe(0);
+  });
+});
+
+// PRD #151 / ADR 0018: hunk-header becomes a first-class interactive gap-row.
+// gap-mid-top emitted for mid-file gaps > 2N (= 40); boundary-top dropped.
+describe("planRows gap-row family (PRD #151)", () => {
+  function buildLargeGapDiff(gapLines: number): {
+    diff: string;
+    newContent: string;
+    oldContent: string;
+  } {
+    // Hunk 1 covers lines 1..3; hunk 2 starts at line `gapLines + 4`.
+    // Both have one paired change so each hunk emits a real diff body.
+    const hunk2Start = gapLines + 4;
+    const gapBody: string[] = [];
+    for (let i = 4; i <= gapLines + 3; i++) gapBody.push(`g${i}`);
+    const newLines = [
+      "ctx1",
+      "new1",
+      "ctx2",
+      ...gapBody,
+      `ctx${hunk2Start}`,
+      `new${hunk2Start + 1}`,
+      `ctx${hunk2Start + 2}`,
+    ];
+    const oldLines = [
+      "ctx1",
+      "old1",
+      "ctx2",
+      ...gapBody,
+      `ctx${hunk2Start}`,
+      `old${hunk2Start + 1}`,
+      `ctx${hunk2Start + 2}`,
+    ];
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old1
++new1
+ ctx2
+@@ -${hunk2Start},3 +${hunk2Start},3 @@
+ ctx${hunk2Start}
+-old${hunk2Start + 1}
++new${hunk2Start + 1}
+ ctx${hunk2Start + 2}
+`;
+    return {
+      diff,
+      newContent: newLines.join("\n") + "\n",
+      oldContent: oldLines.join("\n") + "\n",
+    };
+  }
+
+  function parseLocal(diff: string): FileDiffMetadata {
+    const patches = parsePatchFiles(diff);
+    return patches[0].files[0];
+  }
+
+  it("first hunk at line 1 → first hunk-header is inert (gapAbove === 0); no boundary-top emitted", () => {
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,2 @@
+ ctx1
+-old
++new
+`;
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(0);
+    expect(headers[0].gapAbove).toBe(0);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "boundary-top")).toBe(false);
+  });
+
+  it("first hunk at line > 1 → first hunk-header.gapAbove === firstHunkStart - 1; no boundary-top row", () => {
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -10,1 +10,1 @@
+-old10
++new10
+`;
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(0);
+    expect(headers[0].gapAbove).toBe(9); // lines 1..9 hidden above hunk starting at 10
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "boundary-top")).toBe(false);
+    // A first-hunk file-top gap of 9 (< 40) is NOT large enough for gap-mid-top —
+    // but more importantly, file-edges never get gap-mid-top even when large.
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+  });
+
+  it("file-edges do not get gap-mid-top even when the file-top gap > 2N", () => {
+    // First hunk starts at line 200; file-top gap = 199 (way > 40).
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -200,1 +200,1 @@
+-old
++new
+`;
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[0].gapAbove).toBe(199);
+  });
+
+  it("mid-file gap of 40 (= 2N) → ONE row (hunk-header); no gap-mid-top", () => {
+    const { diff } = buildLargeGapDiff(40);
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    const interactives = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
+    );
+    // No gap-mid-top because gap === 2N (threshold is strictly >).
+    expect(interactives.some((r) => r.subKind === "gap-mid-top")).toBe(false);
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(40);
+  });
+
+  it("mid-file gap of 41 (> 2N) → TWO rows: gap-mid-top immediately above hunk-header", () => {
+    const { diff } = buildLargeGapDiff(41);
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(41);
+    // gap-mid-top is emitted with boundaryRef = the hunk's index.
+    const gmtIdx = rows.findIndex(
+      (r) => r.kind === "interactive" && r.subKind === "gap-mid-top",
+    );
+    expect(gmtIdx).toBeGreaterThanOrEqual(0);
+    // The very next row after gap-mid-top is the second hunk-header.
+    const nextRow = rows[gmtIdx + 1];
+    expect(nextRow.kind).toBe("hunk-header");
+    if (nextRow.kind === "hunk-header") {
+      expect(nextRow.hunkIndex).toBe(1);
+    }
+    if (rows[gmtIdx].kind === "interactive") {
+      const interactive = rows[gmtIdx] as Extract<PlannedRow, { kind: "interactive" }>;
+      expect(interactive.boundaryRef).toBe(1);
+    }
+  });
+
+  it("hunk with gapAbove === 0 (adjacent hunks, no hidden context) → ONE inert hunk-header", () => {
+    // Two adjacent hunks: hunk 1 ends at line 3, hunk 2 starts at line 4.
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old1
++new1
+ ctx2
+@@ -4,1 +4,1 @@
+-old4
++new4
+`;
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers.length).toBe(2);
+    expect(headers[1].gapAbove).toBe(0);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+  });
+
+  it("progressive expand: large → small → zero drops gap-mid-top then makes hunk-header inert", () => {
+    const { diff, oldContent, newContent } = buildLargeGapDiff(50); // mid-gap = 50 > 40
+    const file = parseLocal(diff);
+
+    // STAGE 1: no expansion → gap-mid-top + hunk-header (interactive).
+    let rows = planRows(file, [], "split", { oldContent, newContent });
+    let headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(50);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(true);
+
+    // STAGE 2: partial expansion brings remaining to 45 (still > 40) — both
+    // rows re-emit with updated gapAbove.
+    const stage2 = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 3, down: 2 }]]),
+        },
+      ],
+    ]);
+    rows = planRows(file, [], "split", { oldContent, newContent, expansion: stage2 });
+    headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(45);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(true);
+
+    // STAGE 3: bring remaining to 40 — gap-mid-top drops out, hunk-header
+    // remains interactive (gapAbove > 0).
+    const stage3 = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 5, down: 5 }]]),
+        },
+      ],
+    ]);
+    rows = planRows(file, [], "split", { oldContent, newContent, expansion: stage3 });
+    headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(40);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+
+    // STAGE 4: full expansion → hunk-header becomes inert.
+    const stage4 = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map([[1, { up: 25, down: 25 }]]),
+        },
+      ],
+    ]);
+    rows = planRows(file, [], "split", { oldContent, newContent, expansion: stage4 });
+    headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(0);
+    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
   });
 });
