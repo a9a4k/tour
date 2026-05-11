@@ -91,9 +91,22 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.empty\s*\{[^}]*padding-top:\s*16px/);
   });
 
-  it("styles the current annotation card with an accent border + tint", () => {
+  it("styles the current annotation card with an accent border + soft shadow (Issue #162)", () => {
     const out = html();
-    expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*border-color/);
+    // Focus is additive: swap border color to accent + add elevation shadow.
+    // Background fill stays the same as rest so only 1–2 channels change.
+    expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*border-color:\s*var\(--border-accent\)/);
+    expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*box-shadow/);
+  });
+
+  it("renders a baseline container at rest — neutral 1px border + tinted surface (Issue #162)", () => {
+    const out = html();
+    // The unfocused card must read as a card, not raw text: visible neutral
+    // border on top/right/bottom + faint fill, in addition to the existing
+    // left accent stripe.
+    expect(out).toMatch(/\.annotation-block\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
+    expect(out).toMatch(/\.annotation-block\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
+    expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*border:\s*2px solid transparent/);
   });
 
   it("relocates the sequence pill into the header — no longer fixed-positioned (Issue #69)", () => {

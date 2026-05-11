@@ -221,8 +221,9 @@ export function html(initialTourId?: string): string {
   .copy-path:hover { color: var(--fg-default); }
   .copy-path:focus-visible { outline: 1px solid var(--border-accent); outline-offset: 2px; border-radius: 2px; }
   .annotation-block {
-    border: 2px solid transparent;
+    border: 1px solid var(--border-default);
     border-left: 3px solid var(--border-accent);
+    background: var(--canvas-subtle);
     margin: 4px 16px 4px 0;
     padding: 8px 12px;
     border-radius: 4px;
@@ -233,7 +234,7 @@ export function html(initialTourId?: string): string {
   }
   .annotation-block.current {
     border-color: var(--border-accent);
-    background: var(--bg-accent-current);
+    box-shadow: 0 2px 8px var(--shadow-medium);
   }
   .annotation-block .ann-header {
     color: var(--fg-accent);

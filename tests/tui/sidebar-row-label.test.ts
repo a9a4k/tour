@@ -4,12 +4,17 @@ import type { VisibleRow } from "../../src/core/file-tree.js";
 import {
   folderRowLabel,
   fileRowLabel,
+  folderRowFixedCost,
+  fileRowFixedCost,
 } from "../../src/tui/sidebar-row-label.js";
 
-// Sidebar row label composition (issue #156). Asserts the full composed
-// label string, including indent, prefix glyph / icon, name, badge, and
-// trailing space. The `nameBudget` parameter drives middle-truncation of
-// the name slot only; the rest of the row stays unchanged.
+// Sidebar row label composition. Asserts the full composed label string,
+// including indent, prefix glyph / icon, name, badge, and trailing space.
+// The `nameBudget` parameter drives middle-truncation of the name slot
+// only; the rest of the row stays unchanged. `folderRowFixedCost` and
+// `fileRowFixedCost` give the caller the per-row decoration width so it
+// can subtract from the sidebar content width without duplicating the
+// constants.
 
 function folder(
   overrides: Partial<Extract<VisibleRow<DiffFile>, { kind: "folder" }>> = {},
@@ -57,12 +62,10 @@ describe("folderRowLabel", () => {
       .toBe("       ▾ deep ");
   });
 
-  it("truncates the name slot when the budget is exceeded but leaves the rest intact", () => {
-    const out = folderRowLabel(
-      folder({ displayName: "supabase/migrations/20260508144406", depth: 0 }),
-      // sidebar content width 28: leading(1) + caret(1) + space(1) + name + trailing(1) = name budget 24
-      28,
-    );
+  it("truncates the name slot to the supplied budget, leaving the rest intact", () => {
+    // Sidebar content width 28, fixed cost at depth 0 = 4 → name budget 24.
+    const row = folder({ displayName: "supabase/migrations/20260508144406", depth: 0 });
+    const out = folderRowLabel(row, 28 - folderRowFixedCost(row));
     expect(out.length).toBe(28);
     expect(out.startsWith(" ▾ ")).toBe(true);
     expect(out.endsWith(" ")).toBe(true);
@@ -70,10 +73,8 @@ describe("folderRowLabel", () => {
   });
 
   it("never exceeds the sidebar content width regardless of name length", () => {
-    const out = folderRowLabel(
-      folder({ displayName: "a".repeat(100), depth: 2 }),
-      28,
-    );
+    const row = folder({ displayName: "a".repeat(100), depth: 2 });
+    const out = folderRowLabel(row, 28 - folderRowFixedCost(row));
     expect(out.length).toBe(28);
   });
 });
@@ -101,13 +102,11 @@ describe("fileRowLabel", () => {
   });
 
   it("truncates the name slot when over budget, leaving icon + badge intact", () => {
-    const out = fileRowLabel(
-      file({
-        displayName: "evses-utilization.controller.spec.ts",
-        annotationCount: 3,
-      }),
-      28,
-    );
+    const row = file({
+      displayName: "evses-utilization.controller.spec.ts",
+      annotationCount: 3,
+    });
+    const out = fileRowLabel(row, 28 - fileRowFixedCost(row));
     expect(out.length).toBe(28);
     expect(out.startsWith(" M ")).toBe(true);
     expect(out.endsWith(" [3] ")).toBe(true);
@@ -115,14 +114,45 @@ describe("fileRowLabel", () => {
   });
 
   it("never exceeds the sidebar content width regardless of name length", () => {
-    const out = fileRowLabel(
-      file({
-        displayName: "a".repeat(100),
-        depth: 4,
-        annotationCount: 12,
-      }),
-      28,
-    );
+    const row = file({
+      displayName: "a".repeat(100),
+      depth: 4,
+      annotationCount: 12,
+    });
+    const out = fileRowLabel(row, 28 - fileRowFixedCost(row));
     expect(out.length).toBe(28);
+  });
+});
+
+describe("folderRowFixedCost", () => {
+  it("at depth 0: leading(1) + caret(1) + space(1) + trailing(1) = 4", () => {
+    expect(folderRowFixedCost(folder({ depth: 0 }))).toBe(4);
+  });
+
+  it("adds 2 columns per depth level", () => {
+    expect(folderRowFixedCost(folder({ depth: 3 }))).toBe(4 + 6);
+  });
+
+  it("is independent of caret direction (collapsed vs expanded)", () => {
+    expect(folderRowFixedCost(folder({ collapsed: true }))).toBe(
+      folderRowFixedCost(folder({ collapsed: false })),
+    );
+  });
+});
+
+describe("fileRowFixedCost", () => {
+  it("at depth 0 with no badge: leading(1) + icon(1) + space(1) + trailing(1) = 4", () => {
+    expect(fileRowFixedCost(file({ depth: 0, annotationCount: 0 }))).toBe(4);
+  });
+
+  it("adds 2 columns per depth level", () => {
+    expect(fileRowFixedCost(file({ depth: 2, annotationCount: 0 }))).toBe(4 + 4);
+  });
+
+  it("adds the badge width ' [N]' when annotationCount > 0", () => {
+    // base 4 + " [3]" = 4 chars added.
+    expect(fileRowFixedCost(file({ depth: 0, annotationCount: 3 }))).toBe(4 + 4);
+    // base 4 + " [12]" = 5 chars added.
+    expect(fileRowFixedCost(file({ depth: 0, annotationCount: 12 }))).toBe(4 + 5);
   });
 });
