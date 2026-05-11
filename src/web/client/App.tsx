@@ -164,6 +164,12 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Initial-anchor intent: the id we want vertically centered on first paint.
+  // Set by the URL/default restorer, cleared on first user-initiated wheel /
+  // touch / keydown. While set, both `registerAnnotationRef` (mount signal)
+  // and Pierre's `onPostRender` (paint-settle signal) re-fire scrollIntoView
+  // so the target stays centered as the async render cascade settles.
+  const pendingAnchorRef = useRef<string | null>(null);
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -358,6 +364,21 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     });
   }, []);
 
+  // Initial-anchor scroll (URL `?ann=` restore / default first annotation).
+  // Pierre's `<FileDiff>` renders via a Web Worker pool + virtualized rows,
+  // so the AnnotationCard ref isn't reliably present one RAF after the
+  // restorer fires. We record a pending intent here; `registerAnnotationRef`
+  // and the per-file `onPostRender` both re-center against the latest layout
+  // while the intent is live. `behavior: "instant"` because the user is
+  // landing on a bookmark — a smooth animation would race with the still-
+  // settling async paint and visibly jitter.
+  const anchorInitial = useCallback((id: string) => {
+    pendingAnchorRef.current = id;
+    annotationRefs.current
+      .get(id)
+      ?.scrollIntoView({ behavior: "instant", block: "center" });
+  }, []);
+
   const navigateBy = useCallback(
     (delta: -1 | 1) => {
       const step = nextAnnotationNavStep({ topLevel, currentIdx, delta });
@@ -401,7 +422,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setCurrentAnnotationId(target.id);
       setSelectedFile(target.file);
       revealFileAncestors(target.file);
-      scrollAnnotationIntoView(target.id);
+      anchorInitial(target.id);
       return;
     }
     const found = topLevel.some((a) => a.id === currentAnnotationId);
@@ -411,7 +432,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
     }
-  }, [tourMeta, tourId, topLevel, currentAnnotationId, revealFileAncestors, scrollAnnotationIntoView]);
+  }, [tourMeta, tourId, topLevel, currentAnnotationId, revealFileAncestors, anchorInitial]);
 
   // Mirror the current top-level Annotation cursor into the URL via
   // replaceState — chosen over pushState so the browser back button steps
@@ -443,6 +464,25 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [selectedFile]);
 
+  // Cancel the initial-anchor intent on user input so a later Pierre repaint
+  // (worker-driven syntax highlight, late virtualized row) can't yank the
+  // page after the user has started reading or navigating. Listeners stay
+  // attached for the App's lifetime — `{ once: true }` would self-remove
+  // during the pre-data-load window, leaving a later anchor uncancelable.
+  useEffect(() => {
+    const cancel = () => {
+      if (pendingAnchorRef.current !== null) pendingAnchorRef.current = null;
+    };
+    window.addEventListener("wheel", cancel, { passive: true });
+    window.addEventListener("touchstart", cancel, { passive: true });
+    window.addEventListener("keydown", cancel);
+    return () => {
+      window.removeEventListener("wheel", cancel);
+      window.removeEventListener("touchstart", cancel);
+      window.removeEventListener("keydown", cancel);
+    };
+  }, []);
+
   const openPicker = useCallback(() => {
     triggerRef.current = (document.activeElement as HTMLElement) ?? null;
     setPickerOpen(true);
@@ -455,8 +495,16 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   }, []);
 
   const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
-    if (el) annotationRefs.current.set(id, el);
-    else annotationRefs.current.delete(id);
+    if (el) {
+      annotationRefs.current.set(id, el);
+      // R1 (mount race): if the restorer asked to anchor on this id before
+      // Pierre had mounted its AnnotationCard, scroll the moment it arrives.
+      if (pendingAnchorRef.current === id) {
+        el.scrollIntoView({ behavior: "instant", block: "center" });
+      }
+    } else {
+      annotationRefs.current.delete(id);
+    }
   }, []);
 
   const isCollapsed = useCallback(
@@ -513,6 +561,19 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     },
     [],
   );
+
+  // R2 (cascade race): each Pierre `onPostRender` call signals that a file's
+  // layout has changed — including files above the anchor target, which
+  // shift its viewport position. Re-center while the pending intent is
+  // live. Already-centered → no-op, so re-firing across many onPostRender
+  // calls is cheap.
+  const onPierreFileRendered = useCallback(() => {
+    const pending = pendingAnchorRef.current;
+    if (!pending) return;
+    annotationRefs.current
+      .get(pending)
+      ?.scrollIntoView({ behavior: "instant", block: "center" });
+  }, []);
 
   // Cursor walk sequence (ADR 0012). Per-file planned rows are built
   // from each Pierre-parsed file + the annotation list + the active
@@ -966,6 +1027,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 modelFile={modelFilesByName.get(f.name)}
                 registerRef={registerFileRef}
                 registerFileDiffRef={registerFileDiffRef}
+                onPierreFileRendered={onPierreFileRendered}
                 collapsed={isCollapsed(f.name)}
                 onToggleCollapsed={toggleCollapsed}
                 currentAnnotationId={currentAnnotationFile === f.name ? currentAnnotationId : null}
@@ -1102,6 +1164,7 @@ interface FileBlockProps {
   // `React.memo` short-circuit FileBlock on cursor moves.
   registerRef: (file: string, el: HTMLDivElement | null) => void;
   registerFileDiffRef: (file: string, instance: FileDiffInstance<AnnotationMetadata>) => void;
+  onPierreFileRendered: () => void;
   collapsed: boolean;
   onToggleCollapsed: (file: string) => void;
   currentAnnotationId: string | null;
@@ -1160,6 +1223,7 @@ function FileBlockInner({
   modelFile,
   registerRef,
   registerFileDiffRef,
+  onPierreFileRendered,
   collapsed,
   onToggleCollapsed,
   currentAnnotationId,
@@ -1220,9 +1284,10 @@ function FileBlockInner({
       // ref to the instance; `onPostRender` is Pierre's exposed seam.
       onPostRender: (_node: HTMLElement, instance: FileDiffInstance<AnnotationMetadata>) => {
         registerFileDiffRef(fileDiff.name, instance);
+        onPierreFileRendered();
       },
     };
-  }, [annotations, fileDiff.name, collapsed, layout, registerFileDiffRef]);
+  }, [annotations, fileDiff.name, collapsed, layout, registerFileDiffRef, onPierreFileRendered]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {
