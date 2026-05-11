@@ -9,6 +9,7 @@ import { ReplyRunner } from "../core/reply-runner.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { detectAgentsOnPath } from "../core/agent-path-detector.js";
 import { isOnPath } from "../core/is-on-path.js";
+import { probeTour } from "../core/tour-probe.js";
 import { availableShippedAgents } from "../agents/index.js";
 import { html } from "./spa.js";
 import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
@@ -171,6 +172,18 @@ function contentTypeFor(path: string): string {
 
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, portExplicit, cwd, replyAgent } = args;
+
+  // Reuse-if-running (issue #178). Probe the preferred port: if a Tour
+  // server is already serving this cwd, log the existing URL and exit
+  // without starting a second server. Different-cwd Tour, non-Tour, or
+  // free port → fall through to the existing bind path.
+  const existing = await probeTour(port, fetch, 150);
+  if (existing.kind === "tour" && existing.cwd === cwd) {
+    console.log(`Tour already running at http://127.0.0.1:${port}`);
+    return;
+  }
+
+  const startedAt = new Date().toISOString();
   const watchers = new Map<string, TourWatcher>();
   const runners = new Map<string, ReplyRunner>();
 
@@ -208,6 +221,18 @@ export async function startServer(args: ServeArgs): Promise<void> {
       port: tryPort,
       async fetch(req) {
         const url = new URL(req.url);
+
+        // Identity probe (issue #178). Lets a second `tour serve` recognise
+        // an already-running Tour for the same cwd and reuse it instead of
+        // spawning a duplicate server. Unauthenticated, cheap, tourId-agnostic.
+        if (url.pathname === "/__alive") {
+          return Response.json({
+            tour: true,
+            cwd,
+            port: tryPort,
+            startedAt,
+          });
+        }
 
         // Serve any client-bundle output — entry, worker chunks, assets —
         // from a single map. The entry is aliased at /client.js (spa.ts);

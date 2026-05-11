@@ -34,3 +34,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   multiple matches stay silent. The tip is informational only — the
   reply watcher remains inert unless `--reply-agent` is explicitly
   given (ADR 0010 inert-by-default invariant). (#176)
+
+### Changed
+
+- **`tour serve` reuses a running server when one already exists for the
+  same working directory.** Before binding, the entry point probes the
+  preferred port (`GET /__alive`) and, if it finds a Tour server whose
+  `cwd` matches, prints `Tour already running at http://127.0.0.1:<port>`
+  and exits 0 — no second server is started. Different-cwd Tour or
+  non-Tour processes on the port behave as before (fall back to the
+  next port, or surface `port N is in use` when `--port` was explicit).
+  Stable URLs across re-runs; no process / watcher proliferation. (#178)
