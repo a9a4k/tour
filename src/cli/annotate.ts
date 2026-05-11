@@ -7,6 +7,7 @@ import {
 import { resolveIdPrefix } from "../core/tour-store.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { printOutput } from "./output.js";
+import { parseBatch, type BatchItem } from "./parse-batch.js";
 import type { AuthorKind } from "../core/types.js";
 
 interface AnnotateArgs {
@@ -33,6 +34,27 @@ function parseLine(line: string): { start: number; end: number } {
   return { start, end };
 }
 
+// Batch items may carry either the legacy `line` range-string (e.g. "12-14")
+// or the storage-native `line_start` integer + optional `line_end` integer.
+// Both forms map to the same persisted anchor.
+function resolveAnchor(item: BatchItem): { start: number; end: number } {
+  if (item.line_start !== undefined) {
+    const start = item.line_start;
+    const end = item.line_end ?? start;
+    if (!Number.isInteger(start) || !Number.isInteger(end)) {
+      throw new Error(
+        `Invalid line_start/line_end: must be integers (got ${start}/${end})`,
+      );
+    }
+    if (end < start) {
+      throw new Error(`Invalid line range: end (${end}) < start (${start})`);
+    }
+    return { start, end };
+  }
+  if (item.line !== undefined) return parseLine(item.line);
+  throw new Error("Batch item missing line or line_start");
+}
+
 function resolveAuthorKind(asAgent?: boolean, asHuman?: boolean): AuthorKind {
   if (asAgent && asHuman) {
     throw new Error("--as-agent and --as-human are mutually exclusive");
@@ -47,18 +69,13 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
 
   if (args.batch) {
     const stdin = await readStdin();
-    const items = JSON.parse(stdin) as Array<{
-      file: string;
-      side: string;
-      line: string;
-      body: string;
-      author?: string;
-      author_kind?: AuthorKind;
-      replies_to?: string;
-    }>;
+    const items = parseBatch(stdin);
     const requests: CreateRequest[] = items.map((item) => {
       const itemKind = item.author_kind ?? authorKind;
       if (item.replies_to !== undefined) {
+        if (item.body === undefined) {
+          throw new Error("Batch reply item missing body");
+        }
         return {
           kind: "reply",
           replies_to: item.replies_to,
@@ -67,7 +84,10 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
           author_kind: itemKind,
         };
       }
-      const { start, end } = parseLine(item.line);
+      if (item.file === undefined || item.side === undefined || item.body === undefined) {
+        throw new Error("Batch item missing file, side, or body");
+      }
+      const { start, end } = resolveAnchor(item);
       return {
         kind: "top-level",
         file: item.file,

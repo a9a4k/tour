@@ -222,6 +222,91 @@ describe("CLI integration", () => {
       expect(annotations).toHaveLength(2);
     });
 
+    it("accepts JSONL on stdin in --batch mode (issue #172)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl =
+        `{"file":"hello.txt","side":"additions","line":"1","body":"Note 1"}\n` +
+        `{"file":"hello.txt","side":"deletions","line":"1","body":"Note 2"}\n`;
+      const result = await run(
+        ["annotate", tour.id, "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(result.exitCode).toBe(0);
+      const annotations = JSON.parse(result.stdout);
+      expect(annotations).toHaveLength(2);
+      expect(annotations[0].body).toBe("Note 1");
+      expect(annotations[1].body).toBe("Note 2");
+    });
+
+    it("accepts line_start/line_end anchor shape and mixes with `line` (issue #172)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      // Both forms anchored at line 1 (the file's only line on each side).
+      const jsonl =
+        `{"file":"hello.txt","side":"additions","line_start":1,"line_end":1,"body":"native"}\n` +
+        `{"file":"hello.txt","side":"deletions","line":"1","body":"legacy"}\n`;
+      const result = await run(
+        ["annotate", tour.id, "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(result.exitCode).toBe(0);
+      const annotations = JSON.parse(result.stdout);
+      expect(annotations).toHaveLength(2);
+      expect(annotations[0].line_start).toBe(1);
+      expect(annotations[0].line_end).toBe(1);
+      expect(annotations[1].line_start).toBe(1);
+      expect(annotations[1].line_end).toBe(1);
+    });
+
+    it("supports replies_to in JSONL --batch mode (issue #172)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = JSON.parse(
+        (
+          await run(
+            [
+              "annotate", tour.id,
+              "--file", "hello.txt",
+              "--side", "additions",
+              "--line", "1",
+              "--body", "root",
+              "--json",
+            ],
+            repo,
+          )
+        ).stdout,
+      );
+      const jsonl = `{"replies_to":"${root.id}","body":"reply via JSONL"}\n`;
+      const result = await run(
+        ["annotate", tour.id, "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(result.exitCode).toBe(0);
+      const annotations = JSON.parse(result.stdout);
+      expect(annotations).toHaveLength(1);
+      expect(annotations[0].replies_to).toBe(root.id);
+      expect(annotations[0].body).toBe("reply via JSONL");
+    });
+
+    it("reports the offending line number on JSONL parse failure (issue #172)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl =
+        `{"file":"hello.txt","side":"additions","line":"1","body":"ok"}\n` +
+        `{not valid json}\n`;
+      const result = await run(
+        ["annotate", tour.id, "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/Line 2:/);
+    });
+
     it("rejects annotation whose file is not in the Tour's diff (slice 4 / #144)", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
