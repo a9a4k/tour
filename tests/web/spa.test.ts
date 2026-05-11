@@ -103,8 +103,7 @@ describe("spa shell html()", () => {
     const out = html();
     // The unfocused card must read as a card, not raw text: visible neutral
     // border on top/right/bottom + faint fill, in addition to the existing
-    // left accent stripe. The old `border: 2px solid transparent` left the
-    // unfocused card naked next to a focused peer.
+    // left accent stripe.
     expect(out).toMatch(/\.annotation-block\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
     expect(out).toMatch(/\.annotation-block\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
     expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*border:\s*2px solid transparent/);
