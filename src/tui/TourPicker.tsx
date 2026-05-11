@@ -1,6 +1,6 @@
 import type { PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
-import { GUTTER_CHAR } from "./DiffLine.js";
+import { CURSOR_GLYPH } from "./DiffLine.js";
 
 interface TourPickerProps {
   rows: PickerRow[];
@@ -36,13 +36,14 @@ export function TourPicker({ rows, currentTourId, cursor }: TourPickerProps) {
           rows.map((r, i) => {
             const isCurrent = r.id === currentTourId;
             const isCursor = i === cursor;
-            // Cursor row: bg.accent.cursor + fg.accent gutter glyph.
-            // Current row: bg.accent.current only, no gutter glyph.
-            // Mirrors the webapp's same-named states. ADR 0008 / Issue #57.
+            // Cursor row: bg.accent.cursor + fg.accent ❯ glyph (universal
+            // list-cursor convention — same shape as the diff cursor).
+            // Current row: bg.accent.current only, no glyph.
+            // ADR 0008 / Issue #57.
             let bg: string | undefined;
             if (isCursor) bg = theme.bg.accentCursor.tui;
             else if (isCurrent) bg = theme.bg.accentCurrent.tui;
-            const glyph = isCursor ? GUTTER_CHAR : " ";
+            const glyph = isCursor ? CURSOR_GLYPH : " ";
             return (
               <box key={r.id} flexDirection="row">
                 <text fg={theme.fg.accent} bg={bg}>{glyph}</text>

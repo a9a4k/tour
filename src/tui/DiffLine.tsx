@@ -5,7 +5,6 @@ export const TINT_BG = theme.bg.accentRange.tui;
 export const ACCENT_FG = theme.fg.accent;
 export const CURSOR_FG = theme.fg.cursor;
 export const CURSOR_ROW_BG = theme.bg.cursorRow.tui;
-export const GUTTER_CHAR = "▎";
 export const CURSOR_GLYPH = "❯";
 
 interface DiffLineProps {
