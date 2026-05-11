@@ -127,10 +127,16 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
       if (ctx.selectedRowKind === "folder") return { type: "toggle-folder" };
       if (ctx.selectedRowKind === "file") return { type: "toggle-collapse" };
     }
-    if (key.name === "right" && ctx.selectedRowKind === "folder") {
+    // Issue #155: `h` / `l` are vim aliases for the left / right arrows,
+    // matching the existing `j` / `k` aliasing for vertical motion. The
+    // diff-pane bindings of plain `h` / `l` to cursor-side-left /
+    // cursor-side-right stay gated on `!sidebarFocused`, so there's no
+    // overlap. Capital `L` (toggle-layout) and the ctrl/shift modifiers
+    // are captured earlier in this function.
+    if ((key.name === "right" || key.name === "l") && ctx.selectedRowKind === "folder") {
       return { type: "expand-folder" };
     }
-    if (key.name === "left") {
+    if (key.name === "left" || key.name === "h") {
       if (ctx.selectedRowKind === "folder") return { type: "collapse-folder" };
       if (ctx.selectedRowKind === "file") return { type: "collapse-parent" };
     }
