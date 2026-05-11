@@ -402,9 +402,11 @@ describe("cursorAtFirstFileRow", () => {
 
 // β-coupling per ADR 0011: n/p annotation-nav moves the line cursor to the
 // target annotation's anchor. The pure helper computes the cursor; app.tsx
-// wires it into the navigation handler.
+// wires it into the navigation handler. For multiline annotations, the cursor
+// materializes at line_end (issue #170) so the eye lands at the bottom of the
+// annotated range with the annotation card and the annotated region above.
 describe("cursorFromAnnotation", () => {
-  it("anchors to the annotation's (file, side, line_start)", () => {
+  it("anchors to the annotation's (file, side, line_end) for a single-line range", () => {
     const a = ann({
       id: "a1",
       file: "src/foo.ts",
@@ -420,7 +422,7 @@ describe("cursorFromAnnotation", () => {
     });
   });
 
-  it("uses line_start (not line_end) for multi-line annotations", () => {
+  it("uses line_end (not line_start) for multi-line annotations", () => {
     const a = ann({
       id: "a1",
       file: "src/foo.ts",
@@ -428,7 +430,7 @@ describe("cursorFromAnnotation", () => {
       line_start: 10,
       line_end: 20,
     });
-    expect(cursorFromAnnotation(a).lineNumber).toBe(10);
+    expect(cursorFromAnnotation(a).lineNumber).toBe(20);
   });
 
   it("sets preferredSide to the annotation's side (deletions)", () => {

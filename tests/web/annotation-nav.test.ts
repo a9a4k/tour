@@ -97,10 +97,10 @@ describe("nextAnnotationNavStep: cursor coupling shape", () => {
     expect(out2?.cursor.preferredSide).toBe("additions");
   });
 
-  it("uses line_start (not line_end) for multi-line annotation cursor anchor", () => {
+  it("uses line_end (not line_start) for multi-line annotation cursor anchor (#170)", () => {
     const multi = ann({ id: "m1", file: "m.ts", side: "additions", line_start: 30, line_end: 45 });
     const out = nextAnnotationNavStep({ topLevel: [A, multi], currentIdx: 0, delta: 1 });
-    expect(out?.cursor.lineNumber).toBe(30);
+    expect(out?.cursor.lineNumber).toBe(45);
   });
 
   it("after `n` to a different file the cursor's file matches the target — `a` next opens the composer in that file", () => {
