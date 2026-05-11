@@ -72,16 +72,9 @@ export function AnnotationCard({
   const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
   const showPill =
     replyLock && pillTargetsThisCard(annotation, replies, replyLock);
-  // Selection is communicated through three independent visual signals so
-  // the current card survives palette drift, colour blindness, and low-
-  // contrast displays without leaning on a single delta:
-  //   1. `borderStyle`: heavy on the current card, single on its peers,
-  //      so the frame itself reads differently before any colour parses.
-  //   2. `backgroundColor`: the brighter `accentCurrent` tier on the
-  //      current card; peers fall back to the subtler `accentSubtle`
-  //      tier so they recede without losing accent identity.
-  //   3. A `●` glyph rendered in the header — a dedicated, motion-
-  //      independent marker analogous to the line cursor's gutter `▶`.
+  // Selection is signalled redundantly along three axes (borderStyle,
+  // backgroundColor, header `●` glyph) so the cue survives palette drift,
+  // colour blindness, and low-contrast displays — a single delta isn't enough.
   return (
     <box
       id={`annotation-${annotation.id}`}
