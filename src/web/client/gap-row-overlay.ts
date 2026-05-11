@@ -27,8 +27,13 @@ import { cssEscape, queryAllAcrossShadow, queryFirstAcrossShadow } from "./dom-w
  *
  * Click handler resolves Pierre's per-file `FileDiff` instance via the
  * `fileDiffRefs` Map and calls `expandHunk(hunkIndex, direction, n)`.
- * Direction is derived from `(subKind, hunkIndex, gapAbove)`:
- *   - `subkind="hunk-header"` + `hunkIndex === 0` + `gapAbove > 0` → `"up"`
+ * Direction is derived from `(subKind, hunkIndex, gapAbove)` under ADR 0018's
+ * D1 adjacency (newly-revealed lines appear adjacent to the row that
+ * revealed them; the row's spatial position == which end of the gap it
+ * expands):
+ *   - `subkind="hunk-header"` + `hunkIndex === 0` + `gapAbove > 0` → `"down"`
+ *     (file-top `hunk-header` sits at the BOTTOM of the file-top gap, so
+ *     "adjacent" means the END of the gap range — Pierre's `down`)
  *   - `subkind="hunk-header"` + `hunkIndex > 0` + `gapAbove <= 2N` → `"both"`
  *   - `subkind="hunk-header"` + `hunkIndex > 0` + `gapAbove > 2N` → `"down"`
  *   - `subkind="gap-mid-top"` → `"up"`
@@ -233,7 +238,15 @@ function injectForSpec(args: {
 }
 
 function directionForHunkHeader(spec: HunkHeaderSpec): "up" | "down" | "both" {
-  if (spec.hunkIndex === 0) return "up";
+  // First-hunk file-top: the `hunk-header` sits at the BOTTOM of the file-top
+  // gap (just above the hunk's content), so ADR 0018's D1 adjacency means
+  // newly-revealed lines should appear adjacent — at the END of the gap range,
+  // immediately above the @@ row. Pierre encodes that as `direction="down"`
+  // (`region.fromEnd += N`; see Pierre's createSeparator.js which similarly
+  // picks `isFirstHunk ? "down" : "up"` for its own chunked-separator UI).
+  // The `↑` glyph stays as-is (spatial: "lines appear above this row");
+  // glyph and direction carry orthogonal information.
+  if (spec.hunkIndex === 0) return "down";
   if (spec.gapAbove > GAP_TWO_ROW_THRESHOLD) return "down";
   return "both";
 }
