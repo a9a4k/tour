@@ -4,3 +4,4 @@ dist/
 .tour/
 .npmrc
 .*.bun-build
+.DS_Store
