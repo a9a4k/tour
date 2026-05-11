@@ -320,6 +320,15 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.tour-refs\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
+  it("styles the selected-file path slot in the header — muted, monospace, ellipsized on overflow", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-header-path\s*\{[^}]*color:\s*var\(--fg-muted\)/);
+    expect(out).toMatch(/\.tour-header-path\s*\{[^}]*font-family:[^}]*'SF Mono'/);
+    expect(out).toMatch(/\.tour-header-path\s*\{[^}]*overflow:\s*hidden/);
+    expect(out).toMatch(/\.tour-header-path\s*\{[^}]*text-overflow:\s*ellipsis/);
+    expect(out).toMatch(/\.tour-header-path\s*\{[^}]*white-space:\s*nowrap/);
+  });
+
   it("styles the inline composer card with shared theme tokens (Issue #77)", () => {
     const out = html();
     expect(out).toMatch(/\.composer\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);

@@ -145,6 +145,16 @@ export function html(initialTourId?: string): string {
     flex: 0 1 auto;
     min-width: 0;
   }
+  .tour-header-path {
+    color: var(--fg-muted);
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
   .tour-header-right {
     display: flex;
     align-items: center;
