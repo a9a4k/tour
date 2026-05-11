@@ -94,6 +94,12 @@ git config user.name tour-ci
 echo hello > a.txt
 git add a.txt
 git commit -q -m "init"
+# `tour create --head HEAD` defaults the base to HEAD^ (src/cli/create.ts).
+# Add a second commit so the default resolves; otherwise `git rev-parse
+# HEAD^` errors and the smoke fails before reaching the lazy import.
+echo world >> a.txt
+git add a.txt
+git commit -q -m "second"
 "$BIN" create --head HEAD --title smoke > /dev/null
 
 "$BIN" tui </dev/null > /dev/null 2>tui.err &
