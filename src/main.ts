@@ -222,6 +222,12 @@ async function main(): Promise<void> {
         // Smart-default surface (issue #174): webapp when a browser is
         // reachable, TUI otherwise. Explicit `tour tui` / `tour serve` are
         // unchanged. Env collection lives here; pickDefaultSurface is pure.
+        //
+        // Bare `tour` starts the webapp and prints the URL but does NOT
+        // auto-open the browser — modern terminals make `http://…` URLs
+        // Cmd/Ctrl-clickable, and auto-opening on every invocation pollutes
+        // the user's tab history. Users who want the old auto-open behavior
+        // run `tour serve --open` explicitly.
         const surface = pickDefaultSurface({
           platform: process.platform,
           ssh:
@@ -237,7 +243,7 @@ async function main(): Promise<void> {
           await serve({
             port: 8687,
             portExplicit: false,
-            open: true,
+            open: false,
             cwd,
             replyAgent: flag(flags, "reply-agent"),
           });

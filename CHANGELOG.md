@@ -9,12 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Breaking changes
 
 - **Bare `tour` picks the best surface for your environment.** Previously,
-  `tour` (no subcommand) always launched the TUI. It now launches the
-  webapp when a browser is reachable (desktop linux/darwin with a TTY,
-  `open` or `xdg-open` on PATH, no SSH session) and falls back to the
-  TUI otherwise (ssh, piped/non-TTY stdout, windows, no opener). Explicit
-  `tour tui` and `tour serve` are unchanged. The first-run banner (no
-  tours present) still prints unchanged.
+  `tour` (no subcommand) always launched the TUI. It now starts the
+  webapp and prints its URL when a browser is reachable (desktop
+  linux/darwin with a TTY, `open` or `xdg-open` on PATH, no SSH session)
+  and falls back to the TUI otherwise (ssh, piped/non-TTY stdout,
+  windows, no opener). The URL is Cmd/Ctrl-clickable in modern
+  terminals — bare `tour` does **not** auto-open the browser, so
+  re-running the command does not stack tabs. Users who want the
+  browser launched automatically run `tour serve --open` explicitly,
+  which is unchanged. `tour tui` is also unchanged. The first-run
+  banner (no tours present) still prints unchanged.
 
   The deciding criterion is annotation fidelity: the webapp renders
   markdown + mermaid, the TUI shows raw source. New users on a desktop
