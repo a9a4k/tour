@@ -38,9 +38,9 @@ import { cssEscape, queryAllAcrossShadow, queryFirstAcrossShadow } from "./dom-w
  *   - `subkind="hunk-header"` + `hunkIndex > 0` + `gapAbove > 2N` → `"down"`
  *   - `subkind="gap-mid-top"` → `"up"`
  *   - `subkind="boundary-bottom"` → `"down"`
- * Shift-click passes a large `expansionLineCount` (the gap-above for
- * hunk-header / gap-mid-top, a synthetic large constant for
- * boundary-bottom) so Pierre reveals the whole gap in one call.
+ * Shift-click passes `Math.max(gapAbove, EXPANSION_STEP)` uniformly across
+ * all three kinds; each spec carries its gap's size, sourced from the
+ * planner's `gapAbove` field on the corresponding row.
  *
  * Idempotent attach: the overlay tags each injected node with
  * `data-tour-interactive` and skips creating a duplicate when one with
@@ -66,7 +66,6 @@ export interface AttachGapRowOverlayArgs {
 }
 
 const EXPANSION_STEP = 20;
-const SHIFT_EXPAND_ALL = 1_000_000;
 const GAP_TWO_ROW_THRESHOLD = 40;
 
 interface HunkHeaderSpec {
@@ -78,10 +77,12 @@ interface HunkHeaderSpec {
 interface GapMidTopSpec {
   kind: "gap-mid-top";
   hunkIndex: number;
+  gapAbove: number;
 }
 
 interface BoundaryBottomSpec {
   kind: "boundary-bottom";
+  gapAbove: number;
 }
 
 type GapSpec = HunkHeaderSpec | GapMidTopSpec | BoundaryBottomSpec;
@@ -134,10 +135,14 @@ function collectSpecs(rows: PlannedRow[]): GapSpec[] {
     } else if (row.kind === "interactive" && row.subKind === "gap-mid-top") {
       // boundaryRef is `hunkIndex` for gap-mid-top (per diff-rows.ts).
       if (typeof row.boundaryRef === "number") {
-        out.push({ kind: "gap-mid-top", hunkIndex: row.boundaryRef });
+        out.push({
+          kind: "gap-mid-top",
+          hunkIndex: row.boundaryRef,
+          gapAbove: row.gapAbove ?? 0,
+        });
       }
     } else if (row.kind === "interactive" && row.subKind === "boundary-bottom") {
-      out.push({ kind: "boundary-bottom" });
+      out.push({ kind: "boundary-bottom", gapAbove: row.gapAbove ?? 0 });
     }
   }
   return out;
@@ -206,7 +211,7 @@ function injectForSpec(args: {
     sep.parentElement?.insertBefore(node, sep);
     injected.push(node);
     attachClick(node, listeners, (e) => {
-      const count = e.shiftKey ? SHIFT_EXPAND_ALL : EXPANSION_STEP;
+      const count = e.shiftKey ? Math.max(spec.gapAbove, EXPANSION_STEP) : EXPANSION_STEP;
       expandHunk(spec.hunkIndex, "up", count);
       onAfterExpand();
     });
@@ -231,7 +236,7 @@ function injectForSpec(args: {
   lastLine.parentElement?.insertBefore(node, lastLine.nextSibling);
   injected.push(node);
   attachClick(node, listeners, (e) => {
-    const count = e.shiftKey ? SHIFT_EXPAND_ALL : EXPANSION_STEP;
+    const count = e.shiftKey ? Math.max(spec.gapAbove, EXPANSION_STEP) : EXPANSION_STEP;
     expandHunk(lastHunkIndex, "down", count);
     onAfterExpand();
   });

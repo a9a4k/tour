@@ -77,6 +77,13 @@ export interface InteractiveRow {
   /** Optional human-readable body the planner can fill in (e.g. "··· 12
    *  hidden ···"); the cursor visual works regardless. */
   text?: string;
+  /** Lines hidden in the gap this row addresses. Set on `gap-mid-top`
+   *  (= remaining mid-file gap above the next hunk) and `boundary-bottom`
+   *  (= remaining file-bottom gap). Lets consumers (e.g. webapp gap-row
+   *  overlay shift-click) compute the full-gap expansion count directly
+   *  instead of passing a large sentinel and relying on receiver-side
+   *  clamping. */
+  gapAbove?: number;
 }
 
 export interface PlanRowsOptions {
@@ -253,6 +260,7 @@ function walkHunks(
         subKind: "gap-mid-top",
         boundaryRef: hunkIndex,
         text: gapMidTopText(gapAbove),
+        gapAbove,
       });
     }
 
@@ -382,6 +390,7 @@ function walkHunks(
           subKind: "boundary-bottom",
           boundaryRef: "bottom",
           text: boundaryBottomText(remaining),
+          gapAbove: remaining,
         });
       }
     }
