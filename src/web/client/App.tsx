@@ -40,6 +40,7 @@ import { validateWebappCursor } from "./cursor-validation.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
 import { attachGapRowOverlay, dispatchGapRowAction } from "./gap-row-overlay.js";
+import { expansionFromPierre } from "./pierre-expansion-bridge.js";
 import type { FileDiff as FileDiffInstance } from "@pierre/diffs";
 
 const STICKY_HEADER_CSS = `
@@ -500,16 +501,26 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // from each Pierre-parsed file + the annotation list + the active
   // layout (split vs unified differ in pairing). The flat-rows builder
   // skips folded files and hunk-header / annotation rows, leaving a
-  // walkable sequence indexed by moveCursor. Pierre's expandUnchanged
-  // (PRD #106) chevron-revealed rows are DOM-only and not in this
-  // list; v1 walks the patch's context rows only.
+  // walkable sequence indexed by moveCursor.
+  //
+  // PRD #151 / issue #158: bridge Pierre's `expandedHunks` runtime state
+  // into a Tour `ExpansionState` and feed it to `planRows` so chevrons
+  // and gap-mid-top rows reflect the REMAINING hidden lines after each
+  // `expandHunk` call. `expansionVersion` (bumped by the gap-row overlay
+  // after every click) is in this memo's dep list so the planner re-runs
+  // off the freshly-mutated Pierre map.
   const plannedRowsByFile = useMemo(() => {
+    const expansion = expansionFromPierre(fileDiffRefs.current, parsedFiles);
     const out = new Map<string, ReturnType<typeof planRows>>();
     for (const f of parsedFiles) {
-      out.set(f.name, planRows(f, annotations, layout));
+      out.set(f.name, planRows(f, annotations, layout, { expansion }));
     }
     return out;
-  }, [parsedFiles, annotations, layout]);
+    // expansionVersion is the re-render trigger; fileDiffRefs is a ref and
+    // intentionally not in the dep list — reading `current` at memo time
+    // picks up whatever Pierre has accumulated by then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedFiles, annotations, layout, expansionVersion]);
 
   const flatRowsList = useMemo(() => {
     return buildFlatRows(
