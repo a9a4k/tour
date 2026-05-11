@@ -15,8 +15,9 @@ export async function serve(args: ServeArgs): Promise<void> {
   if (args.replyAgent) {
     assertShippedAgent(args.replyAgent);
   }
-  const serverModule = "../web/server.js";
-  const { startServer } = await import(/* @vite-ignore */ serverModule) as {
+  // Static-string specifier so Bun --compile embeds the web module; cast hides
+  // the path from tsc since src/web is excluded (JSX).
+  const { startServer } = (await import("../web/server.js" as string)) as {
     startServer: (args: ServeArgs) => Promise<void>;
   };
   await startServer(args);

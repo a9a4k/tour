@@ -51,8 +51,9 @@ export async function tui(args: TuiArgs): Promise<void> {
   const initialBundle = await loadTourBundle(args.cwd, tourId);
   const initialReplyLock = await readReplyLock(args.cwd, tourId);
 
-  const tuiModule = "../tui/app.js";
-  const { startTui } = await import(/* @vite-ignore */ tuiModule) as {
+  // Static-string specifier so Bun --compile embeds the TUI module; cast hides
+  // the path from tsc since src/tui is excluded (JSX).
+  const { startTui } = (await import("../tui/app.js" as string)) as {
     startTui: (props: {
       bundle: TourBundle;
       replyLock: ReplyLock | null;
