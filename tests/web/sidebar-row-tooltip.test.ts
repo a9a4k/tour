@@ -5,12 +5,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { FileRow, FolderRow } from "../../src/web/client/App.js";
 import type { BundleFile } from "../../src/web/client/types.js";
 
-// Issue #166 — webapp sidebar rows must carry a native `title` tooltip
-// with the row's full path so reviewers can reveal end-truncated names
-// without any CSS / layout changes. For folders, `row.path` is the
-// compressed-chain path; for files, it's the full filesystem path. The
-// tooltip is unconditional — it does not depend on whether the row is
-// visually truncated.
+// Webapp sidebar rows must carry a native `title` tooltip with the row's
+// full path so reviewers can reveal end-truncated names without any CSS /
+// layout changes. For folders, `row.path` is the compressed-chain path;
+// for files, it's the full filesystem path. The tooltip is unconditional
+// — it does not depend on whether the row is visually truncated.
 
 let root: Root | null = null;
 
@@ -36,7 +35,7 @@ function mount(element: React.ReactElement): HTMLElement {
   return container;
 }
 
-describe("FileRow: native title tooltip (Issue #166)", () => {
+describe("FileRow: native title tooltip", () => {
   it("renders the file's full path as the button's title attribute", () => {
     const file: BundleFile = {
       name: "src/web/server/handlers/very-long/file-name.controller.ts",
@@ -85,7 +84,7 @@ describe("FileRow: native title tooltip (Issue #166)", () => {
   });
 });
 
-describe("FolderRow: native title tooltip (Issue #166)", () => {
+describe("FolderRow: native title tooltip", () => {
   it("renders the folder's compressed-chain path as the button's title attribute", () => {
     const container = mount(
       createElement(FolderRow, {

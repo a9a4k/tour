@@ -1031,8 +1031,7 @@ interface FolderRowProps {
 // React.memo so cursor / annotation-nav state changes in App don't re-render
 // every sidebar row. Without this, the plain function rendered ~800 times per
 // annotation click despite none of its props meaningfully changing.
-// Exported so unit tests can mount the row in isolation (Issue #166 —
-// native `title` tooltip reveals the full path on hover).
+// Exported so unit tests can mount the row in isolation.
 export const FolderRow = React.memo(function FolderRow({
   row,
   onToggle,
