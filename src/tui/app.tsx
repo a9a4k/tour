@@ -183,6 +183,12 @@ function App(props: AppProps) {
   const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
+  // After a top-level annotate-submit, holds the id of the freshly-created
+  // Annotation until the post-submit effect scrolls its card into view.
+  // currentAnnotationId is intentionally NOT advanced (seed-once-per-tour
+  // guard + PRD UX 26 r-after-a foot-gun protection); this is viewport-only.
+  const [pendingScrollAnnotationId, setPendingScrollAnnotationId] =
+    useState<string | null>(null);
   // Hidden-context expansion state (PRD #108, ADR 0013). Per-tour, in-memory
   // only. Reset on tour switch (sibling to collapsedOverrides), preserved on
   // watcher reload (the diff is SHA-pinned; gaps are unchanged).
@@ -528,6 +534,24 @@ function App(props: AppProps) {
     sb.scrollTo(target);
   }, [currentAnnotationId, liveAnnotations, plannedRowsByFile]);
 
+  // Scroll a freshly-created top-level Annotation into view (issue #150,
+  // PRD #148). Fires once per successful create — currentAnnotationId is
+  // intentionally untouched (preserves the seed-once-per-tour guard +
+  // r-after-a foot-gun protection at lines above). `nearest` semantics
+  // from scrollChildIntoView mean already-visible cards do not move.
+  // The effect waits for the card's box to mount; the bundle-reload
+  // re-render brings it into the scrollbox content tree, after which
+  // the pending id is cleared.
+  useEffect(() => {
+    if (!pendingScrollAnnotationId) return;
+    const sb = diffScrollRef.current;
+    if (!sb) return;
+    const targetId = `annotation-${pendingScrollAnnotationId}`;
+    if (!sb.content.findDescendantById(targetId)) return;
+    scrollChildIntoView(sb, targetId);
+    setPendingScrollAnnotationId(null);
+  }, [pendingScrollAnnotationId, liveAnnotations, plannedRowsByFile]);
+
   const currentAnnotationIdx = useMemo(() => {
     if (liveTopLevel.length === 0) return -1;
     if (currentAnnotationId === null) return 0;
@@ -839,9 +863,10 @@ function App(props: AppProps) {
       setComposer(null);
       return;
     }
+    let newTopLevelId: string | null = null;
     try {
       if (composer.kind === "top-level") {
-        await props.writeAnnotation(liveTour.id, {
+        const created = await props.writeAnnotation(liveTour.id, {
           kind: "top-level",
           file: composer.file,
           side: composer.side,
@@ -850,6 +875,7 @@ function App(props: AppProps) {
           body: trimmed,
           bundle,
         });
+        newTopLevelId = created.id;
       } else {
         await props.writeAnnotation(liveTour.id, {
           kind: "reply",
@@ -869,6 +895,7 @@ function App(props: AppProps) {
           );
         }
       }
+      if (newTopLevelId) setPendingScrollAnnotationId(newTopLevelId);
     } finally {
       setComposer(null);
     }
