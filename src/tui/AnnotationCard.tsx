@@ -102,11 +102,16 @@ export function AnnotationCard({
           </text>
         ) : null}
         <text fg={authorKindColor(annotation.author_kind)} bold>
-          {`[${annotation.author_kind}] `}
+          {`[${annotation.author_kind}]`}
         </text>
         <text fg={theme.fg.accent} bold>
-          {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
+          {` ${annotation.file}:${rangeLabel(annotation)}`}
         </text>
+        {annotation.author !== annotation.author_kind ? (
+          <text fg={theme.fg.accent} bold>
+            {` (${annotation.author})`}
+          </text>
+        ) : null}
       </box>
       <box flexGrow={1}>
         <text fg={theme.fg.default} wrapMode="word">{annotation.body}</text>
@@ -121,9 +126,11 @@ export function AnnotationCard({
         >
           <box flexDirection="row" flexWrap="wrap">
             <text fg={authorKindColor(r.author_kind)} bold>
-              {`[${r.author_kind}] `}
+              {`[${r.author_kind}]`}
             </text>
-            <text fg={theme.fg.muted}>{`(${r.author})`}</text>
+            {r.author !== r.author_kind ? (
+              <text fg={theme.fg.muted}>{` (${r.author})`}</text>
+            ) : null}
           </box>
           <text fg={theme.fg.default} wrapMode="word">{r.body}</text>
         </box>

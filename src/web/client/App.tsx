@@ -1553,7 +1553,10 @@ function AnnotationCard({
         <span className={`author-kind ${annotation.author_kind}`}>
           [{annotation.author_kind}]
         </span>{" "}
-        {annotation.author} · {annotation.file}:{range}
+        {annotation.author !== annotation.author_kind ? (
+          <>{annotation.author} · </>
+        ) : null}
+        {annotation.file}:{range}
       </div>
       <div className="ann-body">
         <AnnotationMarkdown body={annotation.body} />
@@ -1570,8 +1573,8 @@ function AnnotationCard({
               <div className="ann-header">
                 <span className={`author-kind ${r.author_kind}`}>
                   [{r.author_kind}]
-                </span>{" "}
-                {r.author}
+                </span>
+                {r.author !== r.author_kind ? <> {r.author}</> : null}
               </div>
               <div className="ann-body">
                 <AnnotationMarkdown body={r.body} />
