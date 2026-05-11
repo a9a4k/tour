@@ -2,7 +2,7 @@
 
 Local code walkthroughs for the code your AI agent wrote.
 
-Your agent annotates a pinned git diff as it works. You step through the notes in a TUI or your browser. No GitHub round-trip.
+When your agent finishes, its last step is to leave a tour — a walkthrough of its own diff. You step through the annotations in a TUI or your browser. No GitHub round-trip.
 
 ## Install
 
