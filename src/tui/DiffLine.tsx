@@ -4,9 +4,9 @@ import { theme } from "../core/theme.js";
 export const TINT_BG = theme.bg.accentRange.tui;
 export const ACCENT_FG = theme.fg.accent;
 export const CURSOR_FG = theme.fg.cursor;
-export const CURSOR_GUTTER_BG = theme.bg.cursorGutter.tui;
+export const CURSOR_ROW_BG = theme.bg.cursorRow.tui;
 export const GUTTER_CHAR = "▎";
-export const CURSOR_GLYPH = "▶";
+export const CURSOR_GLYPH = "❯";
 
 interface DiffLineProps {
   // Pre-formatted gutter text (line numbers + sign + trailing space).
@@ -27,10 +27,12 @@ interface DiffLineProps {
   // contentTinted=false so the diff bg shows on content); on context rows
   // diffBg is undefined so the annotation tint paints both cells.
   diffBg?: "addition" | "deletion";
-  // Line cursor (ADR 0011). When true, the gutter cell paints
-  // theme.bg.cursorGutter (winning over annotation tint and diff bg per the
-  // composition rule) and a leading `▶` glyph in theme.fg.cursor renders in
-  // the line-number column. Content area is untouched.
+  // Line cursor (ADR 0011). When true, both the gutter cell and the
+  // content cell paint theme.bg.cursorRow (winning over annotation tint
+  // and diff bg per the composition rule), and a leading `❯` glyph in
+  // theme.fg.cursor renders in the line-number column. The full-row fill
+  // is the TUI-native analogue of the web's outlined-row focus — terminals
+  // can't do outlines without taking extra rows, so we use a solid fill.
   cursorActive?: boolean;
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
@@ -57,12 +59,19 @@ export function DiffLine({
 }: DiffLineProps) {
   const diffColor = diffBgColor(diffBg);
   // Composition rule (ADR 0011): cursor bg > annotation tint > +/- bg.
+  // Cursor bg fills both gutter and content so the active row reads as a
+  // single solid plate — the terminal-native equivalent of the web's
+  // outlined row.
   const gutterBg = cursorActive
-    ? CURSOR_GUTTER_BG
+    ? CURSOR_ROW_BG
     : gutterTinted
       ? TINT_BG
       : diffColor;
-  const contentBg = contentTinted ? TINT_BG : diffColor;
+  const contentBg = cursorActive
+    ? CURSOR_ROW_BG
+    : contentTinted
+      ? TINT_BG
+      : diffColor;
   const showCode = !!filetype && text.length > 0;
   // Drop one leading char so the total gutter width is preserved when the
   // cursor glyph rides in front of the line number.

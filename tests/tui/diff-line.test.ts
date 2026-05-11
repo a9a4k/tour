@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DiffLine, ACCENT_FG, TINT_BG, CURSOR_FG, CURSOR_GUTTER_BG, CURSOR_GLYPH } from "../../src/tui/DiffLine.js";
+import { DiffLine, ACCENT_FG, TINT_BG, CURSOR_FG, CURSOR_ROW_BG, CURSOR_GLYPH } from "../../src/tui/DiffLine.js";
 import { theme } from "../../src/core/theme.js";
 
 // DiffLine is a function component; calling it directly returns a React
@@ -189,23 +189,24 @@ describe("DiffLine diff backgrounds (issue #74)", () => {
   });
 });
 
-// ADR 0011 line cursor: when cursorActive is true, the gutter cell paints
-// theme.bg.cursorGutter (winning over annotation tint and diff bg per the
-// composition rule) and a leading ▶ glyph in theme.fg.cursor renders in
-// the line-number column. Content area is untouched.
+// ADR 0011 line cursor: when cursorActive is true, both the gutter and
+// content cells paint theme.bg.cursorRow (winning over annotation tint
+// and diff bg per the composition rule), and a leading ❯ glyph in
+// theme.fg.cursor renders in the line-number column. The full-row fill is
+// the TUI-native analogue of the web's outlined focus row.
 
 describe("DiffLine cursorActive (ADR 0011)", () => {
-  it("paints cursorGutter bg when cursorActive=true (overrides annotation tint)", () => {
+  it("paints cursorRow bg when cursorActive=true (overrides annotation tint)", () => {
     const root = render({ cursorActive: true, gutterTinted: true } as never);
-    expect(gutterBgOf(root)).toBe(CURSOR_GUTTER_BG);
+    expect(gutterBgOf(root)).toBe(CURSOR_ROW_BG);
   });
 
-  it("paints cursorGutter bg when cursorActive=true (overrides diff +/- bg)", () => {
+  it("paints cursorRow bg when cursorActive=true (overrides diff +/- bg)", () => {
     const root = render({ cursorActive: true, diffBg: "addition" } as never);
-    expect(gutterBgOf(root)).toBe(CURSOR_GUTTER_BG);
+    expect(gutterBgOf(root)).toBe(CURSOR_ROW_BG);
   });
 
-  it("renders the ▶ glyph in cursor fg colour when cursorActive=true", () => {
+  it("renders the ❯ glyph in cursor fg colour when cursorActive=true", () => {
     const root = render({ cursorActive: true } as never);
     const gutterCell = childrenOf(root).filter(isElement)[1]!;
     const innerTexts = childrenOf(gutterCell).filter((c) => isElement(c) && c.type === "text") as AnyElement[];
@@ -217,7 +218,7 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
     expect(glyph!.props["fg"]).toBe(CURSOR_FG);
   });
 
-  it("does not render the ▶ glyph when cursorActive=false", () => {
+  it("does not render the ❯ glyph when cursorActive=false", () => {
     const root = render({ cursorActive: false } as never);
     const gutterCell = childrenOf(root).filter(isElement)[1]!;
     const innerTexts = childrenOf(gutterCell).filter((c) => isElement(c) && c.type === "text") as AnyElement[];
@@ -229,7 +230,7 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
   });
 
   it("preserves total gutter width when cursorActive=true (drops one leading char)", () => {
-    // The gutter "   42 " is 6 chars; with cursor on, the ▶ glyph cell
+    // The gutter "   42 " is 6 chars; with cursor on, the ❯ glyph cell
     // takes one column and the inner number text drops one leading char.
     const root = render({ cursorActive: true, gutter: "   42 " } as never);
     const gutterCell = childrenOf(root).filter(isElement)[1]!;
@@ -242,12 +243,17 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
     expect((number!.props.children as string).length).toBe(5);
   });
 
-  it("leaves the content cell bg untouched when cursorActive=true (cursor visual is gutter-confined)", () => {
-    // Content tint comes from contentTinted/diffBg; cursorActive must not
-    // swap content bg.
+  it("paints cursorRow bg on the content cell too when cursorActive=true (overrides diff +/- bg)", () => {
+    // Cursor row reads as a single solid plate — full-row fill is the
+    // terminal-native equivalent of the web's outlined focus row.
     const noBg = render({ cursorActive: true } as never);
-    expect(contentBgOf(noBg)).toBeFalsy();
+    expect(contentBgOf(noBg)).toBe(CURSOR_ROW_BG);
     const additionBg = render({ cursorActive: true, diffBg: "addition" } as never);
-    expect(contentBgOf(additionBg)).toBe(theme.bg.successRange.tui);
+    expect(contentBgOf(additionBg)).toBe(CURSOR_ROW_BG);
+  });
+
+  it("paints cursorRow bg on the content cell when cursorActive=true (overrides annotation content tint)", () => {
+    const root = render({ cursorActive: true, gutterTinted: true, contentTinted: true } as never);
+    expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
   });
 });

@@ -192,7 +192,7 @@ export function DiffRows({
           );
         }
         if (row.kind === "interactive") {
-          // Interactive row visual (ADR 0013): cursor's `▶` glyph + gutter
+          // Interactive row visual (ADR 0013): cursor's `❯` glyph + gutter
           // bg in the line-number column on the active side, consistent
           // with the diff-row treatment. The text body (e.g. "··· N
           // hidden ···") comes from the planner.

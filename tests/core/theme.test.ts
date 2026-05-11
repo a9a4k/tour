@@ -53,11 +53,12 @@ describe("theme tokens", () => {
     // Annotation row tint (alpha .15 of blue.4)
     expect(theme.bg.accentRange.web).toBe("rgba(56, 139, 253, 0.15)");
     expect(theme.bg.accentRange.tui).toBe("#132339");
-    // Line cursor gutter tint (alpha .20 of blue.5 — stronger than the
-    // annotation range tint so the cursor wins on the gutter strip per
+    // Line cursor row tint (alpha .30 of blue.5 — strong enough to read
+    // as a solid blue plate across both gutter and content, the
+    // terminal-native equivalent of the web's outlined focus row per
     // ADR 0011's composition rule).
-    expect(theme.bg.cursorGutter.web).toBe("rgba(31, 111, 235, 0.20)");
-    expect(theme.bg.cursorGutter.tui).toBe("#112441");
+    expect(theme.bg.cursorRow.web).toBe("rgba(31, 111, 235, 0.30)");
+    expect(theme.bg.cursorRow.tui).toBe("#1a3566");
     // Diff addition row bg (alpha .15 of fg.success)
     expect(theme.bg.successRange.web).toBe("rgba(63, 185, 80, 0.15)");
     expect(theme.bg.successRange.tui).toBe("#142a20");
@@ -98,7 +99,7 @@ describe("themeCSSVars()", () => {
     expect(css).toContain("--bg-accent-cursor: rgba(31, 111, 235, 0.20)");
     expect(css).toContain("--bg-accent-current: rgba(31, 111, 235, 0.13)");
     expect(css).toContain("--bg-accent-range: rgba(56, 139, 253, 0.15)");
-    expect(css).toContain("--bg-cursor-gutter: rgba(31, 111, 235, 0.20)");
+    expect(css).toContain("--bg-cursor-row: rgba(31, 111, 235, 0.30)");
     expect(css).toContain("--bg-success-range: rgba(63, 185, 80, 0.15)");
     expect(css).toContain("--bg-danger-range: rgba(248, 81, 73, 0.15)");
     expect(css).toContain("--bg-neutral-subtle: rgba(110, 118, 129, 0.20)");

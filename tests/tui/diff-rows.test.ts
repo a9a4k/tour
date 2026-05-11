@@ -621,10 +621,10 @@ index 1..2 100644
     });
   });
 
-  // ADR 0013 / PRD #107: cursor's `▶` glyph + gutter bg renders on
-  // interactive rows consistent with #100's gutter-confined visual
-  // treatment. The interactive row text body comes from the planner;
-  // this slice's responsibility is only the cursor visual.
+  // ADR 0013 / PRD #107: cursor's `❯` glyph + full-row bg renders on
+  // interactive rows consistent with #100's cursor visual treatment.
+  // The interactive row text body comes from the planner; this slice's
+  // responsibility is only the cursor visual.
   describe("interactive-row cursor visual (PRD #107)", () => {
     function findIdElement(tree: unknown, id: string): AnyElement | undefined {
       return flatten(tree).find((el) => el.props["id"] === id);

@@ -36,7 +36,7 @@ export function Composer({ state, onSubmit }: ComposerProps) {
       backgroundColor={theme.canvas.default}
     >
       <box paddingX={1} paddingTop={1} flexDirection="row">
-        <text fg={theme.fg.muted}>{"> "}</text>
+        <text fg={theme.fg.muted}>{"❯ "}</text>
         <input
           focused
           placeholder="Type your note (markdown supported)…"

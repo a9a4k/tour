@@ -70,7 +70,7 @@ The step size is deliberately uniform across surfaces. A future PRD could expose
 
 Both surfaces consume the same `PlannedRow[]` from `core/diff-rows.ts`. Visual rendering differs by surface:
 
-- **TUI** renders each row kind via OpenTUI primitives — `▶` glyph + line-number gutter bg for interactive rows, plain muted text for inert hunk-headers. Direction glyphs (`↑`, `↕`, `↓`) on interactive rows give the user a visible cue for which end the row addresses.
+- **TUI** renders each row kind via OpenTUI primitives — `❯` glyph + line-number gutter bg for interactive rows, plain muted text for inert hunk-headers. Direction glyphs (`↑`, `↕`, `↓`) on interactive rows give the user a visible cue for which end the row addresses.
 - **Webapp** injects gap rows into Pierre's grid as DOM nodes (mirroring the existing `plus-button-overlay.ts` pattern). The `@@` row's height is slimmed via `unsafeCSS` injected into Pierre's shadow root to read at code-line height; a chevron-icon overlay on the row's left edge carries the affordance; the `gap-mid-top` and `boundary-bottom` rows are standalone injected rows above / below the relevant `@@` cell.
 
 The contract is the row stream. Either surface can swap its renderer without touching the planner or the other surface; future surfaces (e.g. an LSP-style inline view, or a printable export) would consume the same `PlannedRow[]` and ship their own rendering.

@@ -67,9 +67,9 @@ export const theme = {
       web: "rgba(56, 139, 253, 0.15)",
       tui: "#132339",
     } satisfies AlphaPair,
-    cursorGutter: {
-      web: "rgba(31, 111, 235, 0.20)",
-      tui: "#112441",
+    cursorRow: {
+      web: "rgba(31, 111, 235, 0.30)",
+      tui: "#1a3566",
     } satisfies AlphaPair,
     successRange: {
       web: "rgba(63, 185, 80, 0.15)",
@@ -131,7 +131,7 @@ export function themeCSSVars(): string {
     `--bg-accent-current: ${theme.bg.accentCurrent.web};`,
     `--bg-accent-subtle: ${theme.bg.accentSubtle.web};`,
     `--bg-accent-range: ${theme.bg.accentRange.web};`,
-    `--bg-cursor-gutter: ${theme.bg.cursorGutter.web};`,
+    `--bg-cursor-row: ${theme.bg.cursorRow.web};`,
     `--bg-success-range: ${theme.bg.successRange.web};`,
     `--bg-danger-range: ${theme.bg.dangerRange.web};`,
     `--bg-attention-subtle: ${theme.bg.attentionSubtle.web};`,
