@@ -17,12 +17,15 @@ const exec = promisify(execFile);
 
 const CLI = join(import.meta.dirname, "../../src/main.ts");
 
+// Invoke the CLI via `bun` (preinstalled by setup-bun@v2 in CI; on PATH
+// in dev). Avoids the `npx tsx` cold-cache install race — see the matching
+// comment in tests/integration/cli.test.ts.
 async function run(
   args: string[],
   cwd: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
-    const { stdout, stderr } = await exec("npx", ["tsx", CLI, ...args], {
+    const { stdout, stderr } = await exec("bun", [CLI, ...args], {
       cwd,
       maxBuffer: 10 * 1024 * 1024,
     });

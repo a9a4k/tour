@@ -10,13 +10,20 @@ const exec = promisify(execFile);
 
 const CLI = join(import.meta.dirname, "../../src/main.ts");
 
+// Invoke the CLI via `bun` (preinstalled by setup-bun@v2 in CI; on PATH in
+// dev). Avoids the `npx tsx` cold-cache install race that fails on CI:
+// the test's tmpdir cwd hides the project's node_modules from npx's
+// walk-up resolution, forcing a fresh tsx install into ~/.npm/_npx/, and
+// parallel vitest workers race for the same cache dir → exit 254. The
+// other two integration tests (tui.test.ts, webapp.test.ts) already use
+// `bun` for the same reason.
 async function run(
   args: string[],
   cwd: string,
   opts?: { stdin?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
-    const child = exec("npx", ["tsx", CLI, ...args], {
+    const child = exec("bun", [CLI, ...args], {
       cwd,
       maxBuffer: 10 * 1024 * 1024,
     });
