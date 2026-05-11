@@ -31,8 +31,8 @@ tour --version
 ```sh
 cd your-repo
 tour create --head HEAD              # tour the latest commit
-tour                                  # open the TUI
-tour serve --open                     # or open the webapp at http://127.0.0.1:8687
+tour                                  # open the tour (webapp on a desktop, TUI otherwise)
+tour serve --open                     # force webapp + auto-open the browser
 ```
 
 Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tour.toml` and an append-only `annotations.jsonl`.
