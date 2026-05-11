@@ -57,7 +57,12 @@ import {
   fileClassification,
   fileEntryLabel,
 } from "./file-entry-label.js";
-import { folderRowLabel, fileRowLabel } from "./sidebar-row-label.js";
+import {
+  folderRowLabel,
+  fileRowLabel,
+  folderRowFixedCost,
+  fileRowFixedCost,
+} from "./sidebar-row-label.js";
 import { TourWatcher } from "../core/watcher.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
@@ -1257,7 +1262,7 @@ function App(props: AppProps) {
                     selectable={false}
                     onMouseDown={onRowMouseDown}
                   >
-                    {folderRowLabel(row, SIDEBAR_CONTENT_WIDTH)}
+                    {folderRowLabel(row, SIDEBAR_CONTENT_WIDTH - folderRowFixedCost(row))}
                   </text>
                 );
               }
@@ -1271,7 +1276,7 @@ function App(props: AppProps) {
                   selectable={false}
                   onMouseDown={onRowMouseDown}
                 >
-                  {fileRowLabel(row, SIDEBAR_CONTENT_WIDTH)}
+                  {fileRowLabel(row, SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row))}
                 </text>
               );
             })}
