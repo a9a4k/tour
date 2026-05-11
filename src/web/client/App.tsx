@@ -970,7 +970,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           <span className="tour-refs">
             {tourMeta.base_source} ← {tourMeta.head_source}
           </span>
-          <TourHeaderPath path={selectedFile} />
         </div>
         <div className="tour-header-right">
           <SequencePill
@@ -981,6 +980,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           />
           <LayoutToggle layout={layout} onChange={setLayout} />
         </div>
+        <TourHeaderPath path={selectedFile} />
       </div>
       <div className="app-body">
         <aside className="app-sidebar">

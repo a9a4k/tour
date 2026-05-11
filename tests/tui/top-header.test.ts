@@ -8,6 +8,10 @@ import type { Tour } from "../../src/core/types.js";
 // from issue #93 (and parent #91): single-line layout with flexWrap so the
 // right cluster drops to its own row in narrow terminals; no Tour short-id
 // in the header; pill hidden when there are no top-level annotations.
+//
+// After the row-2 split, `render()` returns the outer column container —
+// the existing row-1 box is its first child. Tests asserting row-1 shape
+// (flexWrap, two clusters, marginLeft="auto") walk through `row1Of(root)`.
 
 interface AnyElement {
   type: unknown;
@@ -27,6 +31,12 @@ function childrenOf(el: AnyElement): unknown[] {
   const c = el.props.children;
   if (c === undefined || c === null) return [];
   return Array.isArray(c) ? c : [c];
+}
+
+function row1Of(root: AnyElement): AnyElement {
+  const first = childrenOf(root).filter(isElement)[0];
+  if (!first) throw new Error("expected row-1 child inside header outer box");
+  return first;
 }
 
 function walk(node: unknown): AnyElement[] {
@@ -91,21 +101,24 @@ function render(
 }
 
 describe("TopHeaderTui (issue #93)", () => {
-  it("outer header is a flex row with flexWrap='wrap' so the right cluster can drop to row 2 in 80-col terminals", () => {
+  it("row-1 is a flex row with flexWrap='wrap' so the right cluster can drop in 80-col terminals", () => {
     const root = render();
-    expect(root.props["flexDirection"]).toBe("row");
-    expect(root.props["flexWrap"]).toBe("wrap");
+    const row1 = row1Of(root);
+    expect(row1.props["flexDirection"]).toBe("row");
+    expect(row1.props["flexWrap"]).toBe("wrap");
   });
 
-  it("renders exactly two flex children (left cluster + right cluster) for group-wrap, not element-wrap", () => {
+  it("renders exactly two flex children inside row-1 (left cluster + right cluster) for group-wrap, not element-wrap", () => {
     const root = render();
-    const directChildren = childrenOf(root).filter(isElement);
+    const row1 = row1Of(root);
+    const directChildren = childrenOf(row1).filter(isElement);
     expect(directChildren).toHaveLength(2);
   });
 
   it("the right cluster pushes itself to the right edge via marginLeft='auto'", () => {
     const root = render();
-    const [, right] = childrenOf(root).filter(isElement);
+    const row1 = row1Of(root);
+    const [, right] = childrenOf(row1).filter(isElement);
     expect(right.props["marginLeft"]).toBe("auto");
   });
 
@@ -123,14 +136,14 @@ describe("TopHeaderTui (issue #93)", () => {
 
   it("renders the title text inside the left cluster", () => {
     const root = render({ tour: { ...tour, title: "Add foo" } });
-    const [left] = childrenOf(root).filter(isElement);
+    const [left] = childrenOf(row1Of(root)).filter(isElement);
     const leftText = walk(left).filter((e) => e.type === "text").map(textChildOf).join(" | ");
     expect(leftText).toContain("Add foo");
   });
 
   it("renders the sources string ('main ← feature/x') inside the left cluster", () => {
     const root = render();
-    const [left] = childrenOf(root).filter(isElement);
+    const [left] = childrenOf(row1Of(root)).filter(isElement);
     const leftText = walk(left).filter((e) => e.type === "text").map(textChildOf).join(" | ");
     expect(leftText).toContain("main ← feature/x");
   });
@@ -146,7 +159,7 @@ describe("TopHeaderTui (issue #93)", () => {
 
   it("places the HamburgerButtonTui inside the left cluster (not the right)", () => {
     const root = render();
-    const [left, right] = childrenOf(root).filter(isElement);
+    const [left, right] = childrenOf(row1Of(root)).filter(isElement);
     const inLeft = walk(left).some((e) => e.type === HamburgerButtonTui);
     const inRight = walk(right).some((e) => e.type === HamburgerButtonTui);
     expect(inLeft).toBe(true);
@@ -249,5 +262,76 @@ describe("TopHeaderTui (issue #93)", () => {
       .map(textChildOf)
       .join(" | ");
     expect(headerText).not.toContain("·");
+  });
+
+  // Row-2 split: when a path is selected, the path renders in its own row
+  // (a sibling of the row-1 box, inside an outer column container) so a
+  // long path no longer competes with title / sources / controls for row-1
+  // width. When no path is selected, the header keeps its existing
+  // single-row footprint.
+  describe("row-2 split when selectedPath is present", () => {
+    it("outer container is a column so the path-row can sit below row-1", () => {
+      const root = render({ selectedPath: "src/x.ts" });
+      expect(root.props["flexDirection"]).toBe("column");
+    });
+
+    it("renders the path in a sibling of row-1 (not inside the row-1 left cluster)", () => {
+      const root = render({
+        selectedPath: "supabase/migrations/20260508144406_setup_public_api.sql",
+      });
+      const row1 = row1Of(root);
+      const row1Text = walk(row1)
+        .filter((e) => e.type === "text")
+        .map(textChildOf)
+        .join(" | ");
+      // The `·` separator (U+00B7) is unique to the path slot; if the slot
+      // had stayed inside row-1, it would show up in row1Text.
+      expect(row1Text).not.toContain("·");
+      expect(row1Text).not.toContain(
+        "supabase/migrations/20260508144406_setup_public_api.sql",
+      );
+      // …and it DOES show up in the outer tree.
+      const allText = walk(root)
+        .filter((e) => e.type === "text")
+        .map(textChildOf)
+        .join(" | ");
+      expect(allText).toContain(
+        "supabase/migrations/20260508144406_setup_public_api.sql",
+      );
+    });
+
+    it("path text on row-2 has no maxWidth so it can use the full header width", () => {
+      const root = render({
+        selectedPath: "supabase/migrations/20260508144406_setup_public_api.sql",
+      });
+      const pathNode = walk(root).find(
+        (e) =>
+          e.type === "text" &&
+          typeof e.props.children === "string" &&
+          (e.props.children as string).includes(
+            "supabase/migrations/20260508144406_setup_public_api.sql",
+          ),
+      );
+      expect(pathNode).toBeDefined();
+      // Row-1 title / sources still cap at maxWidth={60}; row-2 path must
+      // not — it's meant to overflow at the terminal's right edge, not at
+      // an artificial 80-col cap.
+      expect(pathNode!.props["maxWidth"]).toBeUndefined();
+      expect(pathNode!.props["truncate"]).toBe(true);
+    });
+
+    it("outer container has only row-1 as a child when selectedPath is unset (one-row header)", () => {
+      const root = render({ selectedPath: undefined });
+      const directChildren = childrenOf(root).filter(isElement);
+      // No row-2 box — the empty / pre-interaction state pays no extra
+      // vertical cost (user story #3 in issue #168).
+      expect(directChildren).toHaveLength(1);
+    });
+
+    it("outer container has two children (row-1 + row-2) when selectedPath is truthy", () => {
+      const root = render({ selectedPath: "src/x.ts" });
+      const directChildren = childrenOf(root).filter(isElement);
+      expect(directChildren).toHaveLength(2);
+    });
   });
 });
