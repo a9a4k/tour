@@ -10,6 +10,7 @@ import { prune } from "./cli/prune.js";
 import { pickup } from "./cli/pickup.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
+import { selftestSyntax } from "./cli/selftest.js";
 import { listTours } from "./core/tour-store.js";
 
 declare const __EMBEDDED_VERSION__: string;
@@ -184,6 +185,14 @@ async function main(): Promise<void> {
           cwd,
           replyAgent: flag(flags, "reply-agent"),
         });
+        break;
+
+      // Hidden — exercised only by scripts/smoke-binary.sh. Not advertised
+      // in USAGE to keep the user-facing surface small. Exits 0 if the
+      // tree-sitter worker booted and returned tokens for a TS sample,
+      // non-zero otherwise. See src/tui/selftest-runner.ts.
+      case "selftest-syntax":
+        await selftestSyntax();
         break;
 
       case "help":
