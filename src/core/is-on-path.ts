@@ -4,11 +4,9 @@ import { join, delimiter } from "node:path";
 // Sync probe — "is this command name reachable on the caller's PATH?"
 //
 // Scans `process.env.PATH` directly rather than spawning `command -v` /
-// `which` so the check is (a) zero-subprocess at startup, (b) portable to
-// Windows (PATHEXT handling), and (c) trivially mockable in tests via the
-// injected dependencies on the callers' shape (see surface-picker and
-// agent-path-detector). The result is cached for the lifetime of the
-// process — PATH doesn't change underneath a running `tour` invocation.
+// `which` so the check is zero-subprocess at startup and portable to
+// Windows (PATHEXT handling). The result is cached for the lifetime of
+// the process — PATH doesn't change underneath a running `tour` invocation.
 const cache = new Map<string, boolean>();
 
 export function isOnPath(cmd: string): boolean {

@@ -52,7 +52,6 @@ async function makePathWithStubs(stubs: string[]): Promise<string> {
 
 interface SpawnResult {
   stdout: string;
-  port: number;
   proc: ChildProcess;
 }
 
@@ -73,7 +72,7 @@ function spawnServeUntilReady(
     const finish = (): void => {
       if (done) return;
       done = true;
-      resolve({ stdout, port, proc });
+      resolve({ stdout, proc });
     };
     proc.stdout?.on("data", (chunk: Buffer | string) => {
       stdout += chunk.toString();
