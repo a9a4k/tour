@@ -173,13 +173,21 @@ function contentTypeFor(path: string): string {
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, portExplicit, cwd, replyAgent } = args;
 
+  // Path component appended to printed URLs when a positional tour-id was
+  // passed (issue #179). Lets the user Cmd-click straight to their tour in
+  // a modern terminal. The SPA accepts the id as the embedded
+  // __INITIAL_TOUR_ID__ regardless of URL path, so this is decorative for
+  // the routing but load-bearing for the click target. Bare `tour serve`
+  // (no id) prints the unchanged base URL.
+  const path = args.tourId ? `/${args.tourId}` : "";
+
   // Reuse-if-running (issue #178). Probe the preferred port: if a Tour
   // server is already serving this cwd, log the existing URL and exit
   // without starting a second server. Different-cwd Tour, non-Tour, or
   // free port → fall through to the existing bind path.
   const existing = await probeTour(port, fetch, 150);
   if (existing.kind === "tour" && existing.cwd === cwd) {
-    console.log(`Tour already running at http://127.0.0.1:${port}`);
+    console.log(`Tour already running at http://127.0.0.1:${port}${path}`);
     return;
   }
 
@@ -393,7 +401,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
     }),
   );
 
-  const url = `http://127.0.0.1:${boundPort}`;
+  const url = `http://127.0.0.1:${boundPort}${path}`;
   if (preferredWasBusy) {
     console.log(`Tour server: port ${port} busy, listening on ${url}`);
   } else {

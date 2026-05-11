@@ -45,3 +45,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   non-Tour processes on the port behave as before (fall back to the
   next port, or surface `port N is in use` when `--port` was explicit).
   Stable URLs across re-runs; no process / watcher proliferation. (#178)
+- **`tour serve <id>` prints a deep URL.** When a positional tour-id is
+  passed, the startup line now includes `/<id>` as a path component
+  (e.g. `Tour server running at http://127.0.0.1:8687/<id>`) so the
+  user can Cmd-click straight to that tour in a modern terminal.
+  `tour serve` without a tour-id is unchanged (bare base URL). The
+  port-collision fallback path also includes `/<id>` and reflects the
+  actually-bound port. `--open` opens the deep URL too. (#179)
