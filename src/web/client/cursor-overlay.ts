@@ -205,6 +205,36 @@ function cssEscape(value: string): string {
 }
 
 function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
+  // Interactive cursors (gap-row family — PRD #151 / ADR 0018, ADR 0013)
+  // resolve against the Tour-injected `[data-tour-interactive]` overlay
+  // node by `(subKind, boundaryRef)`. The outline spans the whole row
+  // (sideless), which the cursor-css rule already handles via the
+  // attribute selector — no side filter applies here.
+  if (cursor.interactive) {
+    const { subKind, boundaryRef } = cursor.interactive;
+    let dataSubkind: string | null = null;
+    let hunkIndexFilter: string | null = null;
+    if (subKind === "boundary-top") {
+      dataSubkind = "hunk-header";
+      hunkIndexFilter = "0";
+    } else if (subKind === "hunk-separator" && typeof boundaryRef === "number") {
+      dataSubkind = "hunk-header";
+      hunkIndexFilter = String(boundaryRef);
+    } else if (subKind === "gap-mid-top" && typeof boundaryRef === "number") {
+      dataSubkind = "gap-mid-top";
+      hunkIndexFilter = String(boundaryRef);
+    } else if (subKind === "boundary-bottom") {
+      dataSubkind = "boundary-bottom";
+    }
+    if (dataSubkind === null) return null;
+    const selector =
+      `[data-tour-interactive="gap-row"][data-subkind="${dataSubkind}"]` +
+      (hunkIndexFilter !== null ? `[data-hunk-index="${hunkIndexFilter}"]` : "");
+    for (const node of queryAllAcrossShadow(block, selector)) {
+      return node;
+    }
+    return null;
+  }
   // Active-side type filter: the outline must paint on the column the
   // cursor's side selects (split layout's two paired cells share a line
   // number; we want the addition-side or deletion-side cell, not both).

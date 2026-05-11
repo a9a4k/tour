@@ -89,3 +89,89 @@ export const PLUS_BUTTON_CSS = `
     outline-offset: 2px;
   }
 `;
+
+/**
+ * Tour-owned gap-row affordances injected by `gap-row-overlay.ts` (PRD
+ * #151, issue #154, ADR 0018). The overlay paints THREE node kinds, all
+ * tagged `data-tour-interactive="gap-row"`:
+ *   - `.tour-gap-chevron` — a `<button>` glued to the LEFT edge of
+ *     Pierre's `@@` cell. Same positioning idiom as `.tour-plus-button`
+ *     (absolute, left:0, translate(-100%, -50%)) so the chevron sits
+ *     just outside the cell's left edge over the gutter.
+ *   - `.tour-gap-row` — a standalone `<div role="button">` row injected
+ *     immediately above the `@@` cell (`gap-mid-top`) or immediately
+ *     after the file's last `[data-line]` cell (`boundary-bottom`).
+ *     Spans the full grid width.
+ *
+ * The `@@` row's vertical padding is also slimmed to match code-row
+ * height here so it reads as a navigation aid rather than the thick
+ * decorative band Pierre paints by default (PRD #151 observation #3,
+ * issue #154 acceptance criterion #15). The selector targets Pierre's
+ * `[data-separator="metadata"]` cell directly.
+ *
+ * Cursor outline on a gap row spans the FULL row in split layout (both
+ * columns), departing from the side-scoped outline used on diff rows
+ * (PRD #151 user story 11; ADR 0013 in spirit). The `data-tour-cursor`
+ * + `[data-tour-interactive]` selector below pins the outline onto the
+ * sideless interactive row.
+ */
+export const GAP_ROW_CSS = `
+  [data-separator="metadata"] {
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: var(--diffs-line-height, 1.5);
+  }
+
+  .tour-gap-chevron {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(-100%, -50%);
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background-color: ${theme.bg.accentEmphasis};
+    color: ${theme.fg.onEmphasis};
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .tour-gap-chevron:hover {
+    filter: brightness(1.15);
+  }
+
+  .tour-gap-chevron:focus-visible {
+    outline: 2px solid ${theme.fg.accent};
+    outline-offset: 2px;
+  }
+
+  .tour-gap-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    grid-column: 1 / -1;
+    padding: 2px 8px;
+    color: ${theme.fg.muted};
+    background-color: ${theme.canvas.subtle};
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+  }
+
+  .tour-gap-row:hover {
+    filter: brightness(1.05);
+  }
+
+  [data-tour-interactive="gap-row"][data-tour-cursor="true"] {
+    outline-offset: -2px;
+  }
+`;

@@ -33,12 +33,14 @@ import {
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { nextAnnotationNavStep } from "./annotation-nav.js";
-import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS } from "./cursor-css.js";
+import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS, GAP_ROW_CSS } from "./cursor-css.js";
 import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
+import { attachGapRowOverlay } from "./gap-row-overlay.js";
+import type { FileDiff as FileDiffInstance } from "@pierre/diffs";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -76,6 +78,82 @@ const EQUAL_COLUMNS_CSS = `
 `;
 
 type Layout = "split" | "unified";
+
+// Gap-row family interactive subKinds (PRD #151, ADR 0018). Collapsed-file
+// is also an interactive row but has its own keymap path (`Enter` toggles
+// fileExpanded), so it's deliberately excluded here.
+function isGapRowCursor(subKind: string): boolean {
+  return (
+    subKind === "boundary-top" ||
+    subKind === "hunk-separator" ||
+    subKind === "gap-mid-top" ||
+    subKind === "boundary-bottom"
+  );
+}
+
+// Find the gap-row DOM node that backs the current interactive cursor and
+// dispatch a synthetic click on it — the overlay's per-row click handler
+// owns direction + line-count derivation, so the keyboard path stays a
+// thin shim over the mouse path (issue #154 acceptance criterion: Enter
+// dispatches the same action as the chevron click; Shift+Enter dispatches
+// the expand-all variant).
+function dispatchGapRowAction(cursor: Cursor, shiftKey: boolean): void {
+  const interactive = cursor.interactive;
+  if (!interactive) return;
+  let dataSubkind: string;
+  let hunkIndexFilter: string | null = null;
+  if (interactive.subKind === "boundary-top") {
+    dataSubkind = "hunk-header";
+    hunkIndexFilter = "0";
+  } else if (interactive.subKind === "hunk-separator") {
+    dataSubkind = "hunk-header";
+    hunkIndexFilter = String(interactive.boundaryRef);
+  } else if (interactive.subKind === "gap-mid-top") {
+    dataSubkind = "gap-mid-top";
+    hunkIndexFilter = String(interactive.boundaryRef);
+  } else if (interactive.subKind === "boundary-bottom") {
+    dataSubkind = "boundary-bottom";
+  } else {
+    return;
+  }
+  const fileBlock = document.querySelector<HTMLElement>(
+    `[data-file="${cssEscapeForAttr(cursor.file)}"]`,
+  );
+  if (!fileBlock) return;
+  const target = queryFirstAcrossShadow(
+    fileBlock,
+    `[data-tour-interactive="gap-row"][data-subkind="${dataSubkind}"]` +
+      (hunkIndexFilter !== null ? `[data-hunk-index="${hunkIndexFilter}"]` : ""),
+  );
+  if (!target) return;
+  target.dispatchEvent(new MouseEvent("click", { shiftKey, bubbles: true }));
+}
+
+function cssEscapeForAttr(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, (c) => `\\${c}`);
+}
+
+function queryFirstAcrossShadow(root: ParentNode, selector: string): HTMLElement | null {
+  const stack: ParentNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const hit = node.querySelector<HTMLElement>(selector);
+    if (hit) return hit;
+    if (node instanceof Element) {
+      const self = (node as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
+      if (self) stack.push(self);
+    }
+    const all = node.querySelectorAll("*");
+    for (const el of all) {
+      const sr = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
+      if (sr) stack.push(sr);
+    }
+  }
+  return null;
+}
 
 type ComposerTarget =
   | {
@@ -165,6 +243,15 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  // Per-file Pierre `FileDiff` instances. Captured via the `onPostRender`
+  // option each `<FileDiff>` / `<MultiFileDiff>` accepts (Pierre exposes the
+  // class instance there because the React wrapper doesn't forward a ref).
+  // Read by `attachGapRowOverlay` to call `expandHunk` on chevron clicks.
+  const fileDiffRefs = useRef<Map<string, FileDiffInstance<AnnotationMetadata>>>(new Map());
+  // Bumped whenever Pierre's expansion state changes (chevron clicked).
+  // Drives the gap-row-overlay re-attach so injected nodes re-paint
+  // against the freshly-rendered diff DOM.
+  const [expansionVersion, setExpansionVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -473,6 +560,18 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     else fileRefs.current.delete(file);
   }, []);
 
+  // Stable per-file FileDiff-instance registrar (issue #154, PRD #151 A1).
+  // Pierre's React `<FileDiff>` doesn't forward a ref to the underlying
+  // class instance; `onPostRender(node, instance)` is the only seam, so
+  // each FileBlock's options closure calls this on every Pierre render.
+  // Idempotent — same instance on re-render reuses the same Map entry.
+  const registerFileDiffRef = useCallback(
+    (file: string, instance: FileDiffInstance<AnnotationMetadata>) => {
+      fileDiffRefs.current.set(file, instance);
+    },
+    [],
+  );
+
   // Cursor walk sequence (ADR 0012). Per-file planned rows are built
   // from each Pierre-parsed file + the annotation list + the active
   // layout (split vs unified differ in pairing). The flat-rows builder
@@ -549,6 +648,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       const focusInEditable = !!(
         t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
       );
+      // Enter / Shift+Enter on a gap-row interactive cursor → dispatch the
+      // same action as clicking the row's chevron (issue #154, PRD #151
+      // user-stories 6-8). Routed by simulating a click on the injected
+      // DOM node so the overlay's per-row click handler stays the single
+      // source of truth for direction + line-count derivation.
+      if (
+        e.key === "Enter" &&
+        !focusInEditable &&
+        composerTarget === null &&
+        !pickerOpen &&
+        cursor?.interactive &&
+        isGapRowCursor(cursor.interactive.subKind)
+      ) {
+        e.preventDefault();
+        dispatchGapRowAction(cursor, e.shiftKey);
+        return;
+      }
       const action = dispatchCursorKey(
         {
           key: e.key,
@@ -623,6 +739,9 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
         case "annotate-at-cursor": {
           const c = cursor ?? materializeCursor();
           if (!c) return;
+          // Interactive rows (gap-row family, collapsed-file) are not
+          // annotatable — `a` is a silent no-op (issue #154, PRD #107 US 14).
+          if (c.interactive) return;
           setComposerError(null);
           setComposerTarget({
             kind: "top-level",
@@ -695,6 +814,22 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       composerTarget !== null,
     );
   }, [composerTarget, openTopLevelComposer, parsedFiles, layout, collapsedOverrides]);
+
+  // Gap-row overlay (issue #154, PRD #151, ADR 0018). Tour-owned chevrons
+  // and standalone interactive rows for the gap-row family — first-hunk
+  // file-top, mid-file hunk-header, mid-file gap-mid-top, file-bottom.
+  // Re-attaches on parsedFiles / annotations / layout / collapsedOverrides /
+  // expansionVersion change so each click → Pierre `expandHunk` → re-render
+  // refreshes the overlay against the new DOM.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    return attachGapRowOverlay({
+      root: document.body,
+      plannedRowsByFile,
+      fileDiffRefs: fileDiffRefs.current,
+      onAfterExpand: () => setExpansionVersion((v) => v + 1),
+    });
+  }, [parsedFiles, plannedRowsByFile, layout, collapsedOverrides, expansionVersion]);
 
   const openReplyComposer = useCallback((replies_to: string) => {
     setComposerError(null);
@@ -878,6 +1013,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 repliesByRoot={repliesByRoot}
                 modelFile={modelFilesByName.get(f.name)}
                 registerRef={registerFileRef}
+                registerFileDiffRef={registerFileDiffRef}
                 collapsed={isCollapsed(f.name)}
                 onToggleCollapsed={toggleCollapsed}
                 currentAnnotationId={currentAnnotationId}
@@ -991,6 +1127,7 @@ interface FileBlockProps {
   // `registerFileRef` / `toggleCollapsed`. That stability is what lets
   // `React.memo` short-circuit FileBlock on cursor moves.
   registerRef: (file: string, el: HTMLDivElement | null) => void;
+  registerFileDiffRef: (file: string, instance: FileDiffInstance<AnnotationMetadata>) => void;
   collapsed: boolean;
   onToggleCollapsed: (file: string) => void;
   currentAnnotationId: string | null;
@@ -1049,6 +1186,7 @@ function FileBlockInner({
   repliesByRoot,
   modelFile,
   registerRef,
+  registerFileDiffRef,
   collapsed,
   onToggleCollapsed,
   currentAnnotationId,
@@ -1095,11 +1233,24 @@ function FileBlockInner({
       EQUAL_COLUMNS_CSS,
       CURSOR_OUTLINE_CSS,
       PLUS_BUTTON_CSS,
+      GAP_ROW_CSS,
       rangeCSS,
     ].filter((s) => s !== "");
     const unsafeCSS = parts.join("\n");
-    return { ...BASE_DIFF_OPTIONS, diffStyle: layout, unsafeCSS, collapsed };
-  }, [annotations, fileDiff.name, collapsed, layout]);
+    return {
+      ...BASE_DIFF_OPTIONS,
+      diffStyle: layout,
+      unsafeCSS,
+      collapsed,
+      // Capture Pierre's FileDiff class instance so `attachGapRowOverlay`
+      // can call `expandHunk` on chevron clicks (issue #154, PRD #151
+      // architecture decision A1). The React wrapper doesn't forward a
+      // ref to the instance; `onPostRender` is Pierre's exposed seam.
+      onPostRender: (_node: HTMLElement, instance: FileDiffInstance<AnnotationMetadata>) => {
+        registerFileDiffRef(fileDiff.name, instance);
+      },
+    };
+  }, [annotations, fileDiff.name, collapsed, layout, registerFileDiffRef]);
 
   const renderAnnotation = useCallback(
     (ann: DiffLineAnnotation<AnnotationMetadata>): React.ReactNode => {
