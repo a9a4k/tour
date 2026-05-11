@@ -52,10 +52,32 @@ describe("TUI integration", () => {
       let stderr = "";
       child.stderr.on("data", (chunk) => { stderr += String(chunk); });
 
+      // Wait for the TUI's first frame to contain the fixture filename
+      // before sending 'q'. Opentui writes runs of same-style characters
+      // contiguously, so `hello.txt` appears as a literal substring in
+      // stdout once the sidebar's file list has rendered — which means
+      // React committed and `useKeyboard` is wired. Then add a 200ms
+      // grace period: under parallel-load CI, opentui's stdin event
+      // loop can tick slightly later than the first frame flush; without
+      // the gap, 'q' lands in the pipe buffer and gets discarded as the
+      // reader starts mid-byte and immediately sees our subsequent EOF.
+      // Also keep stdin open (no `.end()`) so EOF can't race the read.
+      let stdoutAccum = "";
+      let sentQ = false;
+      child.stdout.on("data", (chunk: Buffer | string) => {
+        stdoutAccum += chunk.toString();
+        if (!sentQ && stdoutAccum.includes("hello.txt")) {
+          sentQ = true;
+          setTimeout(() => child.stdin.write("q"), 200);
+        }
+      });
+
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
-        reject(new Error(`TUI did not exit; stderr: ${stderr}`));
-      }, 8000);
+        reject(new Error(
+          `TUI hung; sentQ=${sentQ} stdout=${stdoutAccum.length}b stderr_tail: ${stderr.slice(-500)}`,
+        ));
+      }, 13000);
 
       child.on("error", (err) => {
         clearTimeout(timer);
@@ -67,11 +89,6 @@ describe("TUI integration", () => {
         if (code === 0) resolve();
         else reject(new Error(`TUI exited with code ${code}; stderr: ${stderr}`));
       });
-
-      setTimeout(() => {
-        child.stdin.write("q");
-        child.stdin.end();
-      }, 1500);
     });
   }, 15000);
 });
