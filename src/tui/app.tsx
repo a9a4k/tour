@@ -50,6 +50,7 @@ import {
   buildTopLevelComposer,
   type ComposerState,
 } from "./composer-state.js";
+import { createComposerSubmitter } from "./composer-submit.js";
 import { topLevelAnnotations } from "../core/threads.js";
 import {
   fileCardPlaceholder,
@@ -881,51 +882,35 @@ function App(props: AppProps) {
     setComposer(null);
   };
 
-  const submitComposer = async (body: string) => {
-    if (!composer) return;
-    const trimmed = body.trim();
-    // Empty submissions are silently treated as cancel — no zero-length notes.
-    if (trimmed.length === 0 || !props.writeAnnotation) {
-      setComposer(null);
-      return;
-    }
-    let newTopLevelId: string | null = null;
-    try {
-      if (composer.kind === "top-level") {
-        const created = await props.writeAnnotation(liveTour.id, {
-          kind: "top-level",
-          file: composer.file,
-          side: composer.side,
-          line_start: composer.line_start,
-          line_end: composer.line_end,
-          body: trimmed,
-          bundle,
-        });
-        newTopLevelId = created.id;
-      } else {
-        await props.writeAnnotation(liveTour.id, {
-          kind: "reply",
-          parent: composer.parent,
-          body: trimmed,
-        });
-      }
-      // The CLI's `tour annotate` would let the watcher re-render. The TUI
-      // path skips the watcher loop and reloads the bundle directly so the
-      // new entry shows up immediately on submit.
-      if (props.loadTour) {
-        const refreshed = await props.loadTour(liveTour.id);
+  // Stable across renders — the in-flight flag inside lives in the closure,
+  // so a second Enter fired while the first submit is awaiting the write +
+  // bundle reload is silently dropped (issue #159). The submitter also
+  // dismisses the composer synchronously before the first await, which
+  // unmounts the focused <input> on the next React render so most second-
+  // Enter events never even reach this code path.
+  const composerSubmitterRef = useRef(createComposerSubmitter());
+  const submitComposer = (body: string) =>
+    composerSubmitterRef.current({
+      composer,
+      body,
+      tourId: liveTour.id,
+      bundle,
+      writeAnnotation: props.writeAnnotation,
+      loadTour: props.loadTour,
+      dismiss: () => setComposer(null),
+      applyBundleReload: (refreshed) => {
+        // The CLI's `tour annotate` would let the watcher re-render. The
+        // TUI path skips the watcher loop and reloads the bundle directly
+        // so the new entry shows up immediately on submit.
         setBundle(refreshed);
         if (refreshed.kind === "ok") {
           setExpansion((prev) =>
             seedFromOrphans(prev, flattenOrphanWindows(refreshed.files)),
           );
         }
-      }
-      if (newTopLevelId) setPendingScrollAnnotationId(newTopLevelId);
-    } finally {
-      setComposer(null);
-    }
-  };
+      },
+      applyTopLevelCreated: setPendingScrollAnnotationId,
+    });
 
   useKeyboard((key) => {
     // Ctrl+D — opentui's built-in debug overlay. Shows FPS, frame time,
