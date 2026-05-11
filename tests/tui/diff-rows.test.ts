@@ -809,30 +809,33 @@ index 1..2 100644
       );
     }
 
-    it("appends `··· N hidden ···` to the hunk-header text when expandUp + expandDown > 0", () => {
+    it("renders an interactive hunk-header with `··· N hidden ···` suffix when gapAbove > 0", () => {
+      // Mid-file, small gap (≤ 40) → symmetric `↕` glyph.
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
           header: "@@ -10,3 +10,3 @@",
           hunkIndex: 1,
-          expandUp: 6,
-          expandDown: 6,
+          gapAbove: 12,
         },
       ];
       const tree = callDiffRows({ rows, layout: "split" });
-      const node = findText(tree, (s) => s.includes("12 hidden"));
-      expect(node).toBeDefined();
-      expect(node!.props.children).toBe("@@ -10,3 +10,3 @@ ··· 12 hidden ···");
+      // Interactive hunk-header renders through the DiffLine pipeline (with
+      // cursor visual); body text lands on DiffLine's `text` prop.
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      const text = cells[0].props["text"] as string;
+      expect(text).toContain("12 hidden");
+      expect(text).toContain("@@ -10,3 +10,3 @@");
     });
 
-    it("does not append a suffix when expandUp + expandDown === 0", () => {
+    it("renders an inert hunk-header (plain muted text, no DiffLine wrapper) when gapAbove === 0", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
           header: "@@ -1,3 +1,3 @@",
           hunkIndex: 0,
-          expandUp: 0,
-          expandDown: 0,
+          gapAbove: 0,
         },
       ];
       const tree = callDiffRows({ rows, layout: "split" });

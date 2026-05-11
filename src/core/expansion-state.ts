@@ -79,8 +79,9 @@ export function expand(
   key: BoundaryKey,
   mode: ExpandMode,
   gapSize: number,
+  direction: "up" | "down" | "both" = "both",
 ): ExpansionState {
-  return applyExpand(state, key, mode, gapSize, "both");
+  return applyExpand(state, key, mode, gapSize, direction);
 }
 
 export function expandTop(

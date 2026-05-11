@@ -31,13 +31,14 @@ export interface HunkHeaderRow {
   kind: "hunk-header";
   header: string;
   hunkIndex: number;
-  /** Lines still hidden in the upper portion of the gap above this hunk
-   *  (closer to the previous hunk's end). Together with `expandDown` they
-   *  feed the `··· N hidden ···` suffix on the hunk-header (PRD #108). */
-  expandUp: number;
-  /** Lines still hidden in the lower portion of the gap above this hunk
-   *  (closer to this hunk's start). */
-  expandDown: number;
+  /** Lines still hidden in the gap above this hunk-header (PRD #151, ADR
+   *  0018). For `hunkIndex === 0` this is the file-top gap (lines 1 to
+   *  first-hunk-start) minus any expansion at boundary `"top"`. For
+   *  `hunkIndex > 0` it's the mid-file gap between the previous hunk's
+   *  end and this hunk's start, minus expansion at boundary `hunkIndex`.
+   *  Drives both the `··· N hidden ···` suffix on the @@ row and the
+   *  cursor-walkability rule (interactive iff `gapAbove > 0`). */
+  gapAbove: number;
 }
 
 export interface AnnotationRow {
@@ -48,18 +49,21 @@ export interface AnnotationRow {
 }
 
 /** An interactive row family the line cursor walks alongside diff rows
- *  (ADR 0013). Three sub-kinds: hunk-separator gaps between hunks,
- *  synthetic file-top / file-bottom boundaries when a file has Hidden
- *  context at its edges, and the synthetic indicator row a classifier-
- *  collapsed file emits in place of its diff body. boundaryRef is opaque
- *  to the cursor: numeric for hunk-separators (gap index = next hunk's
- *  index), `'top'` / `'bottom'` for file boundaries, `'top'` for
- *  collapsed-file rows. The planner emits the visible content (the
- *  `··· N hidden ···` string etc.); this slice ships only the row
- *  family + cursor routing — actual expansion handlers stub out and are
- *  filled in by PRD #108. */
+ *  (ADR 0013 + ADR 0018). After PRD #151, `boundary-top` is no longer
+ *  emitted as a planner row kind — its semantics fold into the first
+ *  hunk's `hunk-header` (interactive iff `gapAbove > 0`). The enum
+ *  value persists internally because the cursor walker tags promoted
+ *  first-hunk hunk-headers with `subKind: "boundary-top"` so dispatch
+ *  routes to the file-top reducer path. `gap-mid-top` is emitted only
+ *  when a mid-file gap exceeds `2N` (= 40), giving large gaps two cursor
+ *  stops (one for each end). `boundary-bottom` continues to be emitted
+ *  standalone — git has no hunk-footer to fold into. boundaryRef is
+ *  opaque to the cursor: numeric for `hunk-separator` and `gap-mid-top`
+ *  (the hunk-index whose gap-above this row addresses), `"top"` /
+ *  `"bottom"` for file boundaries, `"top"` for collapsed-file rows. */
 export type InteractiveSubKind =
   | "hunk-separator"
+  | "gap-mid-top"
   | "boundary-top"
   | "boundary-bottom"
   | "collapsed-file";
@@ -217,74 +221,63 @@ function walkHunks(
   const { oldContent, newContent } = options;
   const newLineCount = newContent !== undefined ? splitLines(newContent).length : 0;
 
-  // boundary-top: file's first hunk doesn't start at line 1.
-  if (file.hunks.length > 0 && file.hunks[0].additionStart > 1) {
-    const top = expansionFor(options, file.name, "top");
-    const gapSize = file.hunks[0].additionStart - 1;
-    const remaining = Math.max(0, gapSize - top.up - top.down);
-    rows.push({
-      kind: "interactive",
-      subKind: "boundary-top",
-      boundaryRef: "top",
-      text: boundaryTopText(remaining),
-    });
-    if (top.up > 0) {
-      emitContextRowsByLineNumber(rows, oldContent, newContent, 1, 1, top.up);
-    }
-    if (top.down > 0) {
-      emitContextRowsByLineNumber(
-        rows,
-        oldContent,
-        newContent,
-        file.hunks[0].additionStart - top.down,
-        file.hunks[0].deletionStart - top.down,
-        top.down,
-      );
-    }
-  }
-
   for (let hunkIndex = 0; hunkIndex < file.hunks.length; hunkIndex++) {
     const hunk = file.hunks[hunkIndex];
-    const gap = gapBefore(file, hunkIndex);
-    const sep =
-      hunkIndex === 0
-        ? { up: 0, down: 0 }
-        : expansionFor(options, file.name, hunkIndex);
-    const hidden = Math.max(0, gap.size - sep.up - sep.down);
-    // Split the remaining hidden count cosmetically across the two sides
-    // of the @@ line; the suffix concat (expandUp + expandDown) is what the
-    // renderer actually shows. No semantic meaning to the split.
-    const expandUp = Math.ceil(hidden / 2);
-    const expandDown = hidden - expandUp;
+    const isFirst = hunkIndex === 0;
+    // First-hunk reads file-top expansion (BoundaryRef='top'); mid-file
+    // hunks read the per-separator expansion at boundary=hunkIndex. PRD
+    // #151 asymmetric merge: file-top is reached through hunk 0's
+    // hunk-header (no standalone boundary-top row).
+    const sep = isFirst
+      ? expansionFor(options, file.name, "top")
+      : expansionFor(options, file.name, hunkIndex);
+    const gap = isFirst ? null : gapBefore(file, hunkIndex);
+    const gapStartAddition = isFirst ? 1 : gap!.prevAdditionEnd + 1;
+    const gapStartDeletion = isFirst ? 1 : gap!.prevDeletionEnd + 1;
+    const gapSize = isFirst ? Math.max(0, hunk.additionStart - 1) : gap!.size;
+    const gapAbove = Math.max(0, gapSize - sep.up - sep.down);
 
-    // Up-side context rows: lines just after the previous hunk's end.
-    if (hunkIndex > 0 && sep.up > 0) {
+    // Up-side context rows: lines just after the previous hunk's end (or
+    // from line 1 for the first hunk).
+    if (sep.up > 0) {
       emitContextRowsByLineNumber(
         rows,
         oldContent,
         newContent,
-        gap.prevAdditionEnd + 1,
-        gap.prevDeletionEnd + 1,
+        gapStartAddition,
+        gapStartDeletion,
         sep.up,
       );
+    }
+
+    // gap-mid-top: emitted ONLY for mid-file gaps whose remaining hidden
+    // count exceeds 2N (= 40). File-edges have a single meaningful
+    // direction (toward file start / end), so the two-row split would be
+    // pointless (ADR 0018).
+    if (!isFirst && gapAbove > GAP_TWO_ROW_THRESHOLD) {
+      rows.push({
+        kind: "interactive",
+        subKind: "gap-mid-top",
+        boundaryRef: hunkIndex,
+        text: gapMidTopText(gapAbove),
+      });
     }
 
     rows.push({
       kind: "hunk-header",
       header: hunk.hunkSpecs ?? "",
       hunkIndex,
-      expandUp,
-      expandDown,
+      gapAbove,
     });
 
     // Down-side context rows: lines just before this hunk's start.
-    if (hunkIndex > 0 && sep.down > 0) {
+    if (sep.down > 0) {
       emitContextRowsByLineNumber(
         rows,
         oldContent,
         newContent,
-        gap.nextAdditionStart - sep.down,
-        gap.nextDeletionStart - sep.down,
+        hunk.additionStart - sep.down,
+        hunk.deletionStart - sep.down,
         sep.down,
       );
     }
@@ -397,15 +390,21 @@ function walkHunks(
   return rows;
 }
 
-function boundaryTopText(remaining: number): string {
-  if (remaining === 0) return "··· 0 hidden above ···";
-  return `··· ${remaining} lines hidden above ···`;
-}
-
 function boundaryBottomText(remaining: number): string {
   if (remaining === 0) return "··· 0 hidden below ···";
   return `··· ${remaining} lines hidden below ···`;
 }
+
+function gapMidTopText(remaining: number): string {
+  // ↑ glyph per D1 (row position == end of gap, ADR 0018): pressing
+  // Enter reveals lines above the row — toward the previous hunk's end.
+  return `↑ ··· ${remaining} lines hidden ···`;
+}
+
+/** Per-direction expansion step (N). The two-row threshold is 2N. Matches
+ *  Pierre's `expansionLineCount: 20` and the TUI's prior symmetric-20
+ *  semantics (ADR 0018). */
+const GAP_TWO_ROW_THRESHOLD = 40;
 
 function applyAnnotationFlags(
   rows: PlannedRow[],

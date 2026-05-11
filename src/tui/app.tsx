@@ -13,6 +13,7 @@ import {
   expandTop,
   expandBottom,
   expandFile,
+  getBoundary,
   seedFromOrphans,
   type ExpansionState,
   type OrphanWindow,
@@ -771,11 +772,32 @@ function App(props: AppProps) {
 
   // Real expansion handlers (PRD #108). Replace the slice-#107 stubs with
   // reducer calls against the per-tour expansion state.
+  //
+  // PRD #151: mid-file hunk-header Enter is direction-aware — large gaps
+  // (remaining > 2N = 40) expand the bottom of the gap (lines appear
+  // above the @@); small gaps (≤ 40) expand symmetrically. gap-mid-top
+  // expands the top of the gap (lines appear adjacent to the previous
+  // hunk's content). Same `ref: hunkIndex` boundary key as the existing
+  // hunk-separator; direction control via the `direction` param.
   const expandHunkBoundary = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
     if (typeof boundaryRef !== "number") return;
     const gapSize = hunkSeparatorGapSize(file, boundaryRef);
     if (gapSize === 0) return;
-    setExpansion((s) => expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize));
+    const cur = getBoundary(expansion, { file, ref: boundaryRef });
+    const remaining = gapSize - cur.up - cur.down;
+    if (remaining <= 0) return;
+    const direction = remaining > 40 ? "down" : "both";
+    setExpansion((s) =>
+      expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize, direction),
+    );
+  };
+  const expandGapMidTop = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
+    if (typeof boundaryRef !== "number") return;
+    const gapSize = hunkSeparatorGapSize(file, boundaryRef);
+    if (gapSize === 0) return;
+    setExpansion((s) =>
+      expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize, "up"),
+    );
   };
   const expandTopBoundary = (file: string, all: boolean) => {
     const gapSize = boundaryTopGapSize(file);
@@ -803,6 +825,9 @@ function App(props: AppProps) {
     switch (subKind) {
       case "hunk-separator":
         expandHunkBoundary(cursor.file, boundaryRef, all);
+        return;
+      case "gap-mid-top":
+        expandGapMidTop(cursor.file, boundaryRef, all);
         return;
       case "boundary-top":
         expandTopBoundary(cursor.file, all);

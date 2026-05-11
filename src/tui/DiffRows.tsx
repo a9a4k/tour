@@ -135,12 +135,50 @@ export function DiffRows({
       {rows.map((row, idx) => {
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
-          const hidden = row.expandUp + row.expandDown;
-          const suffix = hidden > 0 ? ` ··· ${hidden} hidden ···` : "";
+          const interactive = row.gapAbove > 0;
+          if (!interactive) {
+            return (
+              <text key={key} fg={theme.fg.muted}>
+                {row.header}
+              </text>
+            );
+          }
+          // Promoted to first-class interactive row (PRD #151, ADR 0018).
+          // Direction glyph per D1 (row position == end of gap):
+          //   hunkIndex===0 → `↑` (file-top, lines reveal toward line 1)
+          //   gapAbove > 2N → `↓` (mid-file large, paired with gap-mid-top above)
+          //   else          → `↕` (mid-file small, symmetric)
+          const glyph =
+            row.hunkIndex === 0 ? "↑" : row.gapAbove > 40 ? "↓" : "↕";
+          const text = `${row.header} ${glyph} ··· ${row.gapAbove} hidden ···`;
+          const subKind: InteractiveSubKind =
+            row.hunkIndex === 0 ? "boundary-top" : "hunk-separator";
+          const boundaryRef: BoundaryRef =
+            row.hunkIndex === 0 ? "top" : row.hunkIndex;
+          const cursorActive =
+            cursor != null &&
+            cursor.file === fileName &&
+            cursor.interactive != null &&
+            cursor.interactive.subKind === subKind &&
+            cursor.interactive.boundaryRef === boundaryRef;
+          const id = interactiveRowId(fileName, subKind, boundaryRef);
+          const onMouseDown = onInteractiveClick
+            ? () => onInteractiveClick(fileName, subKind, boundaryRef)
+            : undefined;
           return (
-            <text key={key} fg={theme.fg.muted}>
-              {`${row.header}${suffix}`}
-            </text>
+            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
+              <DiffLine
+                gutter={INTERACTIVE_PAD_GUTTER}
+                text={text}
+                gutterTinted={false}
+                contentTinted={false}
+                gutterAccent={false}
+                cursorActive={cursorActive}
+                filetype={filetype}
+                syntaxStyle={syntaxStyle}
+                width="100%"
+              />
+            </box>
           );
         }
         if (row.kind === "interactive") {
