@@ -90,15 +90,14 @@ describe("expansionFromPierre: shape mapping", () => {
     expect(out.get("b.ts")?.boundaries.get(1)).toEqual({ up: 3, down: 4 });
   });
 
-  it("ignores files that have refs but are not present in parsedFiles (e.g. unmounted)", () => {
+  it("falls back to hunkCount=0 when a ref's file is missing from parsedFiles", () => {
     const refs = new Map([
       ["stale.ts", makeRef(new Map([[0, { fromStart: 1, fromEnd: 1 }]]))],
     ]);
-    // parsedFiles is empty — hunk count unknown. Treat as 0 hunks; hunkIndex=0
-    // is still semantically "first hunk" which maps to "top".
+    // parsedFiles is empty — hunk count unknown, treated as 0. hunkIndex=0
+    // still maps to "top" (the first-hunk branch wins over the >=hunkCount
+    // bottom branch), so the bridge degrades gracefully rather than crashing.
     const out = expansionFromPierre(refs, []);
-    // The bridge should still emit something for the file (Pierre says it
-    // exists), keyed under "top" since 0 is the start.
     expect(out.get("stale.ts")?.boundaries.get("top")).toEqual({ up: 1, down: 1 });
   });
 

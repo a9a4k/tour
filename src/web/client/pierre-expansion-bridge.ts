@@ -48,6 +48,15 @@ export interface FileWithHunkCount {
   hunks: readonly unknown[];
 }
 
+function pierreKeyToBoundaryRef(
+  hunkIndex: number,
+  hunkCount: number,
+): BoundaryRef {
+  if (hunkIndex === 0) return "top";
+  if (hunkIndex >= hunkCount) return "bottom";
+  return hunkIndex;
+}
+
 export function expansionFromPierre(
   refs: Map<string, PierreFileDiffLike>,
   parsedFiles: readonly FileWithHunkCount[],
@@ -65,12 +74,7 @@ export function expansionFromPierre(
     const boundaries = new Map<BoundaryRef, BoundaryExpansion>();
     for (const [hunkIndex, region] of expanded) {
       if (region.fromStart <= 0 && region.fromEnd <= 0) continue;
-      const ref: BoundaryRef =
-        hunkIndex === 0
-          ? "top"
-          : hunkIndex >= hunkCount
-            ? "bottom"
-            : hunkIndex;
+      const ref = pierreKeyToBoundaryRef(hunkIndex, hunkCount);
       boundaries.set(ref, {
         up: Math.max(0, region.fromStart),
         down: Math.max(0, region.fromEnd),
