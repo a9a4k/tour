@@ -275,6 +275,15 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const tourMeta = bundle?.tour ?? null;
   const annotations = useMemo(() => bundle?.annotations ?? [], [bundle?.annotations]);
   const topLevel = useMemo(() => topLevelAnnotations(annotations), [annotations]);
+  // 1-based nav-order index per top-level annotation id, for rendering the
+  // `i / n` counter in each AnnotationCard header. Stable Map so FileBlock's
+  // memo bails on cursor moves.
+  const navIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    topLevel.forEach((a, i) => m.set(a.id, i + 1));
+    return m;
+  }, [topLevel]);
+  const navTotal = topLevel.length;
   const repliesByRoot = useMemo(() => {
     const out = new Map<string, Annotation[]>();
     for (const t of buildThreads(annotations)) {
@@ -1018,6 +1027,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
             <AnnotationList
               topLevel={topLevel}
               repliesByRoot={repliesByRoot}
+              navIndexById={navIndexById}
+              navTotal={navTotal}
               currentAnnotationId={currentAnnotationId}
               registerAnnotationRef={registerAnnotationRef}
               composerTarget={composerTarget}
@@ -1034,6 +1045,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 fileDiff={f}
                 annotations={annotations}
                 repliesByRoot={repliesByRoot}
+                navIndexById={navIndexById}
+                navTotal={navTotal}
                 modelFile={modelFilesByName.get(f.name)}
                 registerRef={registerFileRef}
                 registerFileDiffRef={registerFileDiffRef}
@@ -1179,6 +1192,8 @@ interface FileBlockProps {
   fileDiff: FileDiffMetadata;
   annotations: Annotation[];
   repliesByRoot: Map<string, Annotation[]>;
+  navIndexById: Map<string, number>;
+  navTotal: number;
   modelFile: BundleFile | undefined;
   // File name is passed as an argument (rather than bound via closure)
   // so the same function reference can serve every file — see App.tsx
@@ -1242,6 +1257,8 @@ function FileBlockInner({
   fileDiff,
   annotations,
   repliesByRoot,
+  navIndexById,
+  navTotal,
   modelFile,
   registerRef,
   registerFileDiffRef,
@@ -1336,6 +1353,8 @@ function FileBlockInner({
           annotation={a}
           replies={replies}
           isCurrent={a.id === currentAnnotationId}
+          navIndex={navIndexById.get(a.id) ?? null}
+          navTotal={navTotal}
           registerRef={registerAnnotationRef}
           replying={isReplying}
           composerError={isReplying ? composerError : null}
@@ -1348,6 +1367,8 @@ function FileBlockInner({
     },
     [
       currentAnnotationId,
+      navIndexById,
+      navTotal,
       registerAnnotationRef,
       repliesByRoot,
       composerTarget,
@@ -1441,6 +1462,12 @@ interface AnnotationCardProps {
   annotation: Annotation;
   replies?: Annotation[];
   isCurrent: boolean;
+  // 1-based position in the top-level nav order. null when the annotation
+  // isn't in topLevel (defensive — shouldn't happen since AnnotationCard
+  // only ever renders top-level annotations). Header omits the counter
+  // when null or when navTotal is 0.
+  navIndex: number | null;
+  navTotal: number;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
   replying?: boolean;
   composerError?: string | null;
@@ -1495,6 +1522,8 @@ function AnnotationCard({
   annotation,
   replies,
   isCurrent,
+  navIndex,
+  navTotal,
   registerRef,
   replying,
   composerError,
@@ -1517,6 +1546,9 @@ function AnnotationCard({
       <div className="ann-header">
         {isCurrent ? (
           <span className="selection-marker" aria-hidden="true">●{" "}</span>
+        ) : null}
+        {navIndex !== null && navTotal > 0 ? (
+          <span className="nav-index">{navIndex} / {navTotal}{" "}</span>
         ) : null}
         <span className={`author-kind ${annotation.author_kind}`}>
           [{annotation.author_kind}]
@@ -1659,6 +1691,8 @@ function Composer({
 interface AnnotationListProps {
   topLevel: Annotation[];
   repliesByRoot: Map<string, Annotation[]>;
+  navIndexById: Map<string, number>;
+  navTotal: number;
   currentAnnotationId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
@@ -1672,6 +1706,8 @@ interface AnnotationListProps {
 function AnnotationList({
   topLevel,
   repliesByRoot,
+  navIndexById,
+  navTotal,
   currentAnnotationId,
   registerAnnotationRef,
   composerTarget,
@@ -1693,6 +1729,8 @@ function AnnotationList({
             annotation={a}
             replies={repliesByRoot.get(a.id) ?? []}
             isCurrent={a.id === currentAnnotationId}
+            navIndex={navIndexById.get(a.id) ?? null}
+            navTotal={navTotal}
             registerRef={registerAnnotationRef}
             replying={isReplying}
             composerError={isReplying ? composerError : null}

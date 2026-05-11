@@ -9,6 +9,10 @@ interface AnnotationCardProps {
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
+  /** 1-based position in the top-level nav order. null when not in
+   *  topLevel; the counter is omitted when null or when navTotal is 0. */
+  navIndex?: number | null;
+  navTotal?: number;
 }
 
 function rangeLabel(ann: Annotation): string {
@@ -67,6 +71,8 @@ export function AnnotationCard({
   repliesCollapsed,
   replyLock,
   now,
+  navIndex,
+  navTotal,
 }: AnnotationCardProps) {
   const visibleReplies = repliesCollapsed ? [] : replies ?? [];
   const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
@@ -90,11 +96,16 @@ export function AnnotationCard({
             {"● "}
           </text>
         ) : null}
+        {navIndex != null && navTotal != null && navTotal > 0 ? (
+          <text fg={theme.fg.muted} bold>
+            {`${navIndex} / ${navTotal} `}
+          </text>
+        ) : null}
         <text fg={authorKindColor(annotation.author_kind)} bold>
           {`[${annotation.author_kind}] `}
         </text>
         <text fg={theme.fg.accent} bold>
-          [{annotation.side}] {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
+          {annotation.file}:{rangeLabel(annotation)} ({annotation.author})
         </text>
       </box>
       <box flexGrow={1}>

@@ -148,6 +148,8 @@ function fileCardBody(
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
+  navIndexById: Map<string, number>,
+  navTotal: number,
 ) {
   const placeholder = fileCardPlaceholder(collapsed, hasHunks, reason);
   if (placeholder !== null) return <text fg={theme.fg.muted}>{placeholder}</text>;
@@ -163,6 +165,8 @@ function fileCardBody(
       repliesCollapsed={repliesCollapsed}
       replyLock={replyLock}
       now={now}
+      navIndexById={navIndexById}
+      navTotal={navTotal}
     />
   );
 }
@@ -241,6 +245,14 @@ function App(props: AppProps) {
   }, [bundle]);
   const liveReplyLock = replyLock;
   const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
+  // 1-based nav-order index per top-level annotation id, for rendering the
+  // `i / n` counter in each AnnotationCard header (mirrors webapp).
+  const navIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    liveTopLevel.forEach((a, i) => m.set(a.id, i + 1));
+    return m;
+  }, [liveTopLevel]);
+  const navTotal = liveTopLevel.length;
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
   // second only when a lock is present so we don't burn renders on the idle
@@ -1324,6 +1336,8 @@ function App(props: AppProps) {
                       repliesCollapsed,
                       liveReplyLock,
                       now,
+                      navIndexById,
+                      navTotal,
                     )}
                   </box>
                 );

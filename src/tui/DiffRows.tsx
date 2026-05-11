@@ -42,6 +42,10 @@ interface DiffRowsProps {
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
+  /** 1-based nav-order index per top-level annotation id, for the `i / n`
+   *  counter in each AnnotationCard header. */
+  navIndexById?: Map<string, number>;
+  navTotal?: number;
 }
 
 const LINE_NUMBER_WIDTH = 5;
@@ -127,6 +131,8 @@ export function DiffRows({
   repliesCollapsed,
   replyLock,
   now,
+  navIndexById,
+  navTotal,
 }: DiffRowsProps) {
   const filetype = inferFiletype(fileName);
   const syntaxStyle = getSyntaxStyle();
@@ -227,6 +233,8 @@ export function DiffRows({
               repliesCollapsed={repliesCollapsed}
               replyLock={replyLock}
               now={now}
+              navIndex={navIndexById?.get(row.annotation.id) ?? null}
+              navTotal={navTotal ?? 0}
             />
           );
           if (slot === "full") return card;
