@@ -47,3 +47,25 @@ The cursor walks every row Pierre exposes with `[data-line]`, **including unchan
 - Hover affordance and Pierre's own `:hover` styling can collide. Pierre may already paint a default `:hover` state on rows we target; implementation must verify the `[data-tour-hover]`-targeted CSS doesn't fight Pierre's defaults. Mitigation is straightforward (higher selector specificity, or use a CSS variable Pierre exposes); flagged here so the implementer isn't surprised.
 - No on-disk artifacts. Cursor state is React `useState`; reload resets to null. Reversibility cost is the keymap rebind (`l → L`), identical to ADR 0011's reversibility posture.
 - The webapp continues to rely on `<FileDiff>`'s click event for the mouse-first path. The cursor doesn't replace mouse interactions; it adds a parallel keyboard surface and an upgraded hover affordance, both backed by the same `[data-tour-focus]`-style row primitive.
+
+## Revisions
+
+### Context rows are addressable on both columns (reverses the "additions by convention" rule)
+
+The original Decisions section forced `side = additions` for any cursor or click that landed on a context row. In split layout this produced an observable bug: a user clicks the **left** column of a context row, the cursor outline appears on the **right** column (the canonical side), and the click feedback lands far from the click point. Same line, same code, but the visual anchor jumped across the diff pane.
+
+The "additions by convention" rule was a simplification, not a technical constraint. GitHub's split-view comment model treats the two columns of a context row as independent comment targets — click left → comment lives on `deletions`; click right → comment lives on `additions`. Users carry that muscle memory in.
+
+**Revised rule:** `side` follows the column. For mouse: `findAnnotatableLine` walks the click path for the nearest `[data-deletions]` / `[data-additions]` ancestor and uses that column as `side`, including for context rows. For keyboard: the cursor's existing `preferredSide` (toggled by `h` / `l` / `←` / `→`) decides — `a` on a context row opens the composer on whichever column the cursor sits in. Buffer rows (Pierre's `[data-content-buffer]` / `[data-gutter-buffer]` spacers, where one side has more lines than the other) carry no `data-line` and remain inert — matching GitHub's gray non-clickable filler.
+
+**Consequences of the revision:**
+- One concept, not two: `side` is the column, period. The earlier proposal of splitting "visual column" from "anchor side" is unnecessary once the canonicalization goes away.
+- `h` / `l` on a context row is no longer a silent no-op — it visibly moves the outline between columns, and a subsequent `a` follows.
+- Existing context-row annotations on disk are all on `additions`; they keep rendering on the right column. New ones can land on either side. No migration.
+- TUI parity: no TUI change. `cursorFromRow` in `core/cursor-state.ts` already resolves paired rows (which include context) by `preferredSide`, not by a forced `additions`. The webapp was the asymmetric one — the canonicalization lived in `findAnnotatableLine`'s click resolution, not in the shared cursor reducer. This revision pulls the webapp's click resolution into line with the TUI's already-correct behaviour.
+- CONTEXT.md's **Side** glossary entry is updated to drop the "additions by convention" line.
+
+**Considered alternatives for the fix (rejected):**
+- *Outline jumps to the canonical side when `a` is pressed* — every `a` on a context row produces a surprising visual jump; the jump stops reading as information after the first few times and starts reading as twitch.
+- *Outline stays on the clicked column, composer opens on the canonical side* — outline and composer end up in different columns; the cursor outline lies about where the comment will land.
+- *Full-row outline + full-width composer for context rows* — visually communicates "context is one logical row," but doesn't match GitHub's mental model and introduces visual-rhythm changes as the keyboard cursor crosses between context and change rows.
