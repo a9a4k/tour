@@ -38,6 +38,7 @@ import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
+import { resolveClickAnchor } from "./click-anchor.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -1028,30 +1029,6 @@ function fileContentsFor(
   };
 }
 
-// Per ADR 0012: context rows annotate as side="additions" (CONTEXT.md
-// convention). Click-to-annotate used to silently drop context rows; the
-// cursor walks them, so click resolution must too.
-function sideFromLineType(t: string | undefined): "additions" | "deletions" | null {
-  if (t === "addition" || t === "change-addition") return "additions";
-  if (t === "deletion" || t === "change-deletion") return "deletions";
-  if (t === "context") return "additions";
-  return null;
-}
-
-function findAnnotatableLine(path: EventTarget[]): { line: number; side: "additions" | "deletions" } | null {
-  for (const node of path) {
-    if (!(node instanceof HTMLElement)) continue;
-    const lineAttr = node.dataset.line;
-    if (lineAttr === undefined) continue;
-    const side = sideFromLineType(node.dataset.lineType);
-    if (!side) return null;
-    const line = Number(lineAttr);
-    if (!Number.isFinite(line)) return null;
-    return { line, side };
-  }
-  return null;
-}
-
 // `React.memo` short-circuits re-renders when none of the props change
 // by reference. The big payoff: cursor moves (`j`/`k`) update App state
 // but do NOT touch any FileBlock prop, so every FileBlock — and the
@@ -1195,9 +1172,9 @@ function FileBlockInner({
           n.classList?.contains("composer")),
     );
     if (insideCard) return;
-    const hit = findAnnotatableLine(path);
+    const hit = resolveClickAnchor(path);
     if (!hit) return;
-    onRowClick(fileDiff.name, hit.side, hit.line);
+    onRowClick(fileDiff.name, hit.side, hit.lineNumber);
   };
 
   const headerMetadata = () => (
