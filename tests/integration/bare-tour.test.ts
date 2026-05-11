@@ -8,6 +8,11 @@ import { tmpdir } from "node:os";
 const execP = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/main.ts");
 
+// Matches either banner form emitted by the webapp branch — the happy-path
+// "running at" line and the port-fallback "port N busy" line. Both prove
+// bare `tour` dispatched to serve(), so either is a positive webapp signal.
+const WEBAPP_BANNER = /Tour server (running at|: port \d+ busy)/;
+
 // Integration coverage for bare `tour` smart-default surface (issue #175).
 // Wraps the child in `script -q -c ... /dev/null` (util-linux) so the
 // allocated PTY makes `process.stdout.isTTY` true — otherwise the surface
@@ -129,13 +134,11 @@ describe("tour — bare command surface selection (issue #175)", () => {
       bunPath,
       dir,
       { PATH: `${stubDir}:/usr/bin:/bin` },
-      // Either banner means the webapp branch fired — the running-at one
-      // for the happy case, the port-busy one if 8687 happens to be taken.
-      /Tour server (running at|: port \d+ busy)/,
+      WEBAPP_BANNER,
       10000,
     );
     activeProc = result.proc;
-    expect(result.stdout).toMatch(/Tour server (running at|: port \d+ busy)/);
+    expect(result.stdout).toMatch(WEBAPP_BANNER);
   }, 15000);
 
   it("launches the TUI when SSH_TTY is set", async () => {
@@ -145,12 +148,12 @@ describe("tour — bare command surface selection (issue #175)", () => {
       dir,
       { PATH: `${stubDir}:/usr/bin:/bin`, SSH_TTY: "/dev/pts/0" },
       // Absence-of-webapp test: run out the clock and then assert the
-      // running-at banner did not appear. 3s is more than enough for bun
-      // to print it on the CI runner if the webapp branch had fired.
+      // banner did not appear. 3s is more than enough for bun to print
+      // it on the CI runner if the webapp branch had fired.
       /__NEVER_MATCHES__/,
       3000,
     );
     activeProc = result.proc;
-    expect(result.stdout).not.toMatch(/Tour server (running at|: port \d+ busy)/);
+    expect(result.stdout).not.toMatch(WEBAPP_BANNER);
   }, 15000);
 });
