@@ -371,12 +371,19 @@ function walkHunks(
           bot.down,
         );
       }
-      rows.push({
-        kind: "interactive",
-        subKind: "boundary-bottom",
-        boundaryRef: "bottom",
-        text: boundaryBottomText(remaining),
-      });
+      // Suppress when remaining === 0 (issue #160): unlike `hunk-header`,
+      // `boundary-bottom` carries no @@ metadata — it's a pure affordance row.
+      // Once Pierre has fully revealed the file-bottom gap, leaving the row
+      // visible with "0 hidden" would be a cursor trap (each Enter / click is
+      // a no-op).
+      if (remaining > 0) {
+        rows.push({
+          kind: "interactive",
+          subKind: "boundary-bottom",
+          boundaryRef: "bottom",
+          text: boundaryBottomText(remaining),
+        });
+      }
     }
   }
 
@@ -384,7 +391,6 @@ function walkHunks(
 }
 
 function boundaryBottomText(remaining: number): string {
-  if (remaining === 0) return "··· 0 hidden below ···";
   return `··· ${remaining} lines hidden below ···`;
 }
 
