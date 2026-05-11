@@ -1,5 +1,5 @@
-import type { PlannedRow } from "../../core/diff-rows.js";
-import { queryAllAcrossShadow } from "./dom-walk.js";
+import type { BoundaryRef, InteractiveSubKind, PlannedRow } from "../../core/diff-rows.js";
+import { cssEscape, queryAllAcrossShadow, queryFirstAcrossShadow } from "./dom-walk.js";
 
 /**
  * Tour-owned gap-row overlay on top of Pierre's diff DOM (PRD #151,
@@ -295,4 +295,62 @@ function attachClick(
   };
   el.addEventListener("click", fn);
   listeners.push({ el, type: "click", fn });
+}
+
+/**
+ * Selector that matches the overlay node backing an interactive cursor.
+ * Returns `null` when the cursor's `subKind` is not a gap-row family
+ * member (e.g., `collapsed-file` — interactive, but routed through the
+ * cursor-keymap, not the overlay). Shared by `cursor-overlay.ts`
+ * (outline placement) and `dispatchGapRowAction` below (keyboard Enter)
+ * so the keyboard, mouse, and cursor-outline paths agree on a single
+ * mapping from cursor state to DOM target.
+ */
+export function gapRowSelectorFor(interactive: {
+  subKind: InteractiveSubKind;
+  boundaryRef: BoundaryRef;
+}): string | null {
+  const { subKind, boundaryRef } = interactive;
+  let dataSubkind: string;
+  let hunkIndex: number | null = null;
+  if (subKind === "boundary-top") {
+    dataSubkind = "hunk-header";
+    hunkIndex = 0;
+  } else if (subKind === "hunk-separator" && typeof boundaryRef === "number") {
+    dataSubkind = "hunk-header";
+    hunkIndex = boundaryRef;
+  } else if (subKind === "gap-mid-top" && typeof boundaryRef === "number") {
+    dataSubkind = "gap-mid-top";
+    hunkIndex = boundaryRef;
+  } else if (subKind === "boundary-bottom") {
+    dataSubkind = "boundary-bottom";
+  } else {
+    return null;
+  }
+  const indexClause = hunkIndex !== null ? `[data-hunk-index="${hunkIndex}"]` : "";
+  return `[data-tour-interactive="gap-row"][data-subkind="${dataSubkind}"]${indexClause}`;
+}
+
+/**
+ * Find the gap-row DOM node backing an interactive cursor and dispatch a
+ * synthetic click on it. The overlay's per-row click handler owns
+ * direction + line-count derivation, so the keyboard Enter path stays a
+ * thin shim over the mouse path (PRD #151 user-stories 6-8). Returns
+ * `true` when a node was found and clicked; `false` when the cursor's
+ * `subKind` is not a gap-row family member or no matching node exists.
+ */
+export function dispatchGapRowAction(
+  root: ParentNode,
+  file: string,
+  interactive: { subKind: InteractiveSubKind; boundaryRef: BoundaryRef },
+  shiftKey: boolean,
+): boolean {
+  const selector = gapRowSelectorFor(interactive);
+  if (selector === null) return false;
+  const fileBlock = queryFirstAcrossShadow(root, `[data-file="${cssEscape(file)}"]`);
+  if (!fileBlock) return false;
+  const target = queryFirstAcrossShadow(fileBlock, selector);
+  if (!target) return false;
+  target.dispatchEvent(new MouseEvent("click", { shiftKey, bubbles: true }));
+  return true;
 }

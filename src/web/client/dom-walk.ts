@@ -59,3 +59,33 @@ export function shadowRootsDeep(node: ParentNode): ShadowRoot[] {
   }
   return out;
 }
+
+/**
+ * First-match variant of `queryAllAcrossShadow`. Short-circuits the
+ * shadow-tree walk on the first hit. Use when callers only need one node
+ * (e.g., resolving a cursor anchor to its single backing cell).
+ */
+export function queryFirstAcrossShadow(root: ParentNode, selector: string): Element | null {
+  const stack: ParentNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const hit = node.querySelector(selector);
+    if (hit) return hit;
+    for (const sr of shadowRootsIn(node)) stack.push(sr);
+  }
+  return null;
+}
+
+/**
+ * Escape a string for safe interpolation into a CSS attribute selector
+ * (e.g., `[data-file="${cssEscape(path)}"]`). Uses the platform's
+ * `CSS.escape` when available and falls back to a minimal escaper for
+ * the characters that can appear in attribute values we build selectors
+ * from (file paths primarily).
+ */
+export function cssEscape(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, (c) => `\\${c}`);
+}

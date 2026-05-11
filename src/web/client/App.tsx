@@ -39,7 +39,7 @@ import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
-import { attachGapRowOverlay } from "./gap-row-overlay.js";
+import { attachGapRowOverlay, dispatchGapRowAction } from "./gap-row-overlay.js";
 import type { FileDiff as FileDiffInstance } from "@pierre/diffs";
 
 const STICKY_HEADER_CSS = `
@@ -78,82 +78,6 @@ const EQUAL_COLUMNS_CSS = `
 `;
 
 type Layout = "split" | "unified";
-
-// Gap-row family interactive subKinds (PRD #151, ADR 0018). Collapsed-file
-// is also an interactive row but has its own keymap path (`Enter` toggles
-// fileExpanded), so it's deliberately excluded here.
-function isGapRowCursor(subKind: string): boolean {
-  return (
-    subKind === "boundary-top" ||
-    subKind === "hunk-separator" ||
-    subKind === "gap-mid-top" ||
-    subKind === "boundary-bottom"
-  );
-}
-
-// Find the gap-row DOM node that backs the current interactive cursor and
-// dispatch a synthetic click on it — the overlay's per-row click handler
-// owns direction + line-count derivation, so the keyboard path stays a
-// thin shim over the mouse path (issue #154 acceptance criterion: Enter
-// dispatches the same action as the chevron click; Shift+Enter dispatches
-// the expand-all variant).
-function dispatchGapRowAction(cursor: Cursor, shiftKey: boolean): void {
-  const interactive = cursor.interactive;
-  if (!interactive) return;
-  let dataSubkind: string;
-  let hunkIndexFilter: string | null = null;
-  if (interactive.subKind === "boundary-top") {
-    dataSubkind = "hunk-header";
-    hunkIndexFilter = "0";
-  } else if (interactive.subKind === "hunk-separator") {
-    dataSubkind = "hunk-header";
-    hunkIndexFilter = String(interactive.boundaryRef);
-  } else if (interactive.subKind === "gap-mid-top") {
-    dataSubkind = "gap-mid-top";
-    hunkIndexFilter = String(interactive.boundaryRef);
-  } else if (interactive.subKind === "boundary-bottom") {
-    dataSubkind = "boundary-bottom";
-  } else {
-    return;
-  }
-  const fileBlock = document.querySelector<HTMLElement>(
-    `[data-file="${cssEscapeForAttr(cursor.file)}"]`,
-  );
-  if (!fileBlock) return;
-  const target = queryFirstAcrossShadow(
-    fileBlock,
-    `[data-tour-interactive="gap-row"][data-subkind="${dataSubkind}"]` +
-      (hunkIndexFilter !== null ? `[data-hunk-index="${hunkIndexFilter}"]` : ""),
-  );
-  if (!target) return;
-  target.dispatchEvent(new MouseEvent("click", { shiftKey, bubbles: true }));
-}
-
-function cssEscapeForAttr(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/["\\]/g, (c) => `\\${c}`);
-}
-
-function queryFirstAcrossShadow(root: ParentNode, selector: string): HTMLElement | null {
-  const stack: ParentNode[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    const hit = node.querySelector<HTMLElement>(selector);
-    if (hit) return hit;
-    if (node instanceof Element) {
-      const self = (node as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
-      if (self) stack.push(self);
-    }
-    const all = node.querySelectorAll("*");
-    for (const el of all) {
-      const sr = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
-      if (sr) stack.push(sr);
-    }
-  }
-  return null;
-}
 
 type ComposerTarget =
   | {
@@ -650,19 +574,19 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       );
       // Enter / Shift+Enter on a gap-row interactive cursor → dispatch the
       // same action as clicking the row's chevron (issue #154, PRD #151
-      // user-stories 6-8). Routed by simulating a click on the injected
-      // DOM node so the overlay's per-row click handler stays the single
-      // source of truth for direction + line-count derivation.
+      // user-stories 6-8). The overlay's per-row click handler is the
+      // single source of truth for direction + line-count derivation;
+      // dispatchGapRowAction returns false for non-gap-row interactive
+      // subkinds (e.g., collapsed-file), letting Enter fall through.
       if (
         e.key === "Enter" &&
         !focusInEditable &&
         composerTarget === null &&
         !pickerOpen &&
         cursor?.interactive &&
-        isGapRowCursor(cursor.interactive.subKind)
+        dispatchGapRowAction(document.body, cursor.file, cursor.interactive, e.shiftKey)
       ) {
         e.preventDefault();
-        dispatchGapRowAction(cursor, e.shiftKey);
         return;
       }
       const action = dispatchCursorKey(

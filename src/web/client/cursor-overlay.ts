@@ -1,5 +1,6 @@
 import type { Cursor } from "../../core/cursor-state.js";
-import { queryAllAcrossShadow, shadowRootsDeep } from "./dom-walk.js";
+import { cssEscape, queryAllAcrossShadow, shadowRootsDeep } from "./dom-walk.js";
+import { gapRowSelectorFor } from "./gap-row-overlay.js";
 
 /**
  * Mark the DOM cell that the line cursor is anchored on with
@@ -194,16 +195,6 @@ function findFileBlock(root: ParentNode, file: string): Element | null {
   return null;
 }
 
-function cssEscape(value: string): string {
-  // Use the platform's CSS.escape when available; fall back to a minimal
-  // escaper for the few characters that legitimately appear in file
-  // paths (`"` is unlikely but cheap to handle).
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/["\\]/g, (c) => `\\${c}`);
-}
-
 function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
   // Interactive cursors (gap-row family — PRD #151 / ADR 0018, ADR 0013)
   // resolve against the Tour-injected `[data-tour-interactive]` overlay
@@ -211,28 +202,9 @@ function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
   // (sideless), which the cursor-css rule already handles via the
   // attribute selector — no side filter applies here.
   if (cursor.interactive) {
-    const { subKind, boundaryRef } = cursor.interactive;
-    let dataSubkind: string | null = null;
-    let hunkIndexFilter: string | null = null;
-    if (subKind === "boundary-top") {
-      dataSubkind = "hunk-header";
-      hunkIndexFilter = "0";
-    } else if (subKind === "hunk-separator" && typeof boundaryRef === "number") {
-      dataSubkind = "hunk-header";
-      hunkIndexFilter = String(boundaryRef);
-    } else if (subKind === "gap-mid-top" && typeof boundaryRef === "number") {
-      dataSubkind = "gap-mid-top";
-      hunkIndexFilter = String(boundaryRef);
-    } else if (subKind === "boundary-bottom") {
-      dataSubkind = "boundary-bottom";
-    }
-    if (dataSubkind === null) return null;
-    const selector =
-      `[data-tour-interactive="gap-row"][data-subkind="${dataSubkind}"]` +
-      (hunkIndexFilter !== null ? `[data-hunk-index="${hunkIndexFilter}"]` : "");
-    for (const node of queryAllAcrossShadow(block, selector)) {
-      return node;
-    }
+    const selector = gapRowSelectorFor(cursor.interactive);
+    if (selector === null) return null;
+    for (const node of queryAllAcrossShadow(block, selector)) return node;
     return null;
   }
   // Active-side type filter: the outline must paint on the column the
