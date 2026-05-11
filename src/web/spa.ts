@@ -79,6 +79,18 @@ export function html(initialTourId?: string): string {
   .status-icon.renamed { color: #a371f7; }
   .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .reason-tag { color: var(--fg-muted); font-size: 11px; font-style: italic; }
+  .rename-path {
+    color: var(--fg-muted);
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .rename-placeholder {
+    color: var(--fg-muted);
+    font-size: 12px;
+    font-style: italic;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-default);
+  }
   .badge {
     background: var(--canvas-emphasis);
     color: var(--fg-muted);

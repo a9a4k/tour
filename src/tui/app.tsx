@@ -42,7 +42,14 @@ import {
   buildTopLevelComposer,
   type ComposerState,
 } from "./composer-state.js";
-import { isTopLevel, topLevelAnnotations } from "../core/threads.js";
+import { topLevelAnnotations } from "../core/threads.js";
+import {
+  annotationCountForFile,
+  fileCardPlaceholder,
+  fileClassification,
+  fileEntryLabel,
+  statusIcon,
+} from "./file-entry-label.js";
 import { TourWatcher } from "../core/watcher.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
@@ -107,47 +114,11 @@ function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] 
   return out;
 }
 
-function statusIcon(type: string): string {
-  switch (type) {
-    case "new":
-    case "add": return "A";
-    case "delete": return "D";
-    case "rename": return "R";
-    case "change": return "M";
-    default: return "M";
-  }
-}
-
-function annotationCountForFile(annotations: Annotation[], fileName: string): number {
-  return annotations.filter((a) => a.file === fileName && isTopLevel(a)).length;
-}
-
-function fileClassification(classifications: Record<string, FileClassification> | undefined, fileName: string): FileClassification {
-  return classifications?.[fileName] ?? { collapsed: false };
-}
-
-function reasonLabel(reason?: string): string {
-  if (!reason) return "";
-  return ` [${reason}]`;
-}
-
-function fileEntryLabel(
-  file: DiffFile,
-  classifications: Record<string, FileClassification> | undefined,
-  annotations: Annotation[],
-): string {
-  const annCount = annotationCountForFile(annotations, file.name);
-  const cls = fileClassification(classifications, file.name);
-  const icon = statusIcon(file.type);
-  const badge = annCount > 0 ? ` [${annCount}]` : "";
-  const marker = cls.reason ? reasonLabel(cls.reason) : "";
-  return ` ${icon} ${file.name}${marker}${badge} `;
-}
-
 function fileCardBody(
   fileName: string,
   collapsed: boolean,
   hasHunks: boolean,
+  reason: string | undefined,
   rows: PlannedRow[],
   layout: "split" | "unified",
   currentAnnotationId: string | null,
@@ -166,8 +137,8 @@ function fileCardBody(
   replyLock: ReplyLock | null,
   now: number,
 ) {
-  if (collapsed) return <text fg={theme.fg.muted}>{"[collapsed — c to expand]"}</text>;
-  if (!hasHunks) return <text fg={theme.fg.muted}>{"[no textual changes]"}</text>;
+  const placeholder = fileCardPlaceholder(collapsed, hasHunks, reason);
+  if (placeholder !== null) return <text fg={theme.fg.muted}>{placeholder}</text>;
   return (
     <DiffRows
       fileName={fileName}
@@ -1296,6 +1267,7 @@ function App(props: AppProps) {
               {files.map((file) => {
                 const collapsed = isFileCollapsed(file.name);
                 const rows = plannedRowsByFile.get(file.name) ?? [];
+                const reason = fileClassification(liveClassifications, file.name).reason;
                 return (
                   <box
                     key={file.name}
@@ -1310,6 +1282,7 @@ function App(props: AppProps) {
                       file.name,
                       collapsed,
                       file.hunks.length > 0,
+                      reason,
                       rows,
                       layout,
                       currentAnnotationId,

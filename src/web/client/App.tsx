@@ -37,6 +37,7 @@ import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS } from "./cursor-css.js";
 import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
+import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 
 const STICKY_HEADER_CSS = `
   [data-diffs-header=default] {
@@ -1201,6 +1202,7 @@ function FileBlockInner({
 
   const headerMetadata = () => (
     <>
+      <RenameHeaderSpan name={fileDiff.name} prevName={fileDiff.prevName} />
       {reason ? <span className="reason-tag">{reason}</span> : null}
       <CopyPathButton path={fileDiff.name} />
     </>
@@ -1233,6 +1235,7 @@ function FileBlockInner({
           renderHeaderMetadata={headerMetadata}
         />
       )}
+      <RenamePlaceholderBody reason={reason} />
     </div>
   );
 }

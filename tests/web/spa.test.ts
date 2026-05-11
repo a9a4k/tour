@@ -325,4 +325,12 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.reply-button:hover\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
     expect(out).toMatch(/\.ann-reply-composer\s*\{[^}]*border-left:\s*2px solid var\(--border-muted\)/);
   });
+
+  it("styles the rename path-pair and pure-rename placeholder body (Issue #145)", () => {
+    const out = html();
+    expect(out).toMatch(/\.rename-path\s*\{[^}]*color:\s*var\(--fg-muted\)/);
+    expect(out).toMatch(/\.rename-path\s*\{[^}]*font-family:[^}]*'SF Mono'/);
+    expect(out).toMatch(/\.rename-placeholder\s*\{[^}]*color:\s*var\(--fg-muted\)/);
+    expect(out).toMatch(/\.rename-placeholder\s*\{[^}]*font-style:\s*italic/);
+  });
 });
