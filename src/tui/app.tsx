@@ -48,8 +48,8 @@ import {
   fileCardPlaceholder,
   fileClassification,
   fileEntryLabel,
-  statusIcon,
 } from "./file-entry-label.js";
+import { folderRowLabel, fileRowLabel } from "./sidebar-row-label.js";
 import { TourWatcher } from "../core/watcher.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
@@ -155,18 +155,12 @@ function fileCardBody(
   );
 }
 
-function folderRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "folder" }>): string {
-  const indent = "  ".repeat(row.depth);
-  const caret = row.collapsed ? "▸" : "▾";
-  return ` ${indent}${caret} ${row.displayName} `;
-}
-
-function fileRowLabel(row: Extract<VisibleRow<DiffFile>, { kind: "file" }>): string {
-  const indent = "  ".repeat(row.depth);
-  const icon = statusIcon(row.file.type);
-  const badge = row.annotationCount > 0 ? ` [${row.annotationCount}]` : "";
-  return ` ${indent}${icon} ${row.displayName}${badge} `;
-}
+// Sidebar box is 30 cols wide with a 1-cell border on each side; usable
+// inner width is 28. Row labels are middle-truncated to this width so
+// long names never wrap (issue #156).
+const SIDEBAR_WIDTH = 30;
+const SIDEBAR_BORDER = 2;
+const SIDEBAR_CONTENT_WIDTH = SIDEBAR_WIDTH - SIDEBAR_BORDER;
 
 function App(props: AppProps) {
   const [bundle, setBundle] = useState<TourBundle>(props.bundle);
@@ -1215,6 +1209,7 @@ function App(props: AppProps) {
         layout={layout}
         currentAnnotationIdx={currentAnnotationIdx}
         topLevelTotal={liveTopLevel.length}
+        selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
         onPrevAnnotation={gotoPrevAnnotation}
         onNextAnnotation={gotoNextAnnotation}
@@ -1234,7 +1229,7 @@ function App(props: AppProps) {
       <box flexGrow={1} width="100%" flexDirection="row">
         {/* Sidebar */}
         <box
-          width={30}
+          width={SIDEBAR_WIDTH}
           borderStyle="single"
           borderColor={sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Files "
@@ -1270,7 +1265,7 @@ function App(props: AppProps) {
                     selectable={false}
                     onMouseDown={onRowMouseDown}
                   >
-                    {folderRowLabel(row)}
+                    {folderRowLabel(row, SIDEBAR_CONTENT_WIDTH)}
                   </text>
                 );
               }
@@ -1284,7 +1279,7 @@ function App(props: AppProps) {
                   selectable={false}
                   onMouseDown={onRowMouseDown}
                 >
-                  {fileRowLabel(row)}
+                  {fileRowLabel(row, SIDEBAR_CONTENT_WIDTH)}
                 </text>
               );
             })}

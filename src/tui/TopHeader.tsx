@@ -7,6 +7,10 @@ interface TopHeaderTuiProps {
   layout: "split" | "unified";
   currentAnnotationIdx: number;
   topLevelTotal: number;
+  // Full untruncated path of the row currently selected in the sidebar.
+  // Surfaces information that the sidebar's middle-truncation may have
+  // chipped away (issue #156). Renders nothing when undefined or empty.
+  selectedPath?: string;
   onOpenPicker: () => void;
   onPrevAnnotation: () => void;
   onNextAnnotation: () => void;
@@ -28,6 +32,7 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
     layout,
     currentAnnotationIdx,
     topLevelTotal,
+    selectedPath,
     onOpenPicker,
     onPrevAnnotation,
     onNextAnnotation,
@@ -54,6 +59,11 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
           >
             {`  ${tour.base_source} ← ${tour.head_source}`}
           </text>
+          {selectedPath ? (
+            <text fg={theme.fg.muted} truncate maxWidth={80}>
+              {`  · ${selectedPath}`}
+            </text>
+          ) : null}
         </box>
       </box>
       <box flexDirection="row" alignItems="center" marginLeft="auto">
