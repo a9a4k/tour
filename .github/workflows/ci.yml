@@ -14,3 +14,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
+
+  smoke-binary:
+    # Builds and smoke-tests a compiled binary on every push/PR so
+    # bundle-time regressions (missing lazy imports, runtime Bun.build
+    # resolution failures, unembedded source trees) surface here instead
+    # of at tag time — by which point fixing requires another release.
+    # One linux/x64 build is sufficient: the failure modes are bundler
+    # behaviours, not OS- or arch-specific.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build:linux-x64
+      - run: scripts/smoke-binary.sh dist/binaries/linux-x64/tour

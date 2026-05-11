@@ -103,6 +103,22 @@ if (!skipChecks) {
   await sh(["bun", "run", "typecheck"]);
   console.log("running tests...");
   await sh(["bun", "run", "test"]);
+  // Binary smoke: catches "ships fine in dev, dies in --compile" bugs
+  // before a release tag goes out. CI runs the same check on linux-x64
+  // for every PR, but failing here saves the cycle of pushing a bad
+  // tag, watching it red, then needing another patch release.
+  const archMap: Record<string, string> = { arm64: "arm64", x64: "x64" };
+  const osMap: Record<string, string> = { darwin: "darwin", linux: "linux" };
+  const hostArch = archMap[process.arch];
+  const hostOs = osMap[process.platform];
+  if (hostArch && hostOs) {
+    const target = `${hostOs}-${hostArch}`;
+    console.log(`building binary for ${target} and smoke-testing...`);
+    await sh(["bun", "run", `build:${target}`]);
+    await sh(["bash", "scripts/smoke-binary.sh", `dist/binaries/${target}/tour`]);
+  } else {
+    console.warn(`skipping binary smoke (unsupported host ${process.platform}-${process.arch})`);
+  }
 }
 
 pkg.version = version;
