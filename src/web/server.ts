@@ -10,7 +10,6 @@ import { loadTourBundle } from "../core/tour-bundle.js";
 import { html } from "./spa.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 
 interface ServeArgs {
   port: number;
@@ -77,15 +76,17 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
   const clientEntry = resolve(here, "client/main.tsx");
   // Pierre's worker entry is bundled as a SECOND entrypoint so it becomes
   // its own file. Bun.build doesn't rewrite `new Worker(new URL(...,
-  // import.meta.url))` the way Vite/webpack do, so we keep the worker URL
-  // explicit on the client side (main.tsx → "/pierre-worker.js").
+  // import.meta.url))` across npm packages the way Vite/webpack do, so we
+  // keep the worker URL explicit on the client side (main.tsx →
+  // "/pierre-worker.js").
   //
-  // Resolution prefers ESM-aware `import.meta.resolve` so the package's
-  // `exports."./worker/worker.js"` map is honoured. createRequire's
-  // CommonJS resolver doesn't read the exports map for sub-path imports
-  // in this package layout — it fails with "Cannot find module".
-  const workerSpecifier = "@pierre/diffs/worker/worker.js";
-  const workerEntry = resolveBareSpecifier(workerSpecifier);
+  // The entrypoint is a sibling shim that side-effect-imports the worker
+  // module by bare specifier. Routing the resolution through a file that
+  // lives next to main.tsx means Bun.build walks up to the same embedded
+  // node_modules that already serves main.tsx's imports. Resolving from
+  // the compiled binary root via `import.meta.resolve` fails inside
+  // `/$bunfs/` because the exports map isn't visible from there.
+  const workerEntry = resolve(here, "client/pierre-worker.ts");
   try {
     const result = await Bun.build({
       entrypoints: [clientEntry, workerEntry],
@@ -121,7 +122,7 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
       // source file basenames — match by path suffix so worktree shuffles
       // don't break the assignment.
       if (out.path.endsWith("/main.js") || out.path === "main.js") clientArtifact = out;
-      else if (out.path.endsWith("/worker.js") || out.path === "worker.js") workerArtifact = out;
+      else if (out.path.endsWith("/pierre-worker.js") || out.path === "pierre-worker.js") workerArtifact = out;
     }
     if (clientArtifact !== null) {
       const text = await clientArtifact.text();
@@ -138,24 +139,6 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
     cachedClientBundleError = `client bundle threw: ${message}`;
     return { assets: null, error: cachedClientBundleError };
   }
-}
-
-function resolveBareSpecifier(specifier: string): string {
-  // Bun's `import.meta.resolve` honours ESM `exports` maps (which CJS
-  // `createRequire.resolve` does not for sub-paths). The method requires
-  // a bound `this` — extracting it as a local function reference throws
-  // "must be bound to an import.meta object" — so call it via the
-  // member expression. Falls back to CJS resolution if unavailable.
-  const meta = import.meta as ImportMeta & { resolve?: (s: string) => string };
-  if (typeof meta.resolve === "function") {
-    try {
-      const out = meta.resolve(specifier);
-      return out.startsWith("file:") ? fileURLToPath(out) : out;
-    } catch {
-      // fall through to CJS resolver
-    }
-  }
-  return createRequire(import.meta.url).resolve(specifier);
 }
 
 function contentTypeFor(path: string): string {
