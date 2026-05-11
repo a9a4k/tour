@@ -173,3 +173,92 @@ describe("walkCursorRows: shadow DOM", () => {
     expect(rows[0]).toMatchObject({ file: "x.ts", lineNumber: 9 });
   });
 });
+
+describe("walkCursorRows: interactive rows ([data-tour-interactive])", () => {
+  function interactive(opts: { subkind: string; hunkIndex?: number | "top" | "bottom" }): HTMLElement {
+    const attrs: Record<string, string> = {
+      "data-tour-interactive": "gap-row",
+      "data-subkind": opts.subkind,
+    };
+    if (opts.hunkIndex !== undefined) attrs["data-hunk-index"] = String(opts.hunkIndex);
+    return el("div", attrs);
+  }
+
+  it("emits an interactive FlatRow for a mid-file hunk-header chevron (subKind=hunk-separator)", () => {
+    document.body.appendChild(
+      fileBlock("x.ts", [
+        cell({ line: 1, type: "context" }),
+        interactive({ subkind: "hunk-header", hunkIndex: 3 }),
+        cell({ line: 10, type: "context" }),
+      ]),
+    );
+    const rows = walkCursorRows(document.body);
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toEqual({
+      kind: "interactive",
+      file: "x.ts",
+      subKind: "hunk-separator",
+      boundaryRef: 3,
+    });
+  });
+
+  it("emits an interactive FlatRow with subKind=boundary-top for a first-hunk chevron (hunkIndex=0)", () => {
+    document.body.appendChild(
+      fileBlock("x.ts", [
+        interactive({ subkind: "hunk-header", hunkIndex: 0 }),
+        cell({ line: 1, type: "context" }),
+      ]),
+    );
+    const rows = walkCursorRows(document.body);
+    expect(rows[0]).toEqual({
+      kind: "interactive",
+      file: "x.ts",
+      subKind: "boundary-top",
+      boundaryRef: "top",
+    });
+  });
+
+  it("emits an interactive FlatRow for a gap-mid-top row", () => {
+    document.body.appendChild(
+      fileBlock("x.ts", [
+        interactive({ subkind: "gap-mid-top", hunkIndex: 2 }),
+        cell({ line: 1, type: "context" }),
+      ]),
+    );
+    const rows = walkCursorRows(document.body);
+    expect(rows[0]).toEqual({
+      kind: "interactive",
+      file: "x.ts",
+      subKind: "gap-mid-top",
+      boundaryRef: 2,
+    });
+  });
+
+  it("emits an interactive FlatRow for a boundary-bottom row", () => {
+    document.body.appendChild(
+      fileBlock("x.ts", [
+        cell({ line: 1, type: "context" }),
+        interactive({ subkind: "boundary-bottom" }),
+      ]),
+    );
+    const rows = walkCursorRows(document.body);
+    expect(rows[1]).toEqual({
+      kind: "interactive",
+      file: "x.ts",
+      subKind: "boundary-bottom",
+      boundaryRef: "bottom",
+    });
+  });
+
+  it("dedupes interactive rows by (file, subKind, boundaryRef) when the overlay injects one per column", () => {
+    document.body.appendChild(
+      fileBlock("x.ts", [
+        interactive({ subkind: "gap-mid-top", hunkIndex: 1 }),
+        interactive({ subkind: "gap-mid-top", hunkIndex: 1 }),
+        cell({ line: 1, type: "context" }),
+      ]),
+    );
+    const rows = walkCursorRows(document.body);
+    expect(rows.filter((r) => r.kind === "interactive")).toHaveLength(1);
+  });
+});
