@@ -4,6 +4,7 @@ import type {
   InteractiveSubKind,
   BoundaryRef,
 } from "../core/diff-rows.js";
+import { GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
 import { annotationCardSlot } from "./annotation-placement.js";
@@ -148,13 +149,16 @@ export function DiffRows({
           //   hunkIndex===0 → `↑` (file-top, lines reveal toward line 1)
           //   gapAbove > 2N → `↓` (mid-file large, paired with gap-mid-top above)
           //   else          → `↕` (mid-file small, symmetric)
-          const glyph =
-            row.hunkIndex === 0 ? "↑" : row.gapAbove > 40 ? "↓" : "↕";
+          const isFirstHunk = row.hunkIndex === 0;
+          let glyph: "↑" | "↓" | "↕";
+          if (isFirstHunk) glyph = "↑";
+          else if (row.gapAbove > GAP_TWO_ROW_THRESHOLD) glyph = "↓";
+          else glyph = "↕";
           const text = `${row.header} ${glyph} ··· ${row.gapAbove} hidden ···`;
-          const subKind: InteractiveSubKind =
-            row.hunkIndex === 0 ? "boundary-top" : "hunk-separator";
-          const boundaryRef: BoundaryRef =
-            row.hunkIndex === 0 ? "top" : row.hunkIndex;
+          const subKind: InteractiveSubKind = isFirstHunk
+            ? "boundary-top"
+            : "hunk-separator";
+          const boundaryRef: BoundaryRef = isFirstHunk ? "top" : row.hunkIndex;
           const cursorActive =
             cursor != null &&
             cursor.file === fileName &&

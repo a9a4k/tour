@@ -6,7 +6,7 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { DiffFile, FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { planRows } from "../core/diff-rows.js";
+import { planRows, GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
 import {
   emptyExpansion,
   expand,
@@ -786,7 +786,7 @@ function App(props: AppProps) {
     const cur = getBoundary(expansion, { file, ref: boundaryRef });
     const remaining = gapSize - cur.up - cur.down;
     if (remaining <= 0) return;
-    const direction = remaining > 40 ? "down" : "both";
+    const direction = remaining > GAP_TWO_ROW_THRESHOLD ? "down" : "both";
     setExpansion((s) =>
       expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize, direction),
     );

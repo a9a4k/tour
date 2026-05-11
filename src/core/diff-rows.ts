@@ -147,33 +147,31 @@ function splitLines(s: string): string[] {
   return trimmed === "" ? [] : trimmed.split("\n");
 }
 
+/** Hidden-line gap above `hunks[hunkIndex]`. For hunk 0 this is the file-top
+ *  gap (lines 1 to first-hunk-start); for hunk i > 0 it's the mid-file gap
+ *  between the previous hunk's end and this hunk's start. The "prev end"
+ *  fields are 0 for hunk 0 so callers can use `prevAdditionEnd + 1` as the
+ *  first hidden line on either side uniformly. */
 function gapBefore(file: FileDiffMetadata, hunkIndex: number): {
   size: number;
   prevAdditionEnd: number;
   prevDeletionEnd: number;
-  nextAdditionStart: number;
-  nextDeletionStart: number;
 } {
   const next = file.hunks[hunkIndex];
   if (hunkIndex === 0) {
     return {
-      size: 0,
+      size: Math.max(0, next.additionStart - 1),
       prevAdditionEnd: 0,
       prevDeletionEnd: 0,
-      nextAdditionStart: next.additionStart,
-      nextDeletionStart: next.deletionStart,
     };
   }
   const prev = file.hunks[hunkIndex - 1];
   const prevAdditionEnd = prev.additionStart + prev.additionCount - 1;
   const prevDeletionEnd = prev.deletionStart + prev.deletionCount - 1;
-  const size = Math.max(0, next.additionStart - prevAdditionEnd - 1);
   return {
-    size,
+    size: Math.max(0, next.additionStart - prevAdditionEnd - 1),
     prevAdditionEnd,
     prevDeletionEnd,
-    nextAdditionStart: next.additionStart,
-    nextDeletionStart: next.deletionStart,
   };
 }
 
@@ -228,14 +226,9 @@ function walkHunks(
     // hunks read the per-separator expansion at boundary=hunkIndex. PRD
     // #151 asymmetric merge: file-top is reached through hunk 0's
     // hunk-header (no standalone boundary-top row).
-    const sep = isFirst
-      ? expansionFor(options, file.name, "top")
-      : expansionFor(options, file.name, hunkIndex);
-    const gap = isFirst ? null : gapBefore(file, hunkIndex);
-    const gapStartAddition = isFirst ? 1 : gap!.prevAdditionEnd + 1;
-    const gapStartDeletion = isFirst ? 1 : gap!.prevDeletionEnd + 1;
-    const gapSize = isFirst ? Math.max(0, hunk.additionStart - 1) : gap!.size;
-    const gapAbove = Math.max(0, gapSize - sep.up - sep.down);
+    const sep = expansionFor(options, file.name, isFirst ? "top" : hunkIndex);
+    const gap = gapBefore(file, hunkIndex);
+    const gapAbove = Math.max(0, gap.size - sep.up - sep.down);
 
     // Up-side context rows: lines just after the previous hunk's end (or
     // from line 1 for the first hunk).
@@ -244,8 +237,8 @@ function walkHunks(
         rows,
         oldContent,
         newContent,
-        gapStartAddition,
-        gapStartDeletion,
+        gap.prevAdditionEnd + 1,
+        gap.prevDeletionEnd + 1,
         sep.up,
       );
     }
@@ -403,8 +396,9 @@ function gapMidTopText(remaining: number): string {
 
 /** Per-direction expansion step (N). The two-row threshold is 2N. Matches
  *  Pierre's `expansionLineCount: 20` and the TUI's prior symmetric-20
- *  semantics (ADR 0018). */
-const GAP_TWO_ROW_THRESHOLD = 40;
+ *  semantics (ADR 0018). Exported so the TUI dispatch + render layers
+ *  pick their direction glyph / Enter-direction from the same constant. */
+export const GAP_TWO_ROW_THRESHOLD = 40;
 
 function applyAnnotationFlags(
   rows: PlannedRow[],
