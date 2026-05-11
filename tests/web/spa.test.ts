@@ -249,16 +249,13 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+pre\b/);
   });
 
-  it("collapses the default <p> margin inside <li> so tight lists with inline formatting render compactly (Issue #173)", () => {
-    // react-markdown wraps <li> content in <p> when the bullet body contains
-    // inline formatting (bold, links, etc.) — even for tight lists. Without
-    // a rule for `li > p`, those inner paragraphs inherit the browser's
-    // default ~1em top + ~1em bottom margin, producing loose-list spacing.
+  it("overrides Pierre's inherited white-space: pre-wrap on .ann-body so newlines between <li>s don't render as visible gaps (Issue #173)", () => {
+    // Pierre's diff container sets white-space: pre-wrap, which .ann-body
+    // inherits. React leaves "\n" text nodes between adjacent </li><li>
+    // tags; under pre-wrap those render as a full line-height of vertical
+    // space, producing loose-list rendering on tight Markdown source.
     const out = html();
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+li\s*>\s*p\s*\{[^}]*margin:\s*0/);
-    // Restore a small visible gap when an <li> legitimately contains
-    // multiple paragraphs (multi-paragraph items).
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+li\s*>\s*p\s*\+\s*p\s*\{[^}]*margin-top:\s*4px/);
+    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s*\{[^}]*white-space:\s*normal/);
   });
 
   it("declares a mermaid-block rule whose svg fits the card width without an inner scrollbar", () => {
