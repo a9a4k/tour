@@ -1,4 +1,4 @@
-import { watch, existsSync, type FSWatcher } from "node:fs";
+import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 
 export type WatchEvent =
@@ -9,6 +9,27 @@ export type WatchEvent =
 export type WatchCallback = (event: WatchEvent) => void;
 
 const REPLY_LOCK_FILENAME = ".reply-lock.json";
+const ANNOTATIONS_FILENAME = "annotations.jsonl";
+
+interface FileFingerprint {
+  mtimeMs: number;
+  size: number;
+}
+
+function fingerprint(path: string): FileFingerprint | null {
+  try {
+    const s = statSync(path);
+    return { mtimeMs: s.mtimeMs, size: s.size };
+  } catch {
+    return null;
+  }
+}
+
+function sameFingerprint(a: FileFingerprint | null, b: FileFingerprint | null): boolean {
+  if (a === null && b === null) return true;
+  if (a === null || b === null) return false;
+  return a.mtimeMs === b.mtimeMs && a.size === b.size;
+}
 
 export class TourWatcher {
   private watcher: FSWatcher | null = null;
@@ -19,12 +40,14 @@ export class TourWatcher {
   private readonly tourDir: string;
   private listeners: WatchCallback[] = [];
   private lastLockExists: boolean;
+  private lastAnnotationsFp: FileFingerprint | null;
 
   constructor(repoRoot: string, tourId: string, debounceMs = 100) {
     this.tourId = tourId;
     this.tourDir = join(repoRoot, ".tour", tourId);
     this.debounceMs = debounceMs;
     this.lastLockExists = existsSync(join(this.tourDir, REPLY_LOCK_FILENAME));
+    this.lastAnnotationsFp = fingerprint(join(this.tourDir, ANNOTATIONS_FILENAME));
   }
 
   on(callback: WatchCallback): void {
@@ -68,9 +91,17 @@ export class TourWatcher {
     this.listeners = [];
   }
 
+  // macOS fs.watch fires spurious `rename` events for sibling files when an
+  // unrelated file in the same directory is created or deleted. Without a
+  // fingerprint check, writing `.reply-lock.json` would emit a phantom
+  // `annotation-changed` because `annotations.jsonl` shows up in the watch
+  // callback. Stat at fire time and only emit if mtime+size actually changed.
   private scheduleAnnotationEmit(): void {
     if (this.annotationDebounce) clearTimeout(this.annotationDebounce);
     this.annotationDebounce = setTimeout(() => {
+      const fp = fingerprint(join(this.tourDir, ANNOTATIONS_FILENAME));
+      if (sameFingerprint(fp, this.lastAnnotationsFp)) return;
+      this.lastAnnotationsFp = fp;
       this.emit({ type: "annotation-changed", tourId: this.tourId });
     }, this.debounceMs);
   }
