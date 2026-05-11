@@ -1,6 +1,8 @@
 # tour
 
-Local code review tool with AI annotations: a TUI and a webapp over a pinned git diff. Agents author annotations through a CLI; humans read them.
+Local code walkthroughs for the code your AI agent wrote.
+
+Your agent annotates a pinned git diff as it works. You step through the notes in a TUI or your browser. No GitHub round-trip.
 
 ## Install
 

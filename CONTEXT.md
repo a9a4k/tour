@@ -1,6 +1,6 @@
 # Tour
 
-A code-review tool that pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI annotations. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
+A code-walkthrough tool that pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI annotations. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
 
 ## Language
 

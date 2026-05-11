@@ -1,7 +1,7 @@
 {
   "name": "tourdiff",
   "version": "1.7.1",
-  "description": "Local code review tool with AI annotations: TUI + webapp over a pinned git diff.",
+  "description": "Local code walkthroughs for the code your AI agent wrote — TUI + webapp over a pinned git diff.",
   "type": "module",
   "license": "MIT",
   "author": "Almas Akchabayev",
