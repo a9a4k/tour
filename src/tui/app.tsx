@@ -41,7 +41,6 @@ import {
 import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
-import { center as centerScrollTarget } from "../core/scroll-target.js";
 import { TourPicker } from "./TourPicker.js";
 import { TopHeaderTui } from "./TopHeader.js";
 import { Composer } from "./Composer.js";
@@ -84,7 +83,7 @@ import {
 } from "../core/diff-pane-motion.js";
 import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
-import { scrollChildIntoView } from "./scroll-into-view.js";
+import { scrollChildIntoView, centerChildInView } from "./scroll-into-view.js";
 import { buildRowYResolver } from "./row-y-resolver.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
@@ -519,27 +518,16 @@ function App(props: AppProps) {
   // above and below to read into the thread. Mirrors the webapp's existing
   // `scrollIntoView({ block: 'center' })` (PRD #126, issue #128). Cards
   // taller than the viewport fall back to `block:start` inside
-  // `centerScrollTarget` so the title row lands at the top.
+  // `centerChildInView` so the title row lands at the top. The helper
+  // refreshes the descendant's ancestor chain before reading positions,
+  // which is what the previous inline form was missing under
+  // `viewportCulling={true}`.
   useEffect(() => {
     const sb = diffScrollRef.current;
     if (!sb || !currentAnnotationId) return;
     const ann = liveAnnotations.find((a) => a.id === currentAnnotationId);
     if (!ann) return;
-    const child = sb.content.findDescendantById(`annotation-${ann.id}`);
-    if (!child) return;
-    // OpenTUI exposes `child.y` and `viewport.y` in absolute screen
-    // coordinates; convert to the content frame the helper expects:
-    //   contentY = child.y - viewport.y + scrollTop
-    const contentY = child.y - sb.viewport.y + sb.scrollTop;
-    const target = centerScrollTarget(
-      { y: contentY, height: child.height },
-      {
-        scrollTop: sb.scrollTop,
-        height: sb.viewport.height,
-        contentHeight: sb.scrollHeight,
-      },
-    );
-    sb.scrollTo(target);
+    centerChildInView(sb, `annotation-${ann.id}`);
   }, [currentAnnotationId, liveAnnotations, plannedRowsByFile]);
 
   // Scroll a freshly-created top-level Annotation into view (issue #150,

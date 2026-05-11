@@ -1,44 +1,43 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
+import { center as centerScrollTarget } from "../core/scroll-target.js";
+
+/**
+ * Walk `target`'s ancestor chain up to (but not past) `contentRoot`,
+ * calling `updateFromLayout()` top-down. Under
+ * `viewportCulling={true}`, opentui's render loop only cascades
+ * `updateFromLayout` into the direct children of `ContentRenderable`,
+ * so descendants inside a culled subtree keep last-frame `_y` /
+ * `_height` values until that subtree becomes visible again. Yoga
+ * itself has fresh positions for every node every frame —
+ * `updateFromLayout` mirrors those into JS state, and it is per-frame
+ * guarded so re-calling it on already-fresh nodes is a cheap no-op.
+ *
+ * Top-down because the public `y` getter recurses through `parent.y`;
+ * every ancestor must be fresh before the leaf reads its position.
+ */
+function refreshLayoutChain(target: unknown, contentRoot: unknown): void {
+  const chain: Array<{ updateFromLayout?: () => void }> = [];
+  let cur: unknown = target;
+  while (cur && cur !== contentRoot) {
+    chain.push(cur as { updateFromLayout?: () => void });
+    cur = (cur as { parent?: unknown }).parent ?? null;
+  }
+  for (let i = chain.length - 1; i >= 0; i--) {
+    chain[i].updateFromLayout?.();
+  }
+}
 
 /**
  * Replacement for `ScrollBoxRenderable.scrollChildIntoView` that is
- * safe under `viewportCulling={true}`.
- *
- * Why: under culling, opentui's render loop only cascades
- * `updateLayout` (which calls `updateFromLayout` internally) into the
- * direct children of `ContentRenderable` that are visible. Descendants
- * inside a culled (off-screen) child keep last-frame `_y` / `_height`
- * values until that subtree becomes visible again. Yoga itself has
- * fresh positions for every node every frame — `updateFromLayout`
- * exists precisely to mirror Yoga's positions into JS state, and it is
- * per-frame guarded so calling it again on already-fresh nodes is a
- * cheap no-op.
- *
- * This helper walks the target's ancestor chain bottom-up to the
- * scrollbox content and forces a JS-side refresh per node, then
- * applies the same `block:"nearest"` math opentui uses, scrolling the
- * box only when the child is actually outside the viewport.
+ * safe under `viewportCulling={true}` — refreshes the target's
+ * ancestor chain before applying opentui's `block:"nearest"` math.
  *
  * Returns true if a scroll occurred.
  */
 export function scrollChildIntoView(sb: ScrollBoxRenderable, childId: string): boolean {
   const target = sb.content.findDescendantById(childId);
   if (!target) return false;
-
-  // Walk up to (but not past) sb.content, collecting the chain. Refresh
-  // top-down: each node's `_y` reads independently from Yoga but the
-  // public `y` getter recurses through `parent.y`, so we want every
-  // ancestor refreshed before the leaf reads its position.
-  const chain: Array<{ updateFromLayout?: () => void }> = [];
-  let cur: (typeof target & { parent?: typeof target | null }) | null = target;
-  const content = sb.content as unknown as { num?: unknown };
-  while (cur && (cur as unknown) !== (content as unknown)) {
-    chain.push(cur);
-    cur = (cur as typeof target & { parent?: typeof target | null }).parent ?? null;
-  }
-  for (let i = chain.length - 1; i >= 0; i--) {
-    chain[i].updateFromLayout?.();
-  }
+  refreshLayoutChain(target, sb.content);
 
   const childY = target.y;
   const childHeight = target.height;
@@ -50,6 +49,38 @@ export function scrollChildIntoView(sb: ScrollBoxRenderable, childId: string): b
   const dx = nearestDelta(childX, childX + childWidth, viewport.x, viewport.x + viewport.width);
   if (dx === 0 && dy === 0) return false;
   sb.scrollBy({ x: dx, y: dy });
+  return true;
+}
+
+/**
+ * Centre the child of id `childId` in the scrollbox's viewport. Under
+ * `viewportCulling={true}` the descendant's JS-side `_y` / `_height`
+ * may be stale; the chain refresh syncs them from Yoga before the
+ * centering math runs. Oversized children (taller than the viewport)
+ * fall back to start-alignment via `centerScrollTarget` so the title
+ * row lands at the top.
+ *
+ * Returns true if a scroll occurred.
+ */
+export function centerChildInView(sb: ScrollBoxRenderable, childId: string): boolean {
+  const target = sb.content.findDescendantById(childId);
+  if (!target) return false;
+  refreshLayoutChain(target, sb.content);
+
+  // OpenTUI exposes `target.y` and `viewport.y` in absolute screen
+  // coordinates; convert to the content frame `centerScrollTarget`
+  // expects: contentY = child.y - viewport.y + scrollTop.
+  const contentY = target.y - sb.viewport.y + sb.scrollTop;
+  const desired = centerScrollTarget(
+    { y: contentY, height: target.height },
+    {
+      scrollTop: sb.scrollTop,
+      height: sb.viewport.height,
+      contentHeight: sb.scrollHeight,
+    },
+  );
+  if (desired === sb.scrollTop) return false;
+  sb.scrollTo(desired);
   return true;
 }
 
