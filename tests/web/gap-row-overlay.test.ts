@@ -201,13 +201,9 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
   });
 
   it("clicking the hunk-header chevron on a first-hunk file-top gap calls expandHunk(0, 'down', 20)", () => {
-    // ADR 0018 D1 adjacency: the first hunk's `hunk-header` sits at the
-    // BOTTOM of the file-top gap, so newly-revealed lines should appear
-    // adjacent to the row (i.e., at the END of the gap range, just above
-    // the hunk's content). In Pierre's vocabulary that's `direction="down"`
-    // (`region.fromEnd += N`). The `↑` glyph remains — the glyph is spatial
-    // ("lines appear above this row"); the direction is Pierre's expansion
-    // semantic. The two carry orthogonal information.
+    // `direction="down"` for the file-top case is non-obvious — see
+    // `directionForHunkHeader` in gap-row-overlay.ts for the D1-adjacency
+    // rationale.
     document.body.appendChild(fileBlock("x.ts", [separator()]));
     const expandHunk = vi.fn();
     attach({
