@@ -44,10 +44,6 @@ _Avoid_: LEFT/RIGHT, before/after, old/new, column
 How a Tour's Diff is rendered: `split` (deletions left, additions right) or `unified` (single column with `-`/`+` rows). Per-session UI state in each surface — not persisted on the Tour, not synced between TUI and webapp. Annotations are layout-independent: the same `(file, side, line_start, line_end)` anchor resolves in both. Maps to Pierre's `diffStyle` and OpenTUI's `view` props (both already accept `"unified" | "split"`).
 _Avoid_: view mode, diff style, view
 
-**Thread display**:
-How a Tour's **Threads** render: `compact` (the current Thread renders its full card; sibling Threads collapse to a 1-line strip showing `[author_kind] [side] file:line (author) · N replies`) or `full` (every Thread renders its full card with body and replies). Independent of **Layout** — Thread display governs Annotation rendering; Layout governs Diff rendering. Sibling concept to Layout in shape: per-session, in-memory toggle, present on **both** surfaces (TUI + webapp). Both surfaces default to `compact` on first paint, matching the product's narrative-reading framing. Not persisted (no localStorage, no `tour.toml` field), not synced between TUI and webapp — page reload / TUI relaunch returns to `compact`. Toggle is a segmented pill `[Compact | Full]` in the header's right cluster (adjacent to `[Split | Unified]`) and the `Shift+D` shortcut on both surfaces (mnemonic: D = Display). "Current Thread when there is none" behaviour and the runtime semantics around cursor decoupling are being resolved.
-_Avoid_: reading mode, focus mode, minimize comments, spotlight, collapse threads, expand all
-
 **Working-tree snapshot**:
 A synthetic commit object capturing uncommitted changes at the moment a Tour is created, so the Diff stays pinned even as the working tree keeps moving.
 _Avoid_: stash, WIP commit
