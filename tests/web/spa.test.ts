@@ -329,6 +329,15 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tour-header-path\s*\{[^}]*white-space:\s*nowrap/);
   });
 
+  it("forces the path slot onto its own flex line via flex-basis: 100%", () => {
+    // The slot is a direct child of `.tour-header` (a flex-wrap container).
+    // `flex-basis: 100%` makes the slot consume the full row width so it
+    // wraps to its own line below `.tour-header-left` / `.tour-header-right`
+    // — and stays there regardless of path length (no row-1 ↔ row-2 flicker
+    // as the user navigates between short and long paths).
+    expect(html()).toMatch(/\.tour-header-path\s*\{[^}]*flex-basis:\s*100%/);
+  });
+
   it("styles the inline composer card with shared theme tokens (Issue #77)", () => {
     const out = html();
     expect(out).toMatch(/\.composer\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);

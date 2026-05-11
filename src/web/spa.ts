@@ -152,7 +152,7 @@ export function html(initialTourId?: string): string {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 0 1 auto;
+    flex-basis: 100%;
     min-width: 0;
   }
   .tour-header-right {
