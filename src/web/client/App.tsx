@@ -970,6 +970,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
           <span className="tour-refs">
             {tourMeta.base_source} ← {tourMeta.head_source}
           </span>
+          <TourHeaderPath path={selectedFile} />
         </div>
         <div className="tour-header-right">
           <SequencePill
@@ -1055,6 +1056,18 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       ) : null}
     </>
   );
+}
+
+// Renders the currently-selected sidebar file's full filesystem path in the
+// left cluster of `.tour-header`, prefixed with `·` (U+00B7) to match the
+// TUI's separator glyph so the two surfaces feel consistent. Renders
+// nothing when no file is selected. The path is echoed verbatim — no
+// basename, no app-side truncation; CSS handles horizontal overflow the
+// same way it does for the existing title / source-refs siblings.
+// Exported so unit tests can mount the slot in isolation.
+export function TourHeaderPath({ path }: { path: string | null }): React.JSX.Element | null {
+  if (!path) return null;
+  return <span className="tour-header-path">{`· ${path}`}</span>;
 }
 
 interface LayoutToggleProps {
