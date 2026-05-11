@@ -11,14 +11,20 @@ const CLI = join(import.meta.dirname, "../../src/main.ts");
 // Matches either banner form emitted by the webapp branch — the happy-path
 // "running at" line and the port-fallback "port N busy" line. Both prove
 // bare `tour` dispatched to serve(), so either is a positive webapp signal.
-const WEBAPP_BANNER = /Tour server (running at|: port \d+ busy)/;
+const WEBAPP_BANNER = /Tour server( running at|: port \d+ busy)/;
 
 // Integration coverage for bare `tour` smart-default surface (issue #175).
-// Wraps the child in `script -q -c ... /dev/null` (util-linux) so the
-// allocated PTY makes `process.stdout.isTTY` true — otherwise the surface
-// picker's isTTY-false branch routes to TUI regardless of platform/ssh
-// state and the test couldn't tell webapp wiring breakage from harness
-// limits. CI runs on ubuntu-22.04 where `script` is always available.
+// Wraps the child in `script ... <cmd>` so the allocated PTY makes
+// `process.stdout.isTTY` true — otherwise the surface picker's
+// isTTY-false branch routes to TUI regardless of platform/ssh state and
+// the test couldn't tell webapp wiring breakage from harness limits.
+//
+// `script` argv differs between util-linux and BSD: linux takes
+// `-c "<cmd>"` plus a trailing logfile, macOS takes a leading logfile
+// then the command as positional args. `scriptArgs()` picks the right
+// shape per platform. Both targets are POSIX systems where `script` is
+// preinstalled; Windows is unreachable here because the picker routes
+// win32 to TUI before serve can launch anyway.
 
 async function resolveBunPath(): Promise<string> {
   const { stdout } = await execP("which", ["bun"]);
@@ -59,6 +65,15 @@ interface SpawnResult {
   proc: ChildProcess;
 }
 
+// Platform-conditional `script` invocation. util-linux: `script -q -c
+// "<cmd>" <logfile>`. BSD/macOS: `script -q <logfile> <cmd> [args...]`.
+function scriptArgs(bunPath: string): string[] {
+  if (process.platform === "darwin") {
+    return ["-q", "/dev/null", bunPath, CLI];
+  }
+  return ["-q", "-c", `${bunPath} ${CLI}`, "/dev/null"];
+}
+
 // Resolves once `waitFor` is seen in stdout (gives the child 100ms to
 // flush trailing output) or once `waitMs` elapses without a match. The
 // caller is expected to kill the proc in `afterEach`.
@@ -70,8 +85,7 @@ function spawnBareTour(
   waitMs: number,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
-    const command = `${bunPath} ${CLI}`;
-    const proc = spawn("script", ["-q", "-c", command, "/dev/null"], {
+    const proc = spawn("script", scriptArgs(bunPath), {
       cwd,
       env,
       // New session so the script→sh→bun chain has a distinct pgid and
