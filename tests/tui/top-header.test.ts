@@ -217,4 +217,28 @@ describe("TopHeaderTui (issue #93)", () => {
     expect(headerText).toContain("Split");
     expect(headerText).toContain("Unified");
   });
+
+  it("renders the full untruncated selectedPath in the header when provided (issue #156)", () => {
+    const root = render({
+      selectedPath: "supabase/migrations/20260508144406_setup_public_api.sql",
+    });
+    const headerText = walk(root)
+      .filter((e) => e.type === "text")
+      .map(textChildOf)
+      .join(" | ");
+    expect(headerText).toContain(
+      "supabase/migrations/20260508144406_setup_public_api.sql",
+    );
+  });
+
+  it("does not render a selected-path slot when selectedPath is undefined (issue #156)", () => {
+    const root = render({ selectedPath: undefined });
+    const headerText = walk(root)
+      .filter((e) => e.type === "text")
+      .map(textChildOf)
+      .join(" | ");
+    // Sentinel string we'd expect to see if a misplaced selected-path slot leaked.
+    expect(headerText).not.toContain(".sql");
+    expect(headerText).not.toContain(".controller.ts");
+  });
 });
