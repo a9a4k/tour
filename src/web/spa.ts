@@ -369,7 +369,7 @@ export function html(initialTourId?: string): string {
     flex-wrap: wrap;
   }
   .reply-pill .reply-pill-icon { font-size: 14px; }
-  .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; }
+  .annotation-block .ann-body { color: var(--fg-default); overflow-wrap: anywhere; white-space: normal; }
   .annotation-block .ann-body > * { margin: 0 0 8px; }
   .annotation-block .ann-body > *:last-child { margin-bottom: 0; }
   .annotation-block .ann-body h1,
@@ -393,8 +393,6 @@ export function html(initialTourId?: string): string {
   .annotation-block .ann-body ul,
   .annotation-block .ann-body ol { padding-left: 24px; line-height: 1.5; }
   .annotation-block .ann-body li { margin: 2px 0; }
-  .annotation-block .ann-body li > p { margin: 0; }
-  .annotation-block .ann-body li > p + p { margin-top: 4px; }
   .annotation-block .ann-body li input[type="checkbox"] {
     margin-right: 6px;
     vertical-align: middle;
