@@ -1,14 +1,25 @@
 #!/usr/bin/env bun
-// Pre-build the webapp client bundles so the compiled binary can embed them
-// at compile time. Bun.build cannot run inside the compiled binary —
-// /$bunfs/ has no real directory listings — so server.ts can't bundle the
-// client on demand. Solution: bake the bundles in as strings.
+// Pre-build assets the compiled binary needs at runtime but bun --compile
+// can't bundle on its own:
+//
+//  - Webapp client bundles. Bun.build cannot run inside /$bunfs/ (no real
+//    directory listings), so server.ts can't bundle the client on demand.
+//    Solution: bake the bundles in as strings via src/web/embedded-client.ts.
+//
+//  - Opentui's tree-sitter parser worker. The library loads it via a
+//    runtime-variable `new Worker(path)` that bun's static analyser can't
+//    trace, so neither the worker file nor its `web-tree-sitter` dep get
+//    bundled. We pre-bundle it for the `bun` target into a self-contained
+//    JS file and let the TUI shim embed that copy via `with { type: "file" }`
+//    and point OTUI_TREE_SITTER_WORKER_PATH at it.
 //
 // Writes:
 //  - dist/client/main.js
 //  - dist/client/pierre-worker.js
-//  - src/web/embedded-client.ts   (string-export module, overwriting the
-//    committed stub; restored by scripts/build-binary.ts after compile)
+//  - src/web/embedded-client.ts        (string-export module, overwriting
+//    the committed stub; restored by scripts/build-binary.ts after compile)
+//  - src/tui/parser-worker-bundle.js   (self-contained worker, overwriting
+//    the committed stub; restored by scripts/build-binary.ts after compile)
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -69,4 +80,25 @@ export const EMBEDDED_PIERRE_WORKER_JS: string = ${JSON.stringify(workerJs)};
 `;
 await writeFile(resolve(ROOT, "src/web/embedded-client.ts"), embedded);
 
-console.log(`built client (${clientJs.length}b) + worker (${workerJs.length}b)`);
+// Copy opentui's parser.worker.js into the committed stub at
+// src/tui/parser-worker-bundle.js. The TUI shim then references it via
+// `new Worker(new URL("./parser-worker-bundle.js", import.meta.url))` so
+// bun --compile recognises it as a worker entrypoint and bundles its
+// transitive deps (web-tree-sitter + tree-sitter.wasm) into the binary.
+// We do a raw copy (not Bun.build) because we want bun --compile to
+// process it as a fresh worker entrypoint — pre-bundling would emit a
+// separate tree-sitter.wasm sibling that we can't ship inside /$bunfs/
+// at a predictable path.
+//
+// The worker ships at the package root but isn't listed in `exports`, so
+// we hop via the package entry (resolved through `@opentui/core`).
+const { readFile: readFile2 } = await import("node:fs/promises");
+const otuiPkgEntry = fileURLToPath(import.meta.resolve("@opentui/core"));
+const otuiWorkerEntry = resolve(dirname(otuiPkgEntry), "parser.worker.js");
+const otuiWorkerOut = resolve(ROOT, "src/tui/parser-worker-bundle.js");
+const otuiWorkerJs = await readFile2(otuiWorkerEntry, "utf8");
+await writeFile(otuiWorkerOut, otuiWorkerJs);
+
+console.log(
+  `built client (${clientJs.length}b) + worker (${workerJs.length}b) + copied otui-worker (${otuiWorkerJs.length}b)`,
+);

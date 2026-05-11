@@ -115,5 +115,18 @@ if grep -E "Cannot find module|ResolveMessage" tui.err >/dev/null; then
 fi
 echo "OK: tui lazy import resolved"
 
+# Opentui's tree-sitter parser worker is multi-entry-bundled by
+# scripts/build-binary.ts (see src/tui/otui-worker-shim.ts). The failure
+# modes are silent — tokens just stop arriving — so we have to inspect
+# the TUI's own stderr for the worker error signature. Both observed
+# variants of the regression: missing worker module ("Cannot find
+# package 'web-tree-sitter'") and missing wasm ("./tree-sitter-*.wasm").
+if grep -E "TreeSitter worker error|Cannot find package 'web-tree-sitter'|tree-sitter-[a-z0-9]+\.wasm" tui.err >/dev/null; then
+  echo "ERROR: tui syntax-highlight worker failed:" >&2
+  cat tui.err >&2
+  exit 1
+fi
+echo "OK: tui syntax-highlight worker booted"
+
 echo ""
 echo "smoke passed."
