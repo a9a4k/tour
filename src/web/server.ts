@@ -8,6 +8,7 @@ import { readReplyLock } from "../core/reply-lock.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { html } from "./spa.js";
+import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -72,21 +73,32 @@ function asInt(v: unknown): number | undefined {
 async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | null; error: string | null }> {
   if (cachedClientAssets !== null) return { assets: cachedClientAssets, error: null };
   if (cachedClientBundleError !== null) return { assets: null, error: cachedClientBundleError };
+
+  // Compiled-binary fast path. Bun.build can't run inside /$bunfs/ — it has
+  // no real directory listings, so any entrypoint path errors with
+  // "FileNotFound: failed to open root directory". scripts/build-client.ts
+  // bakes the bundle strings into embedded-client.ts at binary-build time;
+  // when the constants are populated, use them and skip Bun.build entirely.
+  if (EMBEDDED_CLIENT_JS && EMBEDDED_PIERRE_WORKER_JS) {
+    const assets = new Map<string, ClientAsset>();
+    const ct = "application/javascript; charset=utf-8";
+    assets.set("/client.js", { body: EMBEDDED_CLIENT_JS, contentType: ct });
+    assets.set("/pierre-worker.js", { body: EMBEDDED_PIERRE_WORKER_JS, contentType: ct });
+    cachedClientAssets = assets;
+    return { assets, error: null };
+  }
+
   const here = dirname(fileURLToPath(import.meta.url));
   const clientEntry = resolve(here, "client/main.tsx");
-  // Pierre's worker entry is bundled as a SECOND entrypoint so it becomes
-  // its own file. Bun.build doesn't rewrite `new Worker(new URL(...,
-  // import.meta.url))` across npm packages the way Vite/webpack do, so we
-  // keep the worker URL explicit on the client side (main.tsx →
-  // "/pierre-worker.js").
-  //
-  // The entrypoint is a sibling shim that side-effect-imports the worker
-  // module by bare specifier. Routing the resolution through a file that
-  // lives next to main.tsx means Bun.build walks up to the same embedded
-  // node_modules that already serves main.tsx's imports. Resolving from
-  // the compiled binary root via `import.meta.resolve` fails inside
-  // `/$bunfs/` because the exports map isn't visible from there.
-  const workerEntry = resolve(here, "client/pierre-worker.ts");
+  // Bun.build doesn't rewrite `new Worker(new URL(..., import.meta.url))`
+  // across npm packages, so main.tsx references a stable "/pierre-worker.js"
+  // URL and we bundle the worker as a second entry. Resolve directly through
+  // the package exports map — @pierre/diffs marks only its web-components
+  // file as a side effect, so bundling via a bare-specifier shim file gets
+  // tree-shaken to 0 bytes. (This path runs only in dev: the compiled
+  // binary takes the embedded fast-path above. import.meta.resolve works
+  // here because we're outside /$bunfs/.)
+  const workerEntry = fileURLToPath(import.meta.resolve("@pierre/diffs/worker/worker.js"));
   try {
     const result = await Bun.build({
       entrypoints: [clientEntry, workerEntry],
@@ -119,10 +131,12 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
       assets.set(publicPath, { body, contentType });
       if (out.kind !== "entry-point") continue;
       // Two entry-points (client + worker). Bun names them after their
-      // source file basenames — match by path suffix so worktree shuffles
+      // source file basenames — main.tsx → main.js, the @pierre/diffs
+      // worker module → worker.js. Match by basename so worktree shuffles
       // don't break the assignment.
-      if (out.path.endsWith("/main.js") || out.path === "main.js") clientArtifact = out;
-      else if (out.path.endsWith("/pierre-worker.js") || out.path === "pierre-worker.js") workerArtifact = out;
+      const base = out.path.split("/").pop() ?? out.path;
+      if (base === "main.js") clientArtifact = out;
+      else if (base === "worker.js") workerArtifact = out;
     }
     if (clientArtifact !== null) {
       const text = await clientArtifact.text();
