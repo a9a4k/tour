@@ -270,10 +270,9 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
     expect(lineCount).toBeGreaterThanOrEqual(12);
   });
 
-  it("shift-click on gap-mid-top passes the spec's gapAbove (not a 1M sentinel)", () => {
-    // Issue #161 item 2: drop the SHIFT_EXPAND_ALL = 1_000_000 magic
-    // constant; specs carry the real gap size now so shift-click is
-    // symmetric with hunk-header's `Math.max(gapAbove, EXPANSION_STEP)`.
+  it("shift-click on gap-mid-top passes the spec's gapAbove", () => {
+    // Symmetric with hunk-header's `Math.max(gapAbove, EXPANSION_STEP)` —
+    // no SHIFT_EXPAND_ALL sentinel; the spec carries the real gap size.
     document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
     const expandHunk = vi.fn();
     attach({
@@ -287,7 +286,7 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
     expect(expandHunk).toHaveBeenCalledWith(1, "up", 75);
   });
 
-  it("shift-click on boundary-bottom passes the spec's gapAbove (not a 1M sentinel)", () => {
+  it("shift-click on boundary-bottom passes the spec's gapAbove", () => {
     document.body.appendChild(fileBlock("x.ts", [separator(), diffLine(1)]));
     const expandHunk = vi.fn();
     attach({
@@ -302,9 +301,8 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
   });
 
   it("shift-click on gap-mid-top with a tiny remaining gap still expands at least EXPANSION_STEP (= 20)", () => {
-    // Symmetric with hunk-header's `Math.max(gapAbove, EXPANSION_STEP)` —
-    // Pierre's clamping makes the over-shoot a no-op, but the floor keeps
-    // the contract uniform across the three gap-row kinds.
+    // Floor matches hunk-header's `Math.max(gapAbove, EXPANSION_STEP)` so
+    // the three gap-row kinds share a single shift-click contract.
     document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
     const expandHunk = vi.fn();
     attach({
@@ -343,10 +341,9 @@ describe("attachGapRowOverlay: idempotency", () => {
     expect(nodesBy("gap-mid-top")).toHaveLength(1);
     expect(nodesBy("boundary-bottom")).toHaveLength(1);
     attach({ root: document.body, plannedRowsByFile: planMap, fileDiffRefs: refs });
-    // After the second attach the counts MUST be identical to the first
-    // attach — not 4 hunk-headers, not 2 gap-mid-tops. Asserting before
-    // AND after makes the invariant explicit (vs. the bare `length: 2`
-    // which the fixture's 2-hunk plan would satisfy even without dedup).
+    // Same counts as after the first attach — not 4 hunk-headers, not 2
+    // gap-mid-tops. Asserting before AND after makes dedup distinguishable
+    // from the steady-state count the fixture's 2-hunk plan would produce.
     expect(nodesBy("hunk-header")).toHaveLength(2);
     expect(nodesBy("gap-mid-top")).toHaveLength(1);
     expect(nodesBy("boundary-bottom")).toHaveLength(1);

@@ -39,8 +39,8 @@ import { cssEscape, queryAllAcrossShadow, queryFirstAcrossShadow } from "./dom-w
  *   - `subkind="gap-mid-top"` → `"up"`
  *   - `subkind="boundary-bottom"` → `"down"`
  * Shift-click passes `Math.max(gapAbove, EXPANSION_STEP)` uniformly across
- * all three kinds; each spec carries its gap's size, populated by the
- * planner's `InteractiveRow.gapAbove` (issue #161 item 2 — no 1M sentinel).
+ * all three kinds; each spec carries its gap's size, sourced from the
+ * planner's `gapAbove` field on the corresponding row.
  *
  * Idempotent attach: the overlay tags each injected node with
  * `data-tour-interactive` and skips creating a duplicate when one with

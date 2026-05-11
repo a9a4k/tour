@@ -560,14 +560,11 @@ index 1..2 100644
     if (bottom?.kind === "interactive") {
       expect(bottom.boundaryRef).toBe("bottom");
       // newContent has 16 lines; second hunk's last line is 15; gap = 1.
-      // Issue #161 item 2: planner exposes the numeric remaining gap so
-      // the overlay's shift-click can pass a real line count instead of
-      // a 1M sentinel that depends on Pierre's internal clamping.
       expect(bottom.gapAbove).toBe(1);
     }
   });
 
-  it("emits gapAbove on gap-mid-top reflecting the remaining gap size (issue #161 item 2)", () => {
+  it("emits gapAbove on gap-mid-top reflecting the remaining gap size", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -586,9 +583,8 @@ index 1..2 100644
     );
     expect(gapTop).toBeDefined();
     if (gapTop?.kind === "interactive") {
-      // Mid-file gap: lines 2..49 hidden = 48. Greater than 2N=40 so
-      // gap-mid-top is emitted. Spec carries the size so overlay
-      // shift-click can derive `Math.max(gapAbove, EXPANSION_STEP)`.
+      // Mid-file gap: lines 2..49 hidden = 48. Greater than 2N=40, so
+      // gap-mid-top is emitted; gapAbove == remaining hidden lines.
       expect(gapTop.gapAbove).toBe(48);
     }
   });
