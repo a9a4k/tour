@@ -201,168 +201,168 @@ export async function startServer(args: ServeArgs): Promise<void> {
     port,
     portExplicit,
     (tryPort) => Bun.serve({
-    hostname: "127.0.0.1",
-    port: tryPort,
-    async fetch(req) {
-      const url = new URL(req.url);
+      hostname: "127.0.0.1",
+      port: tryPort,
+      async fetch(req) {
+        const url = new URL(req.url);
 
-      // Serve any client-bundle output — entry, worker chunks, assets —
-      // from a single map. The entry is aliased at /client.js (spa.ts);
-      // worker chunks land at their hashed paths because Bun rewrites
-      // `new Worker(new URL(...))` URLs to those names.
-      if (url.pathname === "/client.js" || /^\/[^/]+\.(js|css|wasm|map|json)$/.test(url.pathname)) {
-        const { assets, error } = await getClientAssets();
-        if (assets === null) {
-          return new Response(`/* ${error} */`, {
-            status: 500,
-            headers: { "Content-Type": "application/javascript" },
-          });
-        }
-        const asset = assets.get(url.pathname);
-        if (asset !== undefined) {
-          return new Response(asset.body, {
-            headers: {
-              "Content-Type": asset.contentType,
-              "Cache-Control": "no-cache",
-            },
-          });
-        }
-        if (url.pathname === "/client.js") {
-          return new Response("/* entry-point not emitted */", {
-            status: 500,
-            headers: { "Content-Type": "application/javascript" },
-          });
-        }
-        // Fall through for unmatched paths — let the SPA HTML handle them.
-      }
-
-      if (url.pathname === "/api/tours") {
-        const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
-        const tours = await listTours(cwd, { status });
-        return Response.json(tours);
-      }
-
-      const eventsMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/events$/);
-      if (eventsMatch) {
-        const idOrPrefix = eventsMatch[1];
-        try {
-          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-          const watcher = getOrCreateWatcher(resolvedId);
-          const stream = new ReadableStream({
-            start(controller) {
-              controller.enqueue("data: {\"type\":\"connected\"}\n\n");
-              const callback = (event: import("../core/watcher.js").WatchEvent) => {
-                try {
-                  controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
-                } catch {
-                  watcher.off(callback);
-                }
-              };
-              watcher.on(callback);
-              req.signal.addEventListener("abort", () => {
-                watcher.off(callback);
-              });
-            },
-          });
-          return new Response(stream, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              "Connection": "keep-alive",
-            },
-          });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: message }, { status: 404 });
-        }
-      }
-
-      const annotateMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/annotations$/);
-      if (annotateMatch && req.method === "POST") {
-        const idOrPrefix = annotateMatch[1];
-        try {
-          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-          const body = (await req.json()) as Record<string, unknown>;
-          const text = asString(body.body);
-          // HTTP-shape concern only — whitespace-only rejection lives in
-          // the Annotation creation seam (PRD #140 rule 1/5).
-          if (text === undefined) throw new Error("body is required");
-          const author = asString(body.author);
-          const repliesTo = asString(body.replies_to);
-          if (repliesTo) {
-            const reply = await createReply(cwd, resolvedId, {
-              replies_to: repliesTo,
-              body: text,
-              author,
-              author_kind: "human",
+        // Serve any client-bundle output — entry, worker chunks, assets —
+        // from a single map. The entry is aliased at /client.js (spa.ts);
+        // worker chunks land at their hashed paths because Bun rewrites
+        // `new Worker(new URL(...))` URLs to those names.
+        if (url.pathname === "/client.js" || /^\/[^/]+\.(js|css|wasm|map|json)$/.test(url.pathname)) {
+          const { assets, error } = await getClientAssets();
+          if (assets === null) {
+            return new Response(`/* ${error} */`, {
+              status: 500,
+              headers: { "Content-Type": "application/javascript" },
             });
-            return Response.json(reply, { status: 201 });
           }
-          const file = asString(body.file);
-          if (!file) throw new Error("file is required");
-          const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
-          if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
-          const start = asInt(body.line_start);
-          const end = asInt(body.line_end);
-          if (start === undefined) throw new Error("line_start is required");
-          if (end === undefined) throw new Error("line_end is required");
-          // The seam owns line-range + file-membership validation (PRD #140
-          // / slice 4 #144) — load the bundle so it has something to check
-          // against. Cost is one extra read per POST; SPA already pays this
-          // on its own `GET /api/tours/:id` calls.
-          const bundle = await loadTourBundle(cwd, resolvedId);
-          const ann = await createAnnotation(
-            cwd,
-            resolvedId,
-            {
-              file,
-              side,
-              line_start: start,
-              line_end: end,
-              body: text,
-              author,
-              author_kind: "human",
-            },
-            bundle,
-          );
-          return Response.json(ann, { status: 201 });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: message }, { status: 400 });
+          const asset = assets.get(url.pathname);
+          if (asset !== undefined) {
+            return new Response(asset.body, {
+              headers: {
+                "Content-Type": asset.contentType,
+                "Cache-Control": "no-cache",
+              },
+            });
+          }
+          if (url.pathname === "/client.js") {
+            return new Response("/* entry-point not emitted */", {
+              status: 500,
+              headers: { "Content-Type": "application/javascript" },
+            });
+          }
+          // Fall through for unmatched paths — let the SPA HTML handle them.
         }
-      }
 
-      const lockMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/reply-lock$/);
-      if (lockMatch) {
-        const idOrPrefix = lockMatch[1];
-        try {
-          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-          const lock = await readReplyLock(cwd, resolvedId);
-          return Response.json(lock);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: message }, { status: 404 });
+        if (url.pathname === "/api/tours") {
+          const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
+          const tours = await listTours(cwd, { status });
+          return Response.json(tours);
         }
-      }
 
-      const tourMatch = url.pathname.match(/^\/api\/tours\/([^/]+)$/);
-      if (tourMatch) {
-        const idOrPrefix = tourMatch[1];
-        try {
-          const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-          const bundle = await loadTourBundle(cwd, resolvedId);
-          return Response.json(bundle);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: message }, { status: 404 });
+        const eventsMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/events$/);
+        if (eventsMatch) {
+          const idOrPrefix = eventsMatch[1];
+          try {
+            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const watcher = getOrCreateWatcher(resolvedId);
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue("data: {\"type\":\"connected\"}\n\n");
+                const callback = (event: import("../core/watcher.js").WatchEvent) => {
+                  try {
+                    controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
+                  } catch {
+                    watcher.off(callback);
+                  }
+                };
+                watcher.on(callback);
+                req.signal.addEventListener("abort", () => {
+                  watcher.off(callback);
+                });
+              },
+            });
+            return new Response(stream, {
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+              },
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 404 });
+          }
         }
-      }
 
-      return new Response(html(args.tourId), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
-    },
-  }),
+        const annotateMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/annotations$/);
+        if (annotateMatch && req.method === "POST") {
+          const idOrPrefix = annotateMatch[1];
+          try {
+            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const body = (await req.json()) as Record<string, unknown>;
+            const text = asString(body.body);
+            // HTTP-shape concern only — whitespace-only rejection lives in
+            // the Annotation creation seam (PRD #140 rule 1/5).
+            if (text === undefined) throw new Error("body is required");
+            const author = asString(body.author);
+            const repliesTo = asString(body.replies_to);
+            if (repliesTo) {
+              const reply = await createReply(cwd, resolvedId, {
+                replies_to: repliesTo,
+                body: text,
+                author,
+                author_kind: "human",
+              });
+              return Response.json(reply, { status: 201 });
+            }
+            const file = asString(body.file);
+            if (!file) throw new Error("file is required");
+            const side = body.side === "additions" || body.side === "deletions" ? body.side : null;
+            if (side === null) throw new Error("side must be \"additions\" or \"deletions\"");
+            const start = asInt(body.line_start);
+            const end = asInt(body.line_end);
+            if (start === undefined) throw new Error("line_start is required");
+            if (end === undefined) throw new Error("line_end is required");
+            // The seam owns line-range + file-membership validation (PRD #140
+            // / slice 4 #144) — load the bundle so it has something to check
+            // against. Cost is one extra read per POST; SPA already pays this
+            // on its own `GET /api/tours/:id` calls.
+            const bundle = await loadTourBundle(cwd, resolvedId);
+            const ann = await createAnnotation(
+              cwd,
+              resolvedId,
+              {
+                file,
+                side,
+                line_start: start,
+                line_end: end,
+                body: text,
+                author,
+                author_kind: "human",
+              },
+              bundle,
+            );
+            return Response.json(ann, { status: 201 });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 400 });
+          }
+        }
+
+        const lockMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/reply-lock$/);
+        if (lockMatch) {
+          const idOrPrefix = lockMatch[1];
+          try {
+            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const lock = await readReplyLock(cwd, resolvedId);
+            return Response.json(lock);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 404 });
+          }
+        }
+
+        const tourMatch = url.pathname.match(/^\/api\/tours\/([^/]+)$/);
+        if (tourMatch) {
+          const idOrPrefix = tourMatch[1];
+          try {
+            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const bundle = await loadTourBundle(cwd, resolvedId);
+            return Response.json(bundle);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 404 });
+          }
+        }
+
+        return new Response(html(args.tourId), {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      },
+    }),
   );
 
   const url = `http://127.0.0.1:${boundPort}`;
