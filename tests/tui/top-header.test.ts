@@ -237,8 +237,17 @@ describe("TopHeaderTui (issue #93)", () => {
       .filter((e) => e.type === "text")
       .map(textChildOf)
       .join(" | ");
-    // Sentinel string we'd expect to see if a misplaced selected-path slot leaked.
-    expect(headerText).not.toContain(".sql");
-    expect(headerText).not.toContain(".controller.ts");
+    // The slot renders `  · ${path}` — `·` (U+00B7) is unique to the slot;
+    // the rest of the header uses `|`, `[`, `]`, `←` as separators.
+    expect(headerText).not.toContain("·");
+  });
+
+  it("does not render a selected-path slot when selectedPath is an empty string (issue #156)", () => {
+    const root = render({ selectedPath: "" });
+    const headerText = walk(root)
+      .filter((e) => e.type === "text")
+      .map(textChildOf)
+      .join(" | ");
+    expect(headerText).not.toContain("·");
   });
 });
