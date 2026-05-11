@@ -149,7 +149,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
   const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
   const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
-  const [now, setNow] = useState<number>(() => Date.now());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
@@ -265,14 +264,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       evtSource.close();
     };
   }, [tourId]);
-
-  // Tick the wall clock once a second only while a lock is in-flight, so the
-  // "(Ns)" counter advances without burning renders on the idle path.
-  useEffect(() => {
-    if (!replyLock) return;
-    const handle = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(handle);
-  }, [replyLock]);
 
   const bundle = state.bundle;
   const tourMeta = bundle?.tour ?? null;
@@ -964,7 +955,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
               onSubmit={submitComposer}
               onCancel={closeComposer}
               replyLock={replyLock}
-              now={now}
             />
           ) : (
             parsedFiles.map((f) => (
@@ -988,7 +978,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 onSubmit={submitComposer}
                 onCancel={closeComposer}
                 replyLock={replyLock}
-                now={now}
               />
             ))
           )}
@@ -1122,7 +1111,6 @@ interface FileBlockProps {
   onSubmit: (body: string) => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
-  now: number;
 }
 
 // Pierre's hidden-context expansion needs the full pre/post-image of each
@@ -1181,7 +1169,6 @@ function FileBlockInner({
   onSubmit,
   onCancel,
   replyLock,
-  now,
 }: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
 
@@ -1266,7 +1253,6 @@ function FileBlockInner({
           onSubmitReply={onSubmit}
           onCancelReply={onCancel}
           replyLock={replyLock}
-          now={now}
         />
       );
     },
@@ -1280,7 +1266,6 @@ function FileBlockInner({
       onCancel,
       onOpenReply,
       replyLock,
-      now,
     ],
   );
 
@@ -1373,10 +1358,18 @@ interface AnnotationCardProps {
   onSubmitReply?: (body: string) => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
-  now?: number;
 }
 
-function ReplyPill({ lock, now }: { lock: ReplyLock; now: number }): React.JSX.Element {
+// Owns its own 1Hz tick so the wall-clock advances only here. The previous
+// design lifted `now` to App and threaded it through every FileBlock /
+// AnnotationCard, which meant the whole tree re-rendered each second whenever
+// a reply was in-flight. With the tick local, only the pill itself re-renders.
+function ReplyPill({ lock }: { lock: ReplyLock }): React.JSX.Element {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const handle = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(handle);
+  }, []);
   const seconds = Math.floor(ageMs(lock, now) / 1000);
   if (isStale(lock, now)) {
     return (
@@ -1419,7 +1412,6 @@ function AnnotationCard({
   onSubmitReply,
   onCancelReply,
   replyLock,
-  now,
 }: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
@@ -1463,7 +1455,7 @@ function AnnotationCard({
           ))}
         </div>
       ) : null}
-      {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
+      {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
       {replying ? (
         <div className="ann-reply-composer">
           <Composer
@@ -1582,7 +1574,6 @@ interface AnnotationListProps {
   onSubmit: (body: string) => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
-  now: number;
 }
 
 function AnnotationList({
@@ -1596,7 +1587,6 @@ function AnnotationList({
   onSubmit,
   onCancel,
   replyLock,
-  now,
 }: AnnotationListProps): React.JSX.Element {
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
@@ -1617,7 +1607,6 @@ function AnnotationList({
             onSubmitReply={onSubmit}
             onCancelReply={onCancel}
             replyLock={replyLock}
-            now={now}
           />
         );
       })}
