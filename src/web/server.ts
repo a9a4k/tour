@@ -7,6 +7,9 @@ import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { ReplyRunner } from "../core/reply-runner.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
+import { detectAgentsOnPath } from "../core/agent-path-detector.js";
+import { isOnPath } from "../core/is-on-path.js";
+import { availableShippedAgents } from "../agents/index.js";
 import { html } from "./spa.js";
 import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
 import { bindWithFallback } from "./bind-with-fallback.js";
@@ -370,6 +373,19 @@ export async function startServer(args: ServeArgs): Promise<void> {
     console.log(`Tour server: port ${port} busy, listening on ${url}`);
   } else {
     console.log(`Tour server running at ${url}`);
+  }
+
+  // Reply-agent discovery tip (issue #174). Emit a single one-line
+  // suggestion when no --reply-agent was passed and exactly one shipped
+  // agent CLI is reachable on PATH. Zero or many matches → silent (no
+  // actionable suggestion). Inert by default — never auto-enables (ADR 0010).
+  if (replyAgent === undefined) {
+    const found = detectAgentsOnPath(availableShippedAgents(), isOnPath);
+    if (found.length === 1) {
+      console.log(
+        `Tip: detected '${found[0]}' on PATH. Run with --reply-agent ${found[0]} to enable agent replies.`,
+      );
+    }
   }
 
   if (args.open) {

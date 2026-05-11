@@ -12,6 +12,8 @@ import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
 import { selftestSyntax } from "./cli/selftest.js";
 import { listTours } from "./core/tour-store.js";
+import { pickDefaultSurface } from "./core/surface-picker.js";
+import { isOnPath } from "./core/is-on-path.js";
 
 declare const __EMBEDDED_VERSION__: string;
 const VERSION =
@@ -55,10 +57,10 @@ function boolFlag(flags: Record<string, string | boolean>, key: string): boolean
   return flags[key] === true;
 }
 
-const USAGE = `tour — local code review tool with AI annotations
+const USAGE = `tour — local code walkthrough tool with AI annotations
 
 Usage:
-  tour                                  (open TUI for most recent tour)
+  tour                                  (open the best surface for your env: webapp on a desktop with a browser, TUI otherwise)
   tour tui [<id>] [--reply-agent <name>]   (open TUI for a specific tour)
   tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
@@ -86,8 +88,9 @@ function firstRunBanner(): string {
     tour create --head HEAD --base main   # tour a branch
 
   Then open:
-    tour                                  # TUI
-    tour serve                            # webapp at http://127.0.0.1:8687
+    tour                                  # webapp on a desktop, TUI otherwise
+    tour tui                              # force the TUI
+    tour serve                            # force the webapp at http://127.0.0.1:8687
 
   Docs: https://github.com/a9a4k/tour`;
 }
@@ -216,7 +219,31 @@ async function main(): Promise<void> {
           console.log(firstRunBanner());
           break;
         }
-        await tui({ cwd, replyAgent: flag(flags, "reply-agent") });
+        // Smart-default surface (issue #174): webapp when a browser is
+        // reachable, TUI otherwise. Explicit `tour tui` / `tour serve` are
+        // unchanged. Env collection lives here; pickDefaultSurface is pure.
+        const surface = pickDefaultSurface({
+          platform: process.platform,
+          ssh:
+            (process.env.SSH_TTY ?? "") !== "" ||
+            (process.env.SSH_CONNECTION ?? "") !== "",
+          isTTY: Boolean(process.stdout.isTTY),
+          hasOpenCommand:
+            process.platform === "darwin"
+              ? isOnPath("open")
+              : isOnPath("xdg-open"),
+        });
+        if (surface === "webapp") {
+          await serve({
+            port: 8687,
+            portExplicit: false,
+            open: true,
+            cwd,
+            replyAgent: flag(flags, "reply-agent"),
+          });
+        } else {
+          await tui({ cwd, replyAgent: flag(flags, "reply-agent") });
+        }
         break;
       }
 
