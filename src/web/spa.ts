@@ -393,6 +393,8 @@ export function html(initialTourId?: string): string {
   .annotation-block .ann-body ul,
   .annotation-block .ann-body ol { padding-left: 24px; line-height: 1.5; }
   .annotation-block .ann-body li { margin: 2px 0; }
+  .annotation-block .ann-body li > p { margin: 0; }
+  .annotation-block .ann-body li > p + p { margin-top: 4px; }
   .annotation-block .ann-body li input[type="checkbox"] {
     margin-right: 6px;
     vertical-align: middle;
