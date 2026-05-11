@@ -1,9 +1,9 @@
 export {
   ChevronDownIcon,
   ChevronRightIcon,
-  DiffAddedIcon,
-  DiffModifiedIcon,
-  DiffRemovedIcon,
-  DiffRenamedIcon,
+  FileAddedIcon,
+  FileDiffIcon,
   FileDirectoryFillIcon,
+  FileMovedIcon,
+  FileRemovedIcon,
 } from "@primer/octicons-react";

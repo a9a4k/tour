@@ -1,9 +1,4 @@
-import {
-  DiffAddedIcon,
-  DiffModifiedIcon,
-  DiffRemovedIcon,
-  DiffRenamedIcon,
-} from "./icons.js";
+import { FileAddedIcon, FileDiffIcon, FileMovedIcon, FileRemovedIcon } from "./icons.js";
 import type { Icon } from "@primer/octicons-react";
 
 export interface FileIcon {
@@ -15,15 +10,15 @@ export function fileIcon(type: string): FileIcon {
   switch (type) {
     case "new":
     case "add":
-      return { Icon: DiffAddedIcon, statusClass: "added" };
+      return { Icon: FileAddedIcon, statusClass: "added" };
     case "deleted":
     case "delete":
-      return { Icon: DiffRemovedIcon, statusClass: "deleted" };
+      return { Icon: FileRemovedIcon, statusClass: "deleted" };
     case "rename":
     case "rename-pure":
     case "rename-changed":
-      return { Icon: DiffRenamedIcon, statusClass: "renamed" };
+      return { Icon: FileMovedIcon, statusClass: "renamed" };
     default:
-      return { Icon: DiffModifiedIcon, statusClass: "modified" };
+      return { Icon: FileDiffIcon, statusClass: "modified" };
   }
 }
