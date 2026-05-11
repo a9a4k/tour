@@ -406,11 +406,11 @@ function App(props: AppProps) {
   // NOT auto-advance currentAnnotationId to the new one (PRD UX 26: a
   // follow-up `r` would otherwise reply to your own freshly-typed thing).
   // Tour-switch resets the ref so the next tour seeds on its own terms.
-  // Issue #132: this is an INCIDENTAL jump — the seed must NOT call
-  // setSidebarFocused. The user just opened the app and is orienting in
-  // the file tree; focus-thrash on every tour load would be jarring. The
-  // explicit-jump path (n/p → jumpToAnnotation) drops sidebar focus; this
-  // path does not.
+  // Issue #132 revision: tour-open is itself an explicit user action —
+  // the user invoked the TUI to read this tour — so the seed drops
+  // sidebar focus when annotations exist, matching n/p. Subsequent j/k
+  // operate on the diff/annotation, not the tree. Empty tours keep the
+  // default sidebar focus (nothing to read; tree is the right anchor).
   useEffect(() => {
     if (seededTourIdRef.current !== liveTour.id) {
       seededTourIdRef.current = liveTour.id;
@@ -420,6 +420,7 @@ function App(props: AppProps) {
       }
       const first = liveTopLevel[0];
       setCurrentAnnotationId(first.id);
+      setSidebarFocused(false);
       const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
       if (!located) return;
       if (located.collapsedFolders !== collapsedFolders) {
@@ -620,9 +621,9 @@ function App(props: AppProps) {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
     // subsequent j/k move the diff cursor, not the file row. The user's
     // visual attention is on the annotation in the diff — motion keys
-    // should follow. The tour-open seed effect (above) intentionally does
-    // NOT call this function; it updates state directly so sidebarFocused
-    // stays at its default of `true` for first-load orientation.
+    // should follow. The tour-open seed effect (above) updates state
+    // directly rather than going through this function, but applies the
+    // same focus-drop when annotations exist (issue #132 revision).
     setSidebarFocused(false);
     setCurrentAnnotationId(ann.id);
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, ann.file);

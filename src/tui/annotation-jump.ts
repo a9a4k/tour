@@ -10,11 +10,12 @@ import type { Annotation } from "../core/types.js";
  * The full explicit-jump contract — drop sidebar focus (issue #132) and
  * materialize the line cursor at the target's anchor (ADR 0011 / 0012
  * β-coupling) — is applied by `jumpToAnnotation` in app.tsx, which is
- * the single entry point for explicit jumps. Incidental jumps (the
- * tour-open seed effect) bypass both this helper and `jumpToAnnotation`:
- * they update `currentAnnotationId` / `selectedRowIdx` /
- * `collapsedFolders` directly so `sidebarFocused` keeps its default of
- * `true` (first-load orientation in the tree).
+ * the single entry point for n/p explicit jumps. The tour-open seed
+ * effect bypasses both this helper and `jumpToAnnotation` (updating
+ * `currentAnnotationId` / `selectedRowIdx` / `collapsedFolders`
+ * directly), but applies the same `sidebarFocused = false` when the
+ * tour has annotations — tour-open is itself an explicit user action
+ * (issue #132 revision). Empty tours keep `sidebarFocused = true`.
  */
 export function explicitAnnotationJump(args: {
   topLevel: ReadonlyArray<Annotation>;

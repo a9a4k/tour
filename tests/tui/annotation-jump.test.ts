@@ -26,9 +26,9 @@ const C = ann({ id: "c", file: "c.ts", side: "additions", line_start: 9 });
  * Bounds-check contract for the n/p explicit-jump path (issue #132).
  * The focus-drop and cursor-materialization contract is enforced by
  * `jumpToAnnotation` in app.tsx, not here — this helper only decides
- * "does a jump happen, and to which annotation?". Incidental jumps
- * (tour-open seed) bypass this helper entirely so `sidebarFocused`
- * keeps its default of `true`.
+ * "does a jump happen, and to which annotation?". The tour-open seed
+ * bypasses this helper but applies the same `sidebarFocused = false`
+ * when annotations exist (issue #132 revision).
  */
 describe("explicitAnnotationJump: bounds + target selection", () => {
   it("n from a middle annotation steps to the next", () => {
