@@ -200,7 +200,10 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
     expect(expandHunk).toHaveBeenCalledWith(1, "both", 20);
   });
 
-  it("clicking the hunk-header chevron on a first-hunk file-top gap calls expandHunk(0, 'up', 20)", () => {
+  it("clicking the hunk-header chevron on a first-hunk file-top gap calls expandHunk(0, 'down', 20)", () => {
+    // `direction="down"` for the file-top case is non-obvious — see
+    // `directionForHunkHeader` in gap-row-overlay.ts for the D1-adjacency
+    // rationale.
     document.body.appendChild(fileBlock("x.ts", [separator()]));
     const expandHunk = vi.fn();
     attach({
@@ -209,7 +212,7 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
       fileDiffRefs: stubRefs(expandHunk),
     });
     nodesBy("hunk-header")[0].click();
-    expect(expandHunk).toHaveBeenCalledWith(0, "up", 20);
+    expect(expandHunk).toHaveBeenCalledWith(0, "down", 20);
   });
 
   it("clicking the hunk-header chevron on a mid-file large gap calls expandHunk(idx, 'down', 20)", () => {
