@@ -224,6 +224,27 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("left"), sidebar).type).toBe("collapse-parent");
   });
 
+  // Issue #155: `h` / `l` are vim-style aliases for the left / right arrows
+  // in the sidebar tree view. All existing arrow-key semantics (folder vs
+  // file row kinds, expand-folder, collapse-folder, collapse-parent) are
+  // preserved unchanged; the diff-pane bindings of `h` / `l` to
+  // cursor-side-left / cursor-side-right remain gated on `!sidebarFocused`.
+  it("l on a folder row expands the folder (vim alias for right arrow)", () => {
+    expect(dispatchKey(k("l"), sidebarFolder).type).toBe("expand-folder");
+  });
+
+  it("h on a folder row collapses the folder (vim alias for left arrow)", () => {
+    expect(dispatchKey(k("h"), sidebarFolder).type).toBe("collapse-folder");
+  });
+
+  it("h on a file row collapses its parent folder (vim alias for left arrow)", () => {
+    expect(dispatchKey(k("h"), sidebar).type).toBe("collapse-parent");
+  });
+
+  it("l on a file row in sidebar is a no-op (matches right-arrow on files)", () => {
+    expect(dispatchKey(k("l"), sidebar).type).toBe("noop");
+  });
+
   it("right and left in the diff pane drive cursor side selection (not noop)", () => {
     // Lazy materialization (ADR 0011 Revisions): the keymap dispatches
     // motion actions unconditionally — the App's handler promotes a
@@ -250,10 +271,12 @@ describe("dispatchKey", () => {
 
   it("plain l is no longer toggle-layout (rebound to Shift-L per ADR 0011)", () => {
     // In the diff pane, `l` becomes cursor-side-right; in the sidebar, it
-    // is a no-op (no consumer). The previous "always toggle-layout"
-    // behaviour is the regression we're guarding against.
+    // expands the folder on folder rows (issue #155 vim alias) and is a
+    // no-op on file rows (mirrors right-arrow behaviour). The previous
+    // "always toggle-layout" behaviour is the regression we're guarding
+    // against.
     expect(dispatchKey(k("l"), sidebar).type).toBe("noop");
-    expect(dispatchKey(k("l"), sidebarFolder).type).toBe("noop");
+    expect(dispatchKey(k("l"), sidebarFolder).type).toBe("expand-folder");
     expect(dispatchKey(k("l"), diffPane).type).toBe("cursor-side-right");
   });
 
@@ -340,9 +363,9 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
     expect(dispatchKey(k("right"), diffPane).type).toBe("cursor-side-right");
   });
 
-  it("h does not interfere with sidebar focus (no sidebar binding for h)", () => {
-    expect(dispatchKey(k("h"), sidebar).type).toBe("noop");
-    expect(dispatchKey(k("h"), sidebarFolder).type).toBe("noop");
+  it("h in the sidebar drives tree collapse (vim alias for left arrow, issue #155)", () => {
+    expect(dispatchKey(k("h"), sidebar).type).toBe("collapse-parent");
+    expect(dispatchKey(k("h"), sidebarFolder).type).toBe("collapse-folder");
   });
 
   it("Ctrl-j/k/h/l are not consumed as cursor motion", () => {
