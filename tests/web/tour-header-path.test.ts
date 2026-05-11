@@ -76,13 +76,13 @@ describe("TourHeaderPath", () => {
   });
 });
 
-// Issue #168: when a path is selected, the slot must sit as a direct
-// child of `.tour-header` (a sibling of `.tour-header-left` /
+// When a path is selected, the slot must sit as a direct child of
+// `.tour-header` (a sibling of `.tour-header-left` /
 // `.tour-header-right`) so the CSS `flex-basis: 100%` rule can wrap it
 // onto its own line. If the slot is nested inside `.tour-header-left`
 // the wrap rule has no effect — the slot would stay on row 1 and
 // compete with title / sources for width.
-describe("App lays out TourHeaderPath as a row-2 sibling, not inside .tour-header-left (Issue #168)", () => {
+describe("App lays out TourHeaderPath as a row-2 sibling, not inside .tour-header-left", () => {
   it("the path slot is a direct child of `.tour-header`, not a descendant of `.tour-header-left`", async () => {
     // Mount the App; stub fetches so the route resolves to a tour with one
     // annotation, which makes the in-App `setSelectedFile(target.file)`

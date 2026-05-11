@@ -324,7 +324,7 @@ describe("TopHeaderTui (issue #93)", () => {
       const root = render({ selectedPath: undefined });
       const directChildren = childrenOf(root).filter(isElement);
       // No row-2 box — the empty / pre-interaction state pays no extra
-      // vertical cost (user story #3 in issue #168).
+      // vertical cost when the user has not yet interacted with the sidebar.
       expect(directChildren).toHaveLength(1);
     });
 

@@ -19,9 +19,9 @@ interface TopHeaderTuiProps {
 }
 
 // Single-line header per parent PRD #91 / #93, with a row-2 split for the
-// selected-path slot (#168). Two flex children inside row-1 — left
-// cluster (hamburger + title + sources) anchored to the left edge, right
-// cluster (pill + layout toggle) pushed right via marginLeft="auto".
+// selected-path slot. Two flex children inside row-1 — left cluster
+// (hamburger + title + sources) anchored to the left edge, right cluster
+// (pill + layout toggle) pushed right via marginLeft="auto".
 // Row-1 keeps `flexWrap="wrap"` as a safety net for sub-100-col terminals
 // where row-1 itself can't fit. Title and sources clip with truncate +
 // maxWidth so a long title can never push controls off-screen.
