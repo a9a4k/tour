@@ -358,9 +358,18 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     });
   }, []);
 
+  // `behavior: "instant"` — same reason as `anchorInitial` below. `navigateBy`
+  // also runs `setCursor(nextCursor)`, which wakes `cursor-overlay.ts`'s
+  // placement IntersectionObserver; the IO fires
+  // `scrollIntoView({ block: "nearest" })` on the cursor cell ~3ms later and,
+  // per CSSOM-View, that cancels any in-flight smooth scroll, parking the
+  // cursor at the nearest viewport edge and leaving the annotation card
+  // offscreen. Instant commits `scrollTop` synchronously, so by the time the
+  // IO callback runs the cursor cell is already inside the viewport and the
+  // IO no-ops.
   const scrollAnnotationIntoView = useCallback((id: string) => {
     requestAnimationFrame(() => {
-      annotationRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      annotationRefs.current.get(id)?.scrollIntoView({ behavior: "instant", block: "center" });
     });
   }, []);
 
