@@ -119,7 +119,7 @@ export function AnnotationCard({
           marginTop={1}
           paddingLeft={2}
         >
-          <box>
+          <box flexDirection="row" flexWrap="wrap">
             <text fg={authorKindColor(r.author_kind)} bold>
               {`[${r.author_kind}] `}
             </text>
