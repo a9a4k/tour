@@ -4,10 +4,9 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TourHeaderPath } from "../../src/web/client/App.js";
 
-// Webapp parity with the TUI's TopHeader selected-row slot (issue #165).
 // `TourHeaderPath` renders the currently-selected file's full filesystem
 // path in the left cluster of `.tour-header`, prefixed with the same
-// `·` (U+00B7) separator the TUI uses, and rendered nothing when no
+// `·` (U+00B7) separator the TUI uses, and renders nothing when no
 // file is selected. The path is the full filesystem path — NOT the
 // basename, NOT any app-side truncation; if the header runs out of
 // horizontal space, CSS overflow handles it the same way it handles
@@ -67,7 +66,7 @@ describe("TourHeaderPath", () => {
     expect(container.textContent ?? "").not.toContain("·");
   });
 
-  it("uses the basename plus parents (never abbreviated by app code)", () => {
+  it("echoes the path verbatim, never abbreviated by app code", () => {
     // The component must echo `path` verbatim — no basename, no ellipsis.
     // Long paths overflow via CSS just like the existing title / refs.
     const longPath =

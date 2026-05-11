@@ -996,7 +996,6 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   );
 }
 
-// Webapp parity with the TUI's TopHeader selected-row slot (issue #165).
 // Renders the currently-selected sidebar file's full filesystem path in the
 // left cluster of `.tour-header`, prefixed with `·` (U+00B7) to match the
 // TUI's separator glyph so the two surfaces feel consistent. Renders
