@@ -47,18 +47,52 @@ export function syncCursorOverlay(
   const block = findFileBlock(root, cursor.file);
   if (!block) return () => clearOverlayEverywhere(root);
 
-  applyCursorAttrs(block, cursor);
+  // Latch: schedule the placement-scroll IO exactly once per
+  // `syncCursorOverlay` call. Pierre's worker swaps cell DOM after the
+  // first paint and the MutationObserver below re-runs `apply` to
+  // re-mark the successor cell — that re-mark must NOT trigger another
+  // scroll, otherwise Pierre's async re-renders feel like the cursor
+  // is dragging the page around.
+  let placementScrollScheduled = false;
+  const apply = (): void => {
+    const cell = findCursorCell(block, cursor);
+    if (!cell) return;
+    const alreadyMarked =
+      cell.getAttribute("data-tour-cursor") === "true" &&
+      cell.getAttribute("data-tour-cursor-side") === cursor.side;
+    if (!alreadyMarked) {
+      // Strip any stale mark on a different cell in the same block before
+      // setting the new one. Covers the case where Pierre re-rendered and
+      // both the old marked cell AND a new candidate cell briefly coexist
+      // (the old one will be removed by Pierre, but until then it confuses
+      // the CSS rule).
+      for (const stale of queryAllAcrossShadow(block, "[data-tour-cursor]")) {
+        if (stale !== cell) {
+          stale.removeAttribute("data-tour-cursor");
+          stale.removeAttribute("data-tour-cursor-side");
+        }
+      }
+      cell.setAttribute("data-tour-cursor", "true");
+      cell.setAttribute("data-tour-cursor-side", cursor.side);
+    }
+    if (!placementScrollScheduled) {
+      placementScrollScheduled = true;
+      schedulePlacementScroll(cell);
+    }
+  };
+
+  apply();
 
   // Re-apply on Pierre's shadow-root mutations. Pierre's worker pool
   // delivers highlighted tokens after a re-render boundary; when those
   // tokens arrive Pierre swaps the cell DOM and our attribute disappears
   // with the discarded node. The observer notices the swap and re-marks
-  // the successor.
+  // the successor — without re-scheduling the placement scroll.
   const observers: MutationObserver[] = [];
   const observe = (target: Node): void => {
     const observer = new MutationObserver(() => {
       if (block.isConnected === false) return;
-      applyCursorAttrs(block, cursor);
+      apply();
     });
     observer.observe(target, { childList: true, subtree: true });
     observers.push(observer);
@@ -70,98 +104,67 @@ export function syncCursorOverlay(
 
   return (): void => {
     for (const o of observers) o.disconnect();
+    disconnectPendingPlacement();
     clearOverlayEverywhere(root);
   };
 }
 
-function applyCursorAttrs(block: Element, cursor: Cursor): void {
-  const cell = findCursorCell(block, cursor);
-  if (!cell) return;
-  // No-op if the right cell already carries the right attrs. Cheap guard
-  // so the MutationObserver doesn't churn during unrelated mutations
-  // (Pierre's tokens swap inside the cell, attribute on the cell itself
-  // survives) — without this we'd setAttribute on every keystroke into
-  // the composer if it shared a shadow root, etc.
-  if (
-    cell.getAttribute("data-tour-cursor") === "true" &&
-    cell.getAttribute("data-tour-cursor-side") === cursor.side
-  ) {
-    trackVisibility(cell);
-    return;
-  }
-  // Strip any stale mark on a different cell in the same block before
-  // setting the new one. Covers the case where Pierre re-rendered and
-  // both the old marked cell AND a new candidate cell briefly coexist
-  // (the old one will be removed by Pierre, but until then it confuses
-  // the CSS rule).
-  for (const stale of queryAllAcrossShadow(block, "[data-tour-cursor]")) {
-    if (stale !== cell) {
-      stale.removeAttribute("data-tour-cursor");
-      stale.removeAttribute("data-tour-cursor-side");
-    }
-  }
-  cell.setAttribute("data-tour-cursor", "true");
-  cell.setAttribute("data-tour-cursor-side", cursor.side);
-  trackVisibility(cell);
+// One-shot placement-scroll observer. The cursor placement check is
+// deferred off the synchronous hot path (a profile on a large diff
+// showed `scrollIntoView` + `getBoundingClientRect` accounting for
+// ~26% of main-thread time on every `j`/`k` — ~200 ms per call from
+// forced layout). The IO computes intersection asynchronously after
+// the layout the browser was going to do anyway; if the just-placed
+// cursor cell is offscreen the callback fires one `scrollIntoView`
+// and then disconnects.
+//
+// Why one-shot and NOT a persistent watcher: a persistent IO would
+// snap the page back to the cursor on every user-initiated scroll
+// (sidebar file click, wheel, PgDn, scrollbar drag) — fighting the
+// user instead of helping. The observer's purpose is "scroll the
+// just-placed cursor into view once," not "leash the viewport to
+// the cursor forever." Subsequent cursor moves re-engage by way of
+// `syncCursorOverlay` running again.
+let pendingPlacementIO: IntersectionObserver | null = null;
+
+function disconnectPendingPlacement(): void {
+  pendingPlacementIO?.disconnect();
+  pendingPlacementIO = null;
 }
 
-// IntersectionObserver-backed scroll. A profile on a large diff showed
-// `scrollIntoView` (then `getBoundingClientRect`) accounting for ~26%
-// of main-thread time on every `j`/`k` because each call forced a
-// full-page layout (~200 ms at this document size). The observer pushes
-// the viewport check off the synchronous hot path: the browser computes
-// intersections asynchronously after layout it was going to do anyway,
-// and only when the marked cell actually leaves the viewport does the
-// callback fire one `scrollIntoView`. Intra-viewport motion (the common
-// `j`/`k` case) pays zero layout cost.
-let visibilityObserver: IntersectionObserver | null = null;
-let observedCell: Element | null = null;
-
-function getVisibilityObserver(): IntersectionObserver | null {
-  if (visibilityObserver) return visibilityObserver;
-  if (typeof IntersectionObserver === "undefined") return null;
-  visibilityObserver = new IntersectionObserver(
+function schedulePlacementScroll(cell: Element): void {
+  if (typeof IntersectionObserver === "undefined") return;
+  disconnectPendingPlacement();
+  const io = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        if (entry.target !== observedCell) continue;
         if (!entry.isIntersecting) {
           (entry.target as Element).scrollIntoView({ block: "nearest" });
         }
       }
+      // One-shot: disconnect after the first delivery (which carries the
+      // initial intersection state for the observed cell).
+      if (pendingPlacementIO === io) disconnectPendingPlacement();
+      else io.disconnect();
     },
     // threshold 0 means "any part visible counts as intersecting". Matches
     // `scrollIntoView({ block: "nearest" })`'s own no-op condition.
     { root: null, threshold: 0 },
   );
-  return visibilityObserver;
-}
-
-function trackVisibility(cell: Element): void {
-  const io = getVisibilityObserver();
-  if (!io) return;
-  if (observedCell === cell) return;
-  if (observedCell) io.unobserve(observedCell);
-  observedCell = cell;
+  pendingPlacementIO = io;
   io.observe(cell);
-}
-
-function untrackVisibility(): void {
-  const io = visibilityObserver;
-  if (!io || !observedCell) return;
-  io.unobserve(observedCell);
-  observedCell = null;
 }
 
 /**
  * Synchronous scroll-into-view fallback for environments without
  * `IntersectionObserver` (e.g., older browsers, some test runners). In
- * a working browser this is a no-op once the IO is tracking the cell —
- * IO handles offscreen-cell scrolling automatically. Kept as a back-
- * compat call from the keyboard handler so the fallback path still
- * scrolls on first interaction even without IO.
+ * a working browser this is a no-op — `syncCursorOverlay`'s one-shot
+ * IO handles placement scroll without the synchronous layout flush.
+ * Kept as a back-compat call from the keyboard handler so the fallback
+ * path still scrolls on first interaction even without IO.
  */
 export function scrollCursorIntoView(root: ParentNode, cursor: Cursor | null): void {
-  if (visibilityObserver && observedCell) return; // IO is in charge.
+  if (typeof IntersectionObserver !== "undefined") return; // IO path handles it.
   if (!cursor) return;
   const block = findFileBlock(root, cursor.file);
   if (!block) return;
@@ -174,7 +177,7 @@ export function scrollCursorIntoView(root: ParentNode, cursor: Cursor | null): v
 }
 
 function clearOverlayEverywhere(root: ParentNode): void {
-  untrackVisibility();
+  disconnectPendingPlacement();
   for (const el of queryAllAcrossShadow(root, "[data-tour-cursor]")) {
     el.removeAttribute("data-tour-cursor");
     el.removeAttribute("data-tour-cursor-side");

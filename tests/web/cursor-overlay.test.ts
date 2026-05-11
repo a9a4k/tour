@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { syncCursorOverlay, scrollCursorIntoView } from "../../src/web/client/cursor-overlay.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
@@ -33,10 +33,10 @@ function cell(opts: {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  // syncCursorOverlay holds module-level IntersectionObserver state
-  // (observedCell). Reset it via a null-cursor sync so each test starts
-  // from a clean slate; otherwise leftover observed cells from an
-  // earlier test cause `scrollCursorIntoView` to early-return.
+  // syncCursorOverlay holds module-level state for the pending one-shot
+  // placement-scroll IO. Reset it via a null-cursor sync so each test
+  // starts from a clean slate (disconnects any IO left over from a
+  // previous test).
   syncCursorOverlay(document.body, null);
 });
 
@@ -214,6 +214,25 @@ describe("syncCursorOverlay: does not auto-scroll", () => {
 });
 
 describe("scrollCursorIntoView", () => {
+  // `scrollCursorIntoView` is the no-IO fallback path; in IO-capable
+  // environments `syncCursorOverlay`'s one-shot observer handles
+  // placement scroll without the synchronous layout flush. These tests
+  // exercise the fallback by removing `IntersectionObserver` from the
+  // global before each call.
+  let savedIO: typeof IntersectionObserver | undefined;
+  beforeEach(() => {
+    savedIO = (globalThis as { IntersectionObserver?: typeof IntersectionObserver })
+      .IntersectionObserver;
+    delete (globalThis as { IntersectionObserver?: typeof IntersectionObserver })
+      .IntersectionObserver;
+  });
+  afterEach(() => {
+    if (savedIO) {
+      (globalThis as { IntersectionObserver?: typeof IntersectionObserver })
+        .IntersectionObserver = savedIO;
+    }
+  });
+
   it("scrolls the cursor's cell into view via scrollIntoView({ block: 'nearest' })", () => {
     const c = cell({ line: 5, type: "addition" });
     document.body.appendChild(fileBlock("x.ts", [c]));
@@ -265,6 +284,30 @@ describe("scrollCursorIntoView", () => {
       scrolled = true;
     };
     scrollCursorIntoView(document.body, null);
+    expect(scrolled).toBe(false);
+  });
+});
+
+describe("scrollCursorIntoView: no-op when IntersectionObserver is available", () => {
+  // The one-shot IO in syncCursorOverlay handles placement scroll
+  // asynchronously off the synchronous hot path. scrollCursorIntoView
+  // must NOT also do a synchronous scroll in IO-capable environments —
+  // doing so would reintroduce the ~26% main-thread layout cost the IO
+  // was built to avoid.
+  it("returns without scrolling when IntersectionObserver is defined", () => {
+    const c = cell({ line: 5, type: "addition" });
+    document.body.appendChild(fileBlock("x.ts", [c]));
+    let scrolled = false;
+    c.scrollIntoView = () => {
+      scrolled = true;
+    };
+    c.getBoundingClientRect = () => ({ top: 1000, bottom: 1020, left: 0, right: 100, width: 100, height: 20, x: 0, y: 1000, toJSON: () => ({}) }) as DOMRect;
+    Object.defineProperty(window, "innerHeight", { value: 600, configurable: true });
+    // happy-dom defines IntersectionObserver — confirm it.
+    expect(typeof (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver).toBe(
+      "function",
+    );
+    scrollCursorIntoView(document.body, cur({ file: "x.ts", lineNumber: 5, side: "additions" }));
     expect(scrolled).toBe(false);
   });
 });
