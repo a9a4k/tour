@@ -289,6 +289,15 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     () => resolveCursorById(annotations, currentAnnotationId),
     [annotations, currentAnnotationId],
   );
+  // Which file holds the current annotation, so `currentAnnotationId` only
+  // goes to that one FileBlock. Before this, every FileBlock saw the prop
+  // change on every n/p and bailed React.memo, re-rendering all ~650 files
+  // for a single annotation step. Now only the old + new annotation's
+  // files re-render on nav.
+  const currentAnnotationFile = useMemo<string | null>(() => {
+    if (currentAnnotationId === null) return null;
+    return annotations.find((a) => a.id === currentAnnotationId)?.file ?? null;
+  }, [annotations, currentAnnotationId]);
 
   const liveDiff = bundle && bundle.kind === "ok" ? bundle.diff : "";
   const liveFiles = useMemo<BundleFile[]>(
@@ -483,6 +492,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   const registerFileRef = useCallback((file: string, el: HTMLDivElement | null) => {
     if (el) fileRefs.current.set(file, el);
     else fileRefs.current.delete(file);
+  }, []);
+
+  // Sidebar counterparts so memoized FileRow / FolderRow don't re-render
+  // on every App state change. Same pattern as `registerFileRef`: path
+  // flows as an argument, so a single stable function reference serves
+  // every sidebar row.
+  const registerSidebarRef = useCallback(
+    (path: string, el: HTMLButtonElement | null) => {
+      if (el) sidebarRowRefs.current.set(path, el);
+      else sidebarRowRefs.current.delete(path);
+    },
+    [],
+  );
+  const selectFile = useCallback((name: string) => {
+    setSelectedFile(name);
+    const el = fileRefs.current.get(name);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
   // Stable per-file FileDiff-instance registrar (issue #154, PRD #151 A1).
@@ -914,15 +940,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 key={`f:${row.path}`}
                 row={row}
                 selected={selectedFile === row.path}
-                registerRef={(el) => {
-                  if (el) sidebarRowRefs.current.set(row.path, el);
-                  else sidebarRowRefs.current.delete(row.path);
-                }}
-                onSelect={(name) => {
-                  setSelectedFile(name);
-                  const el = fileRefs.current.get(name);
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
+                registerRef={registerSidebarRef}
+                onSelect={selectFile}
               />
             ),
           )}
@@ -959,7 +978,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 registerFileDiffRef={registerFileDiffRef}
                 collapsed={isCollapsed(f.name)}
                 onToggleCollapsed={toggleCollapsed}
-                currentAnnotationId={currentAnnotationId}
+                currentAnnotationId={currentAnnotationFile === f.name ? currentAnnotationId : null}
                 registerAnnotationRef={registerAnnotationRef}
                 layout={layout}
                 composerTarget={composerTarget}
@@ -1020,45 +1039,65 @@ interface FolderRowProps {
   onToggle: (path: string) => void;
 }
 
-function FolderRow({ row, onToggle }: FolderRowProps): React.JSX.Element {
+// React.memo so cursor / annotation-nav state changes in App don't re-render
+// every sidebar row. Without this, the plain function rendered ~800 times per
+// annotation click despite none of its props meaningfully changing.
+const FolderRow = React.memo(function FolderRow({
+  row,
+  onToggle,
+}: FolderRowProps): React.JSX.Element {
   const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
+  const handleClick = useCallback(() => onToggle(row.path), [onToggle, row.path]);
   return (
     <button
       type="button"
       className="folder-entry"
       style={{ paddingLeft: 16 + row.depth * 16 }}
-      onClick={() => onToggle(row.path)}
+      onClick={handleClick}
     >
       <Chevron className="tree-icon" />
       <FileDirectoryFillIcon className="tree-icon" />
       <span className="folder-name">{row.displayName}</span>
     </button>
   );
-}
+});
 
 interface FileRowProps {
   row: Extract<VisibleRow<BundleFile>, { kind: "file" }>;
   selected: boolean;
+  // Path-keyed callbacks so a single stable function reference can serve every
+  // row; the path is closed over here in a `useCallback` instead of via fresh
+  // arrows at the App-render site, which lets `React.memo` actually short-circuit.
   onSelect: (name: string) => void;
-  registerRef: (el: HTMLButtonElement | null) => void;
+  registerRef: (path: string, el: HTMLButtonElement | null) => void;
 }
 
-function FileRow({ row, selected, onSelect, registerRef }: FileRowProps): React.JSX.Element {
+const FileRow = React.memo(function FileRow({
+  row,
+  selected,
+  onSelect,
+  registerRef,
+}: FileRowProps): React.JSX.Element {
   const { Icon, statusClass } = fileIcon(row.file.type);
+  const handleRef = useCallback(
+    (el: HTMLButtonElement | null) => registerRef(row.path, el),
+    [registerRef, row.path],
+  );
+  const handleClick = useCallback(() => onSelect(row.path), [onSelect, row.path]);
   return (
     <button
-      ref={registerRef}
+      ref={handleRef}
       type="button"
       className={`file-entry${selected ? " selected" : ""}`}
       style={{ paddingLeft: 16 + row.depth * 16 }}
-      onClick={() => onSelect(row.path)}
+      onClick={handleClick}
     >
       <Icon className={`status-icon ${statusClass}`} />
       <span className="file-name">{row.displayName}</span>
       {row.annotationCount > 0 ? <span className="badge">{row.annotationCount}</span> : null}
     </button>
   );
-}
+});
 
 interface FileBlockProps {
   fileDiff: FileDiffMetadata;
@@ -1271,15 +1310,27 @@ function FileBlockInner({
     onRowClick(fileDiff.name, hit.side, hit.lineNumber);
   };
 
-  const headerMetadata = () => (
-    <>
-      <RenameHeaderSpan name={fileDiff.name} prevName={fileDiff.prevName} />
-      {reason ? <span className="reason-tag">{reason}</span> : null}
-      <CopyPathButton path={fileDiff.name} />
-    </>
+  // Stable across renders so MultiFileDiff / FileDiff see the same prop
+  // reference when nothing relevant changed.
+  const headerMetadata = useCallback(
+    () => (
+      <>
+        <RenameHeaderSpan name={fileDiff.name} prevName={fileDiff.prevName} />
+        {reason ? <span className="reason-tag">{reason}</span> : null}
+        <CopyPathButton path={fileDiff.name} />
+      </>
+    ),
+    [fileDiff.name, fileDiff.prevName, reason],
   );
 
-  const contents = fileContentsFor(fileDiff, modelFile);
+  // The previous unmemoised call produced a fresh `{ oldFile, newFile }` (and
+  // fresh inner `{ name, contents }`) on every render, busting `MultiFileDiff`
+  // memoisation. Stabilising it here keeps the props referentially equal
+  // unless the underlying file actually changed.
+  const contents = useMemo(
+    () => fileContentsFor(fileDiff, modelFile),
+    [fileDiff, modelFile],
+  );
 
   return (
     <div
