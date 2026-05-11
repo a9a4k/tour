@@ -31,11 +31,65 @@ jobs:
           bun scripts/build-binary.ts \
             ${{ matrix.target }} \
             dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }}
-      - name: Smoke test
+      - name: Smoke test --version
         shell: bash
         # Run only when the runner architecture matches the target binary architecture (no cross-compile execution).
         if: matrix.os != 'windows' && ((matrix.cpu == 'arm64' && runner.arch == 'ARM64') || (matrix.cpu == 'x64' && runner.arch == 'X64'))
         run: ./dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }} --version
+      - name: Smoke test serve
+        # Catches "ships fine in dev, dies in --compile" bugs that --version
+        # alone misses (e.g. missing embedded modules, broken Bun.build at
+        # runtime, unresolvable bare specifiers). Boots the binary, fetches
+        # the two browser-facing bundles, and asserts they're real JS — not
+        # 500 stubs and not the error-comment fallback from server.ts.
+        shell: bash
+        if: matrix.os != 'windows' && ((matrix.cpu == 'arm64' && runner.arch == 'ARM64') || (matrix.cpu == 'x64' && runner.arch == 'X64'))
+        env:
+          BIN: ./dist/binaries/${{ matrix.os }}-${{ matrix.cpu }}/${{ matrix.binary }}
+          PORT: '17777'
+        run: |
+          set -euo pipefail
+          "$BIN" serve --port "$PORT" > serve.log 2>&1 &
+          SERVE_PID=$!
+          trap "kill $SERVE_PID 2>/dev/null || true; wait $SERVE_PID 2>/dev/null || true" EXIT
+
+          fetch() {
+            local path="$1" out="$2"
+            # --retry-connrefused covers the boot window; the first request
+            # also pays the Bun.build cost, so allow generous retries.
+            curl --retry-connrefused --retry 60 --retry-delay 1 \
+              -fsS "http://127.0.0.1:$PORT$path" -o "$out"
+          }
+
+          assert_bundle() {
+            local path="$1" out="$2"
+            if ! fetch "$path" "$out"; then
+              echo "ERROR: $path did not return 2xx" >&2
+              echo "--- serve.log ---" >&2
+              cat serve.log >&2
+              exit 1
+            fi
+            # server.ts emits "/* client bundle failed: ... */" / "Cannot
+            # find module ..." on resolve/build failure with a 500 — those
+            # would already fail the fetch above, but check the body too in
+            # case the failure mode changes.
+            if grep -E "Cannot find module|client bundle (failed|threw)|entry-point not emitted" "$out" >/dev/null; then
+              echo "ERROR: $path returned an error stub:" >&2
+              cat "$out" >&2
+              exit 1
+            fi
+            local size
+            size=$(wc -c < "$out")
+            if [ "$size" -lt 1024 ]; then
+              echo "ERROR: $path suspiciously small ($size bytes)" >&2
+              cat "$out" >&2
+              exit 1
+            fi
+            echo "OK: $path served $size bytes"
+          }
+
+          assert_bundle /client.js client.js.out
+          assert_bundle /pierre-worker.js pierre-worker.js.out
       - uses: actions/upload-artifact@v5
         with:
           name: binary-${{ matrix.os }}-${{ matrix.cpu }}
