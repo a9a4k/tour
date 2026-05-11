@@ -118,6 +118,64 @@ describe("AnnotationCard selection cues", () => {
     expect(distinct).toBeGreaterThanOrEqual(2);
   });
 
+  // Collapse rule: ADR 0016 keeps the on-disk `author = author_kind`
+  // fallback intact, but the renderer suppresses the trailing `(author)`
+  // token when it would just re-state the kind bracket. `[human] (human)`
+  // becomes `[human]`; a customised author still surfaces. The `[kind]`
+  // bracket itself is load-bearing (ADR 0008's redundant-cue principle)
+  // and must survive in every case.
+  describe("header collapses redundant `(author)` when author === author_kind", () => {
+    it("omits `(human)` on the top-level header when author was defaulted to the kind", () => {
+      const defaulted: Annotation = { ...annotation, author: "human" };
+      const text = visibleText(AnnotationCard({ annotation: defaulted, isCurrent: false }));
+      expect(text).toContain("[human]");
+      expect(text).not.toContain("(human)");
+    });
+
+    it("keeps the `(alice)` token on the top-level header when author is customised", () => {
+      const customised: Annotation = { ...annotation, author: "alice" };
+      const text = visibleText(AnnotationCard({ annotation: customised, isCurrent: false }));
+      expect(text).toContain("[human]");
+      expect(text).toContain("(alice)");
+    });
+
+    it("omits `(human)` on a reply header when the reply's author was defaulted", () => {
+      const parent: Annotation = { ...annotation, author: "alice" };
+      const reply: Annotation = {
+        ...annotation,
+        id: "ann-2",
+        body: "reply body",
+        author: "human",
+        replies_to: parent.id,
+      };
+      const text = visibleText(
+        AnnotationCard({ annotation: parent, isCurrent: false, replies: [reply] }),
+      );
+      // The reply header should carry `[human]` but no `(human)`. The
+      // parent's customised `(alice)` must still render — guards against a
+      // regression that hides the wrong author.
+      expect(text).toContain("(alice)");
+      expect(text).not.toContain("(human)");
+    });
+
+    it("keeps `(claude)` on a reply header when the agent supplied its name", () => {
+      const parent: Annotation = { ...annotation, author: "alice" };
+      const reply: Annotation = {
+        ...annotation,
+        id: "ann-2",
+        body: "reply body",
+        author: "claude",
+        author_kind: "agent",
+        replies_to: parent.id,
+      };
+      const text = visibleText(
+        AnnotationCard({ annotation: parent, isCurrent: false, replies: [reply] }),
+      );
+      expect(text).toContain("[agent]");
+      expect(text).toContain("(claude)");
+    });
+  });
+
   it("does not change the annotation range-marking primitives (ADR 0008): no row tint/gutter props leak out of the card", () => {
     // The card is the conversation surface; row tint + gutter mark live
     // on the diff rows, not on the card itself. Sanity-check that the

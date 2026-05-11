@@ -1518,7 +1518,7 @@ function pillTargetsThisCard(
   return replies.some((r) => r.id === lock.responding_to);
 }
 
-function AnnotationCard({
+export function AnnotationCard({
   annotation,
   replies,
   isCurrent,
