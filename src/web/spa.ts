@@ -246,6 +246,7 @@ export function html(initialTourId?: string): string {
     border-color: var(--border-accent);
     box-shadow: 0 2px 8px var(--shadow-medium);
   }
+  .annotation-block .selection-marker { color: var(--fg-accent); font-weight: 700; }
   .annotation-block .ann-header {
     color: var(--fg-accent);
     font-weight: 600;

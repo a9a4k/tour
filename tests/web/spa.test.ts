@@ -99,6 +99,13 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*box-shadow/);
   });
 
+  it("styles the selection-marker glyph in accent so the `●` reads on the current card (TUI parity)", () => {
+    // Third cue, parallel to the TUI's heavy-border + bg-tier + `●` triad
+    // (#169): the marker is painted by the React tree only when isCurrent,
+    // and the rule sets it to the accent foreground.
+    expect(html()).toMatch(/\.annotation-block\s+\.selection-marker\s*\{[^}]*color:\s*var\(--fg-accent\)/);
+  });
+
   it("renders a baseline container at rest — neutral 1px border + tinted surface (Issue #162)", () => {
     const out = html();
     // The unfocused card must read as a card, not raw text: visible neutral

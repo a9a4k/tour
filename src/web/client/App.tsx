@@ -1515,6 +1515,9 @@ function AnnotationCard({
       ref={(el) => registerRef?.(annotation.id, el)}
     >
       <div className="ann-header">
+        {isCurrent ? (
+          <span className="selection-marker" aria-hidden="true">●{" "}</span>
+        ) : null}
         <span className={`author-kind ${annotation.author_kind}`}>
           [{annotation.author_kind}]
         </span>{" "}
