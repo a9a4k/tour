@@ -1031,7 +1031,9 @@ interface FolderRowProps {
 // React.memo so cursor / annotation-nav state changes in App don't re-render
 // every sidebar row. Without this, the plain function rendered ~800 times per
 // annotation click despite none of its props meaningfully changing.
-const FolderRow = React.memo(function FolderRow({
+// Exported so unit tests can mount the row in isolation (Issue #166 —
+// native `title` tooltip reveals the full path on hover).
+export const FolderRow = React.memo(function FolderRow({
   row,
   onToggle,
 }: FolderRowProps): React.JSX.Element {
@@ -1042,6 +1044,7 @@ const FolderRow = React.memo(function FolderRow({
       type="button"
       className="folder-entry"
       style={{ paddingLeft: 16 + row.depth * 16 }}
+      title={row.path}
       onClick={handleClick}
     >
       <Chevron className="tree-icon" />
@@ -1061,7 +1064,7 @@ interface FileRowProps {
   registerRef: (path: string, el: HTMLButtonElement | null) => void;
 }
 
-const FileRow = React.memo(function FileRow({
+export const FileRow = React.memo(function FileRow({
   row,
   selected,
   onSelect,
@@ -1079,6 +1082,7 @@ const FileRow = React.memo(function FileRow({
       type="button"
       className={`file-entry${selected ? " selected" : ""}`}
       style={{ paddingLeft: 16 + row.depth * 16 }}
+      title={row.path}
       onClick={handleClick}
     >
       <Icon className={`status-icon ${statusClass}`} />
