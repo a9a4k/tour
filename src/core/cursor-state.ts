@@ -194,16 +194,19 @@ export function resolveCursorRowIdx(
 }
 
 /**
- * Cursor anchored at an annotation's (file, side, line_start) — the
+ * Cursor anchored at an annotation's (file, side, line_end) — the
  * β-coupling shape per ADR 0011 (annotation-nav is inherently code-nav,
- * so going "to annotation 5" means going to its line). preferredSide
+ * so going "to annotation 5" means going to its line). For multiline
+ * annotations the cursor lands on line_end (issue #170) so the eye lands
+ * at the bottom of the annotated range with the card and the rest of
+ * the range above; single-line annotations are unchanged. preferredSide
  * mirrors the annotation's side so a follow-up `a` (sibling top-level)
  * lands on the same column the user just navigated to.
  */
 export function cursorFromAnnotation(a: Annotation): Cursor {
   return {
     file: a.file,
-    lineNumber: a.line_start,
+    lineNumber: a.line_end,
     side: a.side,
     preferredSide: a.side,
   };
