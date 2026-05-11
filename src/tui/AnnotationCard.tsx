@@ -72,16 +72,31 @@ export function AnnotationCard({
   const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
   const showPill =
     replyLock && pillTargetsThisCard(annotation, replies, replyLock);
+  // Selection is communicated through three independent visual signals so
+  // the current card survives palette drift, colour blindness, and low-
+  // contrast displays without leaning on a single delta:
+  //   1. `borderStyle`: heavy on the current card, single on its peers,
+  //      so the frame itself reads differently before any colour parses.
+  //   2. `backgroundColor`: the brighter `accentCurrent` tier on the
+  //      current card; peers fall back to the subtler `accentSubtle`
+  //      tier so they recede without losing accent identity.
+  //   3. A `●` glyph rendered in the header — a dedicated, motion-
+  //      independent marker analogous to the line cursor's gutter `▶`.
   return (
     <box
       id={`annotation-${annotation.id}`}
-      borderStyle="single"
+      borderStyle={isCurrent ? "heavy" : "single"}
       borderColor={theme.fg.accent}
       backgroundColor={isCurrent ? theme.bg.accentCurrent.tui : theme.bg.accentSubtle.tui}
       flexDirection="column"
       paddingX={1}
     >
       <box>
+        {isCurrent ? (
+          <text fg={theme.fg.accent} bold>
+            {"● "}
+          </text>
+        ) : null}
         <text fg={authorKindColor(annotation.author_kind)} bold>
           {`[${annotation.author_kind}] `}
         </text>
