@@ -94,22 +94,22 @@ describe("Webapp integration", () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
     const data = await res.json() as Record<string, unknown>;
-    expect(data.id).toBe(tourId);
-    expect(data.snapshotLost).toBe(false);
+    expect(data.kind).toBe("ok");
+    expect((data.tour as { id: string }).id).toBe(tourId);
     expect(typeof data.diff).toBe("string");
     expect((data.diff as string).length).toBeGreaterThan(0);
     expect(Array.isArray(data.annotations)).toBe(true);
     expect((data.annotations as unknown[]).length).toBe(1);
-    expect(data.diffModel).toBeDefined();
+    expect(Array.isArray(data.files)).toBe(true);
   });
 
   it("GET /api/tours/:id ships per-file oldContent/newContent for hidden context expansion (Issue #109)", async () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
-      diffModel: { files: Array<{ name: string; oldContent?: string; newContent?: string }> };
+      files: Array<{ name: string; oldContent?: string; newContent?: string }>;
     };
-    const hello = data.diffModel.files.find((f) => f.name === "hello.txt");
+    const hello = data.files.find((f) => f.name === "hello.txt");
     expect(hello).toBeDefined();
     expect(hello!.oldContent).toBe("hello\n");
     expect(hello!.newContent).toBe("hello world\n");
@@ -119,9 +119,9 @@ describe("Webapp integration", () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
-      diffModel: { files: Array<{ name: string; orphanWindows?: unknown[] }> };
+      files: Array<{ name: string; orphanWindows?: unknown[] }>;
     };
-    const hello = data.diffModel.files.find((f) => f.name === "hello.txt");
+    const hello = data.files.find((f) => f.name === "hello.txt");
     expect(hello).toBeDefined();
     expect(Array.isArray(hello!.orphanWindows)).toBe(true);
   });
@@ -131,7 +131,7 @@ describe("Webapp integration", () => {
     const res = await fetch(`${baseUrl}/api/tours/${prefix}`);
     expect(res.status).toBe(200);
     const data = await res.json() as Record<string, unknown>;
-    expect(data.id).toBe(tourId);
+    expect((data.tour as { id: string }).id).toBe(tourId);
   });
 
   it("GET /api/tours/:id with unknown id returns 404", async () => {

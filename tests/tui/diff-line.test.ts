@@ -124,15 +124,12 @@ describe("DiffLine layout", () => {
 function contentBgOf(root: AnyElement): unknown {
   const kids = childrenOf(root).filter(isElement);
   // The content cell is the last element child after the accent + gutter
-  // wrappers. It may be either a <text> (no syntax highlight) or a <box>
-  // wrapping a <code> (with highlight). The bg is on the <text> or the
-  // <code> child; we read either.
+  // wrappers. It is a <box> wrapping either a <text> (no syntax highlight)
+  // or a <code> (with highlight). The bg lives on the wrapping <box> so the
+  // tint fills the full row width, not just behind the characters (commit
+  // 4fb8437).
   const last = kids[kids.length - 1]!;
-  if (last.type === "text") return last.props["bg"] ?? last.props["backgroundColor"];
-  const inner = childrenOf(last).filter(isElement);
-  const code = inner.find((c) => c.type === "code");
-  if (code) return code.props["bg"] ?? code.props["backgroundColor"];
-  return undefined;
+  return last.props["backgroundColor"] ?? last.props["bg"];
 }
 
 function gutterBgOf(root: AnyElement): unknown {
