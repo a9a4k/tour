@@ -15,7 +15,7 @@ export function statusIcon(type: string): string {
   }
 }
 
-export function annotationCountForFile(annotations: Annotation[], fileName: string): number {
+function annotationCountForFile(annotations: Annotation[], fileName: string): number {
   return annotations.filter((a) => a.file === fileName && isTopLevel(a)).length;
 }
 

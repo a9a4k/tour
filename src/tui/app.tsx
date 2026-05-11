@@ -44,7 +44,6 @@ import {
 } from "./composer-state.js";
 import { topLevelAnnotations } from "../core/threads.js";
 import {
-  annotationCountForFile,
   fileCardPlaceholder,
   fileClassification,
   fileEntryLabel,
