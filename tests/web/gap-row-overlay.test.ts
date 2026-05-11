@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { attachGapRowOverlay } from "../../src/web/client/gap-row-overlay.js";
+import { attachGapRowOverlay, dispatchGapRowAction } from "../../src/web/client/gap-row-overlay.js";
 import type { PlannedRow } from "../../src/core/diff-rows.js";
 
 function el(
@@ -72,16 +72,18 @@ const hh = (hunkIndex: number, gapAbove: number): PlannedRow => ({
   gapAbove,
 });
 
-const gapMidTop = (hunkIndex: number): PlannedRow => ({
+const gapMidTop = (hunkIndex: number, gapAbove = 50): PlannedRow => ({
   kind: "interactive",
   subKind: "gap-mid-top",
   boundaryRef: hunkIndex,
+  gapAbove,
 });
 
-const boundaryBottom = (): PlannedRow => ({
+const boundaryBottom = (gapAbove = 30): PlannedRow => ({
   kind: "interactive",
   subKind: "boundary-bottom",
   boundaryRef: "bottom",
+  gapAbove,
 });
 
 const stubRefs = (
@@ -268,6 +270,54 @@ describe("attachGapRowOverlay: click → expandHunk", () => {
     expect(lineCount).toBeGreaterThanOrEqual(12);
   });
 
+  it("shift-click on gap-mid-top passes the spec's gapAbove (not a 1M sentinel)", () => {
+    // Issue #161 item 2: drop the SHIFT_EXPAND_ALL = 1_000_000 magic
+    // constant; specs carry the real gap size now so shift-click is
+    // symmetric with hunk-header's `Math.max(gapAbove, EXPANSION_STEP)`.
+    document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), gapMidTop(1, 75), hh(1, 75)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    nodesBy("gap-mid-top")[0].dispatchEvent(
+      new MouseEvent("click", { shiftKey: true, bubbles: true }),
+    );
+    expect(expandHunk).toHaveBeenCalledWith(1, "up", 75);
+  });
+
+  it("shift-click on boundary-bottom passes the spec's gapAbove (not a 1M sentinel)", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator(), diffLine(1)]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), boundaryBottom(42)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    nodesBy("boundary-bottom")[0].dispatchEvent(
+      new MouseEvent("click", { shiftKey: true, bubbles: true }),
+    );
+    expect(expandHunk).toHaveBeenCalledWith(0, "down", 42);
+  });
+
+  it("shift-click on gap-mid-top with a tiny remaining gap still expands at least EXPANSION_STEP (= 20)", () => {
+    // Symmetric with hunk-header's `Math.max(gapAbove, EXPANSION_STEP)` —
+    // Pierre's clamping makes the over-shoot a no-op, but the floor keeps
+    // the contract uniform across the three gap-row kinds.
+    document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), gapMidTop(1, 5), hh(1, 5)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    nodesBy("gap-mid-top")[0].dispatchEvent(
+      new MouseEvent("click", { shiftKey: true, bubbles: true }),
+    );
+    expect(expandHunk).toHaveBeenCalledWith(1, "up", 20);
+  });
+
   it("calls onAfterExpand after expandHunk completes (signal to re-render)", () => {
     document.body.appendChild(fileBlock("x.ts", [separator()]));
     const expandHunk = vi.fn();
@@ -289,10 +339,140 @@ describe("attachGapRowOverlay: idempotency", () => {
     const planMap = plan([hh(0, 5), gapMidTop(1), hh(1, 50), boundaryBottom()]);
     const refs = stubRefs(() => {});
     attach({ root: document.body, plannedRowsByFile: planMap, fileDiffRefs: refs });
-    attach({ root: document.body, plannedRowsByFile: planMap, fileDiffRefs: refs });
     expect(nodesBy("hunk-header")).toHaveLength(2);
     expect(nodesBy("gap-mid-top")).toHaveLength(1);
     expect(nodesBy("boundary-bottom")).toHaveLength(1);
+    attach({ root: document.body, plannedRowsByFile: planMap, fileDiffRefs: refs });
+    // After the second attach the counts MUST be identical to the first
+    // attach — not 4 hunk-headers, not 2 gap-mid-tops. Asserting before
+    // AND after makes the invariant explicit (vs. the bare `length: 2`
+    // which the fixture's 2-hunk plan would satisfy even without dedup).
+    expect(nodesBy("hunk-header")).toHaveLength(2);
+    expect(nodesBy("gap-mid-top")).toHaveLength(1);
+    expect(nodesBy("boundary-bottom")).toHaveLength(1);
+  });
+});
+
+describe("dispatchGapRowAction: keyboard-Enter end-to-end", () => {
+  it("hunk-separator interactive cursor → expandHunk called as if the chevron was clicked", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), hh(1, 12)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "hunk-separator", boundaryRef: 1 },
+      false,
+    );
+    expect(fired).toBe(true);
+    expect(expandHunk).toHaveBeenCalledWith(1, "both", 20);
+  });
+
+  it("boundary-top interactive cursor → expandHunk(0, 'down', 20) (file-top promoted onto hunk 0)", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 30)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "boundary-top", boundaryRef: "top" },
+      false,
+    );
+    expect(fired).toBe(true);
+    expect(expandHunk).toHaveBeenCalledWith(0, "down", 20);
+  });
+
+  it("gap-mid-top interactive cursor → expandHunk(idx, 'up', 20)", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), gapMidTop(1), hh(1, 50)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "gap-mid-top", boundaryRef: 1 },
+      false,
+    );
+    expect(fired).toBe(true);
+    expect(expandHunk).toHaveBeenCalledWith(1, "up", 20);
+  });
+
+  it("boundary-bottom interactive cursor → expandHunk(lastIndex, 'down', 20)", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator(), diffLine(1)]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), boundaryBottom()]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "boundary-bottom", boundaryRef: "bottom" },
+      false,
+    );
+    expect(fired).toBe(true);
+    expect(expandHunk).toHaveBeenCalledWith(0, "down", 20);
+  });
+
+  it("shiftKey=true on a hunk-separator dispatches the full-gap expansion", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator(), separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 0), hh(1, 12)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "hunk-separator", boundaryRef: 1 },
+      true,
+    );
+    expect(fired).toBe(true);
+    const [, , lineCount] = expandHunk.mock.calls[0];
+    expect(lineCount).toBeGreaterThanOrEqual(12);
+  });
+
+  it("returns false (no dispatch) when the cursor's subKind is not a gap-row family member", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator()]));
+    const expandHunk = vi.fn();
+    attach({
+      root: document.body,
+      plannedRowsByFile: plan([hh(0, 12)]),
+      fileDiffRefs: stubRefs(expandHunk),
+    });
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "collapsed-file", boundaryRef: "top" },
+      false,
+    );
+    expect(fired).toBe(false);
+    expect(expandHunk).not.toHaveBeenCalled();
+  });
+
+  it("returns false when no DOM node matches (overlay not yet attached / file unknown)", () => {
+    document.body.appendChild(fileBlock("x.ts", [separator()]));
+    // Overlay not attached — no nodes injected — dispatch should noop.
+    const fired = dispatchGapRowAction(
+      document.body,
+      "x.ts",
+      { subKind: "hunk-separator", boundaryRef: 0 },
+      false,
+    );
+    expect(fired).toBe(false);
   });
 });
 

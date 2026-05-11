@@ -77,6 +77,13 @@ export interface InteractiveRow {
   /** Optional human-readable body the planner can fill in (e.g. "··· 12
    *  hidden ···"); the cursor visual works regardless. */
   text?: string;
+  /** Numeric size of the hidden gap this row addresses, in lines. Set on
+   *  `gap-mid-top` (= remaining mid-file gap above the next hunk) and
+   *  `boundary-bottom` (= remaining file-bottom gap). Issue #161 item 2:
+   *  consumers (e.g. webapp gap-row overlay shift-click) derive the
+   *  expand-the-whole-gap count from this field instead of relying on
+   *  Pierre's internal clamping of a sentinel like 1_000_000. */
+  gapAbove?: number;
 }
 
 export interface PlanRowsOptions {
@@ -253,6 +260,7 @@ function walkHunks(
         subKind: "gap-mid-top",
         boundaryRef: hunkIndex,
         text: gapMidTopText(gapAbove),
+        gapAbove,
       });
     }
 
@@ -376,6 +384,7 @@ function walkHunks(
         subKind: "boundary-bottom",
         boundaryRef: "bottom",
         text: boundaryBottomText(remaining),
+        gapAbove: remaining,
       });
     }
   }

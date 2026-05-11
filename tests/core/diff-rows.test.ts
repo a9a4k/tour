@@ -559,6 +559,37 @@ index 1..2 100644
     expect(bottom).toBeDefined();
     if (bottom?.kind === "interactive") {
       expect(bottom.boundaryRef).toBe("bottom");
+      // newContent has 16 lines; second hunk's last line is 15; gap = 1.
+      // Issue #161 item 2: planner exposes the numeric remaining gap so
+      // the overlay's shift-click can pass a real line count instead of
+      // a 1M sentinel that depends on Pierre's internal clamping.
+      expect(bottom.gapAbove).toBe(1);
+    }
+  });
+
+  it("emits gapAbove on gap-mid-top reflecting the remaining gap size (issue #161 item 2)", () => {
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,1 +1,1 @@
+-old
++new
+@@ -50,1 +50,1 @@
+-old50
++new50
+`;
+    const file = parseFile(diff);
+    const rows = planRows(file, [], "split");
+    const gapTop = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "gap-mid-top",
+    );
+    expect(gapTop).toBeDefined();
+    if (gapTop?.kind === "interactive") {
+      // Mid-file gap: lines 2..49 hidden = 48. Greater than 2N=40 so
+      // gap-mid-top is emitted. Spec carries the size so overlay
+      // shift-click can derive `Math.max(gapAbove, EXPANSION_STEP)`.
+      expect(gapTop.gapAbove).toBe(48);
     }
   });
 

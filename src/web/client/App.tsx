@@ -758,6 +758,16 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // refreshes the overlay against the new DOM.
   useEffect(() => {
     if (typeof document === "undefined") return;
+    // Issue #161 item 1: `registerFileDiffRef` only `.set()`s — never
+    // `.delete()`s — so files that drop out of the bundle (tour switch,
+    // future file-remove path) leak their prior FileDiff instance in the
+    // Map until App unmounts. Prune entries whose file is no longer in
+    // the parsed-files set on each overlay re-attach; symmetric with
+    // `registerFileRef` above which already deletes on null element.
+    const liveNames = new Set(parsedFiles.map((f) => f.name));
+    for (const f of fileDiffRefs.current.keys()) {
+      if (!liveNames.has(f)) fileDiffRefs.current.delete(f);
+    }
     return attachGapRowOverlay({
       root: document.body,
       plannedRowsByFile,
