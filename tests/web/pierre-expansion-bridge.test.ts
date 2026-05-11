@@ -254,14 +254,14 @@ index 1..2 100644
     const expansion = expansionFromPierre(refs, [file]);
     expect(expansion.get("x.txt")?.boundaries.get("bottom")).toEqual({ up: 0, down: 10 });
     // The bridged state shrinks the planner's accounted file-bottom remaining
-    // to 0 — visible in the boundary-bottom row's text. (The row itself is
-    // still emitted; tightening its emission policy when remaining === 0 is
-    // a separate planner-side change, deliberately not in scope here.)
+    // to 0; per issue #160 the planner now suppresses the `boundary-bottom`
+    // row entirely in that case (US-10: chevrons remain visible until the
+    // entire gap is absorbed, then drop out).
     const rows = planRows(file, [], "split", { expansion, oldContent, newContent });
     const bot = rows.find(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
         r.kind === "interactive" && r.subKind === "boundary-bottom",
     );
-    expect(bot?.text).toContain("0 hidden");
+    expect(bot).toBeUndefined();
   });
 });

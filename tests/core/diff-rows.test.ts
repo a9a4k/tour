@@ -571,6 +571,86 @@ index 1..2 100644
     expect(bottom).toBeUndefined();
   });
 
+  // Issue #160 / PRD #151 US-10: boundary-bottom is a pure affordance row
+  // (no @@-metadata to carry, unlike hunk-header). Once Pierre has revealed
+  // every line of the file-bottom gap, the row should drop out — leaving
+  // it visible with "0 hidden below" is a cursor trap (Enter is a no-op).
+  it("does NOT emit a boundary-bottom row when file-bottom gap is fully absorbed", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    // file-bottom gap = 1 line ("ctx15" on line 16). down=1 absorbs it.
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map<"bottom", { up: number; down: number }>([
+            ["bottom", { up: 0, down: 1 }],
+          ]),
+        },
+      ],
+    ]);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+      expansion,
+    });
+    const bottom = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "boundary-bottom",
+    );
+    expect(bottom).toBeUndefined();
+  });
+
+  it("emits boundary-bottom with reduced count when file-bottom gap is partially absorbed", () => {
+    // Build a one-hunk diff with a 5-line file-bottom gap (hunk ends at line
+    // 3, newContent has 8 lines). Absorb 2 from the bottom → remaining = 3.
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old2
++new2
+ ctx3
+`;
+    const newContent = ["ctx1", "new2", "ctx3", "g4", "g5", "g6", "g7", "g8"].join("\n") + "\n";
+    const oldContent = ["ctx1", "old2", "ctx3", "g4", "g5", "g6", "g7", "g8"].join("\n") + "\n";
+    const file = parseFile(diff);
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map<"bottom", { up: number; down: number }>([
+            ["bottom", { up: 0, down: 2 }],
+          ]),
+        },
+      ],
+    ]);
+    const rows = planRows(file, [], "split", { oldContent, newContent, expansion });
+    const bottom = rows.find(
+      (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
+        r.kind === "interactive" && r.subKind === "boundary-bottom",
+    );
+    expect(bottom).toBeDefined();
+    expect(bottom?.text).toContain("3 lines hidden");
+  });
+
+  it("emits boundary-bottom with the original count when no file-bottom expansion has occurred", () => {
+    const file = parseFile(TWO_HUNK_DIFF);
+    const rows = planRows(file, [], "split", {
+      oldContent: OLD_CONTENT_TWO_HUNK,
+      newContent: NEW_CONTENT_TWO_HUNK,
+    });
+    const bottom = rows.find(
+      (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
+        r.kind === "interactive" && r.subKind === "boundary-bottom",
+    );
+    expect(bottom).toBeDefined();
+    // file-bottom gap = 1 line.
+    expect(bottom?.text).toContain("1 lines hidden");
+  });
+
   it("expansion state with non-zero up/down on a hunk-separator emits matching context rows from newContent", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const expansion = new Map([
