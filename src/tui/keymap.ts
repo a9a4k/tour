@@ -8,11 +8,17 @@ export interface KeymapContext {
   sidebarFocused: boolean;
   rowCount: number;
   selectedRowKind: "folder" | "file" | null;
-  /** Whether the line cursor sits on an interactive row (hunk-separator,
-   *  file boundary, collapsed-file indicator). Only when this is true do
-   *  Enter / Shift+Enter dispatch primary-action / primary-action-all in
-   *  the diff pane (PRD #107). On a regular diff row Enter is a noop. */
+  /** Whether the cursor sits on an interactive row (hunk-separator, file
+   *  boundary, collapsed-file). Only when this is true do Enter /
+   *  Shift+Enter dispatch primary-action / primary-action-all in the
+   *  diff pane (PRD #107). On a regular diff row Enter is a noop. */
   cursorOnInteractive: boolean;
+  /** Whether the cursor sits on an Annotation card (PRD #192 / ADR 0022).
+   *  Routes the row-kind-aware dispatch: `r` and `s` fire only when this
+   *  is true; `a` fires only when this is false (and the cursor isn't on
+   *  an interactive row either). On a card / row mismatch the action is
+   *  a labelled no-op the App shell surfaces via the footer hint. */
+  cursorOnCard: boolean;
 }
 
 export type KeyAction =
@@ -47,7 +53,10 @@ export type KeyAction =
   | { type: "cursor-side-right" }
   | { type: "primary-action" }
   | { type: "primary-action-all" }
-  | { type: "noop" };
+  | { type: "noop" }
+  | { type: "noop-reply-on-row" }
+  | { type: "noop-send-on-row" }
+  | { type: "noop-comment-on-card" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (key.name === "q" || (key.ctrl && key.name === "c")) {
@@ -59,13 +68,6 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   }
 
   // Half-page paging on Space / Shift+Space / `b` (PRD #138, issue #139).
-  // `b` is the portable page-up alias paired with Space the way `less` /
-  // `man` / `vim` (pager) / `tig` / `delta` have done since `more(1)`.
-  // Shift+Space stays bound for terminals that report the modifier (kitty
-  // / WezTerm / Ghostty / foot / recent Alacritty); on legacy terminals
-  // it falls through to plain Space (page-down). `b` mirrors Space's
-  // cross-pane parity — works in both sidebar and diff-pane focus. Ctrl+b
-  // and Shift+B (capital) remain unbound.
   if (!key.ctrl && key.name === "space") {
     return key.shift ? { type: "half-page-diff-up" } : { type: "half-page-diff-down" };
   }
@@ -74,17 +76,12 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   }
 
   // Hardware PageDown / PageUp stay at full-viewport step (PRD #138).
-  // They carry an OS-level "jump a screen" expectation; keeping them at
-  // full-step gives users an opt-in escape hatch for the bigger jump.
-  // Direction is intrinsic to the key; the shift modifier is ignored.
-  // Ctrl-modified is unbound.
   if (!key.ctrl && key.name === "pagedown") return { type: "page-diff-down" };
   if (!key.ctrl && key.name === "pageup") return { type: "page-diff-up" };
 
   // Hardware Home / End jump the cursor to the first / last cursor-eligible
   // row in the diff stream (PRD #126, issue #130). Scoped to diff-pane
-  // focus — sidebar focus suppresses them. Direction is intrinsic, so the
-  // shift modifier is ignored. Ctrl-modified is unbound.
+  // focus — sidebar focus suppresses them.
   if (!ctx.sidebarFocused && !key.ctrl && key.name === "home") {
     return { type: "cursor-home" };
   }
@@ -102,16 +99,27 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "n") return { type: "next-annotation" };
     if (key.name === "p") return { type: "prev-annotation" };
     if (key.name === "t") return { type: "open-picker" };
-    if (key.name === "a") return { type: "open-top-level-composer" };
-    if (key.name === "r") return { type: "open-reply-composer" };
-    if (key.name === "s") return { type: "send-to-agent" };
+    // Row-kind-aware action dispatch (PRD #192 / ADR 0022). The unified
+    // cursor routes action keys by row kind: `a` is a row-only action,
+    // `r` and `s` are card-only actions. Mismatches map to labelled
+    // no-ops the App shell surfaces via the footer hint — silent vs.
+    // wrong-target trade-off resolved by saying so.
+    if (key.name === "a") {
+      if (ctx.cursorOnCard) return { type: "noop-comment-on-card" };
+      return { type: "open-top-level-composer" };
+    }
+    if (key.name === "r") {
+      if (!ctx.cursorOnCard) return { type: "noop-reply-on-row" };
+      return { type: "open-reply-composer" };
+    }
+    if (key.name === "s") {
+      if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
+      return { type: "send-to-agent" };
+    }
   }
 
   // Diff-pane Enter / Shift+Enter (ADR 0013): only fires when the cursor
-  // sits on an interactive row (hunk-separator, file boundary, collapsed-
-  // file indicator). On a regular diff row Enter is a noop — `Enter` is
-  // reserved for interactive-row actions, not an alias for `a`. The
-  // sidebar-focused `Enter` route below still wins (see below).
+  // sits on an interactive row.
   if (
     !ctx.sidebarFocused &&
     !key.ctrl &&
@@ -129,12 +137,6 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
       if (ctx.selectedRowKind === "folder") return { type: "toggle-folder" };
       if (ctx.selectedRowKind === "file") return { type: "toggle-collapse" };
     }
-    // Issue #155: `h` / `l` are vim aliases for the left / right arrows,
-    // matching the existing `j` / `k` aliasing for vertical motion. The
-    // diff-pane bindings of plain `h` / `l` to cursor-side-left /
-    // cursor-side-right stay gated on `!sidebarFocused`, so there's no
-    // overlap. Capital `L` (toggle-layout) and the ctrl/shift modifiers
-    // are captured earlier in this function.
     if ((key.name === "right" || key.name === "l") && ctx.selectedRowKind === "folder") {
       return { type: "expand-folder" };
     }
@@ -144,12 +146,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     }
   }
 
-  // Diff-pane line cursor (ADR 0011 + ADR 0011 Revisions). Fires whenever
-  // the diff pane has focus — even when no cursor is materialized, since
-  // first interaction promotes a null cursor into the seeded state via
-  // the App's handler (lazy materialization, ADR 0012-aligned). h/l also
-  // handle side toggle on paired rows; setCursorSide is layout-aware and
-  // degrades to a preferredSide-only update on single-side rows.
+  // Diff-pane line cursor (ADR 0011 + ADR 0011 Revisions).
   if (!ctx.sidebarFocused && !key.ctrl && !key.shift) {
     if (key.name === "j" || key.name === "down") return { type: "cursor-down" };
     if (key.name === "k" || key.name === "up") return { type: "cursor-up" };
@@ -157,9 +154,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "l" || key.name === "right") return { type: "cursor-side-right" };
   }
 
-  // Outside the sidebar, `c` collapses just the Replies in every Thread —
-  // the parent Annotation stays visible. Whole-Thread collapse is reachable
-  // via the existing sidebar file-level collapse.
+  // Outside the sidebar, `c` collapses just the Replies in every Thread.
   if (!ctx.sidebarFocused && !key.ctrl && !key.shift && key.name === "c") {
     return { type: "toggle-replies-collapse" };
   }

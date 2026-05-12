@@ -68,7 +68,7 @@ function callDiffRows(args: {
     fileName: args.fileName ?? "x.txt",
     rows: args.rows,
     layout: args.layout,
-    currentAnnotationId: null,
+    cursorCardId: null,
     cursor: args.cursor ?? null,
     onCursorClick: args.onCursorClick,
   });
@@ -196,7 +196,7 @@ index 1..2 100644
       const ctxRow = rows[ctxIdx];
       if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
       const lineNumber = ctxRow.rightLineNumber!;
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber,
         side: "additions" as const,
@@ -215,7 +215,7 @@ index 1..2 100644
       const ctxRow = rows[ctxIdx];
       if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
       const lineNumber = ctxRow.leftLineNumber!;
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber,
         side: "deletions" as const,
@@ -231,7 +231,7 @@ index 1..2 100644
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
       const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "y.txt",
         lineNumber: 1,
         side: "additions" as const,
@@ -257,7 +257,7 @@ index 1..2 100644
       const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
       const ctxRow = rows[ctxIdx];
       if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber: ctxRow.rightLineNumber!,
         side: "additions" as const,
@@ -594,7 +594,7 @@ index 1..2 100644
         s: "additions" | "deletions",
         ln: number,
       ) => {
-        clickedCursor = { file: f, lineNumber: ln, side: s, preferredSide: s };
+        clickedCursor = { kind: "row", file: f, lineNumber: ln, side: s, preferredSide: s };
       };
       const tree = callDiffRows({
         rows: rows.slice(ctxIdx, ctxIdx + 1),
@@ -639,7 +639,7 @@ index 1..2 100644
           text: "··· 12 hidden ···",
         },
       ];
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber: 0,
         side: "additions" as const,
@@ -656,7 +656,7 @@ index 1..2 100644
       const rows: PlannedRow[] = [
         { kind: "interactive", subKind: "hunk-separator", boundaryRef: 1 },
       ];
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber: 0,
         side: "additions" as const,
@@ -672,7 +672,7 @@ index 1..2 100644
       const rows: PlannedRow[] = [
         { kind: "interactive", subKind: "boundary-top", boundaryRef: "top" },
       ];
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "y.txt",
         lineNumber: 0,
         side: "additions" as const,
@@ -688,7 +688,7 @@ index 1..2 100644
       const rows: PlannedRow[] = [
         { kind: "interactive", subKind: "hunk-separator", boundaryRef: 0 },
       ];
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber: 5,
         side: "additions" as const,
@@ -759,7 +759,7 @@ index 1..2 100644
           text: "··· 42 lines hidden — Enter to expand ···",
         },
       ];
-      const cursor = {
+      const cursor = { kind: "row" as const,
         file: "x.txt",
         lineNumber: 0,
         side: "additions" as const,

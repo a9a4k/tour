@@ -100,6 +100,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: unified Cursor walks diff rows + Annotation cards under a single
+  anchor (Slice 1 of PRD #192 / ADR 0022).** Previously the TUI tracked
+  two separate cursors — a `❯` line cursor for diff/interactive rows and
+  `currentAnnotationId` for the heavy-bordered card — and pressing `r`
+  after a wheel-scroll could reply to a card the user wasn't looking
+  at. The two pieces of state are now collapsed into one tagged-union
+  `Cursor = RowAnchor | CardAnchor` that walks rows and cards alike:
+  `j`/`k` step rows (skipping cards), `n`/`p` step cards (skipping
+  rows). Action keys dispatch by the cursor's row kind — `r`/`s` are
+  card-only, `a` is row-only, mismatches surface a footer hint
+  ("r: no annotation under cursor — n/p to navigate"). A new
+  footer-preview line always renders the cursor's `r` target ("r: reply
+  to "<title>"") and appends a direction indicator ("(cursor ↑ above
+  viewport)") when wheel-scroll has parked the cursor off-screen. When
+  `r` or `s` fires on a card whose row is off-screen, the diff pane
+  scrolls the card into view before the composer mounts (auto-recall).
+  `currentAnnotationId` is fully removed from `tui/app.tsx`; the
+  top-header pill renders `—/M` when the cursor isn't on a card.
+  `core/cursor-state.ts` exports the union and the new `nextCard` /
+  `prevCard` walkers; `core/flat-rows.ts` emits `CardFlatRow` entries
+  directly after the diff row each card anchors to. The webapp keeps
+  RowAnchor-only behaviour for now (Slice 2 will mirror these changes).
+  (#193, PRD #192)
+
 - **Webapp: per-Annotation action rows collapsed into a single bottom
   action row per Thread.** Previously, each human Annotation in a Thread
   rendered its own Reply button and the top-level Annotation rendered

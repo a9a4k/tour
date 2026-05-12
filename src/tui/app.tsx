@@ -70,11 +70,14 @@ import { flatRows, type FlatRow } from "../core/flat-rows.js";
 import {
   initialCursor,
   moveCursor,
+  nextCard,
+  prevCard,
   setCursorSide,
   validateCursor,
   cursorFromAnnotation,
   cursorAtFirstFileRow,
   cursorOnInteractive,
+  resolveCursorRowIdx,
   type Cursor,
 } from "../core/cursor-state.js";
 import {
@@ -82,11 +85,10 @@ import {
   pageMove as pageMoveDiffPane,
   jump as jumpDiffPane,
 } from "../core/diff-pane-motion.js";
-import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import { scrollChildIntoView, centerChildInView } from "./scroll-into-view.js";
 import { buildRowYResolver } from "./row-y-resolver.js";
-import { composeFooterHints } from "./footer-hints.js";
+import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -135,7 +137,7 @@ function fileCardBody(
   reason: string | undefined,
   rows: PlannedRow[],
   layout: "split" | "unified",
-  currentAnnotationId: string | null,
+  cursorCardId: string | null,
   cursor: Cursor | null,
   onCursorClick: (
     file: string,
@@ -160,7 +162,7 @@ function fileCardBody(
       fileName={fileName}
       rows={rows}
       layout={layout}
-      currentAnnotationId={currentAnnotationId}
+      cursorCardId={cursorCardId}
       cursor={cursor}
       onCursorClick={onCursorClick}
       onInteractiveClick={onInteractiveClick}
@@ -187,7 +189,6 @@ function App(props: AppProps) {
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
-  const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const [repliesCollapsed, setRepliesCollapsed] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -201,8 +202,8 @@ function App(props: AppProps) {
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
   // After a top-level annotate-submit, holds the id of the freshly-created
   // Annotation until the post-submit effect scrolls its card into view.
-  // currentAnnotationId is intentionally NOT advanced (seed-once-per-tour
-  // guard + PRD UX 26 r-after-a foot-gun protection); this is viewport-only.
+  // The cursor is intentionally NOT advanced onto the new card (PRD UX 26
+  // r-after-a foot-gun protection); this is viewport-only.
   const [pendingScrollAnnotationId, setPendingScrollAnnotationId] =
     useState<string | null>(null);
   // Hidden-context expansion state (PRD #108, ADR 0013). Per-tour, in-memory
@@ -220,11 +221,11 @@ function App(props: AppProps) {
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // Seeded-once-per-tour guard for currentAnnotationId. Without it, opening
-  // an empty Tour and pressing `a` would auto-advance currentAnnotationId
-  // to the freshly-typed annotation (so a subsequent `r` would reply to
-  // your own thing). The cursor stays where it was; the annotation focus
-  // ring should too.
+  // First-paint-per-tour guard for the side effects that ride alongside the
+  // cursor: revealAndLocate the first annotation's file in the sidebar tree
+  // and drop sidebar focus so j/k routes to the diff pane (issue #132
+  // revision). The cursor itself stays null until the user's first
+  // interaction (PRD #192 US 25 — no visible cursor on tour load).
   const seededTourIdRef = useRef<string | null>(null);
 
   const liveTour = bundle.tour;
@@ -427,26 +428,18 @@ function App(props: AppProps) {
     [files, plannedRowsByFile, collapsedOverrides, liveClassifications, liveAnnotations],
   );
 
-  // Seed currentAnnotationId once per tour: on tour-open with annotations,
-  // land on the first top-level Annotation (preserves today's UX). After
-  // seeding, the user owns it — pressing `a` to add a new Annotation does
-  // NOT auto-advance currentAnnotationId to the new one (PRD UX 26: a
-  // follow-up `r` would otherwise reply to your own freshly-typed thing).
-  // Tour-switch resets the ref so the next tour seeds on its own terms.
-  // Issue #132 revision: tour-open is itself an explicit user action —
-  // the user invoked the TUI to read this tour — so the seed drops
-  // sidebar focus when annotations exist, matching n/p. Subsequent j/k
-  // operate on the diff/annotation, not the tree. Empty tours keep the
-  // default sidebar focus (nothing to read; tree is the right anchor).
+  // Tour-open per-tour side effects (PRD #192 / ADR 0022): the cursor
+  // itself stays null until the user's first interaction (lazy
+  // materialization, US 25). Tour-open still drops sidebar focus when
+  // annotations exist (issue #132 revision) and reveals the first
+  // annotation's file in the tree so the next j/k or n/p lands on
+  // visible material. Empty tours keep the default sidebar focus
+  // (nothing to read; tree is the right anchor).
   useEffect(() => {
     if (seededTourIdRef.current !== liveTour.id) {
       seededTourIdRef.current = liveTour.id;
-      if (liveTopLevel.length === 0) {
-        if (currentAnnotationId !== null) setCurrentAnnotationId(null);
-        return;
-      }
+      if (liveTopLevel.length === 0) return;
       const first = liveTopLevel[0];
-      setCurrentAnnotationId(first.id);
       setSidebarFocused(false);
       const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
       if (!located) return;
@@ -454,60 +447,59 @@ function App(props: AppProps) {
         setCollapsedFolders(located.collapsedFolders as Set<string>);
       }
       setSelectedRowIdx(located.rowIdx);
-      return;
-    }
-    // Already seeded for this tour: only invalidate when the current id
-    // disappears (e.g. agent removed an annotation).
-    if (
-      currentAnnotationId !== null &&
-      !liveTopLevel.some((a) => a.id === currentAnnotationId)
-    ) {
-      setCurrentAnnotationId(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTopLevel, liveTour.id]);
 
-  // Validate the line cursor in place when the row sequence shifts under
-  // it (fold toggle, bundle reload, layout change). The anchor is
-  // preserved when it still resolves; when its row vanishes it snaps to
-  // the file's first remaining row; when the file is gone the cursor
-  // goes null and re-materializes lazily on next interaction. Lazy
-  // materialization rule (ADR 0011 Revisions): we never seed here —
-  // first j/k/h/l/arrows/a/n/p/click does, via the handlers below.
+  // Validate the cursor in place when the row sequence shifts under it
+  // (fold toggle, bundle reload, layout change). For a RowAnchor: anchor
+  // preserved when it still resolves; snapped to file's first row when
+  // the specific row vanishes; snapped to next file in stream order when
+  // the file is gone; null when no row remains. For a CardAnchor:
+  // preserved when its annotationId is still in the flat-row stream;
+  // null otherwise (cards have no fallback row, PRD #192).
   useEffect(() => {
     if (cursor === null) return;
-    // Pass `files` so validateCursor can snap to the next file in stream
-    // order when the cursor's file was folded out. Without `files` it
-    // would null out instead of advancing.
     const validated = validateCursor(cursor, flatRowsList, files);
     if (validated !== cursor) setCursor(validated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatRowsList, liveTopLevel]);
 
-  // Keep the line cursor's row visible: every cursor mutation asks the
-  // scrollbox to scroll the row into view (block:nearest semantics so an
-  // already-visible row doesn't move). Side toggle on a paired row is a
-  // no-op vertically and a no-op-or-nudge horizontally per scrollbox
-  // semantics. `layout` is in deps so a Shift-L flip — which preserves the
-  // anchor but moves the visual position — re-fires the scroll.
+  // Keep the cursor's row visible. A RowAnchor scrolls its diff/interactive
+  // row with `block:nearest`; a CardAnchor centres its card in the viewport
+  // (matches the prior `currentAnnotationId` UX from PRD #126, issue #128
+  // — cards always get context above and below). `layout` is in deps so a
+  // Shift-L flip — which preserves the anchor but moves the visual
+  // position — re-fires the scroll.
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
-    // Use the culling-safe helper instead of `sb.scrollChildIntoView`:
-    // under `viewportCulling={true}` opentui leaves stale positions
-    // inside off-screen file subtrees, and a cross-file `n`/`p` jump
-    // lands on the previous file otherwise.
+    if (cursor.kind === "card") {
+      centerChildInView(diffScrollRef.current, `annotation-${cursor.annotationId}`);
+      return;
+    }
+    // Culling-safe helper: under `viewportCulling={true}` opentui leaves
+    // stale positions inside off-screen file subtrees, and a cross-file
+    // `n`/`p` jump lands on the previous file otherwise.
     scrollChildIntoView(
       diffScrollRef.current,
       `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`,
     );
   }, [cursor, layout]);
 
-  // Sidebar follows the cursor's file. Deps are `[cursor?.file]` (not
-  // `[cursor]`) so in-file j/k motion leaves the sidebar untouched —
-  // sidebar selection is a per-file affordance, not a per-row one.
+  // Sidebar follows the cursor's file. RowAnchor → cursor.file directly.
+  // CardAnchor → annotation.file resolved from the bundle. The deps key
+  // off the resolved file so in-file j/k motion leaves the sidebar
+  // untouched — sidebar selection is a per-file affordance, not a
+  // per-row one.
+  const cursorFile = useMemo<string | null>(() => {
+    if (!cursor) return null;
+    if (cursor.kind === "row") return cursor.file;
+    const ann = liveAnnotations.find((a) => a.id === cursor.annotationId);
+    return ann ? ann.file : null;
+  }, [cursor, liveAnnotations]);
   useEffect(() => {
-    if (!cursor) return;
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursor.file);
+    if (!cursorFile) return;
+    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursorFile);
     if (!located) return;
     if (located.collapsedFolders !== collapsedFolders) {
       setCollapsedFolders(located.collapsedFolders as Set<string>);
@@ -516,7 +508,7 @@ function App(props: AppProps) {
       setSelectedRowIdx(located.rowIdx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor?.file]);
+  }, [cursorFile]);
 
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
@@ -527,31 +519,13 @@ function App(props: AppProps) {
     sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
   }, [safeRowIdx, visibleRows]);
 
-  // Centre the current annotation card in the diff-pane viewport on every
-  // n/p — even if it was already on-screen — so the user always has context
-  // above and below to read into the thread. Mirrors the webapp's existing
-  // `scrollIntoView({ block: 'center' })` (PRD #126, issue #128). Cards
-  // taller than the viewport fall back to `block:start` inside
-  // `centerChildInView` so the title row lands at the top. The helper
-  // refreshes the descendant's ancestor chain before reading positions,
-  // which is what the previous inline form was missing under
-  // `viewportCulling={true}`.
-  useEffect(() => {
-    const sb = diffScrollRef.current;
-    if (!sb || !currentAnnotationId) return;
-    const ann = liveAnnotations.find((a) => a.id === currentAnnotationId);
-    if (!ann) return;
-    centerChildInView(sb, `annotation-${ann.id}`);
-  }, [currentAnnotationId, liveAnnotations, plannedRowsByFile]);
-
   // Scroll a freshly-created top-level Annotation into view (issue #150,
-  // PRD #148). Fires once per successful create — currentAnnotationId is
-  // intentionally untouched (preserves the seed-once-per-tour guard +
-  // r-after-a foot-gun protection at lines above). `nearest` semantics
-  // from scrollChildIntoView mean already-visible cards do not move.
-  // The effect waits for the card's box to mount; the bundle-reload
-  // re-render brings it into the scrollbox content tree, after which
-  // the pending id is cleared.
+  // PRD #148). Fires once per successful create — the cursor is
+  // intentionally untouched (PRD UX 26 r-after-a foot-gun protection).
+  // `nearest` semantics from scrollChildIntoView mean already-visible
+  // cards do not move. The effect waits for the card's box to mount;
+  // the bundle-reload re-render brings it into the scrollbox content
+  // tree, after which the pending id is cleared.
   useEffect(() => {
     if (!pendingScrollAnnotationId) return;
     const sb = diffScrollRef.current;
@@ -562,37 +536,70 @@ function App(props: AppProps) {
     setPendingScrollAnnotationId(null);
   }, [pendingScrollAnnotationId, liveAnnotations, plannedRowsByFile]);
 
-  const currentAnnotationIdx = useMemo(() => {
-    if (liveTopLevel.length === 0) return -1;
-    if (currentAnnotationId === null) return 0;
-    const idx = liveTopLevel.findIndex((a) => a.id === currentAnnotationId);
-    return idx === -1 ? 0 : idx;
-  }, [liveTopLevel, currentAnnotationId]);
+  // Derived: the cursor's card target (PRD #192 / ADR 0022). When the
+  // cursor is on a card, the target is that card's id; when on a row
+  // (or null), there is no card target — `r`/`s` are no-ops with a
+  // footer hint.
+  const cursorCardId: string | null =
+    cursor && cursor.kind === "card" ? cursor.annotationId : null;
+  const cursorCardAnnotation =
+    cursorCardId !== null
+      ? liveAnnotations.find((a) => a.id === cursorCardId) ?? null
+      : null;
+  // 1-based nav index of the cursor's card in the top-level list, or
+  // -1 when there is no card target. The top-header pill renders
+  // `—/M` when -1 (kind === "row" or null cursor); index is 1-based
+  // for human readability.
+  const cursorCardNavIdx =
+    cursorCardId !== null
+      ? liveTopLevel.findIndex((a) => a.id === cursorCardId)
+      : -1;
 
   // Show the `s: send to {agent}` hint whenever `canSendToAgent.visible`
-  // is true — i.e. when the focused card is human-authored and
-  // `--reply-agent` is set, regardless of the lock. The single-line
-  // footer is already painted in theme.fg.muted so there's no
-  // separate "dimmed" rendering; the user's "wait" signal comes from
-  // the App-driven footerStatus flash when they press `s` against a
-  // held lock.
-  const currentAnn = liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
-  const sendHintVerdict = currentAnn
+  // is true — i.e. when the cursor's card is human-authored and
+  // `--reply-agent` is set, regardless of the lock.
+  const sendHintVerdict = cursorCardAnnotation
     ? canSendToAgent({
         replyAgentConfigured: !!props.replyAgent,
         lockHeld: liveReplyLock !== null,
-        authorKind: currentAnn.author_kind,
-        hasReply: liveAnnotations.some((a) => a.replies_to === currentAnn.id),
+        authorKind: cursorCardAnnotation.author_kind,
+        hasReply: liveAnnotations.some(
+          (a) => a.replies_to === cursorCardAnnotation.id,
+        ),
       })
     : { visible: false, enabled: false };
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
     showSendHint: sendHintVerdict.visible,
   });
-  const baseFooter =
-    liveTopLevel.length > 0
-      ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
-      : footerHints;
+  // Action-target preview line (PRD #192 / ADR 0022). Renders the
+  // cursor's `r` target so the user knows what `r` will do before
+  // pressing it. Off-screen suffix uses the diff-pane scrollbox viewport
+  // mapped onto the flat-row index space — the line-height isn't fixed
+  // so we approximate by comparing the cursor's row index to the rough
+  // visible range. When the scrollbox isn't ready, the suffix is
+  // omitted.
+  const cursorRowIdx = resolveCursorRowIdx(cursor, flatRowsList);
+  const viewportRange = ((): { start: number; end: number } | undefined => {
+    const sb = diffScrollRef.current;
+    if (!sb || flatRowsList.length === 0) return undefined;
+    // Approximate: contentHeight / flatRows ≈ avg row height. The
+    // approximation is fine for off-screen detection — direction is
+    // what matters, not the precise boundary.
+    const total = flatRowsList.length;
+    const avg = sb.scrollHeight > 0 ? sb.scrollHeight / total : 1;
+    if (avg === 0) return undefined;
+    const start = Math.max(0, Math.floor(sb.scrollTop / avg));
+    const end = Math.min(total, Math.ceil((sb.scrollTop + sb.viewport.height) / avg));
+    return { start, end };
+  })();
+  const footerPreview = composeFooterPreview({
+    cursor,
+    annotations: liveAnnotations,
+    viewportRange,
+    cursorRowIdx,
+  });
+  const baseFooter = `${footerPreview}  ·  ${footerHints}`;
   const footer = footerStatus ? `${baseFooter}  ·  ${footerStatus}` : baseFooter;
 
   const pickerRows = useMemo(
@@ -651,7 +658,6 @@ function App(props: AppProps) {
         setReplyLock(null);
       }
       setSelectedRowIdx(0);
-      setCurrentAnnotationId(null);
       setCursor(null);
       setCollapsedOverrides({});
       setCollapsedFolders(new Set());
@@ -672,13 +678,8 @@ function App(props: AppProps) {
 
   const jumpToAnnotation = (ann: Annotation) => {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
-    // subsequent j/k move the diff cursor, not the file row. The user's
-    // visual attention is on the annotation in the diff — motion keys
-    // should follow. The tour-open seed effect (above) updates state
-    // directly rather than going through this function, but applies the
-    // same focus-drop when annotations exist (issue #132 revision).
+    // subsequent j/k move the diff cursor, not the file row.
     setSidebarFocused(false);
-    setCurrentAnnotationId(ann.id);
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, ann.file);
     if (located) {
       if (located.collapsedFolders !== collapsedFolders) {
@@ -689,30 +690,29 @@ function App(props: AppProps) {
       }
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
-    // β-coupling per ADR 0011: annotation-nav also moves the line cursor.
-    // Reverse direction (`j`/`k`) stays decoupled.
+    // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
+    // annotation's card directly — no synthesized row anchor.
     setCursor(cursorFromAnnotation(ann));
   };
 
-  // gotoPrev/NextAnnotation delegate the bounds check to the
-  // explicitAnnotationJump helper; jumpToAnnotation applies the
-  // focus-drop + cursor-materialization contract (issue #132).
+  // gotoPrev/NextAnnotation walk the card lane via `nextCard` / `prevCard`
+  // (PRD #192 / ADR 0022). When the cursor isn't a card, the walkers
+  // pick the first / last card so the user can land on the nav target
+  // with a single keystroke from any cursor state.
   const gotoPrevAnnotation = () => {
-    const target = explicitAnnotationJump({
-      topLevel: liveTopLevel,
-      currentIdx: currentAnnotationIdx,
-      delta: -1,
-    });
-    if (target) jumpToAnnotation(target);
+    const target = prevCard(cursor, flatRowsList);
+    if (target) {
+      const ann = liveAnnotations.find((a) => a.id === target.annotationId);
+      if (ann) jumpToAnnotation(ann);
+    }
   };
 
   const gotoNextAnnotation = () => {
-    const target = explicitAnnotationJump({
-      topLevel: liveTopLevel,
-      currentIdx: currentAnnotationIdx,
-      delta: 1,
-    });
-    if (target) jumpToAnnotation(target);
+    const target = nextCard(cursor, flatRowsList);
+    if (target) {
+      const ann = liveAnnotations.find((a) => a.id === target.annotationId);
+      if (ann) jumpToAnnotation(ann);
+    }
   };
 
   // Mouse click on a diff row → set cursor + side per the click site (issue
@@ -727,7 +727,7 @@ function App(props: AppProps) {
     lineNumber: number,
   ) => {
     setSidebarFocused(false);
-    setCursor({ file, lineNumber, side, preferredSide: side });
+    setCursor({ kind: "row", file, lineNumber, side, preferredSide: side });
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
     if (located) {
       if (located.collapsedFolders !== collapsedFolders) {
@@ -754,7 +754,7 @@ function App(props: AppProps) {
         file,
         subKind,
         boundaryRef,
-        preferredSide: prev?.preferredSide ?? "additions",
+        preferredSide: prev && prev.kind === "row" ? prev.preferredSide : "additions",
       }),
     );
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
@@ -848,7 +848,7 @@ function App(props: AppProps) {
   // specific handler. Pure dispatch table — the actual expansion behaviour
   // lives in the stubs above.
   const dispatchPrimaryAction = (all: boolean) => {
-    if (!cursor || !cursor.interactive) return;
+    if (!cursor || cursor.kind !== "row" || !cursor.interactive) return;
     const { subKind, boundaryRef } = cursor.interactive;
     switch (subKind) {
       case "hunk-separator":
@@ -886,20 +886,28 @@ function App(props: AppProps) {
 
   const openTopLevelComposer = () => {
     const activeCursor = materializeCursor();
-    const currentAnn =
-      liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
+    // `a` is row-only (PRD #192 / ADR 0022). The keymap already gates a
+    // card cursor to a footer-hint no-op; the App-shell composer call
+    // here defends in depth so the user can't reach a mis-anchored
+    // composer through state churn.
+    if (activeCursor && activeCursor.kind === "card") return;
     const state = buildTopLevelComposer({
       cursor: activeCursor,
-      currentAnnotation: currentAnn,
+      currentAnnotation: cursorCardAnnotation,
     });
     if (!state) return;
     setComposer(state);
   };
 
   const openReplyComposer = () => {
-    const currentAnn =
-      liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
-    const state = buildReplyComposer({ currentAnnotation: currentAnn });
+    // `r` is card-only (PRD #192 / ADR 0022). When the cursor's card is
+    // off-screen (wheel-scrolled away), pull it into view BEFORE the
+    // composer mounts — the user sees the card on-screen when the next
+    // render lands (auto-recall, PRD #192 user story 14).
+    if (!cursorCardAnnotation) return;
+    const sb = diffScrollRef.current;
+    if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
+    const state = buildReplyComposer({ currentAnnotation: cursorCardAnnotation });
     if (!state) return;
     setComposer(state);
   };
@@ -913,12 +921,13 @@ function App(props: AppProps) {
   // events drive the in-flight pill and the landed Reply into view.
   const sendCurrentToAgent = () => {
     if (!props.cwd || !props.replyAgent) return;
-    if (!currentAnnotationId) {
-      setFooterStatus("no annotation selected — n/p to navigate");
+    // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
+    // row case to a footer-hint no-op; this defends in depth.
+    if (!cursorCardAnnotation) {
+      setFooterStatus("no annotation under cursor — n/p to navigate");
       return;
     }
-    const current = liveAnnotations.find((a) => a.id === currentAnnotationId);
-    if (!current) return;
+    const current = cursorCardAnnotation;
     const hasReply = liveAnnotations.some((a) => a.replies_to === current.id);
     const verdict = canSendToAgent({
       replyAgentConfigured: true,
@@ -935,6 +944,11 @@ function App(props: AppProps) {
       return;
     }
     setFooterStatus(null);
+    // Auto-recall (PRD #192 user story 14): pull an off-screen card into
+    // view before dispatching so the user sees the card the agent is
+    // about to act on when the next render lands.
+    const sb = diffScrollRef.current;
+    if (sb) scrollChildIntoView(sb, `annotation-${current.id}`);
     const cwd = props.cwd;
     const tourId = liveTour.id;
     const annotationId = current.id;
@@ -1020,7 +1034,8 @@ function App(props: AppProps) {
         sidebarFocused,
         rowCount: visibleRows.length,
         selectedRowKind: selectedRow?.kind ?? null,
-        cursorOnInteractive: cursor?.interactive != null,
+        cursorOnInteractive: cursor?.kind === "row" && cursor.interactive != null,
+        cursorOnCard: cursor?.kind === "card",
       },
     );
 
@@ -1260,6 +1275,15 @@ function App(props: AppProps) {
       case "primary-action-all":
         dispatchPrimaryAction(true);
         return;
+      case "noop-reply-on-row":
+        setFooterStatus("r: no annotation under cursor — n/p to navigate");
+        return;
+      case "noop-send-on-row":
+        setFooterStatus("s: no annotation under cursor — n/p to navigate");
+        return;
+      case "noop-comment-on-card":
+        setFooterStatus("a: on a card — j/k to land on a row first");
+        return;
     }
   });
 
@@ -1268,7 +1292,7 @@ function App(props: AppProps) {
       <TopHeaderTui
         tour={liveTour}
         layout={layout}
-        currentAnnotationIdx={currentAnnotationIdx}
+        currentAnnotationIdx={cursorCardNavIdx}
         topLevelTotal={liveTopLevel.length}
         selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
@@ -1393,7 +1417,7 @@ function App(props: AppProps) {
                       reason,
                       rows,
                       layout,
-                      currentAnnotationId,
+                      cursorCardId,
                       cursor,
                       onCursorClick,
                       onInteractiveClick,

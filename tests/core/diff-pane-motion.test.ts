@@ -26,6 +26,7 @@ function makeRows(file: string, count: number): FlatRow[] {
 function cursorAt(row: FlatRow): Cursor {
   if (row.kind !== "diff") throw new Error("expected diff row");
   return {
+    kind: "row",
     file: row.file,
     lineNumber: row.lineNumber,
     side: row.side,
@@ -219,6 +220,7 @@ describe("step preserves preferredSide and screen position invariants", () => {
   it("preserves preferredSide across cross-row motion", () => {
     const rows = makeRows("x.txt", 10);
     const cursor: Cursor = {
+      kind: "row",
       file: "x.txt",
       lineNumber: 3,
       side: "additions",
@@ -233,7 +235,7 @@ describe("step preserves preferredSide and screen position invariants", () => {
       contentHeight: rows.length,
     };
     const r = step(state, "down");
-    expect(r.cursor?.preferredSide).toBe("deletions");
+    expect(r.cursor && r.cursor.kind === "row" && r.cursor.preferredSide).toBe("deletions");
   });
 
   it("scroll-by-one keeps the cursor at the same screen y when in the bottom margin", () => {
@@ -464,6 +466,7 @@ describe("pageMove (up)", () => {
   it("preserves preferredSide across page motion", () => {
     const rows = makeRows("x.txt", 50);
     const cursor: Cursor = {
+      kind: "row",
       file: "x.txt",
       lineNumber: 6,
       side: "additions",
@@ -478,7 +481,7 @@ describe("pageMove (up)", () => {
       contentHeight: rows.length,
     };
     const r = pageMove(state, "down", "full");
-    expect(r.cursor?.preferredSide).toBe("deletions");
+    expect(r.cursor && r.cursor.kind === "row" && r.cursor.preferredSide).toBe("deletions");
   });
 });
 
@@ -576,6 +579,7 @@ describe("pageMove (half-step, down)", () => {
   it("preserves preferredSide across half-step motion", () => {
     const rows = makeRows("x.txt", 50);
     const cursor: Cursor = {
+      kind: "row",
       file: "x.txt",
       lineNumber: 6,
       side: "additions",
@@ -590,7 +594,7 @@ describe("pageMove (half-step, down)", () => {
       contentHeight: rows.length,
     };
     const r = pageMove(state, "down", "half");
-    expect(r.cursor?.preferredSide).toBe("deletions");
+    expect(r.cursor && r.cursor.kind === "row" && r.cursor.preferredSide).toBe("deletions");
   });
 });
 
@@ -756,6 +760,7 @@ describe("jump (home)", () => {
   it("preserves preferredSide", () => {
     const rows = makeRows("x.txt", 30);
     const cursor: Cursor = {
+      kind: "row",
       file: "x.txt",
       lineNumber: 15,
       side: "additions",
@@ -770,7 +775,7 @@ describe("jump (home)", () => {
       contentHeight: rows.length,
     };
     const r = jump(state, "home");
-    expect(r.cursor?.preferredSide).toBe("deletions");
+    expect(r.cursor && r.cursor.kind === "row" && r.cursor.preferredSide).toBe("deletions");
   });
 
   it("doc shorter than viewport — cursor lands on first row, scrollTop stays 0", () => {
@@ -905,6 +910,7 @@ describe("jump (end)", () => {
   it("preserves preferredSide", () => {
     const rows = makeRows("x.txt", 30);
     const cursor: Cursor = {
+      kind: "row",
       file: "x.txt",
       lineNumber: 5,
       side: "additions",
@@ -919,7 +925,7 @@ describe("jump (end)", () => {
       contentHeight: rows.length,
     };
     const r = jump(state, "end");
-    expect(r.cursor?.preferredSide).toBe("deletions");
+    expect(r.cursor && r.cursor.kind === "row" && r.cursor.preferredSide).toBe("deletions");
   });
 
   it("end at single-row flatRows — cursor lands on that row, scrollTop=0", () => {

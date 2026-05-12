@@ -1,4 +1,4 @@
-import type { Cursor } from "../../core/cursor-state.js";
+import type { Cursor, RowAnchor } from "../../core/cursor-state.js";
 import { cssEscape, queryAllAcrossShadow, shadowRootsDeep } from "./dom-walk.js";
 import { gapRowSelectorFor } from "./gap-row-overlay.js";
 
@@ -44,6 +44,11 @@ export function syncCursorOverlay(
 ): () => void {
   clearOverlayEverywhere(root);
   if (!cursor) return () => clearOverlayEverywhere(root);
+  // CardAnchors have no DOM-cell mapping — the per-card visual treatment
+  // lives on the AnnotationCard component directly. Webapp slice-1 still
+  // produces only RowAnchors; the guard means a future CardAnchor flow
+  // through the keymap doesn't corrupt the overlay.
+  if (cursor.kind !== "row") return () => clearOverlayEverywhere(root);
 
   const block = findFileBlock(root, cursor.file);
   if (!block) return () => clearOverlayEverywhere(root);
@@ -167,6 +172,7 @@ function schedulePlacementScroll(cell: Element): void {
 export function scrollCursorIntoView(root: ParentNode, cursor: Cursor | null): void {
   if (typeof IntersectionObserver !== "undefined") return; // IO path handles it.
   if (!cursor) return;
+  if (cursor.kind !== "row") return;
   const block = findFileBlock(root, cursor.file);
   if (!block) return;
   const cell = findCursorCell(block, cursor);
@@ -195,7 +201,7 @@ function findFileBlock(root: ParentNode, file: string): Element | null {
   return null;
 }
 
-function findCursorCell(block: ParentNode, cursor: Cursor): Element | null {
+function findCursorCell(block: ParentNode, cursor: RowAnchor): Element | null {
   // Interactive cursors (gap-row family — PRD #151 / ADR 0018, ADR 0013)
   // resolve against the Tour-injected `[data-tour-interactive]` overlay
   // node by `(subKind, boundaryRef)`. The outline spans the whole row

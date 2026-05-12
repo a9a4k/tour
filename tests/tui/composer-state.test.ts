@@ -4,7 +4,7 @@ import {
   buildTopLevelComposer,
 } from "../../src/tui/composer-state.js";
 import type { Annotation } from "../../src/core/types.js";
-import type { Cursor } from "../../src/core/cursor-state.js";
+import type { Cursor, RowAnchor } from "../../src/core/cursor-state.js";
 
 function ann(overrides: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
   return {
@@ -21,7 +21,8 @@ function ann(overrides: Partial<Annotation> & Pick<Annotation, "id">): Annotatio
   };
 }
 
-const cursor = (overrides: Partial<Cursor> & Pick<Cursor, "file" | "lineNumber">): Cursor => ({
+const cursor = (overrides: Partial<RowAnchor> & Pick<RowAnchor, "file" | "lineNumber">): RowAnchor => ({
+  kind: "row",
   file: overrides.file,
   lineNumber: overrides.lineNumber,
   side: overrides.side ?? "additions",
@@ -112,6 +113,7 @@ describe("buildTopLevelComposer", () => {
   // silently retarget the composer to a different anchor.
   it("returns null when the cursor sits on an interactive row", () => {
     const c: Cursor = {
+      kind: "row",
       file: "src/foo.ts",
       lineNumber: 0,
       side: "additions",
@@ -125,6 +127,7 @@ describe("buildTopLevelComposer", () => {
 
   it("returns null on interactive cursor even when a current annotation exists (no silent retarget)", () => {
     const c: Cursor = {
+      kind: "row",
       file: "src/foo.ts",
       lineNumber: 0,
       side: "additions",

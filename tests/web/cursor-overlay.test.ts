@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { syncCursorOverlay, scrollCursorIntoView } from "../../src/web/client/cursor-overlay.js";
-import type { Cursor } from "../../src/core/cursor-state.js";
+import type { RowAnchor } from "../../src/core/cursor-state.js";
 
-const cur = (over: Partial<Cursor> & Pick<Cursor, "file" | "lineNumber" | "side">): Cursor => ({
+const cur = (over: Partial<RowAnchor> & Pick<RowAnchor, "file" | "lineNumber" | "side">): RowAnchor => ({
+  kind: "row",
   file: over.file,
   lineNumber: over.lineNumber,
   side: over.side,

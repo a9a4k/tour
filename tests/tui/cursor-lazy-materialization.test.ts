@@ -26,9 +26,13 @@ function fileFromName(name: string): DiffFile {
   return { name, type: "change", hunks: [] };
 }
 
-function plannedFor(name: string, layout: "split" | "unified"): PlannedRow[] {
+function plannedFor(
+  name: string,
+  layout: "split" | "unified",
+  annotations: Annotation[] = [],
+): PlannedRow[] {
   const meta = parsePatchFiles(SIMPLE_DIFF.replace(/REPLACE/g, name))[0].files[0];
-  return planRows(meta, [], layout);
+  return planRows(meta, annotations, layout);
 }
 
 function ann(o: Pick<Annotation, "id" | "file" | "side" | "line_start" | "line_end">): Annotation {
@@ -55,6 +59,8 @@ const diffPane: KeymapContext = {
   sidebarFocused: false,
   rowCount: 3,
   selectedRowKind: "file",
+  cursorOnInteractive: false,
+  cursorOnCard: false,
 };
 
 /**
@@ -103,23 +109,22 @@ describe("first j/k/h/l materializes at the default target", () => {
     ]);
     const flat = flatRows([fa, fb], planned, () => false);
     const seeded = initialCursor({ topLevelAnnotations: [], flatRows: flat });
-    expect(seeded?.file).toBe("a.txt");
+    if (seeded?.kind !== "row") throw new Error("expected row anchor");
+    expect(seeded.file).toBe("a.txt");
     // Initial cursor lands on the first DIFF row, skipping interactive
     // hunk-separator rows (PRD #107 US 14, ADR 0013).
     const firstDiff = flat.find((r) => r.kind === "diff");
     if (firstDiff?.kind !== "diff") throw new Error("no diff row");
-    expect(seeded?.lineNumber).toBe(firstDiff.lineNumber);
+    expect(seeded.lineNumber).toBe(firstDiff.lineNumber);
   });
 
-  it("Tour with annotations: seeds at the first top-level annotation's anchor", () => {
+  it("Tour with annotations: seeds at the first top-level annotation's CardAnchor (PRD #192)", () => {
     const f = fileFromName("a.txt");
-    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
-    const flat = flatRows([f], planned, () => false);
     const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
+    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split", [a])]]);
+    const flat = flatRows([f], planned, () => false);
     const seeded = initialCursor({ topLevelAnnotations: [a], flatRows: flat });
-    expect(seeded?.file).toBe("a.txt");
-    expect(seeded?.lineNumber).toBe(2);
-    expect(seeded?.side).toBe("additions");
+    expect(seeded).toEqual({ kind: "card", annotationId: "a1" });
   });
 
   it("degraded Tour (no rows): materialization yields null and motion is a no-op", () => {
@@ -131,13 +136,19 @@ describe("first j/k/h/l materializes at the default target", () => {
 });
 
 describe("a from null cursor materializes at the default target AND opens the composer", () => {
-  it("with annotations: composer opens at the first annotation's anchor", () => {
+  it("with annotations: seeded card cursor falls back to currentAnnotation anchor for `a` composer (PRD #192 — `a` is row-only)", () => {
+    // Under the unified-cursor model the seeded cursor at tour-open is a
+    // CardAnchor (PRD #192). `a` is row-only — when the cursor is on a
+    // card, buildTopLevelComposer falls back to the supplied
+    // currentAnnotation. The App-shell keymap surfaces a footer hint
+    // before reaching this path; the helper's fallback covers the
+    // degraded direct-call path.
     const f = fileFromName("a.txt");
-    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
-    const flat = flatRows([f], planned, () => false);
     const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
+    const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split", [a])]]);
+    const flat = flatRows([f], planned, () => false);
     const seeded = initialCursor({ topLevelAnnotations: [a], flatRows: flat });
-    const composer = buildTopLevelComposer({ cursor: seeded, currentAnnotation: null });
+    const composer = buildTopLevelComposer({ cursor: seeded, currentAnnotation: a });
     expect(composer).toEqual({
       kind: "top-level",
       file: "a.txt",
@@ -171,19 +182,14 @@ describe("a from null cursor materializes at the default target AND opens the co
   });
 });
 
-describe("n/p from null cursor materializes via β-coupling", () => {
+describe("n/p from null cursor materializes a CardAnchor (PRD #192)", () => {
   // n/p call cursorFromAnnotation(target) inside jumpToAnnotation — a
   // null cursor at the moment of n/p press lands on the target
-  // annotation's anchor in one step.
-  it("cursorFromAnnotation seeds the cursor at the target's anchor", () => {
+  // annotation's CardAnchor in one step.
+  it("cursorFromAnnotation seeds a CardAnchor on the target's id", () => {
     const a = ann({ id: "a1", file: "src/foo.ts", side: "deletions", line_start: 7, line_end: 7 });
     const c = cursorFromAnnotation(a);
-    expect(c).toEqual({
-      file: "src/foo.ts",
-      lineNumber: 7,
-      side: "deletions",
-      preferredSide: "deletions",
-    });
+    expect(c).toEqual({ kind: "card", annotationId: "a1" });
   });
 });
 

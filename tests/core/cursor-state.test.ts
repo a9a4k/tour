@@ -2,13 +2,19 @@ import { describe, it, expect } from "vitest";
 import {
   initialCursor,
   moveCursor,
+  nextCard,
+  prevCard,
   setCursorSide,
   validateCursor,
   resolveCursorRowIdx,
   cursorFromAnnotation,
   cursorAtFirstFileRow,
   cursorOnInteractive,
+  isRowAnchor,
+  isCardAnchor,
   type Cursor,
+  type RowAnchor,
+  type CardAnchor,
 } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 import type { Annotation } from "../../src/core/types.js";
@@ -57,6 +63,25 @@ function interactiveFlat(parts: {
   };
 }
 
+function cardFlat(parts: {
+  file: string;
+  side: "additions" | "deletions";
+  lineEnd: number;
+  annotationId: string;
+}): FlatRow {
+  return {
+    kind: "card",
+    file: parts.file,
+    side: parts.side,
+    lineEnd: parts.lineEnd,
+    annotationId: parts.annotationId,
+  };
+}
+
+function row(c: Partial<RowAnchor> & Pick<RowAnchor, "file" | "lineNumber" | "side" | "preferredSide">): RowAnchor {
+  return { kind: "row", ...c };
+}
+
 function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "side" | "line_start" | "line_end">): Annotation {
   return {
     id: o.id,
@@ -77,49 +102,32 @@ describe("initialCursor", () => {
     expect(initialCursor({ topLevelAnnotations: [], flatRows: [] })).toBeNull();
   });
 
-  it("seeds from the first top-level annotation when one exists and resolves", () => {
+  it("seeds a CardAnchor on the first top-level annotation when its card row is in the stream (PRD #192)", () => {
     const rows: FlatRow[] = [
       pairedFlat("x.txt", 1, 1),
       pairedFlat("x.txt", 2, 2),
+      cardFlat({ file: "x.txt", side: "additions", lineEnd: 2, annotationId: "a1" }),
     ];
     const a = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 2, line_end: 2 });
     const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
-    expect(cursor).toEqual({ file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
+    expect(cursor).toEqual({ kind: "card", annotationId: "a1" });
   });
 
-  it("seeds at line_end (not line_start) for multi-line annotations (#170)", () => {
-    const rows: FlatRow[] = [
-      pairedFlat("x.txt", 1, 1),
-      pairedFlat("x.txt", 2, 2),
-      pairedFlat("x.txt", 3, 3),
-      pairedFlat("x.txt", 4, 4),
-    ];
-    const a = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 2, line_end: 4 });
-    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
-    expect(cursor).toEqual({ file: "x.txt", lineNumber: 4, side: "additions", preferredSide: "additions" });
-  });
-
-  it("falls back to the first row when there are no annotations", () => {
+  it("falls back to the first diff row when there are no annotations", () => {
     const rows: FlatRow[] = [pairedFlat("x.txt", 5, 5)];
     const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
-    expect(cursor).toEqual({ file: "x.txt", lineNumber: 5, side: "additions", preferredSide: "additions" });
+    expect(cursor).toEqual(row({ file: "x.txt", lineNumber: 5, side: "additions", preferredSide: "additions" }));
   });
 
-  it("falls back to the first row when the top annotation's anchor isn't resolvable", () => {
+  it("falls back to the first diff row when the top annotation's card row isn't in the flat stream", () => {
+    // Card row missing (e.g., card row emission disabled or annotation
+    // pointed at a missing anchor). The fallback is the first diff row.
     const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
     const a = ann({ id: "g", file: "x.txt", side: "additions", line_start: 999, line_end: 999 });
     const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
-    expect(cursor?.lineNumber).toBe(1);
-  });
-
-  it("seeds preferredSide from the annotation's side", () => {
-    const rows: FlatRow[] = [
-      flat({ file: "x.txt", side: "deletions", lineNumber: 7, leftLineNumber: 7, rightLineNumber: null }),
-    ];
-    const a = ann({ id: "a1", file: "x.txt", side: "deletions", line_start: 7, line_end: 7 });
-    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
-    expect(cursor?.preferredSide).toBe("deletions");
-    expect(cursor?.side).toBe("deletions");
+    expect(cursor?.kind).toBe("row");
+    if (cursor?.kind !== "row") throw new Error("narrow");
+    expect(cursor.lineNumber).toBe(1);
   });
 });
 
@@ -131,27 +139,27 @@ describe("moveCursor", () => {
   ];
 
   it("moves down one row", () => {
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     const next = moveCursor(c, "down", rows);
-    expect(next?.lineNumber).toBe(2);
+    expect(isRowAnchor(next) && next.lineNumber).toBe(2);
   });
 
   it("moves up one row", () => {
-    const c: Cursor = { file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
     const next = moveCursor(c, "up", rows);
-    expect(next?.lineNumber).toBe(1);
+    expect(isRowAnchor(next) && next.lineNumber).toBe(1);
   });
 
   it("stops at the last row of the flat sequence (stream extremity)", () => {
-    const c: Cursor = { file: "x.txt", lineNumber: 3, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 3, side: "additions", preferredSide: "additions" });
     const next = moveCursor(c, "down", rows);
-    expect(next?.lineNumber).toBe(3);
+    expect(isRowAnchor(next) && next.lineNumber).toBe(3);
   });
 
   it("stops at the first row of the flat sequence (stream extremity)", () => {
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     const next = moveCursor(c, "up", rows);
-    expect(next?.lineNumber).toBe(1);
+    expect(isRowAnchor(next) && next.lineNumber).toBe(1);
   });
 
   it("returns null when cursor is null", () => {
@@ -159,12 +167,12 @@ describe("moveCursor", () => {
   });
 
   it("preserves preferredSide across motion", () => {
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" });
     const next = moveCursor(c, "down", rows);
-    expect(next?.preferredSide).toBe("deletions");
-    // Paired rows honour preferredSide so effective side stays deletions.
-    expect(next?.side).toBe("deletions");
-    expect(next?.lineNumber).toBe(2);
+    if (!isRowAnchor(next)) throw new Error("narrow");
+    expect(next.preferredSide).toBe("deletions");
+    expect(next.side).toBe("deletions");
+    expect(next.lineNumber).toBe(2);
   });
 
   it("snaps effective side on a single-side destination row", () => {
@@ -172,11 +180,54 @@ describe("moveCursor", () => {
       pairedFlat("x.txt", 1, 1),
       flat({ file: "x.txt", side: "additions", lineNumber: 2, leftLineNumber: null, rightLineNumber: 2 }),
     ];
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" });
     const next = moveCursor(c, "down", mixed);
-    expect(next?.preferredSide).toBe("deletions");
-    expect(next?.side).toBe("additions");
-    expect(next?.lineNumber).toBe(2);
+    if (!isRowAnchor(next)) throw new Error("narrow");
+    expect(next.preferredSide).toBe("deletions");
+    expect(next.side).toBe("additions");
+    expect(next.lineNumber).toBe(2);
+  });
+
+  // Card lane is `n`/`p`; `j`/`k` must skip card rows (PRD #192 / ADR
+  // 0022). When the cursor sits on a card, the row-lane walker steps to
+  // the next non-card row after the card's anchor.
+  describe("row lane skips card rows (PRD #192)", () => {
+    it("skips a card row between two diff rows on `down`", () => {
+      const mixed: FlatRow[] = [
+        pairedFlat("x.txt", 1, 1),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        pairedFlat("x.txt", 2, 2),
+      ];
+      const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      const next = moveCursor(c, "down", mixed);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(2);
+    });
+
+    it("from a card cursor lands on the next non-card row in the direction", () => {
+      const mixed: FlatRow[] = [
+        pairedFlat("x.txt", 1, 1),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        pairedFlat("x.txt", 2, 2),
+      ];
+      const c: CardAnchor = { kind: "card", annotationId: "a1" };
+      const next = moveCursor(c, "down", mixed);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(2);
+    });
+
+    it("stacked cards are jumped over in one step", () => {
+      const mixed: FlatRow[] = [
+        pairedFlat("x.txt", 1, 1),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a2" }),
+        pairedFlat("x.txt", 2, 2),
+      ];
+      const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      const next = moveCursor(c, "down", mixed);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(2);
+    });
   });
 
   describe("cross-file motion", () => {
@@ -188,82 +239,139 @@ describe("moveCursor", () => {
     ];
 
     it("descends into the next file when pressing down on the last row of file A", () => {
-      const c: Cursor = { file: "a.txt", lineNumber: 2, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "a.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "down", multi);
-      expect(next?.file).toBe("b.txt");
-      expect(next?.lineNumber).toBe(10);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.file).toBe("b.txt");
+      expect(next.lineNumber).toBe(10);
     });
 
     it("ascends into the previous file when pressing up on the first row of file B", () => {
-      const c: Cursor = { file: "b.txt", lineNumber: 10, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "b.txt", lineNumber: 10, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "up", multi);
-      expect(next?.file).toBe("a.txt");
-      expect(next?.lineNumber).toBe(2);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.file).toBe("a.txt");
+      expect(next.lineNumber).toBe(2);
     });
 
     it("stops at the very first row of the first file (stream extremity)", () => {
-      const c: Cursor = { file: "a.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "a.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "up", multi);
       expect(next).toEqual(c);
     });
 
     it("stops at the very last row of the last file (stream extremity)", () => {
-      const c: Cursor = { file: "b.txt", lineNumber: 11, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "b.txt", lineNumber: 11, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "down", multi);
       expect(next).toEqual(c);
     });
 
     it("preserves preferredSide across a file boundary", () => {
-      const c: Cursor = { file: "a.txt", lineNumber: 2, side: "deletions", preferredSide: "deletions" };
+      const c = row({ file: "a.txt", lineNumber: 2, side: "deletions", preferredSide: "deletions" });
       const next = moveCursor(c, "down", multi);
-      expect(next?.file).toBe("b.txt");
-      expect(next?.preferredSide).toBe("deletions");
-      // Next-file row is paired so preferredSide wins for effective side too.
-      expect(next?.side).toBe("deletions");
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.file).toBe("b.txt");
+      expect(next.preferredSide).toBe("deletions");
+      expect(next.side).toBe("deletions");
     });
 
     it("skips folded files (cursor jumps over them as if they weren't in the list)", () => {
-      // Folded files contribute zero rows to flatRows, so c→a.txt#2 + down
-      // skips the folded b.txt entirely and lands on the first row of c.txt.
-      // The flat-rows builder is responsible for the omission; moveCursor
-      // just sees a flat sequence with no b.txt entries.
       const skipping: FlatRow[] = [
         pairedFlat("a.txt", 1, 1),
         pairedFlat("a.txt", 2, 2),
-        // b.txt would be here but is folded → omitted
         pairedFlat("c.txt", 5, 5),
       ];
-      const c: Cursor = { file: "a.txt", lineNumber: 2, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "a.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "down", skipping);
-      expect(next?.file).toBe("c.txt");
-      expect(next?.lineNumber).toBe(5);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.file).toBe("c.txt");
+      expect(next.lineNumber).toBe(5);
     });
+  });
+});
+
+// Card lane walker (PRD #192 / ADR 0022). `n` / `p` step through card
+// rows, skipping diff and interactive rows. Returns null at the bounds.
+describe("nextCard / prevCard (PRD #192)", () => {
+  const rows: FlatRow[] = [
+    pairedFlat("x.txt", 1, 1),
+    cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+    pairedFlat("x.txt", 2, 2),
+    cardFlat({ file: "x.txt", side: "additions", lineEnd: 2, annotationId: "a2" }),
+    pairedFlat("x.txt", 3, 3),
+  ];
+
+  it("nextCard from a row cursor lands on the next card", () => {
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+    expect(nextCard(c, rows)).toEqual({ kind: "card", annotationId: "a1" });
+  });
+
+  it("nextCard from a card cursor lands on the following card", () => {
+    const c: CardAnchor = { kind: "card", annotationId: "a1" };
+    expect(nextCard(c, rows)).toEqual({ kind: "card", annotationId: "a2" });
+  });
+
+  it("nextCard from the last card returns null", () => {
+    const c: CardAnchor = { kind: "card", annotationId: "a2" };
+    expect(nextCard(c, rows)).toBeNull();
+  });
+
+  it("prevCard from a card cursor lands on the preceding card", () => {
+    const c: CardAnchor = { kind: "card", annotationId: "a2" };
+    expect(prevCard(c, rows)).toEqual({ kind: "card", annotationId: "a1" });
+  });
+
+  it("prevCard from the first card returns null", () => {
+    const c: CardAnchor = { kind: "card", annotationId: "a1" };
+    expect(prevCard(c, rows)).toBeNull();
+  });
+
+  it("nextCard from a null cursor picks the first card in the stream", () => {
+    expect(nextCard(null, rows)).toEqual({ kind: "card", annotationId: "a1" });
+  });
+
+  it("prevCard from a null cursor picks the last card in the stream", () => {
+    expect(prevCard(null, rows)).toEqual({ kind: "card", annotationId: "a2" });
+  });
+
+  it("returns null when there are no card rows in the stream", () => {
+    const rowsOnly: FlatRow[] = [pairedFlat("x.txt", 1, 1), pairedFlat("x.txt", 2, 2)];
+    expect(nextCard(null, rowsOnly)).toBeNull();
+    expect(prevCard(null, rowsOnly)).toBeNull();
   });
 });
 
 describe("setCursorSide", () => {
   it("on a paired row, both preferredSide and effective side switch", () => {
     const rows = [pairedFlat("x.txt", 5, 7)];
-    const c: Cursor = { file: "x.txt", lineNumber: 7, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 7, side: "additions", preferredSide: "additions" });
     const next = setCursorSide(c, "deletions", rows);
-    expect(next?.side).toBe("deletions");
-    expect(next?.preferredSide).toBe("deletions");
-    expect(next?.lineNumber).toBe(5);
+    if (!isRowAnchor(next)) throw new Error("narrow");
+    expect(next.side).toBe("deletions");
+    expect(next.preferredSide).toBe("deletions");
+    expect(next.lineNumber).toBe(5);
   });
 
   it("on a single-side row, preferredSide updates but effective side is forced", () => {
     const rows: FlatRow[] = [
       flat({ file: "x.txt", side: "additions", lineNumber: 9, leftLineNumber: null, rightLineNumber: 9 }),
     ];
-    const c: Cursor = { file: "x.txt", lineNumber: 9, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 9, side: "additions", preferredSide: "additions" });
     const next = setCursorSide(c, "deletions", rows);
-    expect(next?.preferredSide).toBe("deletions");
-    expect(next?.side).toBe("additions");
-    expect(next?.lineNumber).toBe(9);
+    if (!isRowAnchor(next)) throw new Error("narrow");
+    expect(next.preferredSide).toBe("deletions");
+    expect(next.side).toBe("additions");
+    expect(next.lineNumber).toBe(9);
   });
 
   it("returns null when cursor is null", () => {
     expect(setCursorSide(null, "deletions", [])).toBeNull();
+  });
+
+  it("on a card cursor, returns the cursor unchanged (h/l is a no-op on cards)", () => {
+    const c: CardAnchor = { kind: "card", annotationId: "a1" };
+    const rows: FlatRow[] = [cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" })];
+    expect(setCursorSide(c, "deletions", rows)).toBe(c);
   });
 
   it("preserves preferredSide across moves after a side change", () => {
@@ -272,43 +380,45 @@ describe("setCursorSide", () => {
       pairedFlat("x.txt", 2, 11),
       pairedFlat("x.txt", 3, 12),
     ];
-    const c: Cursor = { file: "x.txt", lineNumber: 10, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 10, side: "additions", preferredSide: "additions" });
     const sided = setCursorSide(c, "deletions", rows);
-    expect(sided?.side).toBe("deletions");
+    if (!isRowAnchor(sided)) throw new Error("narrow");
+    expect(sided.side).toBe("deletions");
     const moved = moveCursor(sided, "down", rows);
-    expect(moved?.side).toBe("deletions");
-    expect(moved?.lineNumber).toBe(2);
+    if (!isRowAnchor(moved)) throw new Error("narrow");
+    expect(moved.side).toBe("deletions");
+    expect(moved.lineNumber).toBe(2);
     const moved2 = moveCursor(moved, "down", rows);
-    expect(moved2?.side).toBe("deletions");
-    expect(moved2?.lineNumber).toBe(3);
+    if (!isRowAnchor(moved2)) throw new Error("narrow");
+    expect(moved2.side).toBe("deletions");
+    expect(moved2.lineNumber).toBe(3);
   });
 });
 
 describe("validateCursor", () => {
   it("returns the cursor unchanged when its anchor still resolves", () => {
     const rows = [pairedFlat("x.txt", 1, 1)];
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     expect(validateCursor(c, rows)).toEqual(c);
   });
 
   it("snaps to the file's first row when the anchor is gone but the file remains", () => {
     const rows = [pairedFlat("x.txt", 1, 1), pairedFlat("x.txt", 2, 2)];
-    const c: Cursor = { file: "x.txt", lineNumber: 999, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 999, side: "additions", preferredSide: "additions" });
     const v = validateCursor(c, rows);
-    expect(v?.file).toBe("x.txt");
-    expect(v?.lineNumber).toBe(1);
+    if (!isRowAnchor(v)) throw new Error("narrow");
+    expect(v.file).toBe("x.txt");
+    expect(v.lineNumber).toBe(1);
   });
 
   it("returns null when no rows remain at all", () => {
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     expect(validateCursor(c, [])).toBeNull();
   });
 
   it("returns null when the cursor's file has no rows and no files context is given", () => {
-    // Without `files` the function can't pick a deterministic neighbour,
-    // so it falls through to null. App.tsx always passes files.
     const rows = [pairedFlat("y.txt", 1, 1)];
-    const c: Cursor = { file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     expect(validateCursor(c, rows)).toBeNull();
   });
 
@@ -316,58 +426,76 @@ describe("validateCursor", () => {
     expect(validateCursor(null, [pairedFlat("x.txt", 1, 1)])).toBeNull();
   });
 
-  // When the cursor's file becomes folded (`c` on the cursor's file in
-  // the sidebar) the row sequence loses every row from that file.
-  // validateCursor must snap to the next file in stream order so the
-  // cursor never points at an invisible row, falling back to the previous
-  // file at the tail and to null when no file in the bundle has any row.
   describe("stream-order snap when cursor's file is gone", () => {
     it("snaps to the first row of the next file in stream order", () => {
       const rows = [pairedFlat("a.txt", 5, 5), pairedFlat("c.txt", 7, 7)];
       const files = [{ name: "a.txt" }, { name: "b.txt" }, { name: "c.txt" }];
-      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
       const v = validateCursor(c, rows, files);
-      expect(v?.file).toBe("c.txt");
-      expect(v?.lineNumber).toBe(7);
+      if (!isRowAnchor(v)) throw new Error("narrow");
+      expect(v.file).toBe("c.txt");
+      expect(v.lineNumber).toBe(7);
     });
 
     it("falls back to the previous file when cursor was at the tail of stream order", () => {
       const rows = [pairedFlat("a.txt", 5, 5)];
       const files = [{ name: "a.txt" }, { name: "b.txt" }];
-      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
       const v = validateCursor(c, rows, files);
-      expect(v?.file).toBe("a.txt");
-      expect(v?.lineNumber).toBe(5);
+      if (!isRowAnchor(v)) throw new Error("narrow");
+      expect(v.file).toBe("a.txt");
+      expect(v.lineNumber).toBe(5);
     });
 
     it("returns null when no other file has rows (every other file folded too)", () => {
-      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
       expect(validateCursor(c, [], [{ name: "a.txt" }, { name: "b.txt" }])).toBeNull();
     });
 
     it("preserves anchor when a sibling (non-cursor) file folds", () => {
-      // cursor.file still has rows; b.txt was folded → its rows are absent.
-      // The anchor still resolves so validateCursor is a no-op.
       const rows = [pairedFlat("a.txt", 5, 5)];
       const files = [{ name: "a.txt" }, { name: "b.txt" }];
-      const c: Cursor = { file: "a.txt", lineNumber: 5, side: "additions", preferredSide: "additions" };
+      const c = row({ file: "a.txt", lineNumber: 5, side: "additions", preferredSide: "additions" });
       expect(validateCursor(c, rows, files)).toEqual(c);
     });
 
     it("preserves preferredSide on the snapped row", () => {
       const rows = [pairedFlat("c.txt", 1, 1)];
       const files = [{ name: "b.txt" }, { name: "c.txt" }];
-      const c: Cursor = { file: "b.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" };
+      const c = row({ file: "b.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" });
       const v = validateCursor(c, rows, files);
-      expect(v?.preferredSide).toBe("deletions");
+      if (!isRowAnchor(v)) throw new Error("narrow");
+      expect(v.preferredSide).toBe("deletions");
+    });
+  });
+
+  // PRD #192 / ADR 0022: a CardAnchor survives bundle reload when its
+  // annotationId is still in the flat-row stream; clears to null
+  // otherwise. No "snap to file's first row" fallback for cards — the
+  // card stop is unambiguous or gone.
+  describe("CardAnchor survival across reload (PRD #192)", () => {
+    it("preserves a CardAnchor whose annotationId is still in the flat-row stream", () => {
+      const rows: FlatRow[] = [
+        pairedFlat("x.txt", 1, 1),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+      ];
+      const c: CardAnchor = { kind: "card", annotationId: "a1" };
+      expect(validateCursor(c, rows)).toBe(c);
+    });
+
+    it("returns null when the CardAnchor's id is no longer in the stream", () => {
+      const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
+      const c: CardAnchor = { kind: "card", annotationId: "gone" };
+      expect(validateCursor(c, rows)).toBeNull();
+    });
+
+    it("returns null on empty flatRows even for a CardAnchor", () => {
+      const c: CardAnchor = { kind: "card", annotationId: "a1" };
+      expect(validateCursor(c, [])).toBeNull();
     });
   });
 });
 
-// Explicit sidebar-driven file selection (mouse click or arrow-then-
-// Return) moves the cursor to that file's first annotatable row — "show
-// me from the top" per PRD US 20. Folded files have no rows and the
-// cursor goes null.
 describe("cursorAtFirstFileRow", () => {
   it("returns a cursor on the file's first row in stream order", () => {
     const rows = [
@@ -375,12 +503,12 @@ describe("cursorAtFirstFileRow", () => {
       pairedFlat("x.txt", 6, 8),
       pairedFlat("y.txt", 1, 1),
     ];
-    expect(cursorAtFirstFileRow("y.txt", rows)).toEqual({
+    expect(cursorAtFirstFileRow("y.txt", rows)).toEqual(row({
       file: "y.txt",
       lineNumber: 1,
       side: "additions",
       preferredSide: "additions",
-    });
+    }));
   });
 
   it("picks the file's first row, not just any matching row", () => {
@@ -412,82 +540,72 @@ describe("cursorAtFirstFileRow", () => {
   });
 });
 
-// β-coupling per ADR 0011: n/p annotation-nav moves the line cursor to the
-// target annotation's anchor. The pure helper computes the cursor; app.tsx
-// wires it into the navigation handler. For multiline annotations, the cursor
-// materializes at line_end (issue #170) so the eye lands at the bottom of the
-// annotated range with the annotation card and the annotated region above.
+// PRD #192 / ADR 0022: cursorFromAnnotation returns a CardAnchor — the
+// card itself is the cursor stop. No row synthesis.
 describe("cursorFromAnnotation", () => {
-  it("anchors to the annotation's (file, side, line_end) for a single-line range", () => {
-    const a = ann({
-      id: "a1",
-      file: "src/foo.ts",
-      side: "additions",
-      line_start: 42,
-      line_end: 42,
-    });
-    expect(cursorFromAnnotation(a)).toEqual({
-      file: "src/foo.ts",
-      lineNumber: 42,
-      side: "additions",
-      preferredSide: "additions",
-    });
+  it("returns a CardAnchor pointing at the annotation's id", () => {
+    const a = ann({ id: "a1", file: "src/foo.ts", side: "additions", line_start: 42, line_end: 42 });
+    expect(cursorFromAnnotation(a)).toEqual({ kind: "card", annotationId: "a1" });
   });
 
-  it("uses line_end (not line_start) for multi-line annotations", () => {
-    const a = ann({
-      id: "a1",
-      file: "src/foo.ts",
-      side: "additions",
-      line_start: 10,
-      line_end: 20,
-    });
-    expect(cursorFromAnnotation(a).lineNumber).toBe(20);
-  });
-
-  it("sets preferredSide to the annotation's side (deletions)", () => {
-    const a = ann({
-      id: "a1",
-      file: "src/foo.ts",
-      side: "deletions",
-      line_start: 7,
-      line_end: 7,
-    });
-    const c = cursorFromAnnotation(a);
-    expect(c.side).toBe("deletions");
-    expect(c.preferredSide).toBe("deletions");
+  it("preserves the annotationId verbatim across multi-line ranges", () => {
+    const a = ann({ id: "weirdId", file: "src/foo.ts", side: "additions", line_start: 10, line_end: 20 });
+    expect(cursorFromAnnotation(a).annotationId).toBe("weirdId");
   });
 });
 
 describe("resolveCursorRowIdx", () => {
   it("locates a paired row by additions-side line number", () => {
     const rows = [pairedFlat("x.txt", 5, 7), pairedFlat("x.txt", 6, 8)];
-    const c: Cursor = { file: "x.txt", lineNumber: 8, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 8, side: "additions", preferredSide: "additions" });
     expect(resolveCursorRowIdx(c, rows)).toBe(1);
   });
 
   it("locates a paired row by deletions-side line number", () => {
     const rows = [pairedFlat("x.txt", 5, 7), pairedFlat("x.txt", 6, 8)];
-    const c: Cursor = { file: "x.txt", lineNumber: 5, side: "deletions", preferredSide: "deletions" };
+    const c = row({ file: "x.txt", lineNumber: 5, side: "deletions", preferredSide: "deletions" });
     expect(resolveCursorRowIdx(c, rows)).toBe(0);
   });
 
   it("returns -1 when not resolvable", () => {
     const rows = [pairedFlat("x.txt", 1, 1)];
-    const c: Cursor = { file: "x.txt", lineNumber: 99, side: "additions", preferredSide: "additions" };
+    const c = row({ file: "x.txt", lineNumber: 99, side: "additions", preferredSide: "additions" });
     expect(resolveCursorRowIdx(c, rows)).toBe(-1);
   });
 
   it("returns -1 when cursor is null", () => {
     expect(resolveCursorRowIdx(null, [pairedFlat("x.txt", 1, 1)])).toBe(-1);
   });
+
+  it("resolves a CardAnchor by annotationId match against a card flat row", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+    ];
+    const c: CardAnchor = { kind: "card", annotationId: "a1" };
+    expect(resolveCursorRowIdx(c, rows)).toBe(1);
+  });
 });
 
-// ADR 0013 / PRD #107: cursor extends to walk interactive rows alongside
-// diff rows. Anchor identity is `(file, subKind, boundaryRef)` instead
-// of `(file, side, lineNumber)`. h/l side toggle is a no-op there;
-// `a` (top-level annotate) is also a no-op (composer-state's job —
-// covered separately).
+describe("type guards", () => {
+  it("isRowAnchor narrows correctly", () => {
+    const r = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+    expect(isRowAnchor(r)).toBe(true);
+    expect(isRowAnchor(null)).toBeFalsy?.() ?? expect(isRowAnchor(null)).toBe(false);
+    const c: CardAnchor = { kind: "card", annotationId: "a1" };
+    expect(isRowAnchor(c)).toBe(false);
+  });
+
+  it("isCardAnchor narrows correctly", () => {
+    const c: CardAnchor = { kind: "card", annotationId: "a1" };
+    expect(isCardAnchor(c)).toBe(true);
+    expect(isCardAnchor(null)).toBe(false);
+    const r = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+    expect(isCardAnchor(r)).toBe(false);
+  });
+});
+
+// ADR 0013 / PRD #107: cursor walks interactive rows alongside diff rows.
 describe("interactive-row cursor support (PRD #107)", () => {
   it("moveCursor lands on an interactive row in the stream", () => {
     const rows: FlatRow[] = [
@@ -495,17 +613,13 @@ describe("interactive-row cursor support (PRD #107)", () => {
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
       pairedFlat("x.txt", 2, 2),
     ];
-    const c: Cursor = {
-      file: "x.txt",
-      lineNumber: 1,
-      side: "additions",
-      preferredSide: "additions",
-    };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     const next = moveCursor(c, "down", rows);
-    expect(next?.interactive).toBeDefined();
-    expect(next?.interactive?.subKind).toBe("hunk-separator");
-    expect(next?.interactive?.boundaryRef).toBe(1);
-    expect(next?.file).toBe("x.txt");
+    if (!isRowAnchor(next)) throw new Error("narrow");
+    expect(next.interactive).toBeDefined();
+    expect(next.interactive?.subKind).toBe("hunk-separator");
+    expect(next.interactive?.boundaryRef).toBe(1);
+    expect(next.file).toBe("x.txt");
   });
 
   it("moveCursor leaves an interactive row back onto a diff row", () => {
@@ -513,14 +627,15 @@ describe("interactive-row cursor support (PRD #107)", () => {
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
       pairedFlat("x.txt", 5, 5),
     ];
-    const c: Cursor = cursorOnInteractive({
+    const c = cursorOnInteractive({
       file: "x.txt",
       subKind: "hunk-separator",
       boundaryRef: 1,
     });
     const next = moveCursor(c, "down", rows);
-    expect(next?.interactive).toBeUndefined();
-    expect(next?.lineNumber).toBe(5);
+    if (!isRowAnchor(next)) throw new Error("narrow");
+    expect(next.interactive).toBeUndefined();
+    expect(next.lineNumber).toBe(5);
   });
 
   it("moveCursor preserves preferredSide across a diff→interactive→diff hop", () => {
@@ -529,24 +644,21 @@ describe("interactive-row cursor support (PRD #107)", () => {
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
       pairedFlat("x.txt", 2, 2),
     ];
-    const c: Cursor = {
-      file: "x.txt",
-      lineNumber: 1,
-      side: "deletions",
-      preferredSide: "deletions",
-    };
+    const c = row({ file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" });
     const onInteractive = moveCursor(c, "down", rows);
-    expect(onInteractive?.preferredSide).toBe("deletions");
+    if (!isRowAnchor(onInteractive)) throw new Error("narrow");
+    expect(onInteractive.preferredSide).toBe("deletions");
     const back = moveCursor(onInteractive, "down", rows);
-    expect(back?.preferredSide).toBe("deletions");
-    expect(back?.side).toBe("deletions");
+    if (!isRowAnchor(back)) throw new Error("narrow");
+    expect(back.preferredSide).toBe("deletions");
+    expect(back.side).toBe("deletions");
   });
 
   it("setCursorSide is a no-op on interactive rows (preferredSide preserved)", () => {
     const rows: FlatRow[] = [
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 0 }),
     ];
-    const c: Cursor = cursorOnInteractive({
+    const c = cursorOnInteractive({
       file: "x.txt",
       subKind: "hunk-separator",
       boundaryRef: 0,
@@ -560,7 +672,7 @@ describe("interactive-row cursor support (PRD #107)", () => {
       pairedFlat("x.txt", 1, 1),
       interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
     ];
-    const c: Cursor = cursorOnInteractive({
+    const c = cursorOnInteractive({
       file: "x.txt",
       subKind: "boundary-top",
       boundaryRef: "top",
@@ -570,15 +682,16 @@ describe("interactive-row cursor support (PRD #107)", () => {
 
   it("validateCursor snaps interactive cursor to file's first row when its boundary is gone", () => {
     const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
-    const c: Cursor = cursorOnInteractive({
+    const c = cursorOnInteractive({
       file: "x.txt",
       subKind: "hunk-separator",
       boundaryRef: 7,
     });
     const v = validateCursor(c, rows);
-    expect(v?.interactive).toBeUndefined();
-    expect(v?.file).toBe("x.txt");
-    expect(v?.lineNumber).toBe(1);
+    if (!isRowAnchor(v)) throw new Error("narrow");
+    expect(v.interactive).toBeUndefined();
+    expect(v.file).toBe("x.txt");
+    expect(v.lineNumber).toBe(1);
   });
 
   it("resolveCursorRowIdx resolves an interactive anchor by (file, subKind, boundaryRef)", () => {
@@ -587,7 +700,7 @@ describe("interactive-row cursor support (PRD #107)", () => {
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 0 }),
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
     ];
-    const c: Cursor = cursorOnInteractive({
+    const c = cursorOnInteractive({
       file: "x.txt",
       subKind: "hunk-separator",
       boundaryRef: 1,
@@ -599,7 +712,7 @@ describe("interactive-row cursor support (PRD #107)", () => {
     const rows: FlatRow[] = [
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 0 }),
     ];
-    const c: Cursor = cursorOnInteractive({
+    const c = cursorOnInteractive({
       file: "x.txt",
       subKind: "hunk-separator",
       boundaryRef: 99,
@@ -613,8 +726,9 @@ describe("interactive-row cursor support (PRD #107)", () => {
       pairedFlat("x.txt", 5, 5),
     ];
     const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
-    expect(cursor?.interactive).toBeUndefined();
-    expect(cursor?.lineNumber).toBe(5);
+    if (!isRowAnchor(cursor)) throw new Error("narrow");
+    expect(cursor.interactive).toBeUndefined();
+    expect(cursor.lineNumber).toBe(5);
   });
 
   it("initialCursor returns null when only interactive rows exist (no diff anchor)", () => {
@@ -642,11 +756,5 @@ describe("interactive-row cursor support (PRD #107)", () => {
     });
     expect(c.interactive).toEqual({ subKind: "collapsed-file", boundaryRef: "top" });
     expect(c.file).toBe("x.txt");
-  });
-
-  it("n/p selectors don't target interactive rows (cursorFromAnnotation produces no interactive cursor)", () => {
-    const a = ann({ id: "a1", side: "additions", line_start: 5, line_end: 5 });
-    const c = cursorFromAnnotation(a);
-    expect(c.interactive).toBeUndefined();
   });
 });

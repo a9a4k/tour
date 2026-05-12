@@ -17,7 +17,11 @@ interface DiffRowsProps {
   fileName: string;
   rows: PlannedRow[];
   layout: "split" | "unified";
-  currentAnnotationId: string | null;
+  /** Annotation id the unified cursor sits on, or null when the cursor is
+   *  on a row / interactive / null. Drives the three-cue active treatment
+   *  on the matching AnnotationCard (PRD #192 / ADR 0022 — same pixels as
+   *  the prior `currentAnnotationId`, new meaning "cursor is here"). */
+  cursorCardId: string | null;
   cursor?: Cursor | null;
   /** Mouse-click handler for cursor placement (issue #104). Side derivation
    *  is UI-coordinate-dependent and lives at the click site:
@@ -124,7 +128,7 @@ export function DiffRows({
   fileName,
   rows,
   layout,
-  currentAnnotationId,
+  cursorCardId,
   cursor,
   onCursorClick,
   onInteractiveClick,
@@ -134,6 +138,10 @@ export function DiffRows({
   navIndexById,
   navTotal,
 }: DiffRowsProps) {
+  // Narrow once: row-shaped cursor is the only kind that drives the per-
+  // row outline. A CardAnchor's per-card outline is handled by
+  // `cursorCardId` on the AnnotationCard side.
+  const rowCursor = cursor && cursor.kind === "row" ? cursor : null;
   const filetype = inferFiletype(fileName);
   const syntaxStyle = getSyntaxStyle();
 
@@ -166,11 +174,11 @@ export function DiffRows({
             : "hunk-separator";
           const boundaryRef: BoundaryRef = isFirstHunk ? "top" : row.hunkIndex;
           const cursorActive =
-            cursor != null &&
-            cursor.file === fileName &&
-            cursor.interactive != null &&
-            cursor.interactive.subKind === subKind &&
-            cursor.interactive.boundaryRef === boundaryRef;
+            rowCursor != null &&
+            rowCursor.file === fileName &&
+            rowCursor.interactive != null &&
+            rowCursor.interactive.subKind === subKind &&
+            rowCursor.interactive.boundaryRef === boundaryRef;
           const id = interactiveRowId(fileName, subKind, boundaryRef);
           const onMouseDown = onInteractiveClick
             ? () => onInteractiveClick(fileName, subKind, boundaryRef)
@@ -197,11 +205,11 @@ export function DiffRows({
           // with the diff-row treatment. The text body (e.g. "··· N
           // hidden ···") comes from the planner.
           const cursorActive =
-            cursor != null &&
-            cursor.file === fileName &&
-            cursor.interactive != null &&
-            cursor.interactive.subKind === row.subKind &&
-            cursor.interactive.boundaryRef === row.boundaryRef;
+            rowCursor != null &&
+            rowCursor.file === fileName &&
+            rowCursor.interactive != null &&
+            rowCursor.interactive.subKind === row.subKind &&
+            rowCursor.interactive.boundaryRef === row.boundaryRef;
           const id = interactiveRowId(fileName, row.subKind, row.boundaryRef);
           const onMouseDown = onInteractiveClick
             ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
@@ -228,7 +236,7 @@ export function DiffRows({
             <AnnotationCard
               key={`ann-${row.id}`}
               annotation={row.annotation}
-              isCurrent={row.id === currentAnnotationId}
+              isCurrent={row.id === cursorCardId}
               replies={row.replies}
               repliesCollapsed={repliesCollapsed}
               replyLock={replyLock}
@@ -250,7 +258,7 @@ export function DiffRows({
         }
 
         const cursorOnFile =
-          cursor != null && cursor.file === fileName ? cursor : null;
+          rowCursor != null && rowCursor.file === fileName ? rowCursor : null;
         const leftCursorActive =
           cursorOnFile != null &&
           cursorOnFile.side === "deletions" &&

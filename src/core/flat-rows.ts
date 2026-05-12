@@ -8,9 +8,9 @@ import type {
 export type { InteractiveSubKind, BoundaryRef };
 
 /**
- * One addressable cursor position on the diff stream. Skips hunk-header and
- * annotation rows; folded files contribute zero entries. The cursor walks
- * this sequence with j/k.
+ * One addressable cursor position on the diff stream. The cursor walks
+ * this sequence via two lanes — `j`/`k` steps row-kind entries (diff +
+ * interactive), `n`/`p` steps card-kind entries (PRD #192 / ADR 0022).
  *
  * Discriminated by `kind`:
  * - `diff` rows back the existing j/k anchor + h/l side toggle on real
@@ -19,6 +19,9 @@ export type { InteractiveSubKind, BoundaryRef };
  *   walks alongside diff rows: hunk-separators, synthetic file-top /
  *   file-bottom boundaries, and classifier-collapsed-file indicators.
  *   Pressing Enter routes to a row-kind-specific handler.
+ * - `card` rows (PRD #192) are Annotation cards — addressed by
+ *   `annotationId`. `r` / `s` dispatch only when the cursor sits on a
+ *   card; `a` is suppressed on a card.
  *
  * For paired diff rows (both line numbers populated) the cursor's
  * effective side is whichever side `preferredSide` selects. For single-
@@ -47,7 +50,24 @@ export interface InteractiveFlatRow {
   boundaryRef: BoundaryRef;
 }
 
-export type FlatRow = DiffFlatRow | InteractiveFlatRow;
+/**
+ * Annotation-card cursor stop (PRD #192 / ADR 0022). Emitted directly
+ * after the diff row the card's annotation anchors to (`line_end` on
+ * `side`). Multiple cards at the same anchor stack in `created_at` order
+ * (the planner's interleave step already enforces that — see
+ * `interleaveAnnotations` in `diff-rows.ts`).
+ */
+export interface CardFlatRow {
+  kind: "card";
+  file: string;
+  side: "additions" | "deletions";
+  /** Anchor line (`annotation.line_end` on `annotation.side`) — lets the
+   *  renderer find the card's anchor row when the cursor is on the card. */
+  lineEnd: number;
+  annotationId: string;
+}
+
+export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 
 /**
  * Build a DiffFlatRow from `(file, leftLineNumber, rightLineNumber)`. Shared
@@ -130,7 +150,21 @@ export function flatRows(
         }
         continue;
       }
-      // annotation rows are not cursor-addressable.
+      if (row.kind === "annotation") {
+        // Annotation cards are first-class cursor stops in the unified
+        // cursor model (PRD #192). The planner's interleave step has
+        // already placed the annotation row directly after its anchor
+        // diff row; we mirror that placement into the flat stream so
+        // the row-index lookup unifies for rows and cards.
+        out.push({
+          kind: "card",
+          file: file.name,
+          side: row.annotation.side,
+          lineEnd: row.annotation.line_end,
+          annotationId: row.annotation.id,
+        });
+        continue;
+      }
     }
   }
   return out;

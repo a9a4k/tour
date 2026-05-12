@@ -12,24 +12,42 @@ const sidebar: KeymapContext = {
   rowCount: 3,
   selectedRowKind: "file",
   cursorOnInteractive: false,
+  cursorOnCard: false,
 };
 const sidebarFolder: KeymapContext = {
   sidebarFocused: true,
   rowCount: 3,
   selectedRowKind: "folder",
   cursorOnInteractive: false,
+  cursorOnCard: false,
 };
 const diffPane: KeymapContext = {
   sidebarFocused: false,
   rowCount: 3,
   selectedRowKind: "file",
   cursorOnInteractive: false,
+  cursorOnCard: false,
 };
 const diffPaneInteractive: KeymapContext = {
   sidebarFocused: false,
   rowCount: 3,
   selectedRowKind: "file",
   cursorOnInteractive: true,
+  cursorOnCard: false,
+};
+const diffPaneOnCard: KeymapContext = {
+  sidebarFocused: false,
+  rowCount: 3,
+  selectedRowKind: "file",
+  cursorOnInteractive: false,
+  cursorOnCard: true,
+};
+const sidebarOnCard: KeymapContext = {
+  sidebarFocused: true,
+  rowCount: 3,
+  selectedRowKind: "file",
+  cursorOnInteractive: false,
+  cursorOnCard: true,
 };
 
 describe("dispatchKey", () => {
@@ -317,9 +335,14 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("a", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  it("r returns open-reply-composer regardless of pane focus", () => {
-    expect(dispatchKey(k("r"), sidebar).type).toBe("open-reply-composer");
-    expect(dispatchKey(k("r"), diffPane).type).toBe("open-reply-composer");
+  it("r returns open-reply-composer when the cursor is on a card (PRD #192)", () => {
+    expect(dispatchKey(k("r"), sidebarOnCard).type).toBe("open-reply-composer");
+    expect(dispatchKey(k("r"), diffPaneOnCard).type).toBe("open-reply-composer");
+  });
+
+  it("r on a row returns noop-reply-on-row (PRD #192 — labelled no-op via footer)", () => {
+    expect(dispatchKey(k("r"), sidebar).type).toBe("noop-reply-on-row");
+    expect(dispatchKey(k("r"), diffPane).type).toBe("noop-reply-on-row");
   });
 
   it("Ctrl+R is not consumed as open-reply-composer", () => {
@@ -327,9 +350,19 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("r", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  it("s returns send-to-agent regardless of pane focus (issue #184, PRD #181)", () => {
-    expect(dispatchKey(k("s"), sidebar).type).toBe("send-to-agent");
-    expect(dispatchKey(k("s"), diffPane).type).toBe("send-to-agent");
+  it("s returns send-to-agent when cursor is on a card (issue #184, PRD #181 + #192)", () => {
+    expect(dispatchKey(k("s"), sidebarOnCard).type).toBe("send-to-agent");
+    expect(dispatchKey(k("s"), diffPaneOnCard).type).toBe("send-to-agent");
+  });
+
+  it("s on a row returns noop-send-on-row (PRD #192 — card-only action)", () => {
+    expect(dispatchKey(k("s"), sidebar).type).toBe("noop-send-on-row");
+    expect(dispatchKey(k("s"), diffPane).type).toBe("noop-send-on-row");
+  });
+
+  it("a on a card returns noop-comment-on-card (PRD #192 — `a` is row-only)", () => {
+    expect(dispatchKey(k("a"), sidebarOnCard).type).toBe("noop-comment-on-card");
+    expect(dispatchKey(k("a"), diffPaneOnCard).type).toBe("noop-comment-on-card");
   });
 
   it("Ctrl+S / Shift+S do not fire send-to-agent (modifier-free binding only)", () => {

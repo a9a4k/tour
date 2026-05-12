@@ -25,6 +25,7 @@ describe("nextAnnotationNavStep: β-coupling on n (delta=+1)", () => {
     expect(out).not.toBeNull();
     expect(out?.target.id).toBe("b1");
     expect(out?.cursor).toEqual({
+      kind: "row",
       file: "b.ts",
       lineNumber: 7,
       side: "deletions",
@@ -50,6 +51,7 @@ describe("nextAnnotationNavStep: β-coupling on p (delta=-1)", () => {
     const out = nextAnnotationNavStep({ topLevel: [A, B, C], currentIdx: 2, delta: -1 });
     expect(out?.target.id).toBe("b1");
     expect(out?.cursor).toEqual({
+      kind: "row",
       file: "b.ts",
       lineNumber: 7,
       side: "deletions",

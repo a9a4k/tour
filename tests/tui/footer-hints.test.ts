@@ -2,7 +2,25 @@ import { describe, it, expect } from "vitest";
 import {
   TUI_FOOTER_HINTS,
   composeFooterHints,
+  composeFooterPreview,
 } from "../../src/tui/footer-hints.js";
+import type { Annotation } from "../../src/core/types.js";
+import type { Cursor } from "../../src/core/cursor-state.js";
+
+function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "body">): Annotation {
+  return {
+    id: o.id,
+    file: o.file ?? "x.txt",
+    side: o.side ?? "additions",
+    line_start: o.line_start ?? 1,
+    line_end: o.line_end ?? 1,
+    body: o.body,
+    author: o.author ?? "agent",
+    author_kind: o.author_kind ?? "agent",
+    replies_to: o.replies_to,
+    created_at: o.created_at ?? "2026-01-01T00:00:00Z",
+  };
+}
 
 describe("TUI_FOOTER_HINTS", () => {
   // Issue #183 / PRD #181: the top-level annotate affordance is labelled
@@ -49,5 +67,105 @@ describe("composeFooterHints (issue #184)", () => {
     expect(r).toBeGreaterThanOrEqual(0);
     expect(s).toBeGreaterThan(r);
     expect(enter).toBeGreaterThan(s);
+  });
+});
+
+// PRD #192 / ADR 0022: the bottom-bar footer always renders the cursor's
+// `r` action target — a card title (truncated) when the cursor is on a
+// card, a no-annotation placeholder otherwise. An off-screen suffix
+// hints the cursor's direction relative to the viewport so a wheel-
+// scrolled-away cursor doesn't surprise the user.
+describe("composeFooterPreview (PRD #192)", () => {
+  it("renders the no-annotation placeholder when the cursor is null", () => {
+    expect(composeFooterPreview({ cursor: null, annotations: [] })).toBe(
+      "r: — (no annotation under cursor)",
+    );
+  });
+
+  it("renders the no-annotation placeholder when the cursor is on a row", () => {
+    const cursor: Cursor = {
+      kind: "row",
+      file: "x.txt",
+      lineNumber: 1,
+      side: "additions",
+      preferredSide: "additions",
+    };
+    expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
+      "r: — (no annotation under cursor)",
+    );
+  });
+
+  it("renders `r: reply to \"<title>\"` when the cursor is on a card", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const annotations = [ann({ id: "a1", body: "fix the null check" })];
+    expect(composeFooterPreview({ cursor, annotations })).toBe(
+      'r: reply to "fix the null check"',
+    );
+  });
+
+  it("renders no-annotation placeholder when the CardAnchor's id is gone (stale)", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "ghost" };
+    expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
+      "r: — (no annotation under cursor)",
+    );
+  });
+
+  it("truncates long titles with an ellipsis", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const longBody = "a".repeat(100);
+    const annotations = [ann({ id: "a1", body: longBody })];
+    const out = composeFooterPreview({ cursor, annotations });
+    // Expect the body to be truncated with an ellipsis somewhere in the
+    // output — the exact width budget lives in the helper but the
+    // contract is "title is shorter than the body and ends with an
+    // ellipsis when truncated".
+    expect(out).toContain('r: reply to "');
+    expect(out).toContain("…");
+    expect(out.length).toBeLessThan(longBody.length);
+  });
+
+  it("uses only the first line of a multi-line body for the preview", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const annotations = [ann({ id: "a1", body: "first line\nsecond line" })];
+    const out = composeFooterPreview({ cursor, annotations });
+    expect(out).toContain("first line");
+    expect(out).not.toContain("second line");
+  });
+
+  it("appends `(cursor ↑ above viewport)` when the cursor's row is above the visible range", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const annotations = [ann({ id: "a1", body: "hi" })];
+    const out = composeFooterPreview({
+      cursor,
+      annotations,
+      viewportRange: { start: 10, end: 20 },
+      cursorRowIdx: 3,
+    });
+    expect(out).toContain("(cursor ↑ above viewport)");
+  });
+
+  it("appends `(cursor ↓ below viewport)` when the cursor's row is below the visible range", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const annotations = [ann({ id: "a1", body: "hi" })];
+    const out = composeFooterPreview({
+      cursor,
+      annotations,
+      viewportRange: { start: 0, end: 5 },
+      cursorRowIdx: 10,
+    });
+    expect(out).toContain("(cursor ↓ below viewport)");
+  });
+
+  it("omits the off-screen suffix when the cursor is inside the viewport", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const annotations = [ann({ id: "a1", body: "hi" })];
+    const out = composeFooterPreview({
+      cursor,
+      annotations,
+      viewportRange: { start: 0, end: 10 },
+      cursorRowIdx: 3,
+    });
+    expect(out).not.toContain("above viewport");
+    expect(out).not.toContain("below viewport");
   });
 });

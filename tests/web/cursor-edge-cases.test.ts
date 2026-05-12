@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { validateWebappCursor } from "../../src/web/client/cursor-validation.js";
 import { walkCursorRows } from "../../src/web/client/cursor-rows.js";
-import type { Cursor } from "../../src/core/cursor-state.js";
+import type { RowAnchor } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 
 function diffRow(parts: {
@@ -23,7 +23,8 @@ function diffRow(parts: {
   };
 }
 
-const baseCursor = (over: Partial<Cursor> & Pick<Cursor, "file" | "lineNumber" | "side">): Cursor => ({
+const baseCursor = (over: Partial<RowAnchor> & Pick<RowAnchor, "file" | "lineNumber" | "side">): RowAnchor => ({
+  kind: "row",
   file: over.file,
   lineNumber: over.lineNumber,
   side: over.side,

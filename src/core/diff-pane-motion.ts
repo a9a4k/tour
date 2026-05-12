@@ -119,7 +119,9 @@ export function pageMove(
     const targetY = newScrollTop + screenY;
     snapIdx = nearestRowIdx(state.flatRows, state.rowY, targetY);
   }
-  const next = cursorFromRow(state.flatRows[snapIdx], state.cursor.preferredSide);
+  const preferredSide: "additions" | "deletions" =
+    state.cursor?.kind === "row" ? state.cursor.preferredSide : "additions";
+  const next = cursorFromRow(state.flatRows[snapIdx], preferredSide);
   return { cursor: next, scrollTop: newScrollTop };
 }
 
@@ -178,8 +180,11 @@ export function jump(
   }
 
   const preferredSide: "additions" | "deletions" =
-    state.cursor?.preferredSide ??
-    (targetRow.kind === "diff" ? targetRow.side : "additions");
+    state.cursor?.kind === "row"
+      ? state.cursor.preferredSide
+      : targetRow.kind === "diff"
+        ? targetRow.side
+        : "additions";
   const next = cursorFromRow(targetRow, preferredSide);
   return { cursor: next, scrollTop: newScrollTop };
 }

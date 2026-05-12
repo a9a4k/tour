@@ -6,24 +6,20 @@ export type ComposerState =
   | { kind: "reply"; parent: Annotation };
 
 /**
- * Seed the top-level composer. The line cursor wins when present (ADR
- * 0011) — `a` annotates exactly the cursor's line. When the cursor is
- * null (empty Tour, all files folded, snapshot lost) we fall back to the
- * currently-selected Annotation's anchor so the previous "annotate this
- * file's first agent note" UX still works in the degraded path. Both
- * null → null, and `a` becomes a silent no-op upstream.
+ * Seed the top-level composer from a row cursor (PRD #192 / ADR 0022).
+ * `a` annotates exactly the cursor's line. The unified-cursor keymap
+ * already gates `a` to a row cursor (cards reject `a` as a no-op with a
+ * footer hint), so by the time this helper runs the cursor is either a
+ * non-interactive row or null. Null falls back to the currentAnnotation's
+ * anchor so the degraded path still has a target on small Tours.
  */
 export function buildTopLevelComposer(args: {
   cursor: Cursor | null;
   currentAnnotation: Annotation | null;
 }): ComposerState | null {
-  // Interactive rows are not annotatable (PRD #107 US 9). `a` on an
-  // interactive cursor falls through to the silent no-op path — we don't
-  // even fall back to currentAnnotation here, because the user pressed `a`
-  // with deliberate cursor placement and silently jumping to a different
-  // anchor would be surprising.
-  if (args.cursor && args.cursor.interactive) return null;
-  if (args.cursor) {
+  // Interactive rows are not annotatable (PRD #107 US 9).
+  if (args.cursor && args.cursor.kind === "row" && args.cursor.interactive) return null;
+  if (args.cursor && args.cursor.kind === "row") {
     return {
       kind: "top-level",
       file: args.cursor.file,
@@ -32,6 +28,10 @@ export function buildTopLevelComposer(args: {
       line_end: args.cursor.lineNumber,
     };
   }
+  // Card cursor or null cursor: fall back to the currentAnnotation's
+  // anchor. The App-shell keymap already gates `a` on a card cursor to a
+  // labelled no-op via footer hint; this fallback covers degraded direct-
+  // call paths and the empty-Tour / null-cursor case.
   const a = args.currentAnnotation;
   if (a) {
     return {

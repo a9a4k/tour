@@ -32,6 +32,11 @@ export function validateWebappCursor(
   isCollapsed: (file: string) => boolean,
 ): Cursor | null {
   if (!cursor) return null;
+  // CardAnchor: delegate to `validateCursor` — its annotationId match
+  // against the flat-row stream is the right resolution for cards. The
+  // webapp doesn't currently produce CardAnchor (slice-2 work), but a
+  // type-safe pass-through means future migration doesn't break here.
+  if (cursor.kind !== "row") return validateCursor(cursor, flatRows);
   const fileExists = files.some((f) => f.name === cursor.file);
   if (!fileExists) return null;
   if (isCollapsed(cursor.file)) return cursor;

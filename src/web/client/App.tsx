@@ -709,7 +709,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         !focusInEditable &&
         composerTarget === null &&
         !pickerOpen &&
-        cursor?.interactive &&
+        cursor?.kind === "row" &&
+        cursor.interactive &&
         dispatchGapRowAction(document.body, cursor.file, cursor.interactive, e.shiftKey)
       ) {
         e.preventDefault();
@@ -789,6 +790,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         case "annotate-at-cursor": {
           const c = cursor ?? materializeCursor();
           if (!c) return;
+          // Card cursors are out-of-scope for `a` (PRD #192 / ADR 0022,
+          // slice-2 webapp routing); for now the webapp only ever holds
+          // RowAnchors so this branch is unreachable, but the guard
+          // keeps the type narrow consistent.
+          if (c.kind !== "row") return;
           // Interactive rows (gap-row family, collapsed-file) are not
           // annotatable — `a` is a silent no-op (issue #154, PRD #107 US 14).
           if (c.interactive) return;
@@ -834,7 +840,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // Opening the composer also pins the cursor at the anchor (ADR 0012).
       // preferredSide tracks the chosen side so subsequent keyboard motion
       // preserves the user's mouse-expressed preference.
-      setCursor({ file, lineNumber: line, side, preferredSide: side });
+      setCursor({ kind: "row", file, lineNumber: line, side, preferredSide: side });
     },
     [],
   );
@@ -844,7 +850,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // `+` button (plus-button-overlay) or the keyboard `a` shortcut.
   const setCursorFromRowClick = useCallback(
     (file: string, side: "additions" | "deletions", line: number) => {
-      setCursor({ file, lineNumber: line, side, preferredSide: side });
+      setCursor({ kind: "row", file, lineNumber: line, side, preferredSide: side });
     },
     [],
   );

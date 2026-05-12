@@ -129,8 +129,13 @@ interface SequencePillTuiProps {
 
 function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {
   if (total === 0) return null;
-  const prevDisabled = idx <= 0;
-  const nextDisabled = idx >= total - 1;
+  // PRD #192 / ADR 0022: idx === -1 means the unified cursor is NOT on a
+  // card (row anchor or null cursor). The pill renders `—/M` and keeps
+  // the prev/next arrows live — pressing either advances onto the first
+  // card via the card-lane walker.
+  const onCard = idx >= 0;
+  const prevDisabled = onCard && idx <= 0;
+  const nextDisabled = onCard && idx >= total - 1;
   return (
     <box flexDirection="row">
       <text fg={theme.fg.muted}>{"["}</text>
@@ -140,7 +145,7 @@ function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {
       >
         {"←"}
       </text>
-      <text fg={theme.fg.default}>{` ${idx + 1}/${total} `}</text>
+      <text fg={theme.fg.default}>{onCard ? ` ${idx + 1}/${total} ` : ` —/${total} `}</text>
       <text
         fg={nextDisabled ? theme.fg.subtle : theme.fg.default}
         onMouseDown={nextDisabled ? undefined : onNext}
