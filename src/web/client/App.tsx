@@ -336,7 +336,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // change on every n/p and bailed React.memo, re-rendering all ~650 files
   // for a single annotation step. Now only the old + new annotation's
   // files re-render on nav.
-  const currentAnnotationFile = useMemo<string | null>(() => {
+  const cursorCardFile = useMemo<string | null>(() => {
     if (cursorCardId === null) return null;
     return annotations.find((a) => a.id === cursorCardId)?.file ?? null;
   }, [annotations, cursorCardId]);
@@ -1172,7 +1172,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               repliesByRoot={repliesByRoot}
               navIndexById={navIndexById}
               navTotal={navTotal}
-              currentAnnotationId={cursorCardId}
+              cursorCardId={cursorCardId}
               registerAnnotationRef={registerAnnotationRef}
               composerTarget={composerTarget}
               composerError={composerError}
@@ -1199,7 +1199,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 onPierreFileRendered={onPierreFileRendered}
                 collapsed={isCollapsed(f.name)}
                 onToggleCollapsed={toggleCollapsed}
-                currentAnnotationId={currentAnnotationFile === f.name ? cursorCardId : null}
+                cursorCardId={cursorCardFile === f.name ? cursorCardId : null}
                 registerAnnotationRef={registerAnnotationRef}
                 layout={layout}
                 composerTarget={composerTarget}
@@ -1353,7 +1353,7 @@ interface FileBlockProps {
   onPierreFileRendered: () => void;
   collapsed: boolean;
   onToggleCollapsed: (file: string) => void;
-  currentAnnotationId: string | null;
+  cursorCardId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   layout: Layout;
   composerTarget: ComposerTarget | null;
@@ -1417,7 +1417,7 @@ function FileBlockInner({
   onPierreFileRendered,
   collapsed,
   onToggleCollapsed,
-  currentAnnotationId,
+  cursorCardId,
   registerAnnotationRef,
   layout,
   composerTarget,
@@ -1513,7 +1513,7 @@ function FileBlockInner({
         <AnnotationCard
           annotation={a}
           replies={replies}
-          isCurrent={a.id === currentAnnotationId}
+          isCurrent={a.id === cursorCardId}
           navIndex={navIndexById.get(a.id) ?? null}
           navTotal={navTotal}
           registerRef={registerAnnotationRef}
@@ -1530,7 +1530,7 @@ function FileBlockInner({
       );
     },
     [
-      currentAnnotationId,
+      cursorCardId,
       navIndexById,
       navTotal,
       registerAnnotationRef,
@@ -1948,7 +1948,7 @@ interface AnnotationListProps {
   repliesByRoot: Map<string, Annotation[]>;
   navIndexById: Map<string, number>;
   navTotal: number;
-  currentAnnotationId: string | null;
+  cursorCardId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
   composerError: string | null;
@@ -1966,7 +1966,7 @@ function AnnotationList({
   repliesByRoot,
   navIndexById,
   navTotal,
-  currentAnnotationId,
+  cursorCardId,
   registerAnnotationRef,
   composerTarget,
   composerError,
@@ -1994,7 +1994,7 @@ function AnnotationList({
             key={a.id}
             annotation={a}
             replies={replies}
-            isCurrent={a.id === currentAnnotationId}
+            isCurrent={a.id === cursorCardId}
             navIndex={navIndexById.get(a.id) ?? null}
             navTotal={navTotal}
             registerRef={registerAnnotationRef}

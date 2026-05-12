@@ -717,7 +717,7 @@ index 1..2 100644
         fileName: "x.txt",
         rows,
         layout: "split",
-        currentAnnotationId: null,
+        cursorCardId: null,
         cursor: null,
         onInteractiveClick,
       });
