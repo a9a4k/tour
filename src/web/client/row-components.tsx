@@ -137,12 +137,11 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   // `onClick` is determined by `kind` (an addition row is unambiguous);
   // for context rows the caller's `preferredSide` wins, defaulting to
   // additions (mirrors `click-anchor.ts`'s context-fallback rule).
-  const sideForClick: Side =
-    impliedSideFromKind(kind) ?? preferredSide ?? "additions";
+  const impliedSide = impliedSideFromKind(kind);
+  const sideForClick: Side = impliedSide ?? preferredSide ?? "additions";
   const lineNumber = rightLineNumber ?? leftLineNumber;
-  const text = kind === "deletion" || kind === "change-deletion" ? leftText : rightText;
-  const tokens =
-    kind === "deletion" || kind === "change-deletion" ? tokensLeft : tokensRight;
+  const text = impliedSide === "deletions" ? leftText : rightText;
+  const tokens = impliedSide === "deletions" ? tokensLeft : tokensRight;
   return (
     <div
       className={classes.join(" ")}
