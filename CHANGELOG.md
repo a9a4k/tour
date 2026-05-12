@@ -106,6 +106,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tour serve` dev mode discriminator no longer trips when
+  `embedded-client.ts` is in a populated state (issue #204).** The
+  dev-vs-binary discriminator inside `tour serve` was a truthy-check on
+  the *content* of `EMBEDDED_CLIENT_JS` / `EMBEDDED_PIERRE_WORKER_JS` in
+  `src/web/embedded-client.ts`. If the binary build pipeline was
+  interrupted (Ctrl-C, crash, partial `git stash pop`, a stale checkout
+  pulling the populated form) the file was left with real bundle strings
+  but no flag distinguishing it from a real binary build, so any
+  subsequent `tour serve` against that working tree silently fell into
+  the compiled-binary fast-path and served the stale embedded bundle —
+  the dev-mode auto-reload from #202 appeared broken with no log line or
+  banner explaining why. The discriminator is now an explicit
+  `EMBEDDED_BUILD_MODE: "dev" | "binary"` marker that the binary build
+  pipeline flips atomically with populating the bundle strings;
+  `scripts/build-binary.ts` restores both fields together (and now also
+  on SIGINT/SIGTERM/uncaughtException, not just child exit). In dev mode
+  the marker stays `"dev"` regardless of what's in the strings, so the
+  cache falls through to the runtime Bun.build path. (#204)
+
 - **`n` from a diff row now jumps to the next annotation in stream order,
   not back to `topLevel[0]` (issue #203).** Under the step/jump motion
   model (ADR 0023), `n` / `p` from a `RowAnchor` cursor always landed on

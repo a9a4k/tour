@@ -4,6 +4,7 @@ import {
   type AssetsResult,
   type ClientAsset,
 } from "../../src/web/client-assets.js";
+import { resolveEmbedded } from "../../src/web/embedded-client.js";
 
 // Issue #202: `tour serve` snapshotted the client bundle at first
 // request and never invalidated, so re-running `bun scripts/build-client.ts`
@@ -109,6 +110,30 @@ describe("createClientAssetsCache", () => {
     expect(buildCalls).toBe(2);
   });
 
+  it("falls through to the dev builder when mode is \"dev\" but the embedded strings are populated (issue #204)", async () => {
+    // Simulates a working tree where a binary build was interrupted (Ctrl-C,
+    // crash, partial stash pop) and left src/web/embedded-client.ts with real
+    // bundle strings but the committed `EMBEDDED_BUILD_MODE: "dev"` marker
+    // intact. `tour serve` MUST still rebuild from source on every request
+    // rather than silently serving the stale embedded bytes.
+    let buildCalls = 0;
+    const cache = createClientAssetsCache({
+      getEmbedded: () =>
+        resolveEmbedded("dev", "STALE_EMBEDDED_CLIENT", "STALE_EMBEDDED_WORKER"),
+      buildFromSource: async () => {
+        buildCalls++;
+        return {
+          assets: new Map([["/client.js", asset("FRESH_FROM_SOURCE")]]),
+          error: null,
+        } satisfies AssetsResult;
+      },
+    });
+
+    const r1 = await cache();
+    expect(r1.assets?.get("/client.js")?.body).toBe("FRESH_FROM_SOURCE");
+    expect(buildCalls).toBe(1);
+  });
+
   it("after an in-flight dev build resolves, the next call kicks off a fresh build (issue #202)", async () => {
     let buildCalls = 0;
     const outputs = ["FIRST", "SECOND"];
@@ -130,5 +155,27 @@ describe("createClientAssetsCache", () => {
     const r2 = await cache();
     expect(r2.assets?.get("/client.js")?.body).toBe("SECOND");
     expect(buildCalls).toBe(2);
+  });
+});
+
+// Issue #204: the dev-vs-binary discriminator is the explicit
+// `EMBEDDED_BUILD_MODE` marker, not the truthiness of the bundle strings.
+// A working tree left with populated strings (e.g. by an interrupted binary
+// build) but the committed `"dev"` marker must still fall through to the
+// runtime builder.
+describe("resolveEmbedded (issue #204 build-mode discriminator)", () => {
+  it("mode \"dev\" + empty strings → null (falls through to dev builder)", () => {
+    expect(resolveEmbedded("dev", "", "")).toBeNull();
+  });
+
+  it("mode \"dev\" + populated strings → null (the new behaviour: marker wins over string content)", () => {
+    expect(resolveEmbedded("dev", "STALE_CLIENT", "STALE_WORKER")).toBeNull();
+  });
+
+  it("mode \"binary\" + populated strings → embedded fast-path", () => {
+    expect(resolveEmbedded("binary", "REAL_CLIENT", "REAL_WORKER")).toEqual({
+      client: "REAL_CLIENT",
+      worker: "REAL_WORKER",
+    });
   });
 });

@@ -31,14 +31,40 @@ const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
 const version: string = pkg.version;
 
 // Snapshot the committed stubs so we can restore them after compile
-// regardless of whether the user has a clean working tree.
+// regardless of whether the user has a clean working tree. The
+// embedded-client.ts snapshot captures EMBEDDED_BUILD_MODE: "dev" together
+// with the empty bundle strings — both fields restore atomically so an
+// interrupted build can never leave the working tree with `mode: "binary"`
+// + empty strings (or vice versa) (issue #204).
 const embedStub = readFileSync(EMBED_PATH, "utf8");
 const otuiWorkerStub = readFileSync(OTUI_WORKER_STUB_PATH, "utf8");
 
+let stubsRestored = false;
 function restoreStubs(): void {
+  if (stubsRestored) return;
+  stubsRestored = true;
   writeFileSync(EMBED_PATH, embedStub);
   writeFileSync(OTUI_WORKER_STUB_PATH, otuiWorkerStub);
 }
+
+// Defence-in-depth: a Ctrl-C / kill targeting build-binary.ts itself
+// (rather than the spawned `bun build --compile` child) would otherwise
+// exit without firing the `child.on("exit")` restore. Hook every signal
+// path Node exposes so the working tree never lingers in the half-flipped
+// "populated strings + mode binary" state described in issue #204.
+process.on("SIGINT", () => {
+  restoreStubs();
+  process.exit(130);
+});
+process.on("SIGTERM", () => {
+  restoreStubs();
+  process.exit(143);
+});
+process.on("uncaughtException", (err) => {
+  restoreStubs();
+  console.error(err);
+  process.exit(1);
+});
 
 const preBuild = spawnSync("bun", ["scripts/build-client.ts"], { cwd: ROOT, stdio: "inherit" });
 if (preBuild.status !== 0) {

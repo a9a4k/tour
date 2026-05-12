@@ -15,7 +15,12 @@ import { detectAgentsOnPath } from "../core/agent-path-detector.js";
 import { isOnPath } from "../core/is-on-path.js";
 import { availableShippedAgents } from "../agents/index.js";
 import { html } from "./spa.js";
-import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
+import {
+  EMBEDDED_BUILD_MODE,
+  EMBEDDED_CLIENT_JS,
+  EMBEDDED_PIERRE_WORKER_JS,
+  resolveEmbedded,
+} from "./embedded-client.js";
 import {
   createClientAssetsCache,
   type AssetsResult,
@@ -143,12 +148,18 @@ async function buildClientFromSource(): Promise<AssetsResult> {
 // Per-process cache. Compiled-binary path is sticky (embedded constants
 // are immutable for the life of the process); dev mode rebuilds on every
 // call so source edits + `bun scripts/build-client.ts` reach the next
-// request without restarting `tour serve` (issue #202).
+// request without restarting `tour serve` (issue #202). The dev-vs-binary
+// discriminator is the explicit `EMBEDDED_BUILD_MODE` marker — the
+// bundle strings' truthiness is not part of the check, so an interrupted
+// binary build that left them populated but the marker "dev" still falls
+// through to the runtime Bun.build path (issue #204).
 const getClientAssets = createClientAssetsCache({
   getEmbedded: () =>
-    EMBEDDED_CLIENT_JS && EMBEDDED_PIERRE_WORKER_JS
-      ? { client: EMBEDDED_CLIENT_JS, worker: EMBEDDED_PIERRE_WORKER_JS }
-      : null,
+    resolveEmbedded(
+      EMBEDDED_BUILD_MODE,
+      EMBEDDED_CLIENT_JS,
+      EMBEDDED_PIERRE_WORKER_JS,
+    ),
   buildFromSource: buildClientFromSource,
 });
 
