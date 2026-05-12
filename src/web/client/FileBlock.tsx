@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef } from "react";
+import React, { memo, useRef } from "react";
 import type { BundleFile } from "../../core/tour-bundle.js";
 import type {
   PlannedRow,
@@ -9,7 +9,6 @@ import type {
 } from "../../core/diff-rows.js";
 import type { Cursor } from "../../core/cursor-state.js";
 import type { ReplyLock } from "../../core/reply-lock.js";
-import type { Annotation } from "./types.js";
 import { useLazyHighlight } from "./use-lazy-highlight.js";
 import { detectLang } from "./syntax-highlight.js";
 import {
@@ -192,10 +191,6 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
 
   const reason = file.classification?.reason;
 
-  const headerClick = useCallback(() => {
-    onToggleCollapse();
-  }, [onToggleCollapse]);
-
   // Pre-compute card-anchor flag per annotation id so the cursor flow into
   // <CardRow>'s `isCurrent` lookup is one O(1) check per row dispatch.
   const cursorCardId =
@@ -206,7 +201,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
 
   return (
     <div className="tour-file-outer" data-file={file.name}>
-      <div className="tour-file-header" onClick={headerClick}>
+      <div className="tour-file-header" onClick={onToggleCollapse}>
         <RenameHeaderSpan name={file.name} prevName={file.prevName} />
         <span className="tour-file-name">{file.name}</span>
         {reason ? <span className="reason-tag">{reason}</span> : null}
@@ -217,110 +212,52 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           className="tour-file-block"
           data-layout={layout}
         >
-          {rows.map((row, idx) =>
-            renderRow({
-              row,
-              idx,
-              file,
-              layout,
-              cursor,
-              cursorCardId,
-              tokensLeft,
-              tokensRight,
-              onDispatchExpand,
-              onRowClick,
-              onCardClick,
-              annotationProps,
-              navIndexById,
-              navTotal,
-              composerAnchor,
-              composerSlot,
-            }),
-          )}
+          {rows.flatMap((row, idx) => {
+            if (row.kind === "diff-row") {
+              const node = renderDiffRow(
+                row,
+                idx,
+                file,
+                layout,
+                cursor,
+                tokensLeft,
+                tokensRight,
+                onRowClick,
+              );
+              // Composer renders directly after its anchor row — the diff row
+              // whose `(side, lineNumber)` matches composerAnchor.
+              if (matchComposerAnchor(row, composerAnchor)) {
+                return [
+                  node,
+                  renderComposer(layout, composerAnchor!.side, composerSlot, idx),
+                ];
+              }
+              return [node];
+            }
+            if (row.kind === "hunk-header") {
+              return [renderHunkHeader(row, idx, file, cursor, onDispatchExpand)];
+            }
+            if (row.kind === "interactive") {
+              return [renderInteractive(row, idx, file, cursor, onDispatchExpand)];
+            }
+            return [
+              renderAnnotation(
+                row,
+                idx,
+                layout,
+                cursorCardId,
+                onCardClick,
+                annotationProps,
+                navIndexById,
+                navTotal,
+              ),
+            ];
+          })}
           <RenamePlaceholderBody reason={reason} />
         </div>
       )}
     </div>
   );
-}
-
-interface RenderRowArgs {
-  row: PlannedRow;
-  idx: number;
-  file: BundleFile;
-  layout: Layout;
-  cursor: Cursor | null;
-  cursorCardId: string | null;
-  tokensLeft: ReturnType<typeof useLazyHighlight>;
-  tokensRight: ReturnType<typeof useLazyHighlight>;
-  onDispatchExpand: (action: ExpandAction) => void;
-  onRowClick: (anchor: RowClickAnchor) => void;
-  onCardClick: (annotationId: string) => void;
-  annotationProps: AnnotationProps | undefined;
-  navIndexById: Map<string, number> | undefined;
-  navTotal: number;
-  composerAnchor: { side: Side; line_end: number } | null | undefined;
-  composerSlot: React.ReactNode;
-}
-
-function renderRow(args: RenderRowArgs): React.ReactNode {
-  const {
-    row,
-    idx,
-    file,
-    layout,
-    cursor,
-    cursorCardId,
-    tokensLeft,
-    tokensRight,
-    onDispatchExpand,
-    onRowClick,
-    onCardClick,
-    annotationProps,
-    navIndexById,
-    navTotal,
-    composerAnchor,
-    composerSlot,
-  } = args;
-
-  if (row.kind === "diff-row") {
-    const node = renderDiffRow(
-      row,
-      idx,
-      file,
-      layout,
-      cursor,
-      tokensLeft,
-      tokensRight,
-      onRowClick,
-    );
-    // Composer renders directly after its anchor row. The anchor is the
-    // diff row whose `(side, lineNumber)` matches composerAnchor — same
-    // matching rule the card-interleave step uses.
-    const composer = matchComposerAnchor(row, composerAnchor)
-      ? renderComposer(layout, composerAnchor!.side, composerSlot, idx)
-      : null;
-    return composer ? [node, composer] : node;
-  }
-  if (row.kind === "hunk-header") {
-    return renderHunkHeader(row, idx, file, cursor, onDispatchExpand);
-  }
-  if (row.kind === "interactive") {
-    return renderInteractive(row, idx, file, cursor, onDispatchExpand);
-  }
-  if (row.kind === "annotation") {
-    return renderAnnotation(
-      row,
-      idx,
-      layout,
-      cursorCardId,
-      onCardClick,
-      annotationProps,
-      navIndexById,
-      navTotal,
-    );
-  }
-  return null;
 }
 
 function matchComposerAnchor(
