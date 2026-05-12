@@ -44,6 +44,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session foundation module (slice 1: Picker).** New
+  `core/tour-session.ts` lands the live state aggregate a single
+  surface drives for one opened Tour as a pure `(state, action) →
+  {state, intents}` reducer wrapped in a small `TourSessionStore`
+  (`getState` / `subscribe` / `onIntent` / `dispatch`) and a
+  `useTourSession(store)` React hook over `useSyncExternalStore`.
+  Slice 1 exports the Picker, bundle, tourList, replyLock, layout,
+  and `currentTourId` slots plus the `RemoteData<T>` discriminated
+  union (`idle | loading | ok | err`) and its `map` / `withDefault`
+  / `isOk` helpers, the `Action` / `Intent` discriminated unions,
+  and selectors `isPickerOpen` / `pickerHighlighted` /
+  `currentTourSummary`. Cursor / folds / composer / expansion
+  slices are intentionally absent from this slice and land in
+  subsequent slices on top of the same module. No surface wiring:
+  `tui/app.tsx` and `web/client/App.tsx` are unchanged; both Apps
+  continue to own their state as parallel `useState`. The
+  CONTEXT-pinned Tour-switch reset rules (layout preserved;
+  picker closed; reply-lock cleared) live in the reducer's
+  `bundle.loaded` branch. (#208 · PRD #207)
 - **Core seam for explicit reply-agent dispatch.** Two new pure entry
   points land in `core/` ahead of the dispatch-trigger flip (PRD #181):
   `requestReply(opts)` in `core/reply-runner.ts` is the single dispatch
