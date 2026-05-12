@@ -17,6 +17,7 @@ import {
   useTourSession,
   isPickerOpen,
   isBundleResolved,
+  resolvedReplyLock,
   pickerHighlighted,
   initialTourSessionState,
   type TourSummary as SessionTourSummary,
@@ -194,7 +195,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const bundleLoaded =
     sessionState.bundle.kind === "ok" || sessionState.bundle.kind === "err";
 
-  const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
+  // Reply-lock lives in the Tour-session store's `replyLock` slice (issue
+  // #213, follow-up to #211): the SSE handler + mount-time refetcher
+  // dispatch `replyLock.loaded`; rendering reads via the selector. Mirrors
+  // the TUI's #211 wiring; the local `useState<ReplyLock | null>` that
+  // shadowed the slice on the webapp is gone.
+  const replyLock = resolvedReplyLock(sessionState);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
@@ -378,9 +384,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         const data = (await res.json()) as ReplyLock | { error: string } | null;
         if (cancelled) return;
         if (data && typeof data === "object" && "error" in data) {
-          setReplyLock(null);
+          store.dispatch({ type: "replyLock.loaded", replyLock: null });
         } else {
-          setReplyLock(data as ReplyLock | null);
+          store.dispatch({
+            type: "replyLock.loaded",
+            replyLock: data as ReplyLock | null,
+          });
         }
       } catch {
         // transient — keep current pill state

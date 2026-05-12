@@ -5,6 +5,7 @@ import {
   TourSessionStore,
   isPickerOpen,
   isBundleResolved,
+  resolvedReplyLock,
   pickerHighlighted,
   currentTourSummary,
   map,
@@ -307,6 +308,27 @@ describe("selectors", () => {
       bundle: snapBundle,
     }).state;
     expect(isBundleResolved(snapState)).toBe(snapBundle);
+  });
+
+  it("resolvedReplyLock returns null for idle/loading/err and the inner value for ok", () => {
+    // idle (initial) → null.
+    expect(resolvedReplyLock(initialTourSessionState())).toBeNull();
+    // ok with a concrete lock → that lock.
+    const lock = { agent: "claude", started_at: "2026-05-12T00:00:00Z" };
+    const okState = reduce(initialTourSessionState(), {
+      type: "replyLock.loaded",
+      replyLock: lock,
+    }).state;
+    expect(resolvedReplyLock(okState)).toBe(lock);
+    // ok with null inner (lock genuinely absent on disk) → null. This is
+    // semantically distinct from `idle` (slice never observed); the
+    // selector intentionally collapses both to null because the renderer
+    // only needs "is a lock currently held?".
+    const okNullState = reduce(initialTourSessionState(), {
+      type: "replyLock.loaded",
+      replyLock: null,
+    }).state;
+    expect(resolvedReplyLock(okNullState)).toBeNull();
   });
 
   it("pickerHighlighted returns the row at cursor; null when closed", () => {

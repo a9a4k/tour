@@ -229,6 +229,15 @@ export function isBundleResolved(state: TourSessionState): TourBundle | null {
   return state.bundle.kind === "ok" ? state.bundle.value : null;
 }
 
+// Returns the resolved ReplyLock value when the replyLock slice is in `ok`
+// state, else null. Mirrors `isBundleResolved` so callers don't repeat the
+// `state.replyLock.kind === "ok" ? state.replyLock.value : null` ladder.
+// Note: the inner value can itself be null (lock genuinely absent) — that
+// is distinct from `idle` (slice never observed).
+export function resolvedReplyLock(state: TourSessionState): ReplyLock | null {
+  return state.replyLock.kind === "ok" ? state.replyLock.value : null;
+}
+
 // --- Store ------------------------------------------------------------------
 
 type StateListener = () => void;
