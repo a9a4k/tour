@@ -109,7 +109,7 @@ export async function ensureHighlighter(): Promise<void> {
   if (highlighter) return;
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
-      langs: SUPPORTED_LANGS as readonly SupportedLang[] as SupportedLang[],
+      langs: [...SUPPORTED_LANGS],
       themes: [THEME],
     }) as Promise<Highlighter>;
   }
