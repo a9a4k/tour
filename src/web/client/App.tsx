@@ -15,7 +15,10 @@ import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows, pickAutoTour } from "../../core/tour-list.js";
 import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
-import { canSendToAgent } from "../../core/can-send-to-agent.js";
+import {
+  canSendToAgent,
+  type CanSendToAgentResult,
+} from "../../core/can-send-to-agent.js";
 import {
   buildTree,
   compress,
@@ -1577,6 +1580,63 @@ function pillTargetsThisCard(
   return replies.some((r) => r.id === lock.responding_to);
 }
 
+// Reply/Send button row used by both the top-level Annotation and every
+// inline human Reply (issue #189). Returns null when neither button is
+// visible so callers can chain it after a composer-or-actions decision
+// without an extra wrapper.
+interface AnnotationActionsProps {
+  annotationId: string;
+  showReply: boolean;
+  onOpenReply: ((annotationId: string) => void) | undefined;
+  sendVerdict: CanSendToAgentResult;
+  sendTooltip: string | undefined;
+  onSendToAgent: ((annotationId: string) => void) | undefined;
+  replyAgent: string | null | undefined;
+}
+
+function AnnotationActions({
+  annotationId,
+  showReply,
+  onOpenReply,
+  sendVerdict,
+  sendTooltip,
+  onSendToAgent,
+  replyAgent,
+}: AnnotationActionsProps): React.JSX.Element | null {
+  const showSend = sendVerdict.visible && !!onSendToAgent;
+  if (!showReply && !showSend) return null;
+  return (
+    <div className="ann-actions">
+      {showReply && onOpenReply ? (
+        <button
+          type="button"
+          className="reply-button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenReply(annotationId);
+          }}
+        >
+          Reply
+        </button>
+      ) : null}
+      {showSend && onSendToAgent ? (
+        <button
+          type="button"
+          className="send-to-agent-button"
+          disabled={!sendVerdict.enabled}
+          title={sendTooltip}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (sendVerdict.enabled) onSendToAgent(annotationId);
+          }}
+        >
+          Send to {replyAgent}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function AnnotationCard({
   annotation,
   replies,
@@ -1599,7 +1659,12 @@ export function AnnotationCard({
       : `${annotation.line_start}-${annotation.line_end}`;
   const showPill =
     !!replyLock && pillTargetsThisCard(annotation.id, replies, replyLock);
-  const lockHeld = replyLock !== null && replyLock !== undefined;
+  const lockHeld = replyLock != null;
+  const lockedTooltip = replyLock
+    ? `${replyLock.agent} is replying — wait`
+    : undefined;
+  const tooltipFor = (verdict: CanSendToAgentResult) =>
+    verdict.reason === "lock-held" ? lockedTooltip : undefined;
   // Per-Annotation verdicts so each human card (top-level + inline
   // Replies) gets its own `Send to {agent}` decision. The one-shot-
   // terminal rule applies per Annotation, not per Thread (PRD #181
@@ -1612,14 +1677,6 @@ export function AnnotationCard({
     authorKind: annotation.author_kind,
     hasReply: (replies?.length ?? 0) > 0,
   });
-  const lockedTooltip = lockHeld && replyLock
-    ? `${replyLock.agent} is replying — wait`
-    : undefined;
-  const sendTooltip =
-    sendVerdict.reason === "lock-held" ? lockedTooltip : undefined;
-  // The composer renders inline beneath whichever annotation in this
-  // thread matches replyTargetId — top-level or any Reply (issue #189).
-  const composerAt = replyTargetId ?? null;
   return (
     <div
       className={isCurrent ? "annotation-block current" : "annotation-block"}
@@ -1646,23 +1703,15 @@ export function AnnotationCard({
       {replies && replies.length > 0 ? (
         <div className="ann-replies">
           {replies.map((r) => {
-            const replyHasChild = replies.some((o) => o.replies_to === r.id);
             const replyVerdict = canSendToAgent({
               replyAgentConfigured: !!replyAgent,
               lockHeld,
               authorKind: r.author_kind,
-              hasReply: replyHasChild,
+              hasReply: replies.some((o) => o.replies_to === r.id),
             });
-            const replyTooltip =
-              replyVerdict.reason === "lock-held" ? lockedTooltip : undefined;
-            // Agent Replies get no action row (existing webapp convention
-            // for agent-authored Annotations). Human Replies always get a
-            // Reply button when onOpenReply is wired; Send is gated by
-            // the verdict.
-            const showReplyBtn = r.author_kind === "human" && !!onOpenReply;
-            const showSendBtn = replyVerdict.visible && !!onSendToAgent;
-            const showActions = showReplyBtn || showSendBtn;
-            const showComposerHere = composerAt === r.id;
+            // Agent Replies carry no Reply button by existing webapp
+            // convention; canSendToAgent already hides Send for them.
+            const showReply = r.author_kind === "human" && !!onOpenReply;
             return (
               <div
                 className="ann-reply"
@@ -1679,7 +1728,7 @@ export function AnnotationCard({
                 <div className="ann-body">
                   <AnnotationMarkdown body={r.body} />
                 </div>
-                {showComposerHere ? (
+                {replyTargetId === r.id ? (
                   <div className="ann-reply-composer">
                     <Composer
                       placeholder="Reply…"
@@ -1689,43 +1738,24 @@ export function AnnotationCard({
                       onCancel={() => onCancelReply?.()}
                     />
                   </div>
-                ) : showActions ? (
-                  <div className="ann-actions">
-                    {showReplyBtn ? (
-                      <button
-                        type="button"
-                        className="reply-button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenReply!(r.id);
-                        }}
-                      >
-                        Reply
-                      </button>
-                    ) : null}
-                    {showSendBtn ? (
-                      <button
-                        type="button"
-                        className="send-to-agent-button"
-                        disabled={!replyVerdict.enabled}
-                        title={replyTooltip}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (replyVerdict.enabled) onSendToAgent!(r.id);
-                        }}
-                      >
-                        Send to {replyAgent}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                ) : (
+                  <AnnotationActions
+                    annotationId={r.id}
+                    showReply={showReply}
+                    onOpenReply={onOpenReply}
+                    sendVerdict={replyVerdict}
+                    sendTooltip={tooltipFor(replyVerdict)}
+                    onSendToAgent={onSendToAgent}
+                    replyAgent={replyAgent}
+                  />
+                )}
               </div>
             );
           })}
         </div>
       ) : null}
       {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
-      {composerAt === annotation.id ? (
+      {replyTargetId === annotation.id ? (
         <div className="ann-reply-composer">
           <Composer
             placeholder="Reply…"
@@ -1735,36 +1765,17 @@ export function AnnotationCard({
             onCancel={() => onCancelReply?.()}
           />
         </div>
-      ) : onOpenReply || (sendVerdict.visible && onSendToAgent) ? (
-        <div className="ann-actions">
-          {onOpenReply ? (
-            <button
-              type="button"
-              className="reply-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenReply(annotation.id);
-              }}
-            >
-              Reply
-            </button>
-          ) : null}
-          {sendVerdict.visible && onSendToAgent ? (
-            <button
-              type="button"
-              className="send-to-agent-button"
-              disabled={!sendVerdict.enabled}
-              title={sendTooltip}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (sendVerdict.enabled) onSendToAgent(annotation.id);
-              }}
-            >
-              Send to {replyAgent}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      ) : (
+        <AnnotationActions
+          annotationId={annotation.id}
+          showReply={!!onOpenReply}
+          onOpenReply={onOpenReply}
+          sendVerdict={sendVerdict}
+          sendTooltip={tooltipFor(sendVerdict)}
+          onSendToAgent={onSendToAgent}
+          replyAgent={replyAgent}
+        />
+      )}
     </div>
   );
 }
