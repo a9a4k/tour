@@ -21,6 +21,7 @@ function ann(o: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
 const cardCursor = (annotationId: string): Cursor => ({
   kind: "card",
   annotationId,
+  preferredSide: "additions",
 });
 
 const rowCursor: Cursor = {

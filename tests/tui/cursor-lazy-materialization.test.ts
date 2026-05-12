@@ -124,7 +124,7 @@ describe("first j/k/h/l materializes at the default target", () => {
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split", [a])]]);
     const flat = flatRows([f], planned, () => false);
     const seeded = initialCursor({ topLevelAnnotations: [a], flatRows: flat });
-    expect(seeded).toEqual({ kind: "card", annotationId: "a1" });
+    expect(seeded).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
   });
 
   it("degraded Tour (no rows): materialization yields null and motion is a no-op", () => {
@@ -189,7 +189,7 @@ describe("n/p from null cursor materializes a CardAnchor (PRD #192)", () => {
   it("cursorFromAnnotation seeds a CardAnchor on the target's id", () => {
     const a = ann({ id: "a1", file: "src/foo.ts", side: "deletions", line_start: 7, line_end: 7 });
     const c = cursorFromAnnotation(a);
-    expect(c).toEqual({ kind: "card", annotationId: "a1" });
+    expect(c).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
   });
 });
 

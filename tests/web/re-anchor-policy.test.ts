@@ -25,7 +25,9 @@ describe("decideReanchor (issue #197 Bug B)", () => {
   it("noop when topLevel is empty (Tour with no annotations)", () => {
     expect(decideReanchor(null, null, [])).toEqual({ kind: "noop" });
     expect(decideReanchor(null, "annA", [])).toEqual({ kind: "noop" });
-    expect(decideReanchor({ kind: "card", annotationId: "annA" }, null, [])).toEqual({
+    expect(
+      decideReanchor({ kind: "card", annotationId: "annA", preferredSide: "additions" }, null, []),
+    ).toEqual({
       kind: "noop",
     });
   });
@@ -52,12 +54,12 @@ describe("decideReanchor (issue #197 Bug B)", () => {
   });
 
   it("noop on a valid CardAnchor cursor (no override)", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "annA" };
+    const cursor: Cursor = { kind: "card", annotationId: "annA", preferredSide: "additions" };
     expect(decideReanchor(cursor, "annA", topLevel)).toEqual({ kind: "noop" });
   });
 
   it("stale-fallback on a CardAnchor whose id is no longer in topLevel", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "ghost" };
+    const cursor: Cursor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
     expect(decideReanchor(cursor, null, topLevel)).toEqual({
       kind: "stale-fallback",
       target: annA,

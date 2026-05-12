@@ -177,8 +177,12 @@ export function jump(
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }
 
+  // CardAnchor now carries preferredSide (ADR 0023 / issue #200) so the
+  // cursor-bearing branch collapses to preferredSideOf(state.cursor);
+  // the null-cursor branch still derives from the target row's natural
+  // side when it's a diff row (Home/End from null cursor).
   const preferredSide: "additions" | "deletions" =
-    state.cursor?.kind === "row"
+    state.cursor
       ? state.cursor.preferredSide
       : targetRow.kind === "diff"
         ? targetRow.side

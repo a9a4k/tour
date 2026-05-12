@@ -106,6 +106,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`j`/`k` now steps onto Annotation cards instead of skipping them
+  (PRD #192 / ADR 0023, supersedes ADR 0022's two-lane rule).** Pressing
+  `j` from the diff row immediately above an Annotation card landed the
+  cursor on the row AFTER the card, not the card itself — a `while
+  (flatRows[next].kind === "card") next += step` loop in `moveCursor`
+  filtered cards out of the row lane. The two-lane partition (`j`/`k`
+  walks rows only, `n`/`p` walks cards only) was deliberate under ADR
+  0022 but didn't match how reviewers actually walk a Tour: the eye
+  reads in row order and expects the cursor to stop on every visible
+  stop, including cards. Replaced with the **step / jump** model: `j`/`k`
+  is one row per press, no destination filter (cards, diff rows, and
+  interactive rows all count as one step); `n`/`p` stays one top-level
+  Annotation per press regardless of distance. `CardAnchor` now also
+  carries `preferredSide` so an `h`/`l` choice survives step-across-card
+  and jump-between-cards — a `j` past an additions-side card from a
+  `preferredSide: "deletions"` row keeps the deletions preference for
+  the next paired row landing. Active under both surfaces via the
+  shared `core/cursor-state.ts` helpers; the webapp's URL-mirror and
+  re-anchor policies are unchanged (a CardAnchor still mirrors as
+  `#<ann-id>` regardless of how the cursor arrived). (#200, PRD #192
+  / ADR 0023)
+
 - **Planner: `planRows` now scopes annotations to the file being planned
   (PRD #192 / ADR 0022).** Pressing `j` or `k` from a CardAnchor on the
   webapp jumped to a row in a different file: the row-anchored cursor
