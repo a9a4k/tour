@@ -1,41 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { PickerRow } from "../../core/tour-list.js";
 
 interface TourPickerProps {
   rows: PickerRow[];
+  cursor: number;
   currentTourId: string | null;
-  onSelect: (id: string) => void;
+  // Move cursor by `delta` (clamped at edges). Slice-1 reducer accepts any
+  // integer delta so row-hover / row-click can jump straight to the target
+  // idx without a chain of ±1 dispatches.
+  onMove: (delta: number) => void;
+  onCommit: () => void;
   onClose: () => void;
 }
 
-function initialCursor(rows: PickerRow[], currentTourId: string | null): number {
-  if (rows.length === 0) return 0;
-  const idx = rows.findIndex((r) => r.id !== currentTourId);
-  return idx === -1 ? 0 : idx;
-}
-
+// Controlled picker. Cursor + open state live in the Tour-session store
+// (slice 1 of PRD #207); this component renders rows and forwards
+// keymap / click events via the props it receives. The store's
+// `scrollPickerRow` intent is realized in App.tsx by querying the
+// `data-picker-row-idx` attribute — no per-row ref plumbing.
 export function TourPicker({
   rows,
+  cursor,
   currentTourId,
-  onSelect,
+  onMove,
+  onCommit,
   onClose,
 }: TourPickerProps): React.JSX.Element {
-  const [cursor, setCursor] = useState<number>(() => initialCursor(rows, currentTourId));
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const rowRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     cardRef.current?.focus();
   }, []);
-
-  const commit = useCallback(
-    (idx: number) => {
-      const r = rows[idx];
-      if (!r) return;
-      onSelect(r.id);
-    },
-    [rows, onSelect],
-  );
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -49,28 +44,23 @@ export function TourPicker({
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
-        setCursor((c) => Math.min(rows.length - 1, c + 1));
+        onMove(1);
         return;
       }
       if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
-        setCursor((c) => Math.max(0, c - 1));
+        onMove(-1);
         return;
       }
       if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
-        commit(cursor);
+        onCommit();
       }
     },
-    [rows.length, cursor, commit, onClose],
+    [onMove, onCommit, onClose],
   );
-
-  useEffect(() => {
-    const el = rowRefs.current.get(cursor);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [cursor]);
 
   const onScrimClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -109,15 +99,18 @@ export function TourPicker({
               <button
                 key={r.id}
                 type="button"
-                ref={(el) => {
-                  if (el) rowRefs.current.set(i, el);
-                  else rowRefs.current.delete(i);
-                }}
+                data-picker-row-idx={i}
                 className={cls}
                 role="option"
                 aria-selected={isCursor}
-                onMouseEnter={() => setCursor(i)}
-                onClick={() => commit(i)}
+                onMouseEnter={() => onMove(i - cursor)}
+                onClick={() => {
+                  // Click commits the clicked row; align cursor first so the
+                  // reducer's picker.commit (which reads state.picker.cursor)
+                  // resolves to the clicked id.
+                  if (i !== cursor) onMove(i - cursor);
+                  onCommit();
+                }}
               >
                 <span className={`picker-glyph ${r.status}`}>{r.glyph}</span>
                 <span className="picker-age">{r.age}</span>

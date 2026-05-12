@@ -13,6 +13,14 @@ import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows, pickAutoTour } from "../../core/tour-list.js";
 import {
+  TourSessionStore,
+  useTourSession,
+  isPickerOpen,
+  pickerHighlighted,
+  initialTourSessionState,
+  type TourSummary as SessionTourSummary,
+} from "../../core/tour-session.js";
+import {
   buildThreads,
   isTopLevel,
   latestAnnotationId,
@@ -162,15 +170,35 @@ function readAnnFromUrl(): string | null {
 }
 
 export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
-  const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl(initialTourId));
-  const [tourList, setTourList] = useState<TourSummary[] | null>(null);
+  // Tour-session store (PRD #207 slice 1, issue #210). One store per SPA
+  // mount, seeded with the URL-resolved tour id so the initial render sees
+  // the right currentTourId. `picker` and `tourList` slots are authoritative
+  // in the store; `bundle` is dispatched through the store as a sync mirror
+  // (the React `state` below remains the rendering source-of-truth because
+  // the SSE annotation-changed refresh must NOT trigger the bundle.loaded
+  // reset rules — those apply on Tour-switch, not on same-tour refresh).
+  const storeRef = useRef<TourSessionStore | null>(null);
+  if (storeRef.current === null) {
+    storeRef.current = new TourSessionStore({
+      ...initialTourSessionState(),
+      currentTourId: readTourFromUrl(initialTourId),
+    });
+  }
+  const store = storeRef.current;
+  const sessionState = useTourSession(store);
+  const tourId = sessionState.currentTourId;
+  const tourList: TourSummary[] | null =
+    sessionState.tourList.kind === "ok"
+      ? (sessionState.tourList.value as TourSummary[])
+      : null;
+  const pickerOpen = isPickerOpen(sessionState);
+
   const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
   const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [layout, setLayout] = useState<Layout>("split");
-  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [composerTarget, setComposerTarget] = useState<ComposerTarget | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   // Unified cursor (ADR 0022 / PRD #192). Tagged union: RowAnchor walks
@@ -201,33 +229,118 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // against the freshly-rendered diff DOM.
   const [expansionVersion, setExpansionVersion] = useState(0);
 
+  // Fetches /api/tours/<id>, dispatches bundle.loaded/failed into the store
+  // (per PRD #207 / issue #210 intent listener contract), and mirrors the
+  // result into local React state which remains the bundle-rendering
+  // source-of-truth. Stale-response guard: drops the response if a later
+  // tour-switch has moved the store's currentTourId off `tourId`.
+  // Caller is responsible for ensuring bundle.loading was dispatched (the
+  // reducer's picker.commit does this; popstate / auto-pick / initial mount
+  // do it explicitly below).
+  const loadBundle = useCallback(
+    (id: string) => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/tours/${id}`);
+          const data = (await res.json()) as TourBundle | { error: string };
+          if (store.getState().currentTourId !== id) return;
+          if ("error" in data) {
+            store.dispatch({ type: "bundle.failed", tourId: id, error: data.error });
+            setState({ bundle: null, error: data.error, loaded: true });
+          } else {
+            store.dispatch({ type: "bundle.loaded", tourId: id, bundle: data });
+            setState({ bundle: data, error: null, loaded: true });
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (store.getState().currentTourId !== id) return;
+          store.dispatch({ type: "bundle.failed", tourId: id, error: message });
+          setState({ bundle: null, error: message, loaded: true });
+        }
+      })();
+    },
+    [store],
+  );
+
+  // Intent listener — realizes the store's intent emissions in DOM /
+  // network / history substrate (PRD #207 / issue #210).
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const res = await fetch("/api/tours?status=all");
-      const tours = (await res.json()) as TourSummary[];
-      if (cancelled) return;
-      setTourList(tours);
-      if (!tourId && tours.length > 0) {
-        // Shared with the server's bare-`tour serve` pre-pick (issue #187):
-        // both surfaces resolve the same most-recent-open id so the printed
-        // terminal URL agrees with what the SPA would auto-select at bare /.
-        // Closed-only repos fall through to the most-recent overall, since
-        // the SPA can still render a closed tour where the server's print
-        // simply omits the path component.
-        const auto = pickAutoTour(tours);
-        setTourId(auto?.id ?? tours[tours.length - 1].id);
+    return store.onIntent((intent) => {
+      switch (intent.type) {
+        case "loadTour":
+          loadBundle(intent.tourId);
+          break;
+        case "scrollPickerRow": {
+          if (typeof document === "undefined") break;
+          const el = document.querySelector(
+            `[data-picker-row-idx="${intent.idx}"]`,
+          );
+          el?.scrollIntoView({ block: "nearest" });
+          break;
+        }
+        case "mirrorUrl":
+          if (typeof window !== "undefined" && window.history) {
+            window.history.pushState(
+              { tourId: intent.tourId },
+              "",
+              composeUrl(intent.tourId, null),
+            );
+          }
+          break;
+      }
+    });
+  }, [store, loadBundle]);
+
+  // Mount-time: fetch tour list via store dispatches, auto-pick on bare URL,
+  // and kick off the initial bundle load if a tour-id was already seeded
+  // from the URL.
+  useEffect(() => {
+    store.dispatch({ type: "tourList.loading" });
+    void (async () => {
+      try {
+        const res = await fetch("/api/tours?status=all");
+        const tours = (await res.json()) as SessionTourSummary[];
+        store.dispatch({ type: "tourList.loaded", tours });
+        // Auto-pick at bare `/`: most-recent open (issue #187 — shared
+        // with the server's bare-`tour serve` pre-pick). Closed-only
+        // repos fall through to the most-recent overall.
+        if (store.getState().currentTourId === null && tours.length > 0) {
+          const auto = pickAutoTour(tours);
+          const autoId = auto?.id ?? tours[tours.length - 1].id;
+          store.dispatch({ type: "bundle.loading", tourId: autoId });
+          loadBundle(autoId);
+        }
+      } catch (err) {
+        store.dispatch({
+          type: "tourList.failed",
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+
+    // URL-seeded initial bundle load. picker.commit / popstate / auto-pick
+    // all dispatch bundle.loading themselves; this branch handles the
+    // single case where currentTourId was non-null at mount.
+    const initial = store.getState().currentTourId;
+    if (initial !== null) {
+      store.dispatch({ type: "bundle.loading", tourId: initial });
+      loadBundle(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const onPop = () => {
       const fromUrl = readTourFromUrl(null);
-      if (fromUrl !== null) setTourId(fromUrl);
+      const current = store.getState().currentTourId;
+      if (fromUrl !== null && fromUrl !== current) {
+        // popstate is the equivalent of a picker-commit (issue #210): the
+        // session action sets bundle = loading + currentTourId, and the
+        // App-side fetcher dispatches bundle.loaded/failed. No mirrorUrl
+        // — popstate is following the URL, not writing it.
+        store.dispatch({ type: "bundle.loading", tourId: fromUrl });
+        loadBundle(fromUrl);
+      }
       // Mirror `?ann=` / `#<ann-id>` back into the cursor on browser
       // back / forward (PRD #192 / ADR 0022 slice 2). The mount-time
       // restorer is the authoritative seed when the user changes Tour;
@@ -244,30 +357,20 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [store, loadBundle]);
 
+  // Slice 2+ Tour-switch resets (cursor, folds, composer, selected file).
+  // The reducer's bundle.loaded branch owns the reset rules for slice-1
+  // slots (picker, replyLock, layout); slots not yet in the reducer stay
+  // here until later slices migrate them.
   useEffect(() => {
     if (!tourId) return;
-    let cancelled = false;
     setSelectedFile(null);
     setCollapsedOverrides({});
     setCollapsedFolders(new Set());
     setComposerTarget(null);
     setComposerError(null);
     setCursor(null);
-    (async () => {
-      const res = await fetch(`/api/tours/${tourId}`);
-      const data = (await res.json()) as TourBundle | { error: string };
-      if (cancelled) return;
-      if ("error" in data) {
-        setState({ bundle: null, error: data.error, loaded: true });
-      } else {
-        setState({ bundle: data, error: null, loaded: true });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, [tourId]);
 
   useEffect(() => {
@@ -537,16 +640,52 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     };
   }, []);
 
-  const openPicker = useCallback(() => {
-    triggerRef.current = (document.activeElement as HTMLElement) ?? null;
-    setPickerOpen(true);
-  }, []);
-
-  const closePicker = useCallback(() => {
-    setPickerOpen(false);
+  const restoreFocusAfterPicker = useCallback(() => {
     const back = triggerRef.current ?? pickerButtonRef.current;
     requestAnimationFrame(() => back?.focus());
   }, []);
+
+  const openPicker = useCallback(() => {
+    triggerRef.current = (document.activeElement as HTMLElement) ?? null;
+    const tourListData = store.getState().tourList;
+    if (tourListData.kind !== "ok") return;
+    const counts: Record<string, number> = {};
+    const b = state.bundle;
+    if (b) counts[b.tour.id] = b.annotations.length;
+    const rows = buildPickerRows({
+      tours: tourListData.value,
+      annotationCounts: counts,
+      now: Date.now(),
+    });
+    store.dispatch({ type: "picker.open", rows });
+  }, [store, state.bundle]);
+
+  const closePicker = useCallback(() => {
+    store.dispatch({ type: "picker.close" });
+    restoreFocusAfterPicker();
+  }, [store, restoreFocusAfterPicker]);
+
+  const onPickerMove = useCallback(
+    (delta: number) => {
+      store.dispatch({ type: "picker.move", delta });
+    },
+    [store],
+  );
+
+  const onPickerCommit = useCallback(() => {
+    // Short-circuit when the highlighted row is the current tour: don't
+    // re-fetch the bundle, just close the picker. Preserves the pre-refactor
+    // "Enter on current row" behavior (commitTour's `if (id !== tourId)`).
+    const s = store.getState();
+    const target = pickerHighlighted(s);
+    if (!target) return;
+    if (target.id === s.currentTourId) {
+      store.dispatch({ type: "picker.close" });
+    } else {
+      store.dispatch({ type: "picker.commit" });
+    }
+    restoreFocusAfterPicker();
+  }, [store, restoreFocusAfterPicker]);
 
   const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) {
@@ -1062,28 +1201,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [tourId, composerTarget, closeComposer],
   );
 
-  const commitTour = useCallback(
-    (id: string) => {
-      setPickerOpen(false);
-      if (id !== tourId) {
-        if (typeof window !== "undefined" && window.history) {
-          window.history.pushState({ tourId: id }, "", composeUrl(id, null));
-        }
-        setTourId(id);
-      }
-      const back = triggerRef.current ?? pickerButtonRef.current;
-      requestAnimationFrame(() => back?.focus());
-    },
-    [tourId],
-  );
-
-  const pickerRows = useMemo(() => {
-    if (!tourList) return [];
-    const counts: Record<string, number> = {};
-    if (bundle) counts[bundle.tour.id] = bundle.annotations.length;
-    return buildPickerRows({ tours: tourList, annotationCounts: counts, now: Date.now() });
-  }, [tourList, bundle]);
-
   if (!state.loaded && !tourList) {
     return <div className="empty">Loading…</div>;
   }
@@ -1222,11 +1339,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           )}
         </main>
       </div>
-      {pickerOpen ? (
+      {sessionState.picker.kind === "open" ? (
         <TourPicker
-          rows={pickerRows}
+          rows={sessionState.picker.rows}
+          cursor={sessionState.picker.cursor}
           currentTourId={tourId}
-          onSelect={commitTour}
+          onMove={onPickerMove}
+          onCommit={onPickerCommit}
           onClose={closePicker}
         />
       ) : null}

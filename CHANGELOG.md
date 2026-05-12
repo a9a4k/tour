@@ -58,6 +58,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bundle.loaded` cascade) and `scrollPickerRow` (OpenTUI
   `scrollChildIntoView` on the picker modal scrollbox); `mirrorUrl`
   is ignored (TUI has no URL). Webapp untouched. (#209 · PRD #207)
+- **Webapp Picker is thin through the Tour-session store (slice 1).**
+  `src/web/client/App.tsx` no longer holds `useState` for `pickerOpen`
+  or `tourList`; a per-mount `TourSessionStore` (PRD #207 / slice 1)
+  owns those slots and the App reads them via `useTourSession(store)`.
+  Keymap (`t` / `j` / `k` / `Enter` / `Esc`), hamburger button, scrim
+  click, and row click / hover all dispatch `picker.open` / `.close` /
+  `.move` / `.commit` actions. The intent listener realizes
+  `loadTour` (→ `fetch('/api/tours/:id')` → `bundle.loaded` /
+  `bundle.failed`), `scrollPickerRow` (→ DOM `scrollIntoView`), and
+  `mirrorUrl` (→ `history.pushState`). The mount-time `/api/tours`
+  fetch dispatches `tourList.loading` / `.loaded` / `.failed`. The
+  `popstate` listener dispatches `bundle.loading` + triggers the
+  bundle fetcher rather than mutating local React state. CONTEXT-
+  pinned Tour-switch reset rules for the slice-1 slots (picker
+  closed, reply-lock reset, layout preserved) are sourced from the
+  reducer's `bundle.loaded` branch; slots not yet in the reducer
+  (cursor / folds / composer / sidebar selection) still reset in the
+  webapp on `currentTourId` change pending later slices. The TUI is
+  untouched. `picker.move`'s `delta` widened from `1 | -1` to
+  `number` so row-click / row-hover can jump to the target idx with
+  a single dispatch. (#210 · PRD #207)
 - **Tour-session foundation module (slice 1: Picker).** New
   `core/tour-session.ts` lands the live state aggregate a single
   surface drives for one opened Tour as a pure `(state, action) →
