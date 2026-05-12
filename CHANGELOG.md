@@ -106,6 +106,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: URL hash clears when the cursor moves from a card to a row
+  (PRD #192 / ADR 0022).** Symmetric follow-up to #197's re-anchor fix.
+  The URL-mirror effect's defer gate read `cursorCardId === null`, which
+  under the unified-cursor model collapses two distinct cases: "cursor
+  is null" (tour-load, the restorer is about to anchor — must defer to
+  avoid strip-then-restore in one cycle, per Issue #180) and "cursor is
+  a RowAnchor" (the user pressed `j`/`k` or clicked a diff row — must
+  write a bare `/<tour-id>` so the stale `#<ann-id>` doesn't survive
+  reload). The previous gate suppressed both, leaving the hash stuck on
+  the card the user just left. The discriminator now keys off the full
+  cursor via a new pure `decideMirrorUrl(cursor, topLevel, tourId)`
+  policy in `web/client/mirror-policy.ts`: `cursor === null` with
+  annotations → skip; CardAnchor → write `/<tour-id>#<ann-id>`;
+  RowAnchor → write `/<tour-id>` (drop the hash). Mirrors `decideReanchor`
+  from #197 — both effects key off the same shape now. (#198, PRD #192
+  / ADR 0022)
+
 - **Webapp: `n`/`p` walks top-level order; `j`/`k` no longer flickers
   back to a card (PRD #192 / ADR 0022).** Two regressions in the webapp's
   unified-cursor adoption:

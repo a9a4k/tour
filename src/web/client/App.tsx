@@ -49,6 +49,7 @@ import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 import { decideReanchor } from "./re-anchor-policy.js";
+import { decideMirrorUrl } from "./mirror-policy.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
 import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
@@ -486,20 +487,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // *different* tour-id than state (the in-flight Tour-switch window —
   // Issue #180). A bare URL has no assertion at all; passing `tourId` as
   // the fallback makes the resolver report agreement, so the writer runs
-  // and migrates `/` to `/<tour-id>#<ann-id>`. Also defer when topLevel
-  // is non-empty but the cursor is still null — the restorer is about to
-  // anchor, so we don't want to strip-then-restore a valid ann in a
-  // single cycle.
+  // and migrates `/` to `/<tour-id>#<ann-id>`. The cursor-shape gate
+  // lives in `decideMirrorUrl` and discriminates `cursor === null`
+  // (defer — the restorer is about to anchor; issue #180) from
+  // `cursor.kind === "row"` (write a bare `/<tour-id>` — drop the stale
+  // hash so a `j`/`k` press doesn't leave a hash for the user's next
+  // reload to restore them onto; issue #198).
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!tourMeta || tourMeta.id !== tourId) return;
     if (readTourFromLocation(window.location, tourId) !== tourId) return;
-    if (cursorCardId === null && topLevel.length > 0) return;
-    const next = composeUrl(tourId, cursorCardId);
+    const action = decideMirrorUrl(cursor, topLevel, tourId);
+    if (action.kind === "skip") return;
     const current = window.location.pathname + window.location.search + window.location.hash;
-    if (next === current) return;
-    window.history.replaceState(window.history.state, "", next);
-  }, [cursorCardId, tourMeta, tourId, topLevel]);
+    if (action.url === current) return;
+    window.history.replaceState(window.history.state, "", action.url);
+  }, [cursor, tourMeta, tourId, topLevel]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
