@@ -13,11 +13,10 @@ import {
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { detectAgentsOnPath } from "../core/agent-path-detector.js";
 import { isOnPath } from "../core/is-on-path.js";
-import { probeTour } from "../core/tour-probe.js";
 import { availableShippedAgents } from "../agents/index.js";
 import { html } from "./spa.js";
 import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
-import { bindWithFallback } from "./bind-with-fallback.js";
+import { resolveServePort } from "./resolve-serve-port.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -192,16 +191,6 @@ export async function startServer(args: ServeArgs): Promise<void> {
     args.tourId ?? (pickAutoTour(await listTours(cwd, { status: "all" })))?.id;
   const path = effectiveTourId ? `/${effectiveTourId}` : "";
 
-  // Reuse-if-running (issue #178). Probe the preferred port: if a Tour
-  // server is already serving this cwd, log the existing URL and exit
-  // without starting a second server. Different-cwd Tour, non-Tour, or
-  // free port → fall through to the existing bind path.
-  const existing = await probeTour(port, fetch, 150);
-  if (existing.kind === "tour" && existing.cwd === cwd) {
-    console.log(`Tour already running at http://127.0.0.1:${port}${path}`);
-    return;
-  }
-
   const startedAt = new Date().toISOString();
   const watchers = new Map<string, TourWatcher>();
 
@@ -215,10 +204,16 @@ export async function startServer(args: ServeArgs): Promise<void> {
     return w;
   }
 
-  const { resource: server, boundPort, preferredWasBusy } = await bindWithFallback(
-    port,
-    portExplicit,
-    (tryPort) => Bun.serve({
+  // Reuse-if-running (issues #178, #195). The walk probes EACH port
+  // before deciding to reuse (same-cwd Tour), skip (other-cwd Tour or
+  // non-Tour process), or bind. The previous slice-1.5 composition
+  // probed only the preferred port, then handed off to a non-probing
+  // bind walk — so a same-cwd Tour living on a fallback port was missed.
+  const portResult = await resolveServePort({
+    preferred: port,
+    explicit: portExplicit,
+    cwd,
+    tryBind: (tryPort) => Bun.serve({
       hostname: "127.0.0.1",
       port: tryPort,
       async fetch(req) {
@@ -424,8 +419,14 @@ export async function startServer(args: ServeArgs): Promise<void> {
         });
       },
     }),
-  );
+  });
 
+  if (portResult.kind === "reuse") {
+    console.log(`Tour already running at http://127.0.0.1:${portResult.port}${path}`);
+    return;
+  }
+
+  const { resource: server, port: boundPort, preferredWasBusy } = portResult;
   const url = `http://127.0.0.1:${boundPort}${path}`;
   if (preferredWasBusy) {
     console.log(`Tour server: port ${port} busy, listening on ${url}`);

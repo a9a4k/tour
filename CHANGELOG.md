@@ -67,13 +67,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **`tour serve` reuses a running server when one already exists for the
-  same working directory.** Before binding, the entry point probes the
-  preferred port (`GET /__alive`) and, if it finds a Tour server whose
-  `cwd` matches, prints `Tour already running at http://127.0.0.1:<port>`
-  and exits 0 — no second server is started. Different-cwd Tour or
-  non-Tour processes on the port behave as before (fall back to the
-  next port, or surface `port N is in use` when `--port` was explicit).
-  Stable URLs across re-runs; no process / watcher proliferation. (#178)
+  same working directory — even on a fallback port.** Before binding,
+  the entry point now probes **every** port in the fallback range
+  (`GET /__alive`). If any of them hosts a Tour server whose `cwd`
+  matches, prints `Tour already running at http://127.0.0.1:<port>`
+  and exits 0 — no second server is started. Other-cwd Tours and
+  non-Tour processes are silently skipped during the walk (no surprise
+  `EADDRINUSE` surfaces to the user); the first free port is bound.
+  Explicit `--port N` keeps single-port semantics: reuse if a same-cwd
+  Tour is at N, else the existing `port N is in use` error. The
+  slice-1.5 fix probed only the preferred port and missed same-cwd
+  Tours that had landed on a fallback. Stable URLs across re-runs; no
+  process / watcher proliferation, regardless of which port the
+  existing server happens to be on. (#178, #195)
 - **`tour serve <id>` prints a deep URL.** When a positional tour-id is
   passed, the startup line now includes `/<id>` as a path component
   (e.g. `Tour server running at http://127.0.0.1:8687/<id>`) so the

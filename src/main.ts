@@ -57,6 +57,17 @@ function boolFlag(flags: Record<string, string | boolean>, key: string): boolean
   return flags[key] === true;
 }
 
+// 8687 is the documented default; `TOURDIFF_BASE_PORT` lets the tests
+// (and any user who wants a different preferred port without typing
+// `--port` every time) override it. Non-integer / non-positive values
+// fall back to 8687.
+function defaultPreferredPort(): number {
+  const raw = process.env.TOURDIFF_BASE_PORT;
+  if (raw === undefined || raw === "") return 8687;
+  const parsed = parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 8687;
+}
+
 const USAGE = `tour — local code walkthrough tool with AI annotations
 
 Usage:
@@ -183,7 +194,7 @@ async function main(): Promise<void> {
       case "serve": {
         const portFlag = flag(flags, "port");
         await serve({
-          port: portFlag !== undefined ? parseInt(portFlag, 10) : 8687,
+          port: portFlag !== undefined ? parseInt(portFlag, 10) : defaultPreferredPort(),
           portExplicit: portFlag !== undefined,
           open: boolFlag(flags, "open"),
           tourId: positional[0],
@@ -241,7 +252,7 @@ async function main(): Promise<void> {
         });
         if (surface === "webapp") {
           await serve({
-            port: 8687,
+            port: defaultPreferredPort(),
             portExplicit: false,
             open: false,
             cwd,
