@@ -61,6 +61,31 @@ export function isTopLevel(a: Annotation): boolean {
   return a.replies_to === undefined;
 }
 
+// The human Annotation that should carry the webapp "Send to {agent}"
+// button in a Thread, or null when no Send button should appear anywhere
+// (issue #190, PRD #181). At most one Send per Thread.
+//
+// Rule: the latest Annotation in the Thread (by `created_at`, id
+// ascending tiebreak — matching `buildThreads`) is always a leaf in a
+// well-formed tree (its parent must have an earlier or equal
+// `created_at`). So "latest human leaf" collapses to "latest overall,
+// if human; otherwise null". If the latest turn is agent-authored, the
+// user is expected to write a human Reply first — which then becomes
+// the new latest leaf and surfaces the Send button.
+//
+// Pure thread-level computation; `canSendToAgent` stays a pure
+// per-Annotation predicate, and the gating lives at the render site.
+export function latestHumanLeafId(
+  topLevel: Annotation,
+  descendants: Annotation[],
+): string | null {
+  let latest: Annotation = topLevel;
+  for (const a of descendants) {
+    if (compareAnnotations(a, latest) > 0) latest = a;
+  }
+  return latest.author_kind === "human" ? latest.id : null;
+}
+
 export function topLevelAnnotations(annotations: Annotation[]): Annotation[] {
   return annotations.filter(isTopLevel);
 }

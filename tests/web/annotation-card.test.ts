@@ -562,3 +562,225 @@ describe("AnnotationCard inline-Reply action row (issue #189, PRD #181 story 11)
     expect(lastId).toBe(baseAnnotation.id);
   });
 });
+
+describe("AnnotationCard Send-button latest-human-leaf gating (issue #190, PRD #181)", () => {
+  // A Thread carries at most one Send button — on the latest human leaf
+  // (the human Annotation that is the latest turn overall, when human).
+  // Older sibling human leaves do NOT get a Send button even though
+  // `canSendToAgent` would say visible: true for each of them
+  // individually. The gating lives at the render site; the core
+  // predicate stays pure and per-Annotation.
+
+  const agentTop: Annotation = {
+    ...baseAnnotation,
+    id: "top-agent",
+    author: "claude",
+    author_kind: "agent",
+    created_at: "2026-05-08T00:00:00Z",
+  };
+
+  function humanReplyAt(id: string, t: string): Annotation {
+    return {
+      ...baseAnnotation,
+      id,
+      author: "alice",
+      author_kind: "human",
+      body: `reply body ${id}`,
+      replies_to: agentTop.id,
+      created_at: t,
+    };
+  }
+
+  function sendButtonForId(
+    container: HTMLElement,
+    annotationId: string,
+  ): HTMLButtonElement | null {
+    // Inline Replies are wrapped in `[id=annotation-<replyId>]`; the
+    // top-level card has no such wrapper but it owns its own
+    // `.ann-actions` directly under `.annotation-block`. For inline
+    // Replies we scope by id; for the top-level we look at the
+    // `.ann-actions` immediately under `.annotation-block` (excluding
+    // any `.ann-actions` inside an inline `.ann-reply`).
+    const replyWrap = container.querySelector(`[id="annotation-${annotationId}"]`);
+    if (replyWrap) {
+      return (replyWrap.querySelector(".send-to-agent-button") as HTMLButtonElement | null) ?? null;
+    }
+    const topLevel = container.querySelector(".annotation-block");
+    if (!topLevel) return null;
+    // Direct-child `.ann-actions` is the top-level row.
+    const topActions = Array.from(topLevel.children).find((c) =>
+      c.classList?.contains("ann-actions"),
+    ) as HTMLElement | undefined;
+    return (topActions?.querySelector(".send-to-agent-button") as HTMLButtonElement | null) ?? null;
+  }
+
+  it("shows exactly one Send button on the latest human Reply when two human siblings are leaves", () => {
+    const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: agentTop,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(1);
+    expect(sendButtonForId(container, r2.id)).not.toBeNull();
+    expect(sendButtonForId(container, r1.id)).toBeNull();
+  });
+
+  it("Reply buttons remain on every human Reply regardless of latest-leaf (per-Reply Reply visibility unchanged)", () => {
+    const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: agentTop,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    // Reply button still visible on the older sibling (only Send is narrowed).
+    const olderReplyBtn = container
+      .querySelector(`[id="annotation-${r1.id}"]`)
+      ?.querySelector(".reply-button");
+    expect(olderReplyBtn).not.toBeNull();
+  });
+
+  it("renders NO Send button anywhere when the latest turn in the Thread is agent-authored", () => {
+    // [agent] top + [human] old (leaf) + [agent] new (latest, leaf)
+    const human = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const agentLatest: Annotation = {
+      ...baseAnnotation,
+      id: "ann-r-agent-latest",
+      author: "claude",
+      author_kind: "agent",
+      replies_to: agentTop.id,
+      body: "agent latest body",
+      created_at: "2026-05-08T00:00:02Z",
+    };
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: agentTop,
+        replies: [human, agentLatest],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(0);
+  });
+
+  it("moves the Send button from a human top-level to its latest human descendant", () => {
+    // [human] top + [agent] r1 + [human] r2 (latest leaf)
+    const humanTop: Annotation = {
+      ...baseAnnotation,
+      id: "top-human",
+      author: "alice",
+      author_kind: "human",
+      created_at: "2026-05-08T00:00:00Z",
+    };
+    const r1: Annotation = {
+      ...baseAnnotation,
+      id: "ann-r1",
+      author: "claude",
+      author_kind: "agent",
+      replies_to: humanTop.id,
+      body: "agent r1 body",
+      created_at: "2026-05-08T00:00:01Z",
+    };
+    const r2: Annotation = {
+      ...baseAnnotation,
+      id: "ann-r2",
+      author: "alice",
+      author_kind: "human",
+      replies_to: r1.id,
+      body: "human r2 body",
+      created_at: "2026-05-08T00:00:02Z",
+    };
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: humanTop,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    // Top-level Send hidden (already-replied + not latest leaf).
+    expect(sendButtonForId(container, humanTop.id)).toBeNull();
+    // Latest human leaf carries the Send button.
+    expect(sendButtonForId(container, r2.id)).not.toBeNull();
+    expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(1);
+  });
+
+  it("fires onSendToAgent with the latest human leaf's id (not an older human sibling's)", () => {
+    let lastId: string | null = null;
+    const older = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const latest = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: agentTop,
+        replies: [older, latest],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: (id: string) => {
+          lastId = id;
+        },
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = sendButtonForId(container, latest.id);
+    expect(btn).not.toBeNull();
+    act(() => {
+      btn?.click();
+    });
+    expect(lastId).toBe(latest.id);
+  });
+
+  it("keeps the lock-held disabled + tooltip on the single rendered Send button", () => {
+    const older = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const latest = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: agentTop,
+        replies: [older, latest],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        replyLock: {
+          agent: "claude",
+          responding_to: "other-ann",
+          started_at: "2026-05-12T09:00:00Z",
+          pid: 1,
+        },
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = sendButtonForId(container, latest.id);
+    expect(btn).not.toBeNull();
+    expect(btn?.disabled).toBe(true);
+    expect(btn?.getAttribute("title")).toContain("claude is replying");
+    // And nothing else is rendered.
+    expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(1);
+  });
+});

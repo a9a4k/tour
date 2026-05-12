@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildThreads,
   isTopLevel,
+  latestHumanLeafId,
   topLevelAnnotations,
 } from "../../src/core/threads.js";
 import type { Annotation } from "../../src/core/types.js";
@@ -110,6 +111,74 @@ describe("buildThreads", () => {
     const a = ann({ id: "a", replies_to: "b" });
     const b = ann({ id: "b", replies_to: "a" });
     expect(buildThreads([a, b])).toEqual([]);
+  });
+});
+
+describe("latestHumanLeafId", () => {
+  // Latest-human-leaf rule for the webapp "Send to {agent}" affordance
+  // (issue #190, PRD #181). The rule picks the human Annotation that
+  // should carry the Send button in a Thread — at most one per Thread.
+  //
+  // The simplification used: the latest annotation in the Thread by
+  // `created_at` (id ascending tiebreak, matching buildThreads) is
+  // always a leaf in a well-formed tree (its parent must have an
+  // earlier or equal `created_at`). So the rule collapses to "the
+  // latest overall, if human; otherwise null". If the latest turn is
+  // agent-authored, no Send button anywhere — the user is expected to
+  // write a human Reply first.
+
+  it("returns the top-level id when it's a human Annotation with no replies", () => {
+    const a = ann({ id: "a", author_kind: "human" });
+    expect(latestHumanLeafId(a, [])).toBe("a");
+  });
+
+  it("returns null when the top-level is agent and there are no replies", () => {
+    const a = ann({ id: "a", author_kind: "agent" });
+    expect(latestHumanLeafId(a, [])).toBe(null);
+  });
+
+  it("returns the latest human Reply when the top-level is agent and all replies are human leaves", () => {
+    const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "r2", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
+    expect(latestHumanLeafId(top, [r1, r2])).toBe("r2");
+  });
+
+  it("returns the latest human leaf, ignoring an older human Reply that has its own child", () => {
+    // [agent] top + [human] r1 (has child r1a) + [agent] r1a + [human] r2 (leaf)
+    const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r1a = ann({ id: "r1a", replies_to: "r1", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
+    const r2 = ann({ id: "r2", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:03Z" });
+    expect(latestHumanLeafId(top, [r1, r1a, r2])).toBe("r2");
+  });
+
+  it("returns null when the latest turn in the Thread is agent-authored", () => {
+    // [agent] top + [human] r1 (leaf) + [agent] r2 (latest, leaf)
+    const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "r2", replies_to: "top", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
+    expect(latestHumanLeafId(top, [r1, r2])).toBe(null);
+  });
+
+  it("hides Send on a human top-level once any Reply lands (latest is the Reply)", () => {
+    const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
+    expect(latestHumanLeafId(top, [r1])).toBe(null);
+  });
+
+  it("moves Send from a human top-level to the latest human descendant", () => {
+    const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "r2", replies_to: "r1", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
+    expect(latestHumanLeafId(top, [r1, r2])).toBe("r2");
+  });
+
+  it("breaks created_at ties by id ascending (id-largest wins, matching buildThreads)", () => {
+    const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "a", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "b", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    expect(latestHumanLeafId(top, [r1, r2])).toBe("b");
   });
 });
 

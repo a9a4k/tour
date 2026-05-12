@@ -13,7 +13,12 @@ import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icon
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows, pickAutoTour } from "../../core/tour-list.js";
-import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
+import {
+  buildThreads,
+  isTopLevel,
+  latestHumanLeafId,
+  topLevelAnnotations,
+} from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
   canSendToAgent,
@@ -1671,12 +1676,30 @@ export function AnnotationCard({
   // story 11) — a Reply with a child of its own hides Send on that
   // Reply, even if the top-level still has Send hidden because *it*
   // has a Reply.
-  const sendVerdict = canSendToAgent({
-    replyAgentConfigured: !!replyAgent,
-    lockHeld,
-    authorKind: annotation.author_kind,
-    hasReply: (replies?.length ?? 0) > 0,
-  });
+  //
+  // A second gate narrows visibility per Thread: at most one Send
+  // button renders, attached to the latest human leaf (issue #190).
+  // The core predicate stays pure per-Annotation; this gate is a
+  // render-site concern. When the latest turn in the Thread is
+  // agent-authored, `latestLeafId` is null and no Send appears
+  // anywhere — the user is expected to write a human Reply first.
+  const latestLeafId = latestHumanLeafId(annotation, replies ?? []);
+  const narrowToLatestLeaf = (
+    verdict: CanSendToAgentResult,
+    annotationId: string,
+  ): CanSendToAgentResult =>
+    annotationId === latestLeafId
+      ? verdict
+      : { visible: false, enabled: false };
+  const sendVerdict = narrowToLatestLeaf(
+    canSendToAgent({
+      replyAgentConfigured: !!replyAgent,
+      lockHeld,
+      authorKind: annotation.author_kind,
+      hasReply: (replies?.length ?? 0) > 0,
+    }),
+    annotation.id,
+  );
   return (
     <div
       className={isCurrent ? "annotation-block current" : "annotation-block"}
@@ -1703,12 +1726,15 @@ export function AnnotationCard({
       {replies && replies.length > 0 ? (
         <div className="ann-replies">
           {replies.map((r) => {
-            const replyVerdict = canSendToAgent({
-              replyAgentConfigured: !!replyAgent,
-              lockHeld,
-              authorKind: r.author_kind,
-              hasReply: replies.some((o) => o.replies_to === r.id),
-            });
+            const replyVerdict = narrowToLatestLeaf(
+              canSendToAgent({
+                replyAgentConfigured: !!replyAgent,
+                lockHeld,
+                authorKind: r.author_kind,
+                hasReply: replies.some((o) => o.replies_to === r.id),
+              }),
+              r.id,
+            );
             // Agent Replies carry no Reply button by existing webapp
             // convention; canSendToAgent already hides Send for them.
             const showReply = r.author_kind === "human" && !!onOpenReply;

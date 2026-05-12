@@ -100,6 +100,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: "Send to {agent}" renders on the latest human leaf only —
+  at most one Send button per Thread.** Previously, the inline-Reply
+  action row added in #189 rendered a Send button on every human
+  Reply whose `canSendToAgent` verdict said visible, producing visual
+  noise in Threads with multiple unanswered human siblings (a real
+  Tour stacked two Send buttons under the same agent parent — only
+  the chronologically later one was a natural dispatch target). The
+  webapp `AnnotationCard` now gates each Send button on a per-Thread
+  latest-human-leaf check in addition to the predicate. The
+  computation is the pure `latestHumanLeafId(topLevel, descendants)`
+  helper in `core/threads.ts`: the latest Annotation in the Thread
+  by `created_at` (id ascending tiebreak) is always a leaf in a
+  well-formed tree, so the rule collapses to "latest overall, if
+  human; otherwise null". When the latest turn is agent-authored,
+  no Send button renders anywhere — the user is expected to write a
+  human Reply first, which becomes the new latest leaf. Per-Reply
+  `Reply` button visibility, `canSendToAgent`'s input/output
+  contract, the `requestReply` seam, the HTTP endpoint, the watcher,
+  and the lock are all unchanged. (PRD #181 story 11, #190)
+
 - **Webapp: "Send to {agent}" + "Reply" affordances now render on every
   human Reply, not just the top-level Annotation.** Previously, the
   webapp `AnnotationCard` rendered its action row exactly once per
