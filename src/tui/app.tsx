@@ -205,15 +205,15 @@ function App(props: AppProps) {
   // `tourList.*` / `bundle.*` actions and realizes the emitted intents in
   // its own substrate. The store is per-TUI-process — instantiated once
   // on first render and stable across re-renders.
-  const [store] = useState<TourSessionStore>(() => {
-    const replyLockInit = props.replyLock !== undefined ? props.replyLock : null;
-    return new TourSessionStore({
-      ...initialTourSessionState(),
-      currentTourId: props.bundle.tour.id,
-      bundle: { kind: "ok", value: props.bundle },
-      replyLock: { kind: "ok", value: replyLockInit },
-    });
-  });
+  const [store] = useState<TourSessionStore>(
+    () =>
+      new TourSessionStore({
+        ...initialTourSessionState(),
+        currentTourId: props.bundle.tour.id,
+        bundle: { kind: "ok", value: props.bundle },
+        replyLock: { kind: "ok", value: props.replyLock ?? null },
+      }),
+  );
   const sessionState = useTourSession(store);
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
