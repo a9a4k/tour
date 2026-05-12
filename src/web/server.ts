@@ -16,6 +16,11 @@ import { isOnPath } from "../core/is-on-path.js";
 import { availableShippedAgents } from "../agents/index.js";
 import { html } from "./spa.js";
 import { EMBEDDED_CLIENT_JS, EMBEDDED_PIERRE_WORKER_JS } from "./embedded-client.js";
+import {
+  createClientAssetsCache,
+  type AssetsResult,
+  type ClientAsset,
+} from "./client-assets.js";
 import { resolveServePort } from "./resolve-serve-port.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,14 +61,6 @@ interface BunBuildOutput {
   arrayBuffer: () => Promise<ArrayBuffer>;
 }
 
-interface ClientAsset {
-  body: string | ArrayBuffer;
-  contentType: string;
-}
-
-let cachedClientAssets: Map<string, ClientAsset> | null = null;
-let cachedClientBundleError: string | null = null;
-
 function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
@@ -78,25 +75,9 @@ function asInt(v: unknown): number | undefined {
 // public URL path so the request handler can serve any auxiliary chunks
 // (worker, asset) the browser asks for. The entry-point output is also
 // aliased at `/client.js` so the HTML loader doesn't need to know its
-// bundler-assigned hash.
-async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | null; error: string | null }> {
-  if (cachedClientAssets !== null) return { assets: cachedClientAssets, error: null };
-  if (cachedClientBundleError !== null) return { assets: null, error: cachedClientBundleError };
-
-  // Compiled-binary fast path. Bun.build can't run inside /$bunfs/ — it has
-  // no real directory listings, so any entrypoint path errors with
-  // "FileNotFound: failed to open root directory". scripts/build-client.ts
-  // bakes the bundle strings into embedded-client.ts at binary-build time;
-  // when the constants are populated, use them and skip Bun.build entirely.
-  if (EMBEDDED_CLIENT_JS && EMBEDDED_PIERRE_WORKER_JS) {
-    const assets = new Map<string, ClientAsset>();
-    const ct = "application/javascript; charset=utf-8";
-    assets.set("/client.js", { body: EMBEDDED_CLIENT_JS, contentType: ct });
-    assets.set("/pierre-worker.js", { body: EMBEDDED_PIERRE_WORKER_JS, contentType: ct });
-    cachedClientAssets = assets;
-    return { assets, error: null };
-  }
-
+// bundler-assigned hash. Bun.build can't run inside /$bunfs/ — the
+// compiled binary takes the embedded fast-path in client-assets.ts.
+async function buildClientFromSource(): Promise<AssetsResult> {
   const here = dirname(fileURLToPath(import.meta.url));
   const clientEntry = resolve(here, "client/main.tsx");
   // Bun.build doesn't rewrite `new Worker(new URL(..., import.meta.url))`
@@ -104,9 +85,7 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
   // URL and we bundle the worker as a second entry. Resolve directly through
   // the package exports map — @pierre/diffs marks only its web-components
   // file as a side effect, so bundling via a bare-specifier shim file gets
-  // tree-shaken to 0 bytes. (This path runs only in dev: the compiled
-  // binary takes the embedded fast-path above. import.meta.resolve works
-  // here because we're outside /$bunfs/.)
+  // tree-shaken to 0 bytes.
   const workerEntry = fileURLToPath(import.meta.resolve("@pierre/diffs/worker/worker.js"));
   try {
     const result = await Bun.build({
@@ -125,8 +104,7 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
       },
     });
     if (!result.success) {
-      cachedClientBundleError = `client bundle failed: ${JSON.stringify(result.logs)}`;
-      return { assets: null, error: cachedClientBundleError };
+      return { assets: null, error: `client bundle failed: ${JSON.stringify(result.logs)}` };
     }
     const assets = new Map<string, ClientAsset>();
     let clientArtifact: BunBuildOutput | null = null;
@@ -155,14 +133,24 @@ async function getClientAssets(): Promise<{ assets: Map<string, ClientAsset> | n
       const text = await workerArtifact.text();
       assets.set("/pierre-worker.js", { body: text, contentType: "application/javascript; charset=utf-8" });
     }
-    cachedClientAssets = assets;
     return { assets, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    cachedClientBundleError = `client bundle threw: ${message}`;
-    return { assets: null, error: cachedClientBundleError };
+    return { assets: null, error: `client bundle threw: ${message}` };
   }
 }
+
+// Per-process cache. Compiled-binary path is sticky (embedded constants
+// are immutable for the life of the process); dev mode rebuilds on every
+// call so source edits + `bun scripts/build-client.ts` reach the next
+// request without restarting `tour serve` (issue #202).
+const getClientAssets = createClientAssetsCache({
+  getEmbedded: () =>
+    EMBEDDED_CLIENT_JS && EMBEDDED_PIERRE_WORKER_JS
+      ? { client: EMBEDDED_CLIENT_JS, worker: EMBEDDED_PIERRE_WORKER_JS }
+      : null,
+  buildFromSource: buildClientFromSource,
+});
 
 function contentTypeFor(path: string): string {
   if (path.endsWith(".js") || path.endsWith(".mjs")) return "application/javascript; charset=utf-8";
