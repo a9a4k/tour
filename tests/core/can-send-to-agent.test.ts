@@ -3,13 +3,13 @@ import { canSendToAgent } from "../../src/core/can-send-to-agent.js";
 
 // Pure-predicate exhaustive table across the four input dimensions
 // (replyAgentConfigured × lockHeld × authorKind × hasReply). 2×2×2×2 = 16.
-// Reason precedence under conflicting blockers:
-//   visibility: agent-card > no-reply-agent  (the card-level reason wins,
-//     because the affordance is structurally absent on agent cards even
-//     if the renderer is later restarted with --reply-agent set)
-//   reason:     already-replied > lock-held  (one-shot terminal beats the
-//     transient in-flight lock — the affordance is gone for this parent
-//     forever, regardless of lock state; both are hidden)
+// Reason precedence when multiple inputs would reject:
+//   agent-card > no-reply-agent  (the card-level reason wins, because the
+//     affordance is structurally absent on agent cards even if the renderer
+//     is later restarted with --reply-agent set)
+//   already-replied > lock-held  (one-shot terminal beats the transient
+//     in-flight lock — the affordance is gone for this parent forever,
+//     regardless of lock state)
 describe("canSendToAgent", () => {
   it("visible+enabled when human card, configured, no lock, no reply", () => {
     expect(
