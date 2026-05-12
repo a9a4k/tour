@@ -61,3 +61,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   annotation. Internal navigation (tour-picker, n/p cursor) now writes
   the new path + fragment shape; legacy `?tour=&ann=` URLs remain
   readable as a back-compat fallback. (#179)
+
+### Fixed
+
+- **Address bar updates when the SPA is entered at bare `/`.** The
+  URL-writer effect's "URL contradicts state" gate previously read the
+  URL with a `null` fallback, so a bare `/` resolved to `null` and the
+  writer treated it as a contradiction with the auto-selected tour-id
+  in state — skipping the write on every cursor move and freezing the
+  address bar at `/`. The gate now uses the state's tour-id as the
+  fallback: a bare URL is no contradiction (the writer migrates `/`
+  to `/<tour-id>#<ann-id>` on first cursor anchor), while a URL that
+  asserts a *different* tour-id (the in-flight tour-switch window)
+  still skips. (#180)

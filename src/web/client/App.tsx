@@ -455,14 +455,17 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
   // path + fragment shape `/<tour-id>#<ann-id>` (Issue #179) so the
   // printed deep URL and the address bar agree, and so the legacy
   // `?tour=&ann=` form self-heals on first cursor movement. Gate: skip
-  // when the URL doesn't already reflect the state's tour (in-flight
-  // Tour-switch window), and defer when topLevel is non-empty but the
-  // cursor is still null — the restorer is about to anchor, so we don't
-  // want to strip-then-restore a valid ann in a single cycle.
+  // only when the URL asserts a *different* tour-id than state (the
+  // in-flight Tour-switch window — Issue #180). A bare URL has no
+  // assertion at all; passing `tourId` as the fallback makes the
+  // resolver report agreement, so the writer runs and migrates `/` to
+  // `/<tour-id>#<ann-id>`. Also defer when topLevel is non-empty but
+  // the cursor is still null — the restorer is about to anchor, so we
+  // don't want to strip-then-restore a valid ann in a single cycle.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!tourMeta || tourMeta.id !== tourId) return;
-    if (readTourFromLocation(window.location, null) !== tourId) return;
+    if (readTourFromLocation(window.location, tourId) !== tourId) return;
     if (currentAnnotationId === null && topLevel.length > 0) return;
     const next = composeUrl(tourId, currentAnnotationId);
     const current = window.location.pathname + window.location.search + window.location.hash;

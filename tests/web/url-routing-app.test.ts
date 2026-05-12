@@ -106,3 +106,130 @@ describe("App URL routing (Issue #179 reopen)", () => {
     expect(bundleUrls()).toEqual(["/api/tours/tour-A"]);
   });
 });
+
+// Issue #180 — when the SPA loads at bare `/` and state holds a
+// tour-id (auto-picked or baked into `__INITIAL_TOUR_ID__`), the
+// URL-writer's gate used to read the URL's tour-id with a `null`
+// fallback. Bare URL → `null`, state has an id, gate sees "URL
+// contradicts state" and skips forever. The fix: a bare URL must
+// not be classified as contradicting state — only a URL that
+// asserts a *different* tour-id should skip.
+describe("App URL writer (Issue #180 — bare URL is consistent with state)", () => {
+  const tourId = "2026-05-12-000000-test";
+  const tourSummary = {
+    id: tourId,
+    title: "Test tour",
+    status: "open" as const,
+    created_at: "2026-05-12T00:00:00Z",
+    closed_at: "",
+    head_sha: "deadbeef",
+    base_sha: "cafebabe",
+    head_source: "feature/x",
+    base_source: "main",
+    wip_snapshot: false,
+  };
+  const annA = {
+    id: "ann-a",
+    file: "src/example.ts",
+    side: "additions" as const,
+    line_start: 1,
+    line_end: 1,
+    body: "first",
+    author: "tester",
+    author_kind: "human" as const,
+    created_at: "2026-05-12T00:00:00Z",
+  };
+  const annB = { ...annA, id: "ann-b", body: "second" };
+  const bundle = {
+    kind: "ok" as const,
+    tour: tourSummary,
+    annotations: [annA, annB],
+    diff: "",
+    files: [],
+  };
+
+  function installBundleFetch(): void {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([tourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${tourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(bundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      // Unknown bundle ids (e.g., the in-flight-switch test asks for
+      // `/api/tours/different-tour-id`) → error payload so the App's
+      // bundle-fetch effect sets state.error rather than storing a
+      // malformed bundle.
+      if (/^\/api\/tours\/[^/?]+$/.test(u) || u.includes("/api/tours/")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: "not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+  }
+
+  async function flush(): Promise<void> {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+
+  it("bare `/` with tour auto-selected from the picker transitions to `/<tour-id>#<ann-id>` on first cursor anchor", async () => {
+    installBundleFetch();
+    window.history.replaceState(null, "", "/");
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      // initialTourId=null mirrors a fresh-cwd server hit at bare `/`:
+      // the picker fetch returns one tour, App auto-selects it.
+      root.render(createElement(App, { initialTourId: null }));
+    });
+    await flush();
+
+    const path = window.location.pathname + window.location.hash;
+    expect(path).toBe(`/${tourId}#${annA.id}`);
+  });
+
+  it("in-flight tour-switch window (URL points at a different tour-id) still skips the write", async () => {
+    // URL asserts a different tour-id than state. Gate must skip so the
+    // address bar isn't overwritten during the swap window.
+    installBundleFetch();
+    window.history.replaceState(null, "", "/different-tour-id");
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    // The path-reader wins, so the App fetches `/different-tour-id` (404
+    // from our fallback). tourId state ends up as `different-tour-id`,
+    // but the bundle's id is the original tourId — the in-flight window.
+    // The URL must remain `/different-tour-id` (no fragment appended
+    // from the stale bundle).
+    await flush();
+    expect(window.location.pathname).toBe("/different-tour-id");
+    expect(window.location.hash).toBe("");
+  });
+});
