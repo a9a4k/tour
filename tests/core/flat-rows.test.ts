@@ -6,6 +6,7 @@ import {
   type PlannedRow,
   type InteractiveRow,
 } from "../../src/core/diff-rows.js";
+import { resolveCursorRowIdx } from "../../src/core/cursor-state.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
 import type { Annotation } from "../../src/core/types.js";
 
@@ -202,8 +203,7 @@ describe("flatRows", () => {
   // file's annotation `line_end`. resolveCursorRowIdx then resolved the
   // CardAnchor to the first (alphabetically-earliest) phantom — moveCursor
   // from a card stepped into the wrong file.
-  it("emits exactly one card row per top-level Annotation in a multi-file Tour with overlapping line ranges", async () => {
-    const { resolveCursorRowIdx } = await import("../../src/core/cursor-state.js");
+  it("emits exactly one card row per top-level Annotation in a multi-file Tour with overlapping line ranges", () => {
     const diffA = `diff --git a/a.txt b/a.txt
 index 1..2 100644
 --- a/a.txt

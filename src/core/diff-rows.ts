@@ -112,14 +112,10 @@ export function planRows(
       return [collapsedFileRow(file)];
     }
   }
-  // issue #199: scope the annotation list to this file before any downstream
-  // helper consumes it. The webapp routes the cross-file annotation list
-  // through planRows per file; without this filter, `applyAnnotationFlags`
-  // and `interleaveAnnotations` match anchors by `(side, line_end)` only
-  // and leak phantom card rows + tint flags into every file whose line
-  // range overlaps a foreign annotation's `line_end`. resolveCursorRowIdx
-  // then resolves a CardAnchor to the first phantom and `j`/`k` step into
-  // the wrong file.
+  // Scope to this file before passing on: applyAnnotationFlags and
+  // interleaveAnnotations match anchors by `(side, line_end)` only, so an
+  // unfiltered list leaks phantom card rows + tint flags into every file
+  // whose line range overlaps a foreign annotation's `line_end` (issue #199).
   const fileAnnotations = annotations.filter((a) => a.file === file.name);
   const diffRows = walkHunks(file, layout, options);
   applyAnnotationFlags(diffRows, fileAnnotations, layout);
