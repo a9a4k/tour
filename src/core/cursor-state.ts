@@ -43,6 +43,13 @@ export function isCardAnchor(c: Cursor | null): c is CardAnchor {
   return c !== null && c.kind === "card";
 }
 
+/** preferredSide of a cursor, or "additions" when there's nothing to read
+ *  it from (card cursor, null cursor). Used by the motion helpers when
+ *  the destination is a row but the source might not be. */
+export function preferredSideOf(c: Cursor | null): "additions" | "deletions" {
+  return c && c.kind === "row" ? c.preferredSide : "additions";
+}
+
 /**
  * Initial cursor: first top-level Annotation's card if any, else first
  * DIFF row of the first non-folded file. Returns null when no row is
@@ -92,9 +99,7 @@ export function moveCursor(
     next += step;
   }
   if (next < 0 || next >= flatRows.length) return cursor;
-  const preferredSide: "additions" | "deletions" =
-    cursor.kind === "row" ? cursor.preferredSide : "additions";
-  return cursorFromRow(flatRows[next], preferredSide);
+  return cursorFromRow(flatRows[next], preferredSideOf(cursor));
 }
 
 /**
@@ -124,15 +129,12 @@ function walkCards(
   step: 1 | -1,
 ): CardAnchor | null {
   const startIdx = cursor ? resolveCursorRowIdx(cursor, flatRows) : -1;
-  if (startIdx === -1) {
-    // Cursor not resolved: pick the first/last card in the stream.
-    const range = step === 1 ? flatRows : [...flatRows].reverse();
-    for (const r of range) {
-      if (r.kind === "card") return { kind: "card", annotationId: r.annotationId };
-    }
-    return null;
-  }
-  for (let i = startIdx + step; i >= 0 && i < flatRows.length; i += step) {
+  // When cursor isn't resolved, start one step BEFORE the boundary so the
+  // loop's first hit is the first/last card in the stream's direction.
+  const from = startIdx === -1
+    ? (step === 1 ? -1 : flatRows.length)
+    : startIdx;
+  for (let i = from + step; i >= 0 && i < flatRows.length; i += step) {
     const r = flatRows[i];
     if (r.kind === "card") return { kind: "card", annotationId: r.annotationId };
   }
@@ -287,10 +289,10 @@ export function cursorFromRow(
   preferredSide: "additions" | "deletions",
 ): RowAnchor {
   if (row.kind === "card") {
-    // A card row can't anchor a RowAnchor — callers in the row lane
-    // should never hand a card row here. Fall back to a synthesised
-    // anchor at the card's (file, side, lineEnd) so the surface never
-    // crashes; in practice this path is unreachable from any caller.
+    // Card rows participate in flatRows so Home/End and pageMove's
+    // nearest-row snap can pick one. The row-lane return shape forces
+    // a synthesised RowAnchor at the card's (file, side, lineEnd) —
+    // the n/p card lane is the way to land on a CardAnchor.
     return {
       kind: "row",
       file: row.file,

@@ -72,6 +72,7 @@ import {
   moveCursor,
   nextCard,
   prevCard,
+  preferredSideOf,
   setCursorSide,
   validateCursor,
   cursorFromAnnotation,
@@ -754,7 +755,7 @@ function App(props: AppProps) {
         file,
         subKind,
         boundaryRef,
-        preferredSide: prev && prev.kind === "row" ? prev.preferredSide : "additions",
+        preferredSide: preferredSideOf(prev),
       }),
     );
     const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);

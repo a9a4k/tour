@@ -591,7 +591,7 @@ describe("type guards", () => {
   it("isRowAnchor narrows correctly", () => {
     const r = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     expect(isRowAnchor(r)).toBe(true);
-    expect(isRowAnchor(null)).toBeFalsy?.() ?? expect(isRowAnchor(null)).toBe(false);
+    expect(isRowAnchor(null)).toBe(false);
     const c: CardAnchor = { kind: "card", annotationId: "a1" };
     expect(isRowAnchor(c)).toBe(false);
   });

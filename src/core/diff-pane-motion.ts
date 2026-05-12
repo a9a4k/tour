@@ -1,5 +1,5 @@
 import type { Cursor } from "./cursor-state.js";
-import { cursorFromRow, moveCursor, resolveCursorRowIdx } from "./cursor-state.js";
+import { cursorFromRow, moveCursor, preferredSideOf, resolveCursorRowIdx } from "./cursor-state.js";
 import type { FlatRow } from "./flat-rows.js";
 
 /**
@@ -119,9 +119,7 @@ export function pageMove(
     const targetY = newScrollTop + screenY;
     snapIdx = nearestRowIdx(state.flatRows, state.rowY, targetY);
   }
-  const preferredSide: "additions" | "deletions" =
-    state.cursor?.kind === "row" ? state.cursor.preferredSide : "additions";
-  const next = cursorFromRow(state.flatRows[snapIdx], preferredSide);
+  const next = cursorFromRow(state.flatRows[snapIdx], preferredSideOf(state.cursor));
   return { cursor: next, scrollTop: newScrollTop };
 }
 
