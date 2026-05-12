@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Dev shim: invokes the in-repo Tour entrypoint via Bun so reply-agent
+# adapters (and any other subprocess that calls `tour ...`) hit the working
+# tree instead of a stale globally-installed binary.
+#
+# Usage: prepend this directory to PATH for dev sessions:
+#   PATH="$PWD/scripts:$PATH" bun src/main.ts serve <id> --reply-agent claude
+exec bun "$(dirname "$0")/../src/main.ts" "$@"
