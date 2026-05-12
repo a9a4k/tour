@@ -44,6 +44,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`useLazyHighlight` hook: IntersectionObserver-driven lazy
+  tokenization for the web row renderer (PRD #212 slice 2).** New
+  `src/web/client/use-lazy-highlight.ts` exposes
+  `useLazyHighlight(ref, content, lang) → Map<lineNumber, html> | null`.
+  Returns `null` until an `IntersectionObserver` with `rootMargin:
+  "200px"` reports the block element near the viewport; once visible,
+  awaits `ensureHighlighter()` (if not already resolved) and returns the
+  token map from `tokenize(content, lang)`. Memoizes on `(content, lang)`
+  — same args across re-renders return the same Map reference so
+  downstream `React.memo` rows don't churn. The hook also holds the
+  plain-text-fallback reference stable for unsupported languages (the
+  underlying `syntax-highlight` module stopped caching that path in
+  #214). Observer is disconnected on unmount and resilient to the
+  pre→post-init transition: when the highlighter resolves, the hook
+  re-tokenizes and swaps in the styled map. No existing rendering paths
+  change — Pierre's `<FileDiff>` continues to run unchanged.
+
+  Issue: #215 · PRD: #212 · ADR: 0024
+
 - **Foundation for the Pierre → Tour-owned web row renderer migration.**
   New `src/web/client/syntax-highlight.ts` deep module exposes
   `tokenize(content, lang) → Map<lineNumber, html>` over a singleton
