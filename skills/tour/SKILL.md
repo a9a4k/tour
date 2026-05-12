@@ -1,9 +1,9 @@
 ---
 name: tour
 description: >
-  Tour is a local code-review CLI for AI agents that authors line-anchored
-  annotations on a pinned git diff (a guided traversal) for a human to read
-  later in a TUI or webapp.
+  Tour is a local code-walkthrough CLI for AI agents. After finishing a
+  task, the agent leaves line-anchored annotations on a pinned git diff
+  (a guided traversal) that a human steps through in a TUI or webapp.
 
   Activates when the user asks to "review this branch", "review this PR",
   "walk me through this diff", "leave feedback on these changes", "annotate
@@ -21,10 +21,11 @@ description: >
   anchor.
 allowed-tools:
   Bash(tour:*),
-  Bash(tourdiff:*),
   Bash(bunx tourdiff:*),
   Bash(npx tourdiff:*),
-  Bash(npx -y tourdiff:*)
+  Bash(npx -y tourdiff:*),
+  Bash(pnpm dlx tourdiff:*),
+  Bash(yarn dlx tourdiff:*)
 ---
 
 # Tour
@@ -36,7 +37,7 @@ A Tour is a guided traversal of a pinned git diff. The agent authors line-anchor
 | Phase | When | Verbs |
 |---|---|---|
 | **Author** | User asks for review / feedback / a tour on a branch or diff | `tour create`, `tour annotate`, `tour serve --open` |
-| **Continue** | Human replied on an existing Tour; user wants you to act on it | `tour pickup`, `tour annotate` with `replies_to` |
+| **Continue** | Human commented (or replied) on an existing Tour; user wants you to act on it | `tour pickup`, `tour annotate` with `replies_to` |
 | **Lookup** | User references an existing Tour | `tour list`, `tour show` |
 
 ## Default style: narrative walkthrough
@@ -46,6 +47,8 @@ The reader has zero context about the problem, the codebase, or prior discussion
 - Explain **why**, not just **what** — the diff already shows what changed.
 - Be ordered by reading flow, not file alphabetical order.
 - Each annotation is a beat in the walkthrough.
+- **Plain language, concise.** Prefer the simplest term that lands the point. Keep each annotation as short as it can be while still making the *why* clear — avoid mini-essays.
+- **Lean visual when it helps.** Before/after snippets, small tables, and Mermaid for control/data flow render in the webapp and pay off the audience constraint. Prose-only is the fallback, not the default.
 - Shape varies by PR: a small refactor needs 2–3 beats; a bug fix often leads with root cause; a feature PR may need a context-setting opener. Use judgment; don't force a rigid skeleton onto small changes.
 
 **Non-negotiable**: if an annotation requires the reader to have read the linked issue, know a codebase convention, or remember a Slack thread, inline that context or drop the annotation.
@@ -62,12 +65,12 @@ cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/foo.ts","side":"additions","line_start":40,"body":"..."}
 JSONL
 
-tour serve --open "$TOUR_ID" --reply-agent claude &
+tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Always end with `tour serve --open <id> --reply-agent <name> &` — this opens the webapp for the human *and* enables the per-card "Send to {agent}" affordance so the human can dispatch a reply-agent response on any individual comment they choose. Without `--reply-agent`, the Send affordance is hidden and the human's comments flow to you at `tour pickup` time instead. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for picking `<name>`.
+Always end with `tour serve <id> --reply-agent <name> &` — the server starts in the background and prints a deep URL (`http://127.0.0.1:<port>/<id>`); modern terminals render it Cmd/Ctrl-clickable. Don't pass `--open`: the agent's job ends with the handoff, not by hijacking the user's browser. If a Tour server is already running for this repo's cwd, the second invocation reuses it and prints *"Tour already running at ..."* with the same deep URL — no port conflict, no duplicate server. The `--reply-agent` enables the per-card "Send to {agent}" affordance so the human can dispatch a reply-agent response on any individual comment they choose; without it, the Send affordance is hidden and the human's comments flow to you at `tour pickup` time instead. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for picking `<name>`.
 
-Skip the auto-open only when the user explicitly says "don't open it" or "I'll look at it later".
+Pass `--reply-agent <name>` only when you can self-identify as one of the shipped CLIs (Claude Code → `claude`, Codex → `codex`, etc.). If you can't, **drop the flag**: in v2.0.0+, Tour auto-detects shipped CLIs on the user's PATH and prints a one-line tip naming the right value. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for the registry and the skip-when-uncertain rule.
 
 ## Continue (pickup) — quick start
 
@@ -98,7 +101,8 @@ Reply annotations inherit their parent's anchor, but the schema still requires `
 
 ```sh
 tour list --json                  # find existing tours in this repo
-tour show "$TOUR_ID" --json       # inspect a specific tour without TUI
+tour show "$TOUR_ID" --json       # agent-facing read of pinned diff + annotations (no TUI)
+tour serve "$TOUR_ID" --reply-agent claude &   # reopen the webapp; server prints the deep URL the user clicks
 ```
 
 Reuse an existing Tour for the same HEAD; create a new one for a different HEAD.

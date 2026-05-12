@@ -16,7 +16,7 @@ cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/process.ts","side":"additions","line_start":40,"body":"## The call site\n\nReplaces the deleted block with a one-line call. Reading order: this file's section is the *outcome*; `validate.ts` is *what got extracted*."}
 JSONL
 
-tour serve --open "$TOUR_ID" --reply-agent claude &
+tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
 Four annotations as narrative beats: setup → what moved → what was left → what replaced it. No "as discussed in #142"; no "obviously".
@@ -26,7 +26,7 @@ Four annotations as narrative beats: setup → what moved → what was left → 
 Context: a security scan produced a list of issues. Convert to Tour for the human to triage.
 
 ```sh
-TOUR_ID=$(tour create --head HEAD --title "Security scan findings — review" --json | jq -r .id)
+TOUR_ID=$(tour create --head HEAD --title "Security scan findings" --json | jq -r .id)
 
 # Findings from your scan tool, transformed to Tour JSONL
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
@@ -35,7 +35,7 @@ cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/session.ts","side":"additions","line_start":12,"body":"**[low]** Session token has no expiration. Add an `expires_at` and refuse expired tokens at read."}
 JSONL
 
-tour serve --open "$TOUR_ID" --reply-agent claude &
+tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
 Findings style — no narrative arc. Each annotation stands alone. Severity labels in the body help the human triage.
@@ -99,3 +99,35 @@ echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_
 ```
 
 The reply lives in the Tour; the actual change lives in your commit history. The Tour is now ready for the human to re-read or close.
+
+## Example 5 — Rich GFM body (table + lists + code)
+
+Context: agent walks through a config schema rename. Compact body with table, bullet list, and inline code — all render natively in the webapp.
+
+```sh
+TOUR_ID=$(tour create --head HEAD --title "Migrate config from flat to namespaced keys" --json | jq -r .id)
+
+cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
+{"file":"src/config.ts","side":"additions","line_start":1,"line_end":12,"body":"## Schema rename\n\n| Before | After |\n|---|---|\n| `timeout` | `network.timeout_ms` |\n| `retries` | `network.retries` |\n| `cache_size` | `cache.max_entries` |\n\n**Why namespace:** flat keys had started to collide — `timeout` meant two different things in different code paths. Namespacing makes ownership obvious and prevents future collisions.\n\n**One-way migration:** old keys are not read after this PR. The bottom-of-file `migrateLegacyConfig` helper converts on-disk configs once; remove it after one release."}
+JSONL
+
+tour serve "$TOUR_ID" --reply-agent claude &
+```
+
+One annotation, four GFM elements (heading, table, bold, inline code). The webapp renders all four; the TUI shows the same as raw markdown source.
+
+## Example 6 — Mermaid body (sequence diagram)
+
+Context: agent introduces a background refresh queue. A diagram lands the flow faster than a paragraph would.
+
+```sh
+TOUR_ID=$(tour create --head HEAD --title "Add background refresh queue" --json | jq -r .id)
+
+cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
+{"file":"src/queue.ts","side":"additions","line_start":1,"line_end":3,"body":"## Refresh pipeline\n\nThis PR adds a background queue so stale items refresh without blocking the request path.\n\n```mermaid\nsequenceDiagram\n    Client->>API: GET /resource\n    API->>Cache: lookup\n    Cache-->>API: hit (possibly stale)\n    API-->>Client: response (fast path)\n    Note over API,Queue: if served stale\n    API->>Queue: enqueue refresh\n    Queue->>Source: fetch fresh\n    Source-->>Queue: data\n    Queue->>Cache: write\n```\n\n**Invariant:** the request path never waits on the queue. If the queue is full or the source is down, stale-served data is returned and the refresh is dropped — never the reverse."}
+JSONL
+
+tour serve "$TOUR_ID" --reply-agent claude &
+```
+
+Mermaid fences render as diagrams in the webapp; the TUI shows them as a fenced code block (still readable, just not graphical). Reserve diagrams for control/data flow that would otherwise need multiple paragraphs — overuse dilutes their value.

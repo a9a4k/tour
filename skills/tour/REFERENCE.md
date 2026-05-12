@@ -28,9 +28,11 @@ Anchors are validated at write time. A typo in `file` or an out-of-range line is
 ## CLI surface
 
 ```
+tour                                                                                # opens best surface for env (v2.0.0+); when no id, pre-picks most-recent open tour and prints its deep URL
 tour create --head <ref> [--base <ref>] [--title <s>] [--json]
-tour annotate <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>]
-tour annotate <id> --batch -                         # JSONL on stdin
+tour annotate <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+tour annotate <id> --batch - [--json]                                               # JSONL on stdin
 tour list [--status open|closed|all] [--json]
 tour show <id> [--json]
 tour pickup <id> [--json]
@@ -38,7 +40,7 @@ tour close <id>
 tour delete <id>
 tour prune --older-than 30d
 tour tui [<id>] [--reply-agent <name>]
-tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>]
+tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>]                     # when no <id>, pre-picks most-recent open tour and includes it in the printed URL
 ```
 
 ### Head magic values
@@ -63,9 +65,19 @@ Shipped registry:
 | `opencode` | OpenCode |
 | `pi` | Pi |
 
-Pick the name matching your own agent identity. If you can't self-identify (you're inside Cursor, Windsurf, Aider, Continue, Augment, or similar wrapper), default to `claude` — most commonly installed.
+**Rule:** pass `--reply-agent <name>` only when you can **confidently self-identify** as one of the shipped CLIs. Claude Code → `claude`, Codex → `codex`, Gemini CLI → `gemini`, OpenCode → `opencode`, Pi → `pi`.
 
-The validation hard-fails at startup with the available list if the name is wrong or the inner CLI isn't installed. Surface that error to the user with the install hint; do **not** silently drop `--reply-agent`.
+If you can't confidently self-identify (you're running inside Cursor, Windsurf, Aider, Continue, Augment, or another wrapper that uses a shipped CLI under the hood without exposing its name), **drop the flag entirely**. Don't guess — defaulting to `claude` when the user might have `codex` or `gemini` installed is surprising and invasive.
+
+When `--reply-agent` is unset, Tour v2.0.0+ auto-detects shipped CLIs on the user's `PATH` and prints a one-line tip after server startup:
+
+```
+Tip: detected 'claude' on PATH. Run with --reply-agent claude to enable agent replies.
+```
+
+The user reads the tip and reruns with the right name. Zero or multiple shipped CLIs detected → tip stays silent; the user can still review the tour as a static walkthrough.
+
+`assertShippedAgent` hard-fails at startup if `--reply-agent <name>` is wrong or the inner CLI isn't installed, listing the available names in the error. Surface that error to the user with the install hint — don't silently retry without the flag.
 
 ## Pickup output shape
 
@@ -113,7 +125,7 @@ If the working-tree snapshot (Tour created with `--head WIP`) gets garbage-colle
 
 ### Headless / SSH / CI
 
-`tour serve --open <id> &` starts the server but no browser opens. Tell the user the URL or skip the open in headless contexts.
+The canonical flow is `tour serve <id> --reply-agent <name> &` — no `--open`. The server starts and prints a deep URL to stdout. In headless / SSH / CI contexts the user reads the URL from the terminal and opens it in a browser they can reach (a forwarded port, a remote desktop session, copy-paste to a local machine). Don't fall back to `--open`; auto-opening a browser process in a headless environment fails silently or noisily depending on the platform.
 
 ### Reply schema validation
 
