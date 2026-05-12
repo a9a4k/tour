@@ -100,6 +100,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: per-Annotation action rows collapsed into a single bottom
+  action row per Thread.** Previously, each human Annotation in a Thread
+  rendered its own Reply button and the top-level Annotation rendered
+  another action row after the inline-Replies list — producing what
+  looked like a duplicate Reply at the bottom of long Threads. The webapp
+  `AnnotationCard` now renders exactly one action row at the bottom of
+  the Thread (after the inline-Replies list, where the top-level's row
+  already sat). The Reply button targets the latest Annotation in the
+  Thread by `created_at` (id ascending tiebreak) via the new
+  `latestAnnotationId` helper in `core/threads.ts`, so a new Reply
+  continues from where the conversation is. The Send button still
+  targets the latest human leaf per the unchanged #190 rule. The
+  composer continues to render inline under whichever Annotation the
+  user targeted; the bottom action row is suppressed while a composer
+  is open anywhere in the Thread. `canSendToAgent`, the
+  latest-human-leaf rule, `requestReply`, the HTTP endpoint, the
+  watcher, the lock, and the on-disk schema are all unchanged. (PRD
+  #181, #191)
+
 - **Webapp: "Send to {agent}" renders on the latest human leaf only —
   at most one Send button per Thread.** Previously, the inline-Reply
   action row added in #189 rendered a Send button on every human

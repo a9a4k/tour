@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildThreads,
   isTopLevel,
+  latestAnnotationId,
   latestHumanLeafId,
   topLevelAnnotations,
 } from "../../src/core/threads.js";
@@ -179,6 +180,59 @@ describe("latestHumanLeafId", () => {
     const r1 = ann({ id: "a", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
     const r2 = ann({ id: "b", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
     expect(latestHumanLeafId(top, [r1, r2])).toBe("b");
+  });
+});
+
+describe("latestAnnotationId", () => {
+  // The id of the latest Annotation in the Thread by `created_at` (id
+  // ascending tiebreak). Used by the webapp's single bottom action row
+  // (issue #191) as the Reply target — a new Reply continues from
+  // where the conversation is, not from where it started.
+
+  it("returns the top-level id when there are no replies", () => {
+    const a = ann({ id: "a", author_kind: "human" });
+    expect(latestAnnotationId(a, [])).toBe("a");
+  });
+
+  it("returns the top-level id when there are no replies (agent top-level)", () => {
+    const a = ann({ id: "a", author_kind: "agent" });
+    expect(latestAnnotationId(a, [])).toBe("a");
+  });
+
+  it("returns the latest descendant id when descendants are newer than the top-level", () => {
+    const top = ann({ id: "top", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({
+      id: "r1",
+      replies_to: "top",
+      author_kind: "human",
+      created_at: "2026-05-08T00:00:01Z",
+    });
+    const r2 = ann({
+      id: "r2",
+      replies_to: "top",
+      author_kind: "agent",
+      created_at: "2026-05-08T00:00:02Z",
+    });
+    expect(latestAnnotationId(top, [r1, r2])).toBe("r2");
+  });
+
+  it("returns an agent-authored latest descendant id (unlike latestHumanLeafId)", () => {
+    const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({
+      id: "r1",
+      replies_to: "top",
+      author_kind: "agent",
+      created_at: "2026-05-08T00:00:01Z",
+    });
+    expect(latestAnnotationId(top, [r1])).toBe("r1");
+    expect(latestHumanLeafId(top, [r1])).toBe(null);
+  });
+
+  it("breaks created_at ties by id ascending (id-largest wins)", () => {
+    const top = ann({ id: "top", created_at: "2026-05-08T00:00:00Z" });
+    const r1 = ann({ id: "a", replies_to: "top", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "b", replies_to: "top", created_at: "2026-05-08T00:00:01Z" });
+    expect(latestAnnotationId(top, [r1, r2])).toBe("b");
   });
 });
 

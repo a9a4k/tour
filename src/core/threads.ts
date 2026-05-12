@@ -61,6 +61,17 @@ export function isTopLevel(a: Annotation): boolean {
   return a.replies_to === undefined;
 }
 
+function findLatest(
+  topLevel: Annotation,
+  descendants: Annotation[],
+): Annotation {
+  let latest: Annotation = topLevel;
+  for (const a of descendants) {
+    if (compareAnnotations(a, latest) > 0) latest = a;
+  }
+  return latest;
+}
+
 // The human Annotation that should carry the webapp "Send to {agent}"
 // button in a Thread, or null when no Send button should appear anywhere
 // (issue #190, PRD #181). At most one Send per Thread.
@@ -79,11 +90,20 @@ export function latestHumanLeafId(
   topLevel: Annotation,
   descendants: Annotation[],
 ): string | null {
-  let latest: Annotation = topLevel;
-  for (const a of descendants) {
-    if (compareAnnotations(a, latest) > 0) latest = a;
-  }
+  const latest = findLatest(topLevel, descendants);
   return latest.author_kind === "human" ? latest.id : null;
+}
+
+// The id of the latest Annotation in the Thread (by `created_at`, id
+// ascending tiebreak). Used by the webapp's single bottom action row
+// (issue #191): the Reply button's onOpenReply fires with this id so
+// a new Reply continues from where the conversation is, not from
+// where it started.
+export function latestAnnotationId(
+  topLevel: Annotation,
+  descendants: Annotation[],
+): string {
+  return findLatest(topLevel, descendants).id;
 }
 
 export function topLevelAnnotations(annotations: Annotation[]): Annotation[] {
