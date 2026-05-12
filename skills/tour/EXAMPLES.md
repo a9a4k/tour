@@ -10,10 +10,10 @@ Context: user has refactored a function. Wants a narrative tour for a teammate.
 TOUR_ID=$(tour create --head HEAD --title "Extract validation into its own module" --json | jq -r .id)
 
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
-{"file":"src/validate.ts","side":"additions","line_start":1,"line_end":3,"body":"## Setup\n\nThis PR extracts the inline validation logic from `process.ts` into its own module so we can unit-test it without dragging in the file-I/O of the parent.\n\nNothing about the validation rules themselves changes."}
-{"file":"src/validate.ts","side":"additions","line_start":12,"line_end":24,"body":"## The validator\n\nThis is the function that lived inline in `process.ts` until this PR. Behaviour is unchanged — same inputs, same outputs, same error shapes. Only the location moved."}
-{"file":"src/process.ts","side":"deletions","line_start":40,"line_end":52,"body":"## The hole this leaves\n\nThe deleted block is exactly what's now in `validate.ts:12-24`. `process.ts` calls it via import."}
-{"file":"src/process.ts","side":"additions","line_start":40,"body":"## The call site\n\nReplaces the deleted block with a one-line call. Reading order: this file's section is the *outcome*; `validate.ts` is *what got extracted*."}
+{"file":"src/validate.ts","side":"additions","line_start":1,"line_end":3,"body":"## Setup\n\nExtracts inline validation from `process.ts` into its own module. Lets us unit-test validation without `process.ts`'s file-I/O. No rule changes."}
+{"file":"src/validate.ts","side":"additions","line_start":12,"line_end":24,"body":"## The validator\n\nThe function that lived inline in `process.ts`. Same inputs, outputs, error shapes — only location moved."}
+{"file":"src/process.ts","side":"deletions","line_start":40,"line_end":52,"body":"## The hole this leaves\n\nThe deleted block is now in `validate.ts:12-24`, called via import."}
+{"file":"src/process.ts","side":"additions","line_start":40,"body":"## The call site\n\nReplaces the deleted block with a one-line call. Reading order: this file is the *outcome*; `validate.ts` is *what moved*."}
 JSONL
 
 tour serve "$TOUR_ID" --reply-agent claude &
@@ -77,7 +77,7 @@ Abridged output:
 The human asked a clarification question. Decision: reply in prose, no code change. Write the reply:
 
 ```sh
-echo '{"file":"src/validate.ts","side":"additions","line_start":12,"replies_to":"ann_root_01","body":"Fair question — exporting from `process.ts` would have worked, but it means `process.ts` stays the dependency hub for any test that wants to validate. Pulling validation into its own module lets validation tests skip the file-I/O setup. Trade-off: one more file in the tree."}' \
+echo '{"file":"src/validate.ts","side":"additions","line_start":12,"replies_to":"ann_root_01","body":"Exporting from `process.ts` would have worked, but it stays the dependency hub for any validation test. Pulling out lets tests skip the file-I/O setup. Trade-off: one more file."}' \
   | tour annotate "$TOUR_ID" --batch -
 ```
 

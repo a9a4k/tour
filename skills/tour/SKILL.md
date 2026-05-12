@@ -12,9 +12,10 @@ description: >
   human will read asynchronously. Also activates on responding to a human
   reply on an existing Tour, via `tour pickup`.
 
-  Default annotation style is a narrative walkthrough — the reader lacks
-  context about the problem, the codebase, or prior discussion; explain
-  why, not just what. Findings-style batches are a supported variation.
+  Default annotation style is a narrative walkthrough — concise (typically
+  2–4 sentences each), the reader lacks context about the problem, the
+  codebase, or prior discussion; explain why, not just what. Avoid
+  mini-essays. Findings-style batches are a supported variation.
 
   Does NOT apply to inline chat feedback consumed this turn, opening GitHub
   PRs (use `gh pr create`), filing issues, or repo-wide notes with no line
@@ -47,9 +48,17 @@ The reader has zero context about the problem, the codebase, or prior discussion
 - Explain **why**, not just **what** — the diff already shows what changed.
 - Be ordered by reading flow, not file alphabetical order.
 - Each annotation is a beat in the walkthrough.
-- **Plain language, concise.** Prefer the simplest term that lands the point. Keep each annotation as short as it can be while still making the *why* clear — avoid mini-essays.
+- **Plain language, concise.** Default to 2–4 sentences per annotation. If you can delete a sentence without losing the *why*, delete it. If an annotation runs past ~6 sentences, ask whether it's actually two beats.
 - **Lean visual when it helps.** Before/after snippets, small tables, and Mermaid for control/data flow render in the webapp and pay off the audience constraint. Prose-only is the fallback, not the default.
 - Shape varies by PR: a small refactor needs 2–3 beats; a bug fix often leads with root cause; a feature PR may need a context-setting opener. Use judgment; don't force a rigid skeleton onto small changes.
+
+**Calibration** — same WHY, two lengths:
+
+> ❌ *"This PR refactors the validation logic. The validation was previously inline in `process.ts`. We've extracted it into a separate module so we can unit-test it without dragging in the file-I/O of the parent..."*
+>
+> ✅ *"Extracted validation from `process.ts` into its own module. Now testable without `process.ts`'s file-I/O setup."*
+
+Aim for the second. ~40% the length, same content.
 
 **Non-negotiable**: if an annotation requires the reader to have read the linked issue, know a codebase convention, or remember a Slack thread, inline that context or drop the annotation.
 
