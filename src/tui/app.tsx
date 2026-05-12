@@ -950,27 +950,16 @@ function App(props: AppProps) {
       setFooterStatus("no annotation under cursor — n/p to navigate");
       return;
     }
-    const target = tuiSendTarget(cursor, liveTopLevel, repliesByRoot);
-    // The latest leaf is by construction a leaf (`hasReply: false`) and
-    // human; the per-Annotation verdict inputs collapse to the
-    // agent-configured + lock-held axes.
-    const verdict =
-      target !== null
-        ? canSendToAgent({
-            replyAgentConfigured: true,
-            lockHeld: liveReplyLock !== null,
-            authorKind: "human",
-            hasReply: false,
-          })
-        : { visible: false, enabled: false };
-    if (!verdict.enabled) {
-      if (verdict.reason === "lock-held") {
+    if (!sendHintVerdict.enabled) {
+      if (sendHintVerdict.reason === "lock-held") {
         setFooterStatus(`${liveReplyLock?.agent ?? props.replyAgent} is replying — wait`);
       }
-      // target === null (latest turn is agent) falls out of the visible
-      // set (footer hint hidden), so pressing `s` is a silent no-op.
+      // sendTarget === null (latest turn is agent) falls out of the
+      // visible set (footer hint hidden), so pressing `s` is a silent
+      // no-op.
       return;
     }
+    if (!sendTarget) return;
     setFooterStatus(null);
     // Auto-recall (PRD #192 user story 14): pull the focused card into
     // view before dispatching so the user sees the card the agent is
@@ -979,11 +968,12 @@ function App(props: AppProps) {
     // inside the same card's Thread.
     const sb = diffScrollRef.current;
     if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
-    const cwd = props.cwd;
-    const tourId = liveTour.id;
-    const annotationId = target!.leafId;
-    const agent = props.replyAgent;
-    void requestReply({ cwd, tourId, annotationId, agent }).catch(() => {
+    void requestReply({
+      cwd: props.cwd,
+      tourId: liveTour.id,
+      annotationId: sendTarget.leafId,
+      agent: props.replyAgent,
+    }).catch(() => {
       // transient — the watcher's reload will surface any state change
     });
   };

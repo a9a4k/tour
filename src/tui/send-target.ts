@@ -22,14 +22,14 @@ export interface SendTarget {
 export function tuiSendTarget(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Annotation>,
-  repliesByRoot: ReadonlyMap<string, ReadonlyArray<Annotation>>,
+  repliesByRoot: ReadonlyMap<string, Annotation[]>,
 ): SendTarget | null {
   if (!cursor || cursor.kind !== "card") return null;
   const cardId = cursor.annotationId;
   const top = topLevel.find((a) => a.id === cardId);
   if (!top) return null;
   const descendants = repliesByRoot.get(cardId) ?? [];
-  const leafId = latestHumanLeafId(top, descendants as Annotation[]);
+  const leafId = latestHumanLeafId(top, descendants);
   if (leafId === null) return null;
   const leaf =
     leafId === cardId ? top : descendants.find((a) => a.id === leafId);
