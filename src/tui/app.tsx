@@ -690,10 +690,11 @@ function App(props: AppProps) {
 
   // Intent listener — realizes the reducer's emitted intents in the TUI
   // substrate (PRD #207 slice 1 contract). `loadTour` performs the
-  // in-process bundle reload and applies the TUI-local resets that
-  // aren't yet in the reducer (cursor / folds / overrides / expansion /
-  // bundle + replyLock useState). `scrollPickerRow` scrolls the picker
-  // modal scrollbox. `mirrorUrl` is ignored — the TUI has no URL.
+  // in-process bundle reload, then dispatches `tour.switched` (which
+  // drives the reducer's bundle/picker/replyLock cascade) plus the
+  // TUI-local resets that aren't yet in the reducer (cursor / folds /
+  // overrides / expansion). `scrollPickerRow` scrolls the picker modal
+  // scrollbox. `mirrorUrl` is ignored — the TUI has no URL.
   useEffect(() => {
     let unmounted = false;
     const unsubscribe = store.onIntent((intent) => {
