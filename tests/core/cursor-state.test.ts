@@ -290,54 +290,107 @@ describe("moveCursor", () => {
   });
 });
 
-// Card lane walker (PRD #192 / ADR 0022). `n` / `p` step through card
-// rows, skipping diff and interactive rows. Returns null at the bounds.
-describe("nextCard / prevCard (PRD #192)", () => {
-  const rows: FlatRow[] = [
-    pairedFlat("x.txt", 1, 1),
-    cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
-    pairedFlat("x.txt", 2, 2),
-    cardFlat({ file: "x.txt", side: "additions", lineEnd: 2, annotationId: "a2" }),
-    pairedFlat("x.txt", 3, 3),
-  ];
+// Card lane walker (PRD #192 / ADR 0022; reordering fix issue #197).
+// `n` / `p` walk the canonical top-level Annotation order — the same
+// order the `[N/M]` pill counter reads — NOT flat-row display order.
+// For real Tours whose JSONL `created_at` order disagrees with file
+// display order, those two orderings diverge; the walker tracks the
+// pill so a `n` from `K/M` always lands on `K+1/M`.
+describe("nextCard / prevCard (PRD #192, issue #197)", () => {
+  const a1 = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 1, line_end: 1 });
+  const a2 = ann({ id: "a2", file: "x.txt", side: "additions", line_start: 2, line_end: 2 });
+  const topLevel = [a1, a2];
 
-  it("nextCard from a row cursor lands on the next card", () => {
+  it("nextCard from a row cursor picks the first card in top-level order", () => {
     const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
-    expect(nextCard(c, rows)).toEqual({ kind: "card", annotationId: "a1" });
+    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a1" });
   });
 
-  it("nextCard from a card cursor lands on the following card", () => {
+  it("nextCard from a card cursor lands on the following card in top-level order", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a1" };
-    expect(nextCard(c, rows)).toEqual({ kind: "card", annotationId: "a2" });
+    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a2" });
   });
 
   it("nextCard from the last card returns null", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a2" };
-    expect(nextCard(c, rows)).toBeNull();
+    expect(nextCard(c, topLevel)).toBeNull();
   });
 
-  it("prevCard from a card cursor lands on the preceding card", () => {
+  it("prevCard from a card cursor lands on the preceding card in top-level order", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a2" };
-    expect(prevCard(c, rows)).toEqual({ kind: "card", annotationId: "a1" });
+    expect(prevCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a1" });
   });
 
   it("prevCard from the first card returns null", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a1" };
-    expect(prevCard(c, rows)).toBeNull();
+    expect(prevCard(c, topLevel)).toBeNull();
   });
 
-  it("nextCard from a null cursor picks the first card in the stream", () => {
-    expect(nextCard(null, rows)).toEqual({ kind: "card", annotationId: "a1" });
+  it("nextCard from a null cursor picks the first top-level annotation", () => {
+    expect(nextCard(null, topLevel)).toEqual({ kind: "card", annotationId: "a1" });
   });
 
-  it("prevCard from a null cursor picks the last card in the stream", () => {
-    expect(prevCard(null, rows)).toEqual({ kind: "card", annotationId: "a2" });
+  it("prevCard from a null cursor picks the last top-level annotation", () => {
+    expect(prevCard(null, topLevel)).toEqual({ kind: "card", annotationId: "a2" });
   });
 
-  it("returns null when there are no card rows in the stream", () => {
-    const rowsOnly: FlatRow[] = [pairedFlat("x.txt", 1, 1), pairedFlat("x.txt", 2, 2)];
-    expect(nextCard(null, rowsOnly)).toBeNull();
-    expect(prevCard(null, rowsOnly)).toBeNull();
+  it("returns null when there are no top-level annotations", () => {
+    expect(nextCard(null, [])).toBeNull();
+    expect(prevCard(null, [])).toBeNull();
+  });
+
+  // Bug A repro (issue #197): a Tour whose JSONL `created_at` order
+  // disagrees with file display order — e.g., annotation `aFirst` was
+  // authored first (top of the topLevel list, pill `1/3`) but anchors
+  // to the last file in display order. The walker must follow the
+  // top-level order, so `n` from `1/3` lands on `2/3`, not on whichever
+  // card happens to be earliest in flat-row position.
+  it("nextCard tracks top-level order even when flat-row order disagrees (issue #197)", () => {
+    const aFirst = ann({
+      id: "aFirst",
+      file: "z.txt",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    const aSecond = ann({
+      id: "aSecond",
+      file: "a.txt",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+      created_at: "2026-02-01T00:00:00Z",
+    });
+    const aThird = ann({
+      id: "aThird",
+      file: "m.txt",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+      created_at: "2026-03-01T00:00:00Z",
+    });
+    // Top-level order (JSONL / created_at): aFirst, aSecond, aThird.
+    const topLevelMixed = [aFirst, aSecond, aThird];
+    const c1: CardAnchor = { kind: "card", annotationId: "aFirst" };
+    expect(nextCard(c1, topLevelMixed)).toEqual({ kind: "card", annotationId: "aSecond" });
+    const c2: CardAnchor = { kind: "card", annotationId: "aSecond" };
+    expect(nextCard(c2, topLevelMixed)).toEqual({ kind: "card", annotationId: "aThird" });
+    const c3: CardAnchor = { kind: "card", annotationId: "aThird" };
+    expect(nextCard(c3, topLevelMixed)).toBeNull();
+    expect(prevCard(c3, topLevelMixed)).toEqual({ kind: "card", annotationId: "aSecond" });
+    expect(prevCard(c2, topLevelMixed)).toEqual({ kind: "card", annotationId: "aFirst" });
+  });
+
+  it("stale CardAnchor (annotation removed from top-level) walks from the edge", () => {
+    expect(nextCard({ kind: "card", annotationId: "ghost" }, topLevel)).toEqual({
+      kind: "card",
+      annotationId: "a1",
+    });
+    expect(prevCard({ kind: "card", annotationId: "ghost" }, topLevel)).toEqual({
+      kind: "card",
+      annotationId: "a2",
+    });
   });
 });
 

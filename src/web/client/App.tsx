@@ -32,7 +32,7 @@ import {
   sortFilesForStream,
   type VisibleRow,
 } from "../../core/file-tree.js";
-import { flatRows as buildFlatRows, type FlatRow } from "../../core/flat-rows.js";
+import { flatRows as buildFlatRows } from "../../core/flat-rows.js";
 import { planRows } from "../../core/diff-rows.js";
 import {
   cursorFromAnnotation,
@@ -48,6 +48,7 @@ import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS, GAP_ROW_CSS } from "./cursor-css.j
 import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
+import { decideReanchor } from "./re-anchor-policy.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
 import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
@@ -430,16 +431,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ?.scrollIntoView({ behavior: "instant", block: "center" });
   }, []);
 
-  // We hold `flatRowsList` further down; resolve via a ref so navigateBy
-  // doesn't need to be re-created on every flat-rows recomputation.
-  const flatRowsListRef = useRef<FlatRow[]>([]);
-
   const navigateBy = useCallback(
     (delta: -1 | 1) => {
+      // n/p walks top-level order — the same order the SequencePill counter
+      // reads (issue #197) — not flat-row display order.
       const target =
         delta === 1
-          ? nextCard(cursor, flatRowsListRef.current)
-          : prevCard(cursor, flatRowsListRef.current);
+          ? nextCard(cursor, topLevel)
+          : prevCard(cursor, topLevel);
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.annotationId);
       if (!ann) return;
@@ -455,36 +454,29 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   // Re-anchor cursor to a top-level Annotation card on bundle load (PRD #192
-  // / ADR 0022). When the URL carries `?ann=<id>` (or its `#<ann-id>`
-  // fragment shape from Issue #179), resolve it to a top-level Annotation;
-  // a stale id (deleted, hand-edited, or pointing at a Reply) falls back
-  // to the first top-level Annotation and the URL is rewritten by the
-  // mirror effect below. Gated on the loaded Tour matching the routing
-  // Tour id so the in-flight Tour-switch window doesn't anchor the new
-  // URL's `ann=` against the previous Tour's annotations.
+  // / ADR 0022; issue #197 Bug B). When the URL carries `?ann=<id>` (or its
+  // `#<ann-id>` fragment shape from Issue #179), resolve it to a top-level
+  // Annotation; a stale id (deleted, hand-edited, or pointing at a Reply)
+  // falls back to the first top-level Annotation and the URL is rewritten
+  // by the mirror effect below. Gated on the loaded Tour matching the
+  // routing Tour id so the in-flight Tour-switch window doesn't anchor the
+  // new URL's `ann=` against the previous Tour's annotations. The policy
+  // discriminator is `cursor === null` (not `cursorCardId === null`) —
+  // a RowAnchor cursor from a `j`/`k` press is a noop, so row motion
+  // survives the same render.
   useEffect(() => {
     if (!tourMeta || tourMeta.id !== tourId) return;
     if (topLevel.length === 0) {
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
-    if (cursorCardId === null) {
-      const fromUrl = readAnnFromUrl();
-      const target = topLevel.find((a) => a.id === fromUrl) ?? topLevel[0];
-      setCursor(cursorFromAnnotation(target));
-      setSelectedFile(target.file);
-      revealFileAncestors(target.file);
-      anchorInitial(target.id);
-      return;
-    }
-    const found = topLevel.some((a) => a.id === cursorCardId);
-    if (!found) {
-      const first = topLevel[0];
-      setCursor(cursorFromAnnotation(first));
-      setSelectedFile(first.file);
-      revealFileAncestors(first.file);
-    }
-  }, [tourMeta, tourId, topLevel, cursorCardId, revealFileAncestors, anchorInitial]);
+    const action = decideReanchor(cursor, readAnnFromUrl(), topLevel);
+    if (action.kind === "noop") return;
+    setCursor(cursorFromAnnotation(action.target));
+    setSelectedFile(action.target.file);
+    revealFileAncestors(action.target.file);
+    if (action.kind === "url-restore") anchorInitial(action.target.id);
+  }, [tourMeta, tourId, topLevel, cursor, revealFileAncestors, anchorInitial]);
 
   // Mirror the cursor's card target into the URL via replaceState —
   // chosen over pushState so the browser back button steps over Tour
@@ -660,9 +652,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       isCollapsed,
     );
   }, [parsedFiles, plannedRowsByFile, isCollapsed]);
-  // Latest flat-rows mirror for stable callback closures (navigateBy reads
-  // this so it doesn't need to be re-created on every flat-rows recompute).
-  flatRowsListRef.current = flatRowsList;
 
   // Validate-in-place when the row sequence shifts under the cursor's
   // feet (collapse toggle, bundle reload, layout switch). The webapp

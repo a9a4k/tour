@@ -104,41 +104,44 @@ export function moveCursor(
 
 /**
  * Card-lane walker (`n`/`p`). Moves the cursor to the next/previous
- * Annotation card in stream order, skipping diff and interactive rows.
- * Returns null when the move is a no-op (no cards in the stream or
- * already at the boundary). When the cursor is null or off-stream, the
- * walk picks the first/last card.
+ * top-level Annotation — same order the `[N/M]` pill counter reads
+ * (issue #197). Walks the canonical top-level list directly, not the
+ * flat-row display stream, so `n` from `K/M` always lands on `K+1/M`
+ * even when JSONL `created_at` order disagrees with file display order.
+ * Returns null at the bounds (no wrap). When the cursor is null, on a
+ * row, or pointing at a stale annotation, the walk picks the first
+ * (`nextCard`) or last (`prevCard`) top-level annotation.
  */
 export function nextCard(
   cursor: Cursor | null,
-  flatRows: FlatRow[],
+  topLevel: ReadonlyArray<Annotation>,
 ): CardAnchor | null {
-  return walkCards(cursor, flatRows, 1);
+  return walkCards(cursor, topLevel, 1);
 }
 
 export function prevCard(
   cursor: Cursor | null,
-  flatRows: FlatRow[],
+  topLevel: ReadonlyArray<Annotation>,
 ): CardAnchor | null {
-  return walkCards(cursor, flatRows, -1);
+  return walkCards(cursor, topLevel, -1);
 }
 
 function walkCards(
   cursor: Cursor | null,
-  flatRows: FlatRow[],
+  topLevel: ReadonlyArray<Annotation>,
   step: 1 | -1,
 ): CardAnchor | null {
-  const startIdx = cursor ? resolveCursorRowIdx(cursor, flatRows) : -1;
-  // When cursor isn't resolved, start one step BEFORE the boundary so the
-  // loop's first hit is the first/last card in the stream's direction.
-  const from = startIdx === -1
-    ? (step === 1 ? -1 : flatRows.length)
-    : startIdx;
-  for (let i = from + step; i >= 0 && i < flatRows.length; i += step) {
-    const r = flatRows[i];
-    if (r.kind === "card") return { kind: "card", annotationId: r.annotationId };
-  }
-  return null;
+  if (topLevel.length === 0) return null;
+  const startIdx =
+    cursor && cursor.kind === "card"
+      ? topLevel.findIndex((a) => a.id === cursor.annotationId)
+      : -1;
+  // When the cursor isn't on a resolvable card, start one step beyond the
+  // boundary so the first move lands on the first/last entry.
+  const from = startIdx === -1 ? (step === 1 ? -1 : topLevel.length) : startIdx;
+  const next = from + step;
+  if (next < 0 || next >= topLevel.length) return null;
+  return { kind: "card", annotationId: topLevel[next].id };
 }
 
 export function setCursorSide(

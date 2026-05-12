@@ -711,11 +711,13 @@ function App(props: AppProps) {
   };
 
   // gotoPrev/NextAnnotation walk the card lane via `nextCard` / `prevCard`
-  // (PRD #192 / ADR 0022). When the cursor isn't a card, the walkers
-  // pick the first / last card so the user can land on the nav target
-  // with a single keystroke from any cursor state.
+  // (PRD #192 / ADR 0022; issue #197). Walkers track top-level Annotation
+  // order — the same order the `[N/M]` pill counter reads — so `n` from
+  // `K/M` always lands on `K+1/M`. When the cursor isn't a card, the
+  // walkers pick the first / last top-level so the user can land on the
+  // nav target with a single keystroke from any cursor state.
   const gotoPrevAnnotation = () => {
-    const target = prevCard(cursor, flatRowsList);
+    const target = prevCard(cursor, liveTopLevel);
     if (target) {
       const ann = liveAnnotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);
@@ -723,7 +725,7 @@ function App(props: AppProps) {
   };
 
   const gotoNextAnnotation = () => {
-    const target = nextCard(cursor, flatRowsList);
+    const target = nextCard(cursor, liveTopLevel);
     if (target) {
       const ann = liveAnnotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);

@@ -106,6 +106,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: `n`/`p` walks top-level order; `j`/`k` no longer flickers
+  back to a card (PRD #192 / ADR 0022).** Two regressions in the webapp's
+  unified-cursor adoption:
+
+  Bug A — `nextCard`/`prevCard` iterated the flat-row display stream
+  while the `[N/M]` pill counter read top-level (JSONL `created_at`)
+  order. When the two orderings diverged (any Tour whose annotations
+  were not authored in file display order — most real-world Tours),
+  pressing `n` from pill `1/19` could land on `8/19` rather than `2/19`.
+  The walkers now consume the canonical top-level Annotation list
+  directly, so `n` from `K/M` always lands on `K+1/M`. The TUI's
+  navigation goes through the same walker — `liveTopLevel` replaces
+  `flatRowsList` at the TUI call site too. The webapp's row cursor no
+  longer needs `flatRowsList` to compute the card target, which also
+  drops the `flatRowsListRef` mirror that existed for that one read.
+
+  Bug B — the bundle-load re-anchor effect's null-check (`cursorCardId
+  === null`) treated "user moved to a row" the same as "tour just
+  loaded, no cursor yet". Pressing `j`/`k` from a CardAnchor cursor
+  set the cursor to a RowAnchor, but the effect re-fired within the
+  same render, read the still-stale URL fragment, and snapped the
+  cursor back to the original CardAnchor — one frame of row-outline
+  flicker, zero motion. The discriminator is now `cursor === null`
+  via a new pure `decideReanchor(cursor, annFromUrl, topLevel)`
+  policy in `web/client/re-anchor-policy.ts`: only the fully-null
+  cursor takes the URL-restore branch; a CardAnchor whose id is
+  missing from `topLevel` takes a stale-fallback branch; any
+  RowAnchor cursor is a noop. The policy is testable independent of
+  the App component. (#197, PRD #192 / ADR 0022)
+
 - **TUI: `s` now dispatches the latest human leaf in the focused Thread,
   not the cursor-focused top-level Annotation.** Previously, once a
   Thread had any Reply, the per-Annotation `canSendToAgent` predicate
