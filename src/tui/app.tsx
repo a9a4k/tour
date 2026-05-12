@@ -63,8 +63,9 @@ import {
   fileRowFixedCost,
 } from "./sidebar-row-label.js";
 import { TourWatcher } from "../core/watcher.js";
-import { ReplyRunner } from "../core/reply-runner.js";
+import { requestReply } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
+import { canSendToAgent } from "../core/can-send-to-agent.js";
 import { flatRows, type FlatRow } from "../core/flat-rows.js";
 import {
   initialCursor,
@@ -85,7 +86,7 @@ import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import { scrollChildIntoView, centerChildInView } from "./scroll-into-view.js";
 import { buildRowYResolver } from "./row-y-resolver.js";
-import { TUI_FOOTER_HINTS } from "./footer-hints.js";
+import { composeFooterHints } from "./footer-hints.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -265,17 +266,15 @@ function App(props: AppProps) {
     return () => clearInterval(handle);
   }, [liveReplyLock]);
 
-  // Per-tour file watcher: drives both the bundle reload (so newly-written
-  // Annotations and lock-state changes show up) and the reply-agent runner
-  // (so a human-authored Annotation kicks off a dispatch). Inert when no
+  // Per-tour file watcher: drives the bundle reload (so newly-written
+  // Annotations show up) and the reply-lock state (so the in-flight pill
+  // appears and disappears). The watcher's role is state observation only;
+  // reply-agent dispatch is now explicit — pressing `s` calls
+  // `requestReply` in-process (ADR 0021, issue #184). Inert when no
   // loadTour is wired.
   useEffect(() => {
     if (!props.cwd || !props.loadTour) return;
     const watcher = new TourWatcher(props.cwd, liveTour.id);
-    const runner = props.replyAgent
-      ? new ReplyRunner({ cwd: props.cwd, tourId: liveTour.id, agent: props.replyAgent })
-      : null;
-    if (runner) void runner.prime();
 
     let cancelled = false;
     const reload = async () => {
@@ -307,7 +306,6 @@ function App(props: AppProps) {
 
     watcher.on((event) => {
       if (event.type === "annotation-changed") {
-        if (runner) void runner.tick().catch(() => {});
         void reload();
         void reloadLock();
       } else if (event.type === "reply-in-flight" || event.type === "reply-cleared") {
@@ -324,7 +322,7 @@ function App(props: AppProps) {
       cancelled = true;
       watcher.stop();
     };
-  }, [liveTour.id, props.cwd, props.replyAgent, props.loadTour]);
+  }, [liveTour.id, props.cwd, props.loadTour]);
 
   const files = useMemo(
     () => sortFilesForStream(liveFiles),
@@ -568,10 +566,37 @@ function App(props: AppProps) {
     return idx === -1 ? 0 : idx;
   }, [liveTopLevel, currentAnnotationId]);
 
-  const footer =
+  // Show the `s send to {agent}` hint only when (a) the focused card is a
+  // human Annotation, (b) `--reply-agent` is set, AND (c) the lock is
+  // free. The visibility predicate matches the webapp's `canSendToAgent`
+  // — same {visible, enabled} test, just rendered as a footer hint
+  // instead of an in-card button. When the lock is held tour-wide the
+  // hint disappears (no muted-but-visible state in a single-line footer
+  // — App's footerStatus owns the "wait" message instead).
+  const currentAnn = liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
+  const sendHintVerdict = currentAnn
+    ? canSendToAgent({
+        replyAgentConfigured: !!props.replyAgent,
+        lockHeld: liveReplyLock !== null,
+        authorKind: currentAnn.author_kind,
+        hasReply: liveAnnotations.some((a) => a.replies_to === currentAnn.id),
+      })
+    : { visible: false, enabled: false };
+  const footerHints = composeFooterHints({
+    replyAgent: props.replyAgent,
+    // canSendToAgent.visible means the affordance is in scope for this
+    // card — it includes the lock-held case, which the PRD describes as
+    // "dims to muted" rather than "disappears". The single-line muted
+    // footer is already rendered in theme.fg.muted, so the hint stays
+    // visible; pressing `s` while locked is handled by App and surfaces
+    // a "wait" footerStatus.
+    showSendHint: sendHintVerdict.visible,
+  });
+  const baseFooter =
     liveTopLevel.length > 0
-      ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${TUI_FOOTER_HINTS}`
-      : TUI_FOOTER_HINTS;
+      ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
+      : footerHints;
+  const footer = footerStatus ? `${baseFooter}  ·  ${footerStatus}` : baseFooter;
 
   const pickerRows = useMemo(
     () =>
@@ -882,6 +907,50 @@ function App(props: AppProps) {
     setComposer(state);
   };
 
+  // Footer status line that flashes after an `s` no-op so the user knows
+  // why the keystroke didn't dispatch. Cleared by any subsequent key.
+  const [footerStatus, setFooterStatus] = useState<string | null>(null);
+
+  // Send the focused human Annotation to the configured reply-agent
+  // (issue #184). `s` is a no-op with a footer hint when:
+  //  - no annotation is focused (null cursor on the annotation list),
+  //  - the current annotation is agent-authored / has a Reply / no agent,
+  //  - the lock is held by another in-flight dispatch on this tour.
+  // The dispatch itself is fire-and-forget — the watcher's lock + bundle
+  // events drive the in-flight pill and the landed Reply into view.
+  const sendCurrentToAgent = () => {
+    if (!props.cwd || !props.replyAgent) return;
+    if (!currentAnnotationId) {
+      setFooterStatus("no annotation selected — n/p to navigate");
+      return;
+    }
+    const current = liveAnnotations.find((a) => a.id === currentAnnotationId);
+    if (!current) return;
+    const hasReply = liveAnnotations.some((a) => a.replies_to === current.id);
+    const verdict = canSendToAgent({
+      replyAgentConfigured: true,
+      lockHeld: liveReplyLock !== null,
+      authorKind: current.author_kind,
+      hasReply,
+    });
+    if (!verdict.enabled) {
+      if (verdict.reason === "lock-held") {
+        setFooterStatus(`${liveReplyLock?.agent ?? props.replyAgent} is replying — wait`);
+      }
+      // Other reasons (agent-card, already-replied) — the footer hint was
+      // hidden anyway; pressing `s` is a silent no-op.
+      return;
+    }
+    setFooterStatus(null);
+    const cwd = props.cwd;
+    const tourId = liveTour.id;
+    const annotationId = current.id;
+    const agent = props.replyAgent;
+    void requestReply({ cwd, tourId, annotationId, agent }).catch(() => {
+      // transient — the watcher's reload will surface any state change
+    });
+  };
+
   const cancelComposer = () => {
     setComposer(null);
   };
@@ -1085,6 +1154,9 @@ function App(props: AppProps) {
         return;
       case "open-reply-composer":
         openReplyComposer();
+        return;
+      case "send-to-agent":
+        sendCurrentToAgent();
         return;
       case "page-diff-down":
       case "page-diff-up":

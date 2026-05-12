@@ -15,6 +15,7 @@ import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows } from "../../core/tour-list.js";
 import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
+import { canSendToAgent } from "../../core/can-send-to-agent.js";
 import {
   buildTree,
   compress,
@@ -111,6 +112,11 @@ const BASE_DIFF_OPTIONS = {
 
 interface AppProps {
   initialTourId: string | null;
+  // The renderer-configured reply-agent name (from `--reply-agent <name>`,
+  // baked into the SPA via `__INITIAL_REPLY_AGENT__`). Null when the
+  // server was launched without `--reply-agent`; the "Send to {agent}"
+  // affordance stays hidden in that case.
+  replyAgent?: string | null;
 }
 
 interface LoadState {
@@ -141,7 +147,7 @@ function readAnnFromUrl(): string | null {
   return readAnnFromLocation(window.location);
 }
 
-export function App({ initialTourId }: AppProps): React.JSX.Element {
+export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
   const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl(initialTourId));
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
   const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
@@ -874,6 +880,28 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
     setComposerTarget({ kind: "reply", replies_to });
   }, []);
 
+  // Explicit reply-agent dispatch (issue #184, ADR 0021). Fired by the
+  // `Send to {agent}` button below each human Annotation card. Hits the
+  // `POST /api/tours/:id/request-reply` endpoint which routes through
+  // `requestReply` in core. We don't await the result for UX — the
+  // watcher's reply-lock SSE event surfaces the in-flight pill within
+  // a debounce tick; on completion, the annotation-changed event brings
+  // in the landed Reply. Network errors are silent here; the user's
+  // visible signal is the pill (or absence of one).
+  const sendToAgent = useCallback(
+    (annotationId: string) => {
+      if (!tourId) return;
+      void fetch(`/api/tours/${tourId}/request-reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ annotation_id: annotationId }),
+      }).catch(() => {
+        // Network transient — watcher events stay the source of truth.
+      });
+    },
+    [tourId],
+  );
+
   const submitComposer = useCallback(
     async (body: string) => {
       if (!tourId || !composerTarget) return;
@@ -1032,6 +1060,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
               onSubmit={submitComposer}
               onCancel={closeComposer}
               replyLock={replyLock}
+              replyAgent={replyAgent}
+              onSendToAgent={sendToAgent}
             />
           ) : (
             parsedFiles.map((f) => (
@@ -1058,6 +1088,8 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
                 onSubmit={submitComposer}
                 onCancel={closeComposer}
                 replyLock={replyLock}
+                replyAgent={replyAgent}
+                onSendToAgent={sendToAgent}
               />
             ))
           )}
@@ -1209,6 +1241,8 @@ interface FileBlockProps {
   onSubmit: (body: string) => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
+  replyAgent?: string | null;
+  onSendToAgent: (annotationId: string) => void;
 }
 
 // Pierre's hidden-context expansion needs the full pre/post-image of each
@@ -1270,6 +1304,8 @@ function FileBlockInner({
   onSubmit,
   onCancel,
   replyLock,
+  replyAgent,
+  onSendToAgent,
 }: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
 
@@ -1357,6 +1393,8 @@ function FileBlockInner({
           onSubmitReply={onSubmit}
           onCancelReply={onCancel}
           replyLock={replyLock}
+          replyAgent={replyAgent}
+          onSendToAgent={() => onSendToAgent(a.id)}
         />
       );
     },
@@ -1372,6 +1410,8 @@ function FileBlockInner({
       onCancel,
       onOpenReply,
       replyLock,
+      replyAgent,
+      onSendToAgent,
     ],
   );
 
@@ -1470,6 +1510,10 @@ interface AnnotationCardProps {
   onSubmitReply?: (body: string) => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
+  // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181).
+  // Null/undefined → the "Send to {agent}" affordance is hidden.
+  replyAgent?: string | null;
+  onSendToAgent?: () => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -1526,6 +1570,8 @@ export function AnnotationCard({
   onSubmitReply,
   onCancelReply,
   replyLock,
+  replyAgent,
+  onSendToAgent,
 }: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
@@ -1533,6 +1579,22 @@ export function AnnotationCard({
       : `${annotation.line_start}-${annotation.line_end}`;
   const showPill =
     !!replyLock && pillTargetsThisCard(annotation.id, replies, replyLock);
+  // Compute the "Send to {agent}" affordance via the shared core
+  // predicate (issue #184, PRD #181). Visibility hides the button
+  // entirely; disabled keeps it visible but unclickable with a tooltip.
+  // Focused-card emphasis is applied via CSS — `.annotation-block.current
+  // .send-to-agent-button` lights up in the accent colour; peer cards
+  // stay muted (see spa.ts).
+  const sendVerdict = canSendToAgent({
+    replyAgentConfigured: !!replyAgent,
+    lockHeld: replyLock !== null && replyLock !== undefined,
+    authorKind: annotation.author_kind,
+    hasReply: (replies?.length ?? 0) > 0,
+  });
+  const sendTooltip =
+    sendVerdict.reason === "lock-held" && replyLock
+      ? `${replyLock.agent} is replying — wait`
+      : undefined;
   return (
     <div
       className={isCurrent ? "annotation-block current" : "annotation-block"}
@@ -1589,18 +1651,34 @@ export function AnnotationCard({
             onCancel={() => onCancelReply?.()}
           />
         </div>
-      ) : onOpenReply ? (
+      ) : onOpenReply || (sendVerdict.visible && onSendToAgent) ? (
         <div className="ann-actions">
-          <button
-            type="button"
-            className="reply-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenReply();
-            }}
-          >
-            Reply
-          </button>
+          {onOpenReply ? (
+            <button
+              type="button"
+              className="reply-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenReply();
+              }}
+            >
+              Reply
+            </button>
+          ) : null}
+          {sendVerdict.visible && onSendToAgent ? (
+            <button
+              type="button"
+              className="send-to-agent-button"
+              disabled={!sendVerdict.enabled}
+              title={sendTooltip}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (sendVerdict.enabled) onSendToAgent();
+              }}
+            >
+              Send to {replyAgent}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1699,6 +1777,8 @@ interface AnnotationListProps {
   onSubmit: (body: string) => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
+  replyAgent?: string | null;
+  onSendToAgent: (annotationId: string) => void;
 }
 
 function AnnotationList({
@@ -1714,6 +1794,8 @@ function AnnotationList({
   onSubmit,
   onCancel,
   replyLock,
+  replyAgent,
+  onSendToAgent,
 }: AnnotationListProps): React.JSX.Element {
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
@@ -1736,6 +1818,8 @@ function AnnotationList({
             onSubmitReply={onSubmit}
             onCancelReply={onCancel}
             replyLock={replyLock}
+            replyAgent={replyAgent}
+            onSendToAgent={() => onSendToAgent(a.id)}
           />
         );
       })}

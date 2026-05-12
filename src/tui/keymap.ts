@@ -34,6 +34,7 @@ export type KeyAction =
   | { type: "open-picker" }
   | { type: "open-top-level-composer" }
   | { type: "open-reply-composer" }
+  | { type: "send-to-agent" }
   | { type: "page-diff-down" }
   | { type: "page-diff-up" }
   | { type: "half-page-diff-down" }
@@ -103,6 +104,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "t") return { type: "open-picker" };
     if (key.name === "a") return { type: "open-top-level-composer" };
     if (key.name === "r") return { type: "open-reply-composer" };
+    if (key.name === "s") return { type: "send-to-agent" };
   }
 
   // Diff-pane Enter / Shift+Enter (ADR 0013): only fires when the cursor

@@ -15,6 +15,25 @@ describe("spa shell html()", () => {
     expect(html()).toContain("window.__INITIAL_TOUR_ID__ = null");
   });
 
+  it("threads the configured reply-agent name into a window global (issue #184)", () => {
+    expect(html("abc123", "claude")).toContain(
+      'window.__INITIAL_REPLY_AGENT__ = "claude"',
+    );
+    // Defaulting to null means "no --reply-agent" — both globals are nullable.
+    expect(html()).toContain("window.__INITIAL_REPLY_AGENT__ = null");
+  });
+
+  it("styles the Send-to-agent button with a focused-card accent + disabled treatment (issue #184)", () => {
+    const out = html();
+    expect(out).toMatch(/\.send-to-agent-button\s*\{/);
+    expect(out).toMatch(
+      /\.annotation-block\.current\s+\.send-to-agent-button:not\(:disabled\)\s*\{[^}]*color:\s*var\(--fg-accent\)/,
+    );
+    expect(out).toMatch(
+      /\.send-to-agent-button:disabled\s*\{[^}]*cursor:\s*not-allowed/,
+    );
+  });
+
   it("declares the dark canvas color and sidebar layout", () => {
     const out = html();
     expect(out).toContain("#0d1117");

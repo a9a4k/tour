@@ -1,7 +1,8 @@
 import { themeCSSVars } from "../core/theme.js";
 
-export function html(initialTourId?: string): string {
+export function html(initialTourId?: string, replyAgent?: string): string {
   const initialId = initialTourId ? JSON.stringify(initialTourId) : "null";
+  const initialReplyAgent = replyAgent ? JSON.stringify(replyAgent) : "null";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -287,6 +288,28 @@ export function html(initialTourId?: string): string {
     background: var(--canvas-subtle);
     color: var(--fg-default);
   }
+  .annotation-block .send-to-agent-button {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .annotation-block .send-to-agent-button:not(:disabled):hover {
+    background: var(--canvas-subtle);
+    color: var(--fg-default);
+  }
+  .annotation-block.current .send-to-agent-button:not(:disabled) {
+    color: var(--fg-accent);
+    border-color: var(--border-accent);
+  }
+  .annotation-block .send-to-agent-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
   .annotation-block .ann-reply-composer {
     margin-top: 8px;
     padding-left: 12px;
@@ -560,7 +583,7 @@ export function html(initialTourId?: string): string {
 </head>
 <body>
 <div id="root"></div>
-<script>window.__INITIAL_TOUR_ID__ = ${initialId};</script>
+<script>window.__INITIAL_TOUR_ID__ = ${initialId}; window.__INITIAL_REPLY_AGENT__ = ${initialReplyAgent};</script>
 <script type="module" src="/client.js"></script>
 </body>
 </html>`;

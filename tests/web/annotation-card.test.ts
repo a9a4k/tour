@@ -160,3 +160,171 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
     expect(container.querySelector(".author-kind.human")).not.toBeNull();
   });
 });
+
+describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", () => {
+  // The "Send to {agent}" button lives next to the existing "Reply"
+  // button on every human Annotation card. Visibility is delegated to
+  // `canSendToAgent` in core; this suite covers the rendering side —
+  // is the button there, is the label correct, is the disabled state
+  // wired to the tour-wide lock.
+
+  it("renders the button labelled with the agent name on a human card when replyAgent is set", () => {
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = container.querySelector(".send-to-agent-button");
+    expect(btn).not.toBeNull();
+    expect(btn?.textContent).toBe("Send to claude");
+  });
+
+  it("interpolates a different agent name verbatim from the prop", () => {
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "codex",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(container.querySelector(".send-to-agent-button")?.textContent).toBe(
+      "Send to codex",
+    );
+  });
+
+  it("hides the button on agent-authored cards (agent-card precedence)", () => {
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: { ...baseAnnotation, author_kind: "agent", author: "claude" },
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(container.querySelector(".send-to-agent-button")).toBeNull();
+  });
+
+  it("hides the button when replyAgent is unset (renderer launched without --reply-agent)", () => {
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(container.querySelector(".send-to-agent-button")).toBeNull();
+  });
+
+  it("disables the button when a reply has already landed (already-replied terminal)", () => {
+    const reply: Annotation = {
+      ...baseAnnotation,
+      id: "ann-2",
+      author: "claude",
+      author_kind: "agent",
+      replies_to: baseAnnotation.id,
+      body: "agent reply body",
+    };
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = container.querySelector(
+      ".send-to-agent-button",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    expect(btn?.disabled).toBe(true);
+  });
+
+  it("disables the button + carries an agent-name tooltip when a reply-lock is held tour-wide", () => {
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        replyLock: {
+          agent: "claude",
+          responding_to: "other-ann",
+          started_at: "2026-05-12T09:00:00Z",
+          pid: 1,
+        },
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = container.querySelector(
+      ".send-to-agent-button",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    expect(btn?.disabled).toBe(true);
+    expect(btn?.getAttribute("title")).toContain("claude is replying");
+  });
+
+  it("fires onSendToAgent on click when enabled, swallowing event propagation", () => {
+    let fired = 0;
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {
+          fired += 1;
+        },
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = container.querySelector(
+      ".send-to-agent-button",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    act(() => {
+      btn?.click();
+    });
+    expect(fired).toBe(1);
+  });
+
+  it("renders Reply and Send buttons side-by-side in the ann-actions row", () => {
+    const container = mount(
+      createElement(AnnotationCard, {
+        annotation: baseAnnotation,
+        isCurrent: true,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const actions = container.querySelector(".ann-actions");
+    expect(actions).not.toBeNull();
+    expect(actions?.querySelector(".reply-button")).not.toBeNull();
+    expect(actions?.querySelector(".send-to-agent-button")).not.toBeNull();
+  });
+});

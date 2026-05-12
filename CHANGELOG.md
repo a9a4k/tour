@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking changes
 
+- **Reply-agent dispatch is now explicit, not implicit.** Previously, the
+  renderer's watcher auto-fired a reply-agent dispatch on every new
+  human-authored Annotation when `--reply-agent <name>` was set. Now,
+  dispatch only happens when the user presses `s` on a focused human
+  Annotation in the TUI, or clicks **Send to {agent}** on a human card
+  in the webapp. The watcher's role narrows to state observation only
+  (annotations.jsonl → bundle re-render; .reply-lock.json → in-flight
+  pill + affordance disabled state). The new `POST /api/tours/:id/
+  request-reply` endpoint maps the four dispatch result kinds to HTTP
+  status codes (202 dispatched / 409 busy / 404 invalid-annotation /
+  400 no-reply-agent). Reverses the auto-dispatch portion of ADR 0010;
+  see ADR 0021 for rationale (paid-LLM-inference economics — every
+  silent over-dispatch under the old model was real money).
+
+  Issue: #184 · PRD: #181 · ADR: 0021
+
 - **Bare `tour` picks the best surface for your environment.** Previously,
   `tour` (no subcommand) always launched the TUI. It now starts the
   webapp and prints its URL when a browser is reachable (desktop

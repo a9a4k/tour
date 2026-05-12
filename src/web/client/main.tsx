@@ -5,6 +5,7 @@ import { App } from "./App.js";
 declare global {
   interface Window {
     __INITIAL_TOUR_ID__?: string | null;
+    __INITIAL_REPLY_AGENT__?: string | null;
   }
 }
 
@@ -30,6 +31,9 @@ createRoot(rootEl).render(
       theme: { dark: "github-dark-default", light: "github-light-default" },
     }}
   >
-    <App initialTourId={window.__INITIAL_TOUR_ID__ ?? null} />
+    <App
+      initialTourId={window.__INITIAL_TOUR_ID__ ?? null}
+      replyAgent={window.__INITIAL_REPLY_AGENT__ ?? null}
+    />
   </WorkerPoolContextProvider>,
 );

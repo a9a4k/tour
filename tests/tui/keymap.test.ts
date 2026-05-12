@@ -327,6 +327,18 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("r", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
+  it("s returns send-to-agent regardless of pane focus (issue #184, PRD #181)", () => {
+    expect(dispatchKey(k("s"), sidebar).type).toBe("send-to-agent");
+    expect(dispatchKey(k("s"), diffPane).type).toBe("send-to-agent");
+  });
+
+  it("Ctrl+S / Shift+S do not fire send-to-agent (modifier-free binding only)", () => {
+    expect(dispatchKey(k("s", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("s", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("s", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("s", { shift: true }), diffPane).type).toBe("noop");
+  });
+
   // Regression: opentui's KeyEvent uses .name (lowercase node-readline style),
   // not the browser KeyboardEvent's .key (TitleCase like "Tab", "ArrowDown").
   // If someone re-introduces the browser shape, this test catches it.

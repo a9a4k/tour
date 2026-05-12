@@ -7,7 +7,6 @@ import {
 import { getTour } from "./tour-store.js";
 import { shouldDispatchReply } from "./reply-dispatch.js";
 import {
-  readReplyLock,
   writeReplyLock,
   deleteReplyLock,
   tryAcquireReplyLock,
@@ -21,108 +20,12 @@ import { replyAgentSystemPrompt } from "./system-prompt.js";
 import { createDispatchLogger } from "./dispatch-logger.js";
 import type { Annotation } from "./types.js";
 
-export interface ReplyRunnerOptions {
-  cwd: string;
-  tourId: string;
-  agent: string;
-  // Optional override so tests can supply a fake adapter without touching
-  // the shipped registry. Replaces the prior shell-script `adapterPath`
-  // seam.
-  adapter?: ShippedAdapter;
-}
-
-// Watches an in-memory snapshot of the tour's annotations, dispatches the
-// shipped reply-agent once when a new human-authored Annotation appears,
-// holds the per-tour single-flight lock, captures the agent's stdout, and
-// writes that as the Reply Annotation (ADR 0012) when usable.
-//
-// Drives off explicit `tick()` calls — caller (renderer) wires this to the
-// watcher's `annotation-changed` event so the runner re-reads
-// annotations.jsonl on every change.
-export class ReplyRunner {
-  private readonly opts: ReplyRunnerOptions;
-  private readonly seen = new Set<string>();
-  private inFlight = false;
-  private initialized = false;
-
-  constructor(opts: ReplyRunnerOptions) {
-    this.opts = opts;
-  }
-
-  // Seed the seen-set from the current annotations file so that pre-existing
-  // human-authored Annotations don't fire the agent on first launch. Call
-  // once before wiring up the watcher.
-  async prime(): Promise<void> {
-    const annotations = await readAnnotationsSafely(
-      this.opts.cwd,
-      this.opts.tourId,
-    );
-    for (const a of annotations) this.seen.add(a.id);
-    this.initialized = true;
-  }
-
-  async tick(): Promise<void> {
-    if (!this.initialized) await this.prime();
-    if (this.inFlight) return;
-
-    const annotations = await readAnnotationsSafely(
-      this.opts.cwd,
-      this.opts.tourId,
-    );
-    const newlyHuman: Annotation[] = [];
-    for (const a of annotations) {
-      if (this.seen.has(a.id)) continue;
-      this.seen.add(a.id);
-      if (shouldDispatchReply(a)) newlyHuman.push(a);
-    }
-    if (newlyHuman.length === 0) return;
-
-    // Queue-of-1 semantics per the PRD: collapse multiple newly-arrived
-    // human Annotations into a single dispatch on the latest one. The agent
-    // re-reads the full thread state via the envelope, so older triggers
-    // are not lost — they're folded into context.
-    const triggering = newlyHuman[newlyHuman.length - 1];
-    if (await readReplyLock(this.opts.cwd, this.opts.tourId)) return;
-    await this.dispatch(triggering, annotations);
-  }
-
-  private async dispatch(
-    triggering: Annotation,
-    annotations: Annotation[],
-  ): Promise<void> {
-    this.inFlight = true;
-    try {
-      // Write a placeholder lock with pid=0 first so the renderer's pill
-      // surfaces *before* the spawn returns. started_at is captured once so
-      // the pill's age counter is stable across the placeholder/patch
-      // sequence.
-      const startedAt = new Date().toISOString();
-      await writeReplyLock(this.opts.cwd, this.opts.tourId, {
-        agent: this.opts.agent,
-        responding_to: triggering.id,
-        started_at: startedAt,
-        pid: 0,
-      });
-      await runDispatch({
-        cwd: this.opts.cwd,
-        tourId: this.opts.tourId,
-        agent: this.opts.agent,
-        adapter: this.opts.adapter,
-        triggering,
-        annotations,
-        startedAt,
-      });
-    } finally {
-      this.inFlight = false;
-    }
-  }
-}
-
 // The single dispatch entry point both surfaces converge on (issue #182).
 // Validates the annotation, atomically acquires the per-tour reply lock,
-// and delegates to the shared `runDispatch` helper. The watcher-driven
-// `ReplyRunner` path remains for back-compat; subsequent slices will
-// retire it in favour of explicit user-triggered dispatch.
+// and delegates to the shared `runDispatch` helper. The watcher's
+// auto-dispatch path was removed in issue #184 (ADR 0021); user action
+// — `s` in the TUI, "Send to {agent}" in the webapp — is the only path
+// to a reply-agent spawn now.
 export interface RequestReplyOptions {
   cwd: string;
   tourId: string;
@@ -132,7 +35,7 @@ export interface RequestReplyOptions {
   // at the seam.
   agent?: string;
   // Test-only override so callers can inject a fake adapter without
-  // touching the shipped registry. Mirrors `ReplyRunnerOptions.adapter`.
+  // touching the shipped registry.
   adapter?: ShippedAdapter;
 }
 
@@ -141,6 +44,27 @@ export type RequestReplyResult =
   | { kind: "busy" }
   | { kind: "invalid-annotation" }
   | { kind: "no-reply-agent" };
+
+// HTTP status mapping for `POST /api/tours/:id/request-reply` (issue
+// #184). Extracted so it's unit-testable in isolation and so both the
+// server endpoint and any future surface (e.g. a JSON-RPC bridge) use
+// the same mapping. The mapping is the user-facing contract — the
+// PRD pins it explicitly: 202 dispatched / 409 busy / 404 invalid-
+// annotation / 400 no-reply-agent.
+export function httpStatusForRequestReplyResult(
+  result: RequestReplyResult,
+): number {
+  switch (result.kind) {
+    case "dispatched":
+      return 202;
+    case "busy":
+      return 409;
+    case "invalid-annotation":
+      return 404;
+    case "no-reply-agent":
+      return 400;
+  }
+}
 
 export async function requestReply(
   opts: RequestReplyOptions,
@@ -191,10 +115,9 @@ async function readAnnotationsSafely(
   }
 }
 
-// Shared spawn-and-persist-and-release helper used by both `ReplyRunner`
-// and `requestReply`. Assumes the caller has already written the
-// pid=0 placeholder lock so the renderer's pill is visible during spawn
-// setup; releases the lock in its own `finally`.
+// Shared spawn-and-persist-and-release helper. Assumes the caller has
+// already written the pid=0 placeholder lock so the renderer's pill is
+// visible during spawn setup; releases the lock in its own `finally`.
 interface RunDispatchOptions {
   cwd: string;
   tourId: string;

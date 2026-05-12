@@ -5,7 +5,10 @@ import {
 } from "../core/annotations-store.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
-import { ReplyRunner } from "../core/reply-runner.js";
+import {
+  requestReply,
+  httpStatusForRequestReplyResult,
+} from "../core/reply-runner.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { detectAgentsOnPath } from "../core/agent-path-detector.js";
 import { isOnPath } from "../core/is-on-path.js";
@@ -194,7 +197,6 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
   const startedAt = new Date().toISOString();
   const watchers = new Map<string, TourWatcher>();
-  const runners = new Map<string, ReplyRunner>();
 
   function getOrCreateWatcher(tourId: string): TourWatcher {
     let w = watchers.get(tourId);
@@ -202,22 +204,6 @@ export async function startServer(args: ServeArgs): Promise<void> {
       w = new TourWatcher(cwd, tourId);
       w.start();
       watchers.set(tourId, w);
-
-      // If a reply-agent is configured, dispatch on annotation-changed.
-      // The runner is per-tour (single-flight per tour) and seeded from
-      // existing annotations so pre-existing human notes don't fire.
-      if (replyAgent) {
-        const runner = new ReplyRunner({ cwd, tourId, agent: replyAgent });
-        runners.set(tourId, runner);
-        void runner.prime();
-        w.on((event) => {
-          if (event.type === "annotation-changed") {
-            void runner.tick().catch(() => {
-              // swallow — a transient read failure should not crash serve
-            });
-          }
-        });
-      }
     }
     return w;
   }
@@ -369,6 +355,37 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
         }
 
+        const requestReplyMatch = url.pathname.match(
+          /^\/api\/tours\/([^/]+)\/request-reply$/,
+        );
+        if (requestReplyMatch && req.method === "POST") {
+          const idOrPrefix = requestReplyMatch[1];
+          let resolvedId: string;
+          try {
+            resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 404 });
+          }
+          const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+          const annotationId = asString(body.annotation_id);
+          if (!annotationId) {
+            return Response.json(
+              { error: "annotation_id is required" },
+              { status: 400 },
+            );
+          }
+          const result = await requestReply({
+            cwd,
+            tourId: resolvedId,
+            annotationId,
+            agent: replyAgent,
+          });
+          return Response.json(result, {
+            status: httpStatusForRequestReplyResult(result),
+          });
+        }
+
         const lockMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/reply-lock$/);
         if (lockMatch) {
           const idOrPrefix = lockMatch[1];
@@ -395,7 +412,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
         }
 
-        return new Response(html(args.tourId), {
+        return new Response(html(args.tourId, replyAgent), {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       },
@@ -432,7 +449,6 @@ export async function startServer(args: ServeArgs): Promise<void> {
     function cleanup() {
       for (const w of watchers.values()) w.stop();
       watchers.clear();
-      runners.clear();
       server.stop();
       resolve();
     }

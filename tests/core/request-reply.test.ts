@@ -3,7 +3,10 @@ import { mkdtemp, mkdir, writeFile, appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { stringify as stringifyTOML } from "smol-toml";
-import { requestReply } from "../../src/core/reply-runner.js";
+import {
+  requestReply,
+  httpStatusForRequestReplyResult,
+} from "../../src/core/reply-runner.js";
 import { readAnnotations } from "../../src/core/annotations-store.js";
 import {
   writeReplyLock,
@@ -330,5 +333,25 @@ describe("requestReply", () => {
     // Wait for the first to finish so we leave a clean filesystem.
     expect(await first).toEqual({ kind: "dispatched" });
     expect(slowAdapter.invocations).toHaveLength(1);
+  });
+});
+
+describe("httpStatusForRequestReplyResult (issue #184)", () => {
+  // The mapping is a user-facing contract pinned by the PRD: the
+  // webapp's `POST /api/tours/:id/request-reply` endpoint translates
+  // requestReply's discriminated result into one of four HTTP statuses.
+  // Locked into a unit test so a future refactor of the endpoint cannot
+  // silently drift the contract.
+  it("maps `dispatched` → 202 (Accepted)", () => {
+    expect(httpStatusForRequestReplyResult({ kind: "dispatched" })).toBe(202);
+  });
+  it("maps `busy` → 409 (Conflict)", () => {
+    expect(httpStatusForRequestReplyResult({ kind: "busy" })).toBe(409);
+  });
+  it("maps `invalid-annotation` → 404 (Not Found)", () => {
+    expect(httpStatusForRequestReplyResult({ kind: "invalid-annotation" })).toBe(404);
+  });
+  it("maps `no-reply-agent` → 400 (Bad Request)", () => {
+    expect(httpStatusForRequestReplyResult({ kind: "no-reply-agent" })).toBe(400);
   });
 });

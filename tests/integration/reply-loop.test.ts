@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ReplyRunner } from "../../src/core/reply-runner.js";
+import { requestReply } from "../../src/core/reply-runner.js";
 import { readReplyLock } from "../../src/core/reply-lock.js";
 import { readAnnotations } from "../../src/core/annotations-store.js";
 import type {
@@ -112,18 +112,11 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
     ({ repo, tourId } = await makeRepoWithTour());
   });
 
-  it("a human-authored Annotation triggers the fixture adapter, which writes an agent Reply via stdout-as-reply", async () => {
-    const runner = new ReplyRunner({
-      cwd: repo,
-      tourId,
-      agent: "fixture",
-      adapter: fixtureAdapter,
-    });
-    // Prime first, then write the human note, then tick — this is the
-    // sequence the renderer uses (prime on mount, watcher fires tick on
-    // each annotations.jsonl write).
-    await runner.prime();
-
+  it("an explicit requestReply call drives the fixture adapter, which writes an agent Reply via stdout-as-reply", async () => {
+    // Write the human Annotation via the CLI, then explicitly invoke
+    // requestReply — the same path the TUI's `s` keymap and the webapp's
+    // POST /api/tours/:id/request-reply endpoint converge on (issue #184,
+    // ADR 0021). The watcher no longer auto-dispatches.
     const r = await run(
       [
         "annotate",
@@ -139,11 +132,19 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
       repo,
     );
     expect(r.exitCode).toBe(0);
+    const created = JSON.parse(r.stdout) as { id: string };
 
-    await runner.tick();
+    const result = await requestReply({
+      cwd: repo,
+      tourId,
+      annotationId: created.id,
+      agent: "fixture",
+      adapter: fixtureAdapter,
+    });
+    expect(result).toEqual({ kind: "dispatched" });
 
-    // tick() resolves only after the spawn exits, so by here the lock is
-    // gone and the reply is on disk.
+    // requestReply resolves only after the spawn exits, so by here the
+    // lock is gone and the reply is on disk.
     expect(await readReplyLock(repo, tourId)).toBeNull();
 
     const annotations = await readAnnotations(repo, tourId);
