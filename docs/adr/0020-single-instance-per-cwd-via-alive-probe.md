@@ -20,3 +20,9 @@ A second `tour serve` invocation against the same working directory reuses the e
 - **`/__alive` is unauthenticated by design.** It exposes only the identity envelope: `tour: true`, `cwd`, `port`, `startedAt`. No tour data, no annotations, no PII. Bound to `127.0.0.1` like everything else in `tour serve` — not reachable off-host.
 - **Pure probe module.** `src/core/tour-probe.ts` is a pure function over an injected `fetch`; the unit tests cover all branches without real network calls.
 - **Shipped in v2.0.0.** CHANGELOG documents the reuse behaviour.
+
+## Update (issue #195)
+
+The slice-1.5 implementation probed only the preferred port, then handed off to a non-probing `bindWithFallback` walk. This missed same-cwd Tours that had landed on a *fallback* port (e.g. cwd-A bound 8688 because 8687 was held by an unrelated process). A later invocation in cwd-A would probe 8687 (non-tour), fall through to bind, and end up on 8689 — defeating the single-instance promise.
+
+Fix: the probe is now interleaved with the bind walk. `src/web/resolve-serve-port.ts` replaces the two-step "probe preferred + bindWithFallback" composition with a single loop that, at every port: reuses on same-cwd Tour, skips on other-cwd Tour or non-Tour, otherwise binds. Explicit `--port N` keeps single-port semantics. The pure `probeTour` and `/__alive` envelope are unchanged.
