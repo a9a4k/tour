@@ -52,3 +52,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tour serve` without a tour-id is unchanged (bare base URL). The
   port-collision fallback path also includes `/<id>` and reflects the
   actually-bound port. `--open` opens the deep URL too. (#179)
+- **SPA reads tour-id from the URL path and annotation-id from the URL
+  fragment.** Precedence is path → query → baked global for tour-id,
+  fragment → query for annotation-id. Loading `/<tour-id>` always
+  displays that tour regardless of what id the server's HTML carries —
+  the probe-reuse case (Issue #178) no longer mis-routes the printed
+  deep URL. Loading `/<tour-id>#<ann-id>` scrolls to the named
+  annotation. Internal navigation (tour-picker, n/p cursor) now writes
+  the new path + fragment shape; legacy `?tour=&ann=` URLs remain
+  readable as a back-compat fallback. (#179)

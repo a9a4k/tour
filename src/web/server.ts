@@ -175,10 +175,11 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
   // Path component appended to printed URLs when a positional tour-id was
   // passed (issue #179). Lets the user Cmd-click straight to their tour in
-  // a modern terminal. The SPA accepts the id as the embedded
-  // __INITIAL_TOUR_ID__ regardless of URL path, so this is decorative for
-  // the routing but load-bearing for the click target. Bare `tour serve`
-  // (no id) prints the unchanged base URL.
+  // a modern terminal. The SPA reads tour-id from the path with higher
+  // precedence than the baked `__INITIAL_TOUR_ID__`, so the printed URL
+  // wins over whatever id the running server's HTML carries — load-bearing
+  // for the probe-reuse case where the server was started for a different
+  // tour. Bare `tour serve` (no id) prints the unchanged base URL.
   const path = args.tourId ? `/${args.tourId}` : "";
 
   // Reuse-if-running (issue #178). Probe the preferred port: if a Tour

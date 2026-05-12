@@ -39,6 +39,7 @@ import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
+import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
 import { attachGapRowOverlay, dispatchGapRowAction } from "./gap-row-overlay.js";
 import { expansionFromPierre } from "./pierre-expansion-bridge.js";
 import type { FileDiff as FileDiffInstance } from "@pierre/diffs";
@@ -130,22 +131,18 @@ function defaultCollapsedFor(file: BundleFile, annotations: Annotation[]): boole
   return false;
 }
 
-function readTourFromUrl(): string | null {
-  if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  const v = params.get("tour");
-  return v && v.length > 0 ? v : null;
+function readTourFromUrl(fallback: string | null): string | null {
+  if (typeof window === "undefined") return fallback;
+  return readTourFromLocation(window.location, fallback);
 }
 
 function readAnnFromUrl(): string | null {
   if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  const v = params.get("ann");
-  return v && v.length > 0 ? v : null;
+  return readAnnFromLocation(window.location);
 }
 
 export function App({ initialTourId }: AppProps): React.JSX.Element {
-  const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl() ?? initialTourId);
+  const [tourId, setTourId] = useState<string | null>(() => readTourFromUrl(initialTourId));
   const [tourList, setTourList] = useState<TourSummary[] | null>(null);
   const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
   const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
@@ -203,7 +200,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   useEffect(() => {
     const onPop = () => {
-      const fromUrl = readTourFromUrl();
+      const fromUrl = readTourFromUrl(null);
       if (fromUrl !== null) setTourId(fromUrl);
     };
     window.addEventListener("popstate", onPop);
@@ -454,24 +451,23 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
 
   // Mirror the current top-level Annotation cursor into the URL via
   // replaceState — chosen over pushState so the browser back button steps
-  // over Tour switches, not over every n/p keystroke. Same gate as the
-  // restorer above: writing during the in-flight Tour-switch window can
-  // leak the previous Tour's `ann=` into the new URL. When the cursor is
-  // null on a Tour with zero annotations and a stale `ann=` lingers,
-  // strip it so the URL self-heals and shared links can't propagate
-  // broken state. When cursor is null but topLevel is non-empty, the
-  // restorer is about to anchor — defer the URL write to that pass so
-  // we don't strip-then-restore a valid `ann=` in a single cycle.
+  // over Tour switches, not over every n/p keystroke. Writes the new
+  // path + fragment shape `/<tour-id>#<ann-id>` (Issue #179) so the
+  // printed deep URL and the address bar agree, and so the legacy
+  // `?tour=&ann=` form self-heals on first cursor movement. Gate: skip
+  // when the URL doesn't already reflect the state's tour (in-flight
+  // Tour-switch window), and defer when topLevel is non-empty but the
+  // cursor is still null — the restorer is about to anchor, so we don't
+  // want to strip-then-restore a valid ann in a single cycle.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!tourMeta || tourMeta.id !== tourId) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("tour") !== tourId) return;
+    if (readTourFromLocation(window.location, null) !== tourId) return;
     if (currentAnnotationId === null && topLevel.length > 0) return;
-    if (params.get("ann") === currentAnnotationId) return;
-    if (currentAnnotationId === null) params.delete("ann");
-    else params.set("ann", currentAnnotationId);
-    window.history.replaceState(window.history.state, "", `/?${params.toString()}`);
+    const next = composeUrl(tourId, currentAnnotationId);
+    const current = window.location.pathname + window.location.search + window.location.hash;
+    if (next === current) return;
+    window.history.replaceState(window.history.state, "", next);
   }, [currentAnnotationId, tourMeta, tourId, topLevel]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
@@ -915,11 +911,7 @@ export function App({ initialTourId }: AppProps): React.JSX.Element {
       setPickerOpen(false);
       if (id !== tourId) {
         if (typeof window !== "undefined" && window.history) {
-          window.history.pushState(
-            { tourId: id },
-            "",
-            `/?tour=${encodeURIComponent(id)}`,
-          );
+          window.history.pushState({ tourId: id }, "", composeUrl(id, null));
         }
         setTourId(id);
       }
