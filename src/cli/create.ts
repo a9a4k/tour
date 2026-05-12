@@ -20,35 +20,19 @@ export async function create(args: CreateArgs): Promise<void> {
   await ensureTourIgnored(cwd);
 
   const isWip = head === "WIP";
-  let headSha: string;
-  let baseSha: string;
-  let baseSource: string;
+  // WIP anchors on HEAD (tip = parent = HEAD); resolveDefaultBase's
+  // strict-between check still picks merge-base when the branch is
+  // multi-commit ahead of upstream. Issue #201.
+  const tipRef = isWip ? "HEAD" : head;
+  const parentRef = isWip ? "HEAD" : head + "^";
 
-  if (isWip) {
-    headSha = await snapshotWorkingTree(id, cwd);
-    if (args.base) {
-      baseSha = await resolveRef(args.base, cwd);
-      baseSource = args.base;
-    } else {
-      // WIP anchors on HEAD: probe HEAD's upstream, merge-base when the
-      // branch is multi-commit, else HEAD. Issue #201.
-      const resolved = await resolveDefaultBase("HEAD", "HEAD", cwd);
-      baseSha = resolved.sha;
-      baseSource = resolved.source;
-    }
-  } else {
-    headSha = await resolveRef(head, cwd);
-    if (args.base) {
-      baseSha = await resolveRef(args.base, cwd);
-      baseSource = args.base;
-    } else {
-      // Probe <head>@{upstream}, merge-base when the branch is multi-
-      // commit ahead of upstream, else <head>^. Issue #201.
-      const resolved = await resolveDefaultBase(head, head + "^", cwd);
-      baseSha = resolved.sha;
-      baseSource = resolved.source;
-    }
-  }
+  const headSha = isWip
+    ? await snapshotWorkingTree(id, cwd)
+    : await resolveRef(head, cwd);
+
+  const base = args.base
+    ? { sha: await resolveRef(args.base, cwd), source: args.base }
+    : await resolveDefaultBase(tipRef, parentRef, cwd);
 
   const tour: Tour = {
     id,
@@ -57,9 +41,9 @@ export async function create(args: CreateArgs): Promise<void> {
     created_at: new Date().toISOString(),
     closed_at: "",
     head_sha: headSha,
-    base_sha: baseSha,
+    base_sha: base.sha,
     head_source: head,
-    base_source: baseSource,
+    base_source: base.source,
     wip_snapshot: isWip,
   };
 
