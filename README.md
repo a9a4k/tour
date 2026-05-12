@@ -39,7 +39,15 @@ Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tou
 
 ## For agents
 
-No global install needed in foreign repos:
+Install the Tour skill so AI agents (Claude Code, Codex, Cursor, Gemini CLI, OpenCode, …) automatically reach for Tour when the user asks to *"review this branch"*, *"walk me through this diff"*, *"leave feedback on these changes"*, or similar:
+
+```sh
+npx skills add a9a4k/tour -g
+```
+
+The skill teaches the canonical author flow (`tour create` → `tour annotate --batch -` → `tour serve --reply-agent <name> &`) and the narrative-walkthrough style: zero-context reader, *why* not *what*, concise (typically 2–4 sentences per annotation).
+
+For direct CLI use without the skill — e.g., in foreign repos with no global install:
 
 ```sh
 bunx tourdiff create --head HEAD --json
