@@ -83,7 +83,13 @@ function spawnImplicitServeUntilReady(
       stdout += chunk.toString();
       if (done) return;
       const m = stdout.match(/http:\/\/127\.0\.0\.1:(\d+)/);
-      if (m && /Tour server (running at|: port \d+ busy)/.test(stdout)) {
+      // Match either of server.ts's two startup-success lines:
+      //   "Tour server running at <url>"           — bound preferred port
+      //   "Tour server: port N busy, listening …"  — fell back from busy
+      // The previous combined regex required a literal space between
+      // "server" and the alternation, which never matched the busy
+      // form ("Tour server:" has no space before the colon).
+      if (m && (/Tour server running at /.test(stdout) || /Tour server: port \d+ busy/.test(stdout))) {
         done = true;
         const boundPort = parseInt(m[1], 10);
         setTimeout(() => resolve({ stdout, proc, boundPort }), 100);
@@ -106,7 +112,15 @@ function killProc(proc: ChildProcess): Promise<void> {
 
 function bindBlocker(port: number): Promise<Server> {
   return new Promise((resolve, reject) => {
-    const server = createServer();
+    const server = createServer((socket) => {
+      // Silence per-socket errors. The probe fetch aborts after 150ms and
+      // closes its TCP socket; the blocker side fires ECONNRESET on the
+      // accepted socket. Without a per-socket error listener Node treats
+      // it as an uncaught exception, which trips vitest's unhandled-error
+      // detector and stalls the test before the spawn's stdout reaches
+      // the matcher.
+      socket.on("error", () => {});
+    });
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => resolve(server));
   });
