@@ -106,6 +106,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Planner: `planRows` now scopes annotations to the file being planned
+  (PRD #192 / ADR 0022).** Pressing `j` or `k` from a CardAnchor on the
+  webapp jumped to a row in a different file: the row-anchored cursor
+  landed in the alphabetically-earliest file whose line range overlapped
+  the card's annotation `line_end`, rather than the annotation's own
+  file. Root cause: the webapp called `planRows(file, allAnnotations,
+  …)` per file (no upstream filter), and `interleaveAnnotations` +
+  `applyAnnotationFlags` matched anchors by `(side, line_end)` without
+  checking `ann.file`. Every file therefore got phantom card rows + tint
+  flags for every foreign annotation whose `line_end` fell inside its
+  line range. `flatRows()` emitted those phantoms into the cross-file
+  flat-row stream, `resolveCursorRowIdx(CardAnchor, flatRows)` resolved
+  to the first phantom, and `moveCursor` stepped into the wrong file's
+  row. The fix scopes once at the top of `planRows` —
+  `annotations.filter(a => a.file === file.name)` — so every downstream
+  helper inherits a file-scoped list. The visible card rendering was
+  unaffected because `<FileBlock>` filters Pierre's `lineAnnotations`
+  upstream; only the planner-driven cursor-navigation model was poisoned.
+  `nextCard`/`prevCard` were already correct after #197 (they walk the
+  canonical top-level Annotation list). The TUI also routes through this
+  planner — happened not to expose the bug because the TUI's call site
+  pre-filtered annotations, but the fix is equally correct on both
+  surfaces and removes a footgun for any future caller. (#199, PRD #192
+  / ADR 0022)
+
 - **Webapp: URL hash clears when the cursor moves from a card to a row
   (PRD #192 / ADR 0022).** Symmetric follow-up to #197's re-anchor fix.
   The URL-mirror effect's defer gate read `cursorCardId === null`, which

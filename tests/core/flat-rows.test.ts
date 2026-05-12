@@ -195,6 +195,56 @@ describe("flatRows", () => {
   it("returns an empty list when there are no files", () => {
     expect(flatRows([], new Map(), () => false)).toEqual([]);
   });
+
+  // issue #199: regression. When the webapp routed the cross-file annotation
+  // list through planRows per-file (no upstream filter), the planner emitted
+  // a phantom card row into every file whose line range overlapped another
+  // file's annotation `line_end`. resolveCursorRowIdx then resolved the
+  // CardAnchor to the first (alphabetically-earliest) phantom — moveCursor
+  // from a card stepped into the wrong file.
+  it("emits exactly one card row per top-level Annotation in a multi-file Tour with overlapping line ranges", async () => {
+    const { resolveCursorRowIdx } = await import("../../src/core/cursor-state.js");
+    const diffA = `diff --git a/a.txt b/a.txt
+index 1..2 100644
+--- a/a.txt
++++ a/a.txt
+@@ -1,3 +1,4 @@
+ ctx
+-old
++new
++added
+`;
+    const diffB = `diff --git a/b.txt b/b.txt
+index 1..2 100644
+--- a/b.txt
++++ b/b.txt
+@@ -1,3 +1,4 @@
+ ctx
+-old
++new
++added
+`;
+    const fa = fileFromDiff(diffA, "a.txt");
+    const fb = fileFromDiff(diffB, "b.txt");
+    const onlyInB = ann({ id: "ann-b", file: "b.txt", side: "additions", line_start: 2, line_end: 2 });
+    const planned = new Map<string, PlannedRow[]>([
+      ["a.txt", plannedFor(diffA, [onlyInB], "split")],
+      ["b.txt", plannedFor(diffB, [onlyInB], "split")],
+    ]);
+    const flat = flatRows([fa, fb], planned, () => false);
+    const cardRows = flat.filter((r) => r.kind === "card");
+    expect(cardRows.length).toBe(1);
+    if (cardRows[0].kind !== "card") throw new Error("narrow");
+    expect(cardRows[0].file).toBe("b.txt");
+    expect(cardRows[0].annotationId).toBe("ann-b");
+
+    const idx = resolveCursorRowIdx(
+      { kind: "card", annotationId: "ann-b" },
+      flat,
+    );
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(flat[idx].file).toBe("b.txt");
+  });
 });
 
 // ADR 0013 / PRD #107: the cursor walks `diff` rows AND `interactive`

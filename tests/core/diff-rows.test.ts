@@ -432,6 +432,93 @@ index 1..2 100644
       expect(tintedCount).toBe(1);
     });
   });
+
+  // issue #199: `planRows(file, annotations, ...)` was matching annotation
+  // anchors by `(side, line_end)` without checking `ann.file`. Calling it
+  // with the cross-file annotation list — as the webapp does — leaked card
+  // rows AND tint/gutter flags into every file whose line range overlapped
+  // another file's annotation `line_end`. Fix: filter at the top of
+  // planRows so every downstream helper inherits a file-scoped list.
+  describe("file-scoped annotations (issue #199)", () => {
+    // Two diffs whose line ranges overlap at line 2 on the additions side.
+    const DIFF_A = `diff --git a/a.txt b/a.txt
+index 1..2 100644
+--- a/a.txt
++++ a/a.txt
+@@ -1,3 +1,4 @@
+ ctx
+-old
++new
++added
+`;
+    const DIFF_B = `diff --git a/b.txt b/b.txt
+index 1..2 100644
+--- a/b.txt
++++ b/b.txt
+@@ -1,3 +1,4 @@
+ ctx
+-old
++new
++added
+`;
+
+    it("emits the card row in the annotation's own file", () => {
+      const fileA = parsePatchFiles(DIFF_A)[0].files[0];
+      const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
+      const rows = planRows(fileA, [a], "split");
+      const cards = rows.filter(
+        (r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation",
+      );
+      expect(cards.map((c) => c.id)).toEqual(["a1"]);
+    });
+
+    it("emits zero card rows in a foreign file even when an annotation's line_end falls inside it", () => {
+      // Bug repro: pass an annotation anchored to a.txt while planning b.txt.
+      // The leak puts a phantom card row into b.txt's planned stream.
+      const fileB = parsePatchFiles(DIFF_B)[0].files[0];
+      const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
+      const rows = planRows(fileB, [a], "split");
+      const cards = rows.filter((r) => r.kind === "annotation");
+      expect(cards.length).toBe(0);
+    });
+
+    it("does not set tint/gutter flags from a foreign file's annotation", () => {
+      // Same class of bug as the phantom card: applyAnnotationFlags matched
+      // `(side, line)` without a file check. Verify diff-rows in b.txt stay
+      // un-tinted when only a.txt has an overlapping-line annotation.
+      const fileB = parsePatchFiles(DIFF_B)[0].files[0];
+      const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 3 });
+      const rows = planRows(fileB, [a], "split");
+      const diffRows = rows.filter(
+        (r): r is Extract<PlannedRow, { kind: "diff-row" }> => r.kind === "diff-row",
+      );
+      for (const r of diffRows) {
+        expect(r.rightTinted).toBeFalsy();
+        expect(r.leftTinted).toBeFalsy();
+        expect(r.rightGutter).toBeFalsy();
+        expect(r.leftGutter).toBeFalsy();
+      }
+    });
+
+    it("still emits the card + tint in the home file when both files are in the annotation list", () => {
+      // Smoke test: planning a.txt with the same cross-file annotation list
+      // emits exactly the home-file card and its tint, unaffected by the
+      // foreign annotation that the webapp also forwards.
+      const fileA = parsePatchFiles(DIFF_A)[0].files[0];
+      const own = ann({ id: "own", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
+      const foreign = ann({ id: "foreign", file: "b.txt", side: "additions", line_start: 2, line_end: 2 });
+      const rows = planRows(fileA, [own, foreign], "split");
+      const cards = rows.filter(
+        (r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation",
+      );
+      expect(cards.map((c) => c.id)).toEqual(["own"]);
+      const tintedRight = rows.filter(
+        (r): r is Extract<PlannedRow, { kind: "diff-row" }> => r.kind === "diff-row" && r.rightTinted === true,
+      );
+      expect(tintedRight.length).toBe(1);
+      expect(tintedRight[0].rightLineNumber).toBe(2);
+    });
+  });
 });
 
 // PRD #108 (issue #112). The planner gains `oldContent`, `newContent`, and
