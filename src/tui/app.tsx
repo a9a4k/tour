@@ -706,8 +706,9 @@ function App(props: AppProps) {
     }
     setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
     // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
-    // annotation's card directly — no synthesized row anchor.
-    setCursor(cursorFromAnnotation(ann));
+    // annotation's card directly — no synthesized row anchor. Thread
+    // preferredSide so an `h`/`l` choice survives the jump (issue #200).
+    setCursor((prev) => cursorFromAnnotation(ann, preferredSideOf(prev)));
   };
 
   // gotoPrev/NextAnnotation walk the card lane via `nextCard` / `prevCard`

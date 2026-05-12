@@ -40,6 +40,7 @@ import {
   moveCursor,
   nextCard,
   prevCard,
+  preferredSideOf,
   setCursorSide,
   type Cursor,
 } from "../../core/cursor-state.js";
@@ -234,7 +235,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // since cursorCardId won't change otherwise.
       const annFromUrl = readAnnFromUrl();
       if (annFromUrl !== null) {
-        setCursor({ kind: "card", annotationId: annFromUrl });
+        setCursor((prev) => ({
+          kind: "card",
+          annotationId: annFromUrl,
+          preferredSide: preferredSideOf(prev),
+        }));
       }
     };
     window.addEventListener("popstate", onPop);
@@ -474,7 +479,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
     const action = decideReanchor(cursor, readAnnFromUrl(), topLevel);
     if (action.kind === "noop") return;
-    setCursor(cursorFromAnnotation(action.target));
+    setCursor(cursorFromAnnotation(action.target, preferredSideOf(cursor)));
     setSelectedFile(action.target.file);
     revealFileAncestors(action.target.file);
     if (action.kind === "url-restore") anchorInitial(action.target.id);
@@ -949,7 +954,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (annotationId: string) => {
       const a = annotations.find((x) => x.id === annotationId);
       if (!a) return;
-      setCursor({ kind: "card", annotationId });
+      setCursor((prev) => cursorFromAnnotation(a, preferredSideOf(prev)));
       setSelectedFile(a.file);
     },
     [annotations],

@@ -3,16 +3,28 @@ import type { FlatRow, DiffFlatRow, CardFlatRow } from "./flat-rows.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 
 /**
- * Unified Cursor (ADR 0022 / PRD #192): one anchor that walks diff rows,
- * interactive rows, AND Annotation cards. Tagged-union: a `RowAnchor`
- * addresses a diff or interactive row by `(file, side, lineNumber)` (with
- * an optional `interactive` discriminator for gap-row family rows); a
- * `CardAnchor` addresses an Annotation card by `annotationId`.
+ * Unified Cursor (ADR 0022 → ADR 0023 / PRD #192, issue #200): one anchor
+ * that walks diff rows, interactive rows, AND Annotation cards. Tagged-
+ * union: a `RowAnchor` addresses a diff or interactive row by
+ * `(file, side, lineNumber)` (with an optional `interactive` discriminator
+ * for gap-row family rows); a `CardAnchor` addresses an Annotation card by
+ * `annotationId`.
  *
- * `j/k/h/l` walk the row lane (skipping cards); `n/p` walk the card lane
- * (skipping rows). Action keys (`r`/`s`/`a`/`Enter`) dispatch by the
- * cursor's row kind — `r` and `s` are no-ops on a row, `a` is a no-op on
- * a card (PRD #192 stories 6-12).
+ * Two motion gestures, not two lanes (ADR 0023, issue #200): `j`/`k` is
+ * the **step** gesture — one row per press, no destination filter, so a
+ * card row is a valid stop. `n`/`p` is the **jump** gesture — one top-
+ * level Annotation per press, regardless of intervening rows. Cards are
+ * cursor-eligible stops for both; the two differ in distance per press,
+ * not in destination kind.
+ *
+ * Both cursor kinds carry `preferredSide` so an `h`/`l` choice survives
+ * a step across a card or a jump between cards — the next diff-row
+ * landing honours the user's last side preference (PRD US 18 / issue
+ * #200 AC for preferredSide preservation).
+ *
+ * Action keys (`r`/`s`/`a`/`Enter`) dispatch by the cursor's row kind —
+ * `r` and `s` are no-ops on a row, `a` is a no-op on a card (PRD #192
+ * stories 6-12).
  */
 export interface RowAnchor {
   kind: "row";
@@ -31,6 +43,9 @@ export interface RowAnchor {
 export interface CardAnchor {
   kind: "card";
   annotationId: string;
+  /** Carried so an `h`/`l` choice survives step-across-card and jump-
+   *  between-cards (issue #200 AC). The next diff-row landing applies it. */
+  preferredSide: "additions" | "deletions";
 }
 
 export type Cursor = RowAnchor | CardAnchor;
@@ -44,10 +59,11 @@ export function isCardAnchor(c: Cursor | null): c is CardAnchor {
 }
 
 /** preferredSide of a cursor, or "additions" when there's nothing to read
- *  it from (card cursor, null cursor). Used by the motion helpers when
- *  the destination is a row but the source might not be. */
+ *  it from (null cursor only — both RowAnchor and CardAnchor carry it,
+ *  issue #200). Used by the motion helpers when the destination is a row
+ *  but the source might be either kind. */
 export function preferredSideOf(c: Cursor | null): "additions" | "deletions" {
-  return c && c.kind === "row" ? c.preferredSide : "additions";
+  return c ? c.preferredSide : "additions";
 }
 
 /**
@@ -68,7 +84,7 @@ export function initialCursor(args: {
     const cardRow = args.flatRows.find(
       (r): r is CardFlatRow => r.kind === "card" && r.annotationId === a.id,
     );
-    if (cardRow) return { kind: "card", annotationId: a.id };
+    if (cardRow) return { kind: "card", annotationId: a.id, preferredSide: "additions" };
   }
   const firstDiff = args.flatRows.find(
     (r): r is DiffFlatRow => r.kind === "diff",
@@ -78,12 +94,14 @@ export function initialCursor(args: {
 }
 
 /**
- * Row-lane walker (`j`/`k`). Moves the cursor one cursor-eligible row in
- * the given direction, SKIPPING card rows — the card lane is `n`/`p`
- * (`nextCard` / `prevCard`). When the cursor starts on a card, the walk
- * steps to the next non-card row after the card's anchor. preferredSide
- * is preserved across motion; the row's natural side wins on single-side
- * destinations.
+ * Step gesture (`j`/`k`, ADR 0023 / issue #200). Moves the cursor one
+ * row in the flat stream in the given direction — no destination filter.
+ * Diff rows, interactive rows, and Annotation cards are all valid stops.
+ * Stacked cards (multiple top-level annotations at the same anchor) count
+ * as one step each. preferredSide is preserved across motion (across
+ * cards too); the row's natural side wins on single-side destinations.
+ * The card-lane jump gesture is `n`/`p` (`nextCard` / `prevCard`), which
+ * skips over rows.
  */
 export function moveCursor(
   cursor: Cursor | null,
@@ -94,10 +112,7 @@ export function moveCursor(
   const idx = resolveCursorRowIdx(cursor, flatRows);
   if (idx === -1) return cursor;
   const step = direction === "down" ? 1 : -1;
-  let next = idx + step;
-  while (next >= 0 && next < flatRows.length && flatRows[next].kind === "card") {
-    next += step;
-  }
+  const next = idx + step;
   if (next < 0 || next >= flatRows.length) return cursor;
   return cursorFromRow(flatRows[next], preferredSideOf(cursor));
 }
@@ -141,7 +156,7 @@ function walkCards(
   const from = startIdx === -1 ? (step === 1 ? -1 : topLevel.length) : startIdx;
   const next = from + step;
   if (next < 0 || next >= topLevel.length) return null;
-  return { kind: "card", annotationId: topLevel[next].id };
+  return { kind: "card", annotationId: topLevel[next].id, preferredSide: preferredSideOf(cursor) };
 }
 
 export function setCursorSide(
@@ -210,7 +225,7 @@ export function cursorAtFirstFileRow(
     (row): row is DiffFlatRow => row.kind === "diff" && row.file === file,
   );
   if (!r) return null;
-  return cursorFromRow(r, r.side);
+  return cursorFromRow(r, r.side) as RowAnchor;
 }
 
 /**
@@ -271,9 +286,14 @@ export function resolveCursorRowIdx(
  * Card cursor for an Annotation. Used by `n`/`p` annotation-nav and by
  * mouse-click on a card. The card itself is the cursor stop — no row
  * synthesis (PRD #192 supersedes the ADR 0011 β-coupling rule).
+ * `preferredSide` is threaded so an `h`/`l` choice survives the
+ * card stop (ADR 0023 / issue #200).
  */
-export function cursorFromAnnotation(a: Annotation): CardAnchor {
-  return { kind: "card", annotationId: a.id };
+export function cursorFromAnnotation(
+  a: Annotation,
+  preferredSide: "additions" | "deletions" = "additions",
+): CardAnchor {
+  return { kind: "card", annotationId: a.id, preferredSide };
 }
 
 function rowMatchesAnchor(
@@ -290,19 +310,14 @@ function rowMatchesAnchor(
 export function cursorFromRow(
   row: FlatRow,
   preferredSide: "additions" | "deletions",
-): RowAnchor {
+): Cursor {
   if (row.kind === "card") {
-    // Card rows participate in flatRows so Home/End and pageMove's
-    // nearest-row snap can pick one. The row-lane return shape forces
-    // a synthesised RowAnchor at the card's (file, side, lineEnd) —
-    // the n/p card lane is the way to land on a CardAnchor.
-    return {
-      kind: "row",
-      file: row.file,
-      lineNumber: row.lineEnd,
-      side: row.side,
-      preferredSide,
-    };
+    // Card rows are first-class cursor stops in the step/jump model
+    // (ADR 0023 / issue #200). `j`/`k` lands on the card; `r` opens
+    // the Reply composer and the pill counter shows the card's
+    // top-level index. preferredSide is threaded so the next diff-row
+    // landing honours the user's last h/l choice.
+    return { kind: "card", annotationId: row.annotationId, preferredSide };
   }
   if (row.kind === "interactive") {
     return cursorOnInteractive({

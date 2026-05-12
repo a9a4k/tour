@@ -239,7 +239,7 @@ index 1..2 100644
     expect(cardRows[0].annotationId).toBe("ann-b");
 
     const idx = resolveCursorRowIdx(
-      { kind: "card", annotationId: "ann-b" },
+      { kind: "card", annotationId: "ann-b", preferredSide: "additions" },
       flat,
     );
     expect(idx).toBeGreaterThanOrEqual(0);

@@ -41,7 +41,7 @@ describe("decideMirrorUrl (issue #198)", () => {
   });
 
   it("write `/tour#ann` when cursor is a CardAnchor", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "annA" };
+    const cursor: Cursor = { kind: "card", annotationId: "annA", preferredSide: "additions" };
     expect(decideMirrorUrl(cursor, topLevel, TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}#annA`,
@@ -92,7 +92,7 @@ describe("decideMirrorUrl (issue #198)", () => {
       side: "additions",
       preferredSide: "additions",
     };
-    const cardCursor: Cursor = { kind: "card", annotationId: "annB" };
+    const cardCursor: Cursor = { kind: "card", annotationId: "annB", preferredSide: "additions" };
     expect(decideMirrorUrl(rowCursor, topLevel, TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}`,
@@ -109,7 +109,7 @@ describe("decideMirrorUrl (issue #198)", () => {
   // correction. Asymmetric with decideReanchor: the mirror is a pure
   // serialiser of the cursor's intent.
   it("write `/tour#ann` even when the CardAnchor id is not in topLevel (mirror is unaware of staleness)", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "ghost" };
+    const cursor: Cursor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
     expect(decideMirrorUrl(cursor, topLevel, TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}#ghost`,

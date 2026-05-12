@@ -96,7 +96,7 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("renders `r: reply to \"<title>\"` when the cursor is on a card", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "fix the null check" })];
     expect(composeFooterPreview({ cursor, annotations })).toBe(
       'r: reply to "fix the null check"',
@@ -104,14 +104,14 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("renders no-annotation placeholder when the CardAnchor's id is gone (stale)", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "ghost" };
+    const cursor: Cursor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
     expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
       "r: — (no annotation under cursor)",
     );
   });
 
   it("truncates long titles with an ellipsis", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const longBody = "a".repeat(100);
     const annotations = [ann({ id: "a1", body: longBody })];
     const out = composeFooterPreview({ cursor, annotations });
@@ -125,7 +125,7 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("uses only the first line of a multi-line body for the preview", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "first line\nsecond line" })];
     const out = composeFooterPreview({ cursor, annotations });
     expect(out).toContain("first line");
@@ -133,7 +133,7 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("appends `(cursor ↑ above viewport)` when the cursor's row is above the visible range", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
@@ -145,7 +145,7 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("appends `(cursor ↓ below viewport)` when the cursor's row is below the visible range", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
@@ -157,7 +157,7 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("omits the off-screen suffix when the cursor is inside the viewport", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1" };
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
