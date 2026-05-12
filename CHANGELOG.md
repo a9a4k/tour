@@ -44,6 +44,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`row-components`: `<DiffRow>`, `<CardRow>`, `<InteractiveRow>` —
+  memo'd prop-driven row primitives for the Tour-owned web row renderer
+  (PRD #212 slice 4).** New `src/web/client/row-components.tsx` exports
+  three `React.memo`'d components, each a stateless leaf the new web
+  renderer mounts via `core/diff-rows.ts`'s `PlannedRow[]`. `<DiffRow>`
+  renders a single diff line (split-pair or unified-single), paints
+  token HTML via `dangerouslySetInnerHTML` from the per-line maps
+  `useLazyHighlight` supplies, falls back to plain text when tokens are
+  absent, applies `.is-cursor` / `.in-range` className cues from props,
+  and reports the clicked column's `side` to `onClick` for annotation-
+  creation seeding. `<CardRow>` wraps the existing `AnnotationCard`
+  with inline `grid-column` per Layout × Side (full-width unified,
+  1/3 deletions / 3/-1 additions split) and passes through all card
+  props (registerRef, reply composer target, send-to-agent, replyLock).
+  `<InteractiveRow>` renders the gap-row family (hunk-separator chevron,
+  gap-mid-top, boundary-bottom, collapsed-file); its click handler
+  honors shift-modifier for full-gap expansion (`Math.max(gapAbove,
+  EXPANSION_STEP)`) and the keydown handler activates on Enter while
+  `isCursor` is true (mirrors the chevron-click action — same modifier
+  rules apply). Cursor decoration is a prop on all three (the legacy
+  `data-tour-cursor` attribute-mutation pattern retires at slice 6).
+  Unused at this slice's merge time; slice 5's `<FileBlock>` consumes
+  these components; slice 6 swaps `App.tsx`'s renderer reference and
+  deletes the Pierre adapter pile.
+
+  Issue: #217 · PRD: #212 · ADR: 0024
+
 - **`useLazyHighlight` hook: IntersectionObserver-driven lazy
   tokenization for the web row renderer (PRD #212 slice 2).** New
   `src/web/client/use-lazy-highlight.ts` exposes
