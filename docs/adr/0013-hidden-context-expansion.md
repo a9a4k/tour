@@ -1,6 +1,8 @@
 # Hidden context expansion
 
-> **Scope:** webapp + TUI. The two surfaces converge on the same conceptual feature (reveal unchanged lines outside hunks, GitHub-style) via deliberately asymmetric mechanisms — Pierre's mouse-driven chevrons on the webapp, the **Line cursor** + `Enter` primitive on the TUI.
+> **Status:** Webapp half ("Pierre owns the chevron UI, click handlers, expansion state; Tour writes no expansion code on the webapp") is superseded by ADR 0024. The webapp now renders gap rows natively as planner-emitted interactive rows and dispatches expansion to the same `core/expansion-state.ts` reducer the TUI uses — both surfaces converge on Tour-owned expansion state. The orphan-auto-window decision (±10 lines around hidden anchors) and the TUI cursor + `Enter` primitive are unchanged.
+
+> **Scope:** webapp + TUI. The two surfaces converge on the same conceptual feature (reveal unchanged lines outside hunks, GitHub-style); historically via asymmetric mechanisms (Pierre's mouse-driven chevrons on the webapp, the cursor + `Enter` primitive on the TUI), now via a symmetric mechanism — gap rows are planner-emitted on both surfaces, click (web) and `Enter` (TUI + web cursor) dispatch the same action to the same reducer.
 
 A reviewer in either surface can only see ±3 lines of unchanged context per hunk (git's `-U3` default). Code immediately around a change — function signatures, surrounding logic, file imports — is invisible without leaving Tour. Annotations whose anchor falls in **Hidden context** are silently dropped by the planner, breaking the sidebar count ↔ rendered diff agreement.
 

@@ -1,6 +1,6 @@
 # Pierre + Hunk for diff parsing and rendering
 
-> **Status:** TUI rendering decision revised in ADR 0007. The Pierre-for-parsing claim is unchanged; the `hunkdiff/opentui` (`HunkDiffView`) claim was inaccurate (the published `hunkdiff@0.10.0` ships only a CLI binary and `HunkDiffView` is upstream-internal-only; even when consumed it doesn't expose an inline-annotation slot). The TUI now walks Pierre's parsed model through a Tour-owned row planner in `core/` instead.
+> **Status:** TUI rendering decision revised in ADR 0007. Webapp rendering decision superseded in ADR 0024 — the webapp now uses a Tour-owned web row renderer (per-row `<div>` with CSS subgrid) walking the same `core/diff-rows.ts` row planner the TUI uses; Pierre's `FileDiff`, worker pool, and annotation-slot framework are no longer used. The Pierre-for-parsing claim is unchanged: `parsePatchFiles` remains the single boundary, isolated in `core/diff-model.ts` per this ADR's promise. The `hunkdiff/opentui` (`HunkDiffView`) claim was inaccurate (the published `hunkdiff@0.10.0` ships only a CLI binary and `HunkDiffView` is upstream-internal-only; even when consumed it doesn't expose an inline-annotation slot).
 
 We use `@pierre/diffs` to parse git diffs and render the web view (its built-in annotation framework saves us from inventing one), and `hunkdiff/opentui` (`HunkDiffView`) to render the TUI on top of Pierre's parsed model. Both surfaces consume the same Pierre model; `core/` only knows about it through a thin adapter so a renderer swap is bounded to that surface.
 
