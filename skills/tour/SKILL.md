@@ -67,7 +67,7 @@ Aim for the second. ~40% the length, same content.
 ## Author — quick start
 
 ```sh
-TOUR_ID=$(tour create --head HEAD | head -1)
+TOUR_ID=$(tour create --head HEAD)
 
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/foo.ts","side":"additions","line_start":12,"line_end":14,"body":"..."}

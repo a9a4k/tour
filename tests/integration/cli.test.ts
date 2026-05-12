@@ -70,18 +70,21 @@ describe("CLI integration", () => {
   });
 
   describe("create", () => {
-    it("creates a tour and prints its ID", async () => {
+    it("prints only the tour-id to stdout and the 'Open with' hint to stderr (issue #205)", async () => {
       const result = await run(
         ["create", "--head", "HEAD", "--title", "Test tour"],
         repo,
       );
       expect(result.exitCode).toBe(0);
-      const lines = result.stdout.split("\n");
-      expect(lines[0]).toMatch(/^\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{4}$/);
-      expect(lines[1]).toContain("Open with:");
+      // stdout: exactly the id, single line, no trailing prose — `$()` capture
+      // friendly so downstream `tour annotate "$TOUR_ID"` works directly.
+      expect(result.stdout).toMatch(/^\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{4}$/);
+      // stderr: the human-readable hint, referencing the same id.
+      expect(result.stderr).toContain("Open with: tour tui");
+      expect(result.stderr).toContain(result.stdout);
     });
 
-    it("creates folder and tour.toml", async () => {
+    it("creates folder and tour.toml (--json: structured to stdout, empty stderr)", async () => {
       const result = await run(
         ["create", "--head", "HEAD", "--json"],
         repo,
@@ -91,6 +94,8 @@ describe("CLI integration", () => {
       expect(tour.id).toMatch(/^\d{4}-\d{2}-\d{2}/);
       expect(tour.status).toBe("open");
       expect(existsSync(join(repo, ".tour", tour.id, "tour.toml"))).toBe(true);
+      // --json suppresses the hint entirely — stderr is empty.
+      expect(result.stderr).toBe("");
     });
 
     it("adds .tour/ to .gitignore", async () => {
