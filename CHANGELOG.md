@@ -61,6 +61,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   annotation. Internal navigation (tour-picker, n/p cursor) now writes
   the new path + fragment shape; legacy `?tour=&ann=` URLs remain
   readable as a back-compat fallback. (#179)
+- **TUI footer hint labels the `a` action as `comment`** (was
+  `annotate`), aligning Tour's vocabulary with the universal
+  convention used by every collaborative code-review tool. The webapp
+  composer's affordance already read "Comment" / "Leave a comment".
+  The `a` keybinding, the `tour annotate` CLI verb, the "Annotation"
+  domain noun, the schema, and the Pierre `AnnotationSide` coupling
+  are all unchanged. (#183)
 
 ### Fixed
 

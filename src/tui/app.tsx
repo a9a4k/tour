@@ -85,6 +85,7 @@ import { explicitAnnotationJump } from "./annotation-jump.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import { scrollChildIntoView, centerChildInView } from "./scroll-into-view.js";
 import { buildRowYResolver } from "./row-y-resolver.js";
+import { TUI_FOOTER_HINTS } from "./footer-hints.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -567,12 +568,10 @@ function App(props: AppProps) {
     return idx === -1 ? 0 : idx;
   }, [liveTopLevel, currentAnnotationId]);
 
-  const footerHints =
-    "j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: annotate  ·  r: reply  ·  Enter: expand  ·  S+Enter: expand all  ·  c: collapse  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  q: quit";
   const footer =
     liveTopLevel.length > 0
-      ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${footerHints}`
-      : footerHints;
+      ? `Annotation ${currentAnnotationIdx + 1}/${liveTopLevel.length}  ·  ${TUI_FOOTER_HINTS}`
+      : TUI_FOOTER_HINTS;
 
   const pickerRows = useMemo(
     () =>
