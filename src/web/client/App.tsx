@@ -851,19 +851,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // (US 14 — the action reveals its target).
           if (cursor?.kind !== "card") return;
           const cardId = cursor.annotationId;
-          const cardAnn = annotations.find((a) => a.id === cardId);
+          const cardAnn = topLevel.find((a) => a.id === cardId);
           if (!cardAnn) return;
-          const descendants = annotations.filter((a) => {
-            // Walk the descendant chain rooted at cardAnn.
-            let cur: typeof a | undefined = a;
-            while (cur && cur.replies_to) {
-              if (cur.replies_to === cardId) return true;
-              const parent = annotations.find((x) => x.id === cur!.replies_to);
-              cur = parent;
-            }
-            return false;
-          });
-          const latestId = latestAnnotationId(cardAnn, descendants);
+          const latestId = latestAnnotationId(cardAnn, repliesByRoot.get(cardId) ?? []);
           recallCardThen(cardId, () => {
             setComposerError(null);
             setComposerTarget({ kind: "reply", replies_to: latestId });
@@ -879,20 +869,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (cursor?.kind !== "card") return;
           if (!tourId || !replyAgent) return;
           const cardId = cursor.annotationId;
-          const cardAnn = annotations.find((a) => a.id === cardId);
+          const cardAnn = topLevel.find((a) => a.id === cardId);
           if (!cardAnn) return;
-          const descendants = annotations.filter((a) => {
-            let cur: typeof a | undefined = a;
-            while (cur && cur.replies_to) {
-              if (cur.replies_to === cardId) return true;
-              const parent = annotations.find((x) => x.id === cur!.replies_to);
-              cur = parent;
-            }
-            return false;
-          });
+          const descendants = repliesByRoot.get(cardId) ?? [];
           const leafId = latestHumanLeafId(cardAnn, descendants);
           if (!leafId) return;
-          const leaf = annotations.find((a) => a.id === leafId);
+          const leaf =
+            leafId === cardId ? cardAnn : descendants.find((a) => a.id === leafId);
           if (!leaf) return;
           const verdict = canSendToAgent({
             replyAgentConfigured: true,
@@ -924,7 +907,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     composerTarget,
     flatRowsList,
     materializeCursor,
-    annotations,
+    topLevel,
+    repliesByRoot,
     recallCardThen,
     tourId,
     replyAgent,
