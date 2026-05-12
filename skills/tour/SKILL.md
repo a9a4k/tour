@@ -29,7 +29,7 @@ allowed-tools:
 
 # Tour
 
-A Tour is a guided traversal of a pinned git diff. The agent authors line-anchored annotations via CLI; the human reads them in a TUI or webapp; reply-agents respond to human replies in the background; the main-agent (you) closes the loop via `tour pickup`.
+A Tour is a guided traversal of a pinned git diff. The agent authors line-anchored annotations via CLI; the human reads them in a TUI or webapp, comments freely, and may explicitly request a reply-agent response on any individual comment by pressing `s` / clicking "Send to {agent}"; the main-agent (you) closes the loop via `tour pickup`.
 
 ## Pick your phase
 
@@ -65,7 +65,7 @@ JSONL
 tour serve --open "$TOUR_ID" --reply-agent claude &
 ```
 
-Always end with `tour serve --open <id> --reply-agent <name> &` — this opens the webapp for the human *and* enables the reply-agent so their replies get answered. Without `--reply-agent`, the commenting feature appears broken to the human. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for picking `<name>`.
+Always end with `tour serve --open <id> --reply-agent <name> &` — this opens the webapp for the human *and* enables the per-card "Send to {agent}" affordance so the human can dispatch a reply-agent response on any individual comment they choose. Without `--reply-agent`, the Send affordance is hidden and the human's comments flow to you at `tour pickup` time instead. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for picking `<name>`.
 
 Skip the auto-open only when the user explicitly says "don't open it" or "I'll look at it later".
 
@@ -82,6 +82,8 @@ Returns a `ConversationTree` with threaded annotations. Distinguish actors by th
 | `"human"` | (any) | Human |
 | `"agent"` | `claude` / `codex` / `gemini` / `opencode` / `pi` | Reply-agent |
 | `"agent"` | `"agent"` (literal) or anything else | Main-agent (you, earlier) |
+
+A human comment may or may not have a reply-agent child Annotation — the human chooses per-comment whether to press `s` / click "Send to {agent}". Comments without a reply-agent child are the dominant case; they are directives or notes intended for you at pickup time. Comments with a reply-agent child have already had one agent turn and may need your follow-up (code change, further reply, etc.) on top of that exchange.
 
 For each thread, decide: code change | reply | close | defer. Reply by writing an annotation with `replies_to` set:
 

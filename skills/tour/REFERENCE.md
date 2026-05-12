@@ -49,7 +49,9 @@ tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>]
 
 ## Reply-agent selection
 
-`--reply-agent <name>` on `tour serve` or `tour tui` enables bidirectional comments. Without it, human replies are saved but no response is generated — the commenting feature appears broken to the human.
+`--reply-agent <name>` on `tour serve` or `tour tui` enables the per-card "Send to {agent}" affordance: each human comment gets a Send button (webapp) / `s` keybinding (TUI) the human can press to explicitly dispatch the reply-agent on that one comment. Without it, the Send affordance is hidden entirely — human comments are still saved and flow to the main-agent at `tour pickup` time, but there is no in-Tour reply-agent path.
+
+Dispatch is always explicit; pressing `s` / clicking Send is the only trigger. New human comments never auto-dispatch.
 
 Shipped registry:
 
