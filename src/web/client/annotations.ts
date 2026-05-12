@@ -1,5 +1,5 @@
 import { theme } from "../../core/theme.js";
-import { isTopLevel, topLevelAnnotations } from "../../core/threads.js";
+import { isTopLevel } from "../../core/threads.js";
 import type { Annotation, AnnotationMetadata } from "./types.js";
 
 export interface PierreLineAnnotation {
@@ -87,21 +87,3 @@ function rangeRule(lines: Set<number>, types: string[]): string {
   return `:is(${lineSel}):is(${typeSel}) { background-image: linear-gradient(${RANGE_TINT}, ${RANGE_TINT}); box-shadow: inset 3px 0 0 ${RANGE_ACCENT}; }`;
 }
 
-/**
- * Resolve the sequence cursor to an index in the current top-level
- * annotations list, anchored by id. n/p navigates top-level Annotations only
- * (Replies are not navigation targets), so the cursor index is in
- * `topLevelAnnotations(annotations)` rather than the raw list.
- *
- * - Empty top-level list: -1 (no cursor).
- * - prevId is null (initial state): 0.
- * - prevId still present at top level: its new index.
- * - prevId no longer present at top level: 0 (sensible default).
- */
-export function resolveCursorById(annotations: Annotation[], prevId: string | null): number {
-  const tops = topLevelAnnotations(annotations);
-  if (tops.length === 0) return -1;
-  if (prevId === null) return 0;
-  const idx = tops.findIndex((a) => a.id === prevId);
-  return idx === -1 ? 0 : idx;
-}

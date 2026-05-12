@@ -100,6 +100,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: unified Cursor + auto-recall (Slice 2 of PRD #192 / ADR 0022).**
+  The webapp now uses the same tagged-union `Cursor` the TUI adopted in
+  #193 — `currentAnnotationId` state is fully gone. Click on a diff row
+  writes a `RowAnchor`; click anywhere on an Annotation card writes a
+  `CardAnchor` for that card; `n`/`p` walks the card lane via
+  `nextCard` / `prevCard` from `core/cursor-state.ts`; `j`/`k` walks the
+  row lane and skips cards. New keyboard shortcuts: `r` on a card opens
+  the Reply composer (targeting the thread's latest annotation per #191);
+  `s` on a card dispatches to the configured reply-agent (with the
+  unchanged `canSendToAgent` verdict gate). `r`/`s` are no-ops on a row
+  / null cursor; `a` is row-only (no-op on a card). When `r` or `s`
+  fires while the cursor's card is off-screen, the page smooth-scrolls
+  the card into view BEFORE the composer mounts / agent dispatches —
+  auto-recall, the webapp's at-action affordance equivalent of the
+  TUI's footer-preview. Sequencing uses `scrollend` with a 250 ms
+  timeout fallback for Safari < 18 (extracted to `auto-recall.ts` so
+  it's testable without mounting <App />). The URL `?ann=<id>` /
+  `#<ann-id>` mirror now keys off `cursor.kind === "card"`: present
+  when the cursor is on a card, absent on a row or null; stale ids
+  (Reply / deleted / hand-edited) fall back to the first top-level
+  Annotation and `replaceState` rewrites the URL. `popstate` syncs the
+  cursor back to the URL fragment. The top-header SequencePill renders
+  `—/M` when the cursor isn't on a card. In-card Reply / Send mouse
+  buttons additionally land the cursor on the clicked card so a
+  follow-up keyboard `r` / `s` targets it. (#194, PRD #192)
+
 - **TUI: unified Cursor walks diff rows + Annotation cards under a single
   anchor (Slice 1 of PRD #192 / ADR 0022).** Previously the TUI tracked
   two separate cursors — a `❯` line cursor for diff/interactive rows and

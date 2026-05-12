@@ -223,4 +223,39 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
     expect(window.location.pathname).toBe("/different-tour-id");
     expect(window.location.hash).toBe("");
   });
+
+  // PRD #192 / ADR 0022 slice 2: `?ann=<id>` / `#<ann-id>` in the URL
+  // materializes the cursor as a CardAnchor when the id matches a top-level
+  // Annotation; a stale id (deleted / Reply / hand-edited) falls back to
+  // the first top-level Annotation and the URL is rewritten to drop the
+  // stale anchor.
+  it("mount with URL fragment matching a top-level annotation materializes a CardAnchor (URL preserved)", async () => {
+    installBundleFetch();
+    window.history.replaceState(null, "", `/${tourId}#${annB.id}`);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+    // URL preserved (the cursor resolved to annB, replaceState is a no-op
+    // when next === current).
+    expect(window.location.pathname).toBe(`/${tourId}`);
+    expect(window.location.hash).toBe(`#${annB.id}`);
+  });
+
+  it("mount with a stale fragment falls back to the first top-level annotation (URL rewritten)", async () => {
+    installBundleFetch();
+    window.history.replaceState(null, "", `/${tourId}#missing-annotation-id`);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+    // Cursor falls back to first top-level (annA); URL is rewritten via
+    // replaceState to the first top-level's id.
+    expect(window.location.pathname).toBe(`/${tourId}`);
+    expect(window.location.hash).toBe(`#${annA.id}`);
+  });
 });

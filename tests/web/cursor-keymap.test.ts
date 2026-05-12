@@ -9,7 +9,10 @@ const baseCtx: CursorKeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   focusInEditable: false,
+  cursorOnCard: false,
 };
+
+const cardCtx: CursorKeymapContext = { ...baseCtx, cursorOnCard: true };
 
 const key = (over: Partial<KeyEvent> & Pick<KeyEvent, "key">): KeyEvent => ({
   key: over.key,
@@ -78,9 +81,55 @@ describe("dispatchCursorKey: layout rebind", () => {
 });
 
 describe("dispatchCursorKey: annotate-at-cursor", () => {
-  it("a → annotate-at-cursor (App-side handler materializes the cursor on null)", () => {
+  it("a on a row cursor → annotate-at-cursor (App-side handler materializes the cursor on null)", () => {
     expect(dispatchCursorKey(key({ key: "a" }), baseCtx)).toEqual({
       type: "annotate-at-cursor",
+    });
+  });
+
+  it("a on a card cursor → noop (PRD #192 / ADR 0022 — `a` is row-only)", () => {
+    expect(dispatchCursorKey(key({ key: "a" }), cardCtx)).toEqual({
+      type: "noop",
+    });
+  });
+});
+
+describe("dispatchCursorKey: r / s gated by cursor row kind (PRD #192)", () => {
+  it("r on a card cursor → open-reply-on-card", () => {
+    expect(dispatchCursorKey(key({ key: "r" }), cardCtx)).toEqual({
+      type: "open-reply-on-card",
+    });
+  });
+
+  it("r on a row / null cursor → noop", () => {
+    expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("s on a card cursor → send-on-card", () => {
+    expect(dispatchCursorKey(key({ key: "s" }), cardCtx)).toEqual({
+      type: "send-on-card",
+    });
+  });
+
+  it("s on a row / null cursor → noop", () => {
+    expect(dispatchCursorKey(key({ key: "s" }), baseCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("r / s still fire when composer is open (no card-aware suppression needed — composer route owns its own gate)", () => {
+    // The keymap doesn't know whether a card composer is open; the App-side
+    // handler is responsible for that. Here we simply confirm the dispatcher
+    // doesn't treat composerOpen as a card-action suppressor (consistent
+    // with how n/p/L/t survive composer-open).
+    const ctx: CursorKeymapContext = { ...cardCtx, composerOpen: true };
+    expect(dispatchCursorKey(key({ key: "r" }), ctx)).toEqual({
+      type: "open-reply-on-card",
+    });
+    expect(dispatchCursorKey(key({ key: "s" }), ctx)).toEqual({
+      type: "send-on-card",
     });
   });
 });

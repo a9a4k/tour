@@ -6,7 +6,6 @@ import type { Annotation, AnnotationMetadata, BundleFile, TourBundle, TourSummar
 import {
   toPierreLineAnnotations,
   buildRangeBackgroundCSS,
-  resolveCursorById,
 } from "./annotations.js";
 import { fileIcon } from "./file-icon.js";
 import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
@@ -33,16 +32,18 @@ import {
   sortFilesForStream,
   type VisibleRow,
 } from "../../core/file-tree.js";
-import { flatRows as buildFlatRows } from "../../core/flat-rows.js";
+import { flatRows as buildFlatRows, type FlatRow } from "../../core/flat-rows.js";
 import { planRows } from "../../core/diff-rows.js";
 import {
+  cursorFromAnnotation,
   initialCursor,
   moveCursor,
+  nextCard,
+  prevCard,
   setCursorSide,
   type Cursor,
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
-import { nextAnnotationNavStep } from "./annotation-nav.js";
 import { CURSOR_OUTLINE_CSS, PLUS_BUTTON_CSS, GAP_ROW_CSS } from "./cursor-css.js";
 import { syncCursorOverlay, scrollCursorIntoView } from "./cursor-overlay.js";
 import { syncPlusButtonOverlay } from "./plus-button-overlay.js";
@@ -51,6 +52,7 @@ import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { resolveClickAnchor } from "./click-anchor.js";
 import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
 import { attachGapRowOverlay, dispatchGapRowAction } from "./gap-row-overlay.js";
+import { recallCardIntoView } from "./auto-recall.js";
 import { expansionFromPierre } from "./pierre-expansion-bridge.js";
 import type { FileDiff as FileDiffInstance } from "@pierre/diffs";
 
@@ -162,17 +164,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
   const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [currentAnnotationId, setCurrentAnnotationId] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [layout, setLayout] = useState<Layout>("split");
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [composerTarget, setComposerTarget] = useState<ComposerTarget | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
-  // Lazy-materialized line cursor (ADR 0012). Null on tour load and on
-  // every tour switch; first j/k/h/l/arrows/a/n/p/click materializes it
-  // at the default target so first paint isn't competing with the
-  // currentAnnotationId accent.
+  // Unified cursor (ADR 0022 / PRD #192). Tagged union: RowAnchor walks
+  // diff/interactive rows; CardAnchor walks Annotation cards. Null on
+  // tour switch; mount-time URL `?ann=<id>` materializes a CardAnchor.
+  // Click on a card writes CardAnchor; click on a row writes RowAnchor;
+  // n/p walks the card lane via nextCard/prevCard; j/k/h/l walks the
+  // row lane via moveCursor.
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -222,6 +225,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const onPop = () => {
       const fromUrl = readTourFromUrl(null);
       if (fromUrl !== null) setTourId(fromUrl);
+      // Mirror `?ann=` / `#<ann-id>` back into the cursor on browser
+      // back / forward (PRD #192 / ADR 0022 slice 2). The mount-time
+      // restorer is the authoritative seed when the user changes Tour;
+      // popstate within the same Tour needs an explicit cursor write
+      // since cursorCardId won't change otherwise.
+      const annFromUrl = readAnnFromUrl();
+      if (annFromUrl !== null) {
+        setCursor({ kind: "card", annotationId: annFromUrl });
+      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -231,7 +243,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (!tourId) return;
     let cancelled = false;
     setSelectedFile(null);
-    setCurrentAnnotationId(null);
     setCollapsedOverrides({});
     setCollapsedFolders(new Set());
     setComposerTarget(null);
@@ -308,19 +319,24 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
     return out;
   }, [annotations]);
-  const currentIdx = useMemo(
-    () => resolveCursorById(annotations, currentAnnotationId),
-    [annotations, currentAnnotationId],
-  );
-  // Which file holds the current annotation, so `currentAnnotationId` only
-  // goes to that one FileBlock. Before this, every FileBlock saw the prop
+  // The cursor's card target (PRD #192 / ADR 0022) when the cursor is on
+  // an Annotation card; null on row / null cursor. Drives the active-card
+  // visual treatment, the SequencePill counter, and the URL `?ann=` mirror.
+  const cursorCardId: string | null =
+    cursor?.kind === "card" ? cursor.annotationId : null;
+  const currentIdx = useMemo(() => {
+    if (cursorCardId === null) return -1;
+    return topLevel.findIndex((a) => a.id === cursorCardId);
+  }, [topLevel, cursorCardId]);
+  // Which file holds the cursor's card, so the active-card prop only goes
+  // to that one FileBlock. Before this, every FileBlock saw the prop
   // change on every n/p and bailed React.memo, re-rendering all ~650 files
   // for a single annotation step. Now only the old + new annotation's
   // files re-render on nav.
   const currentAnnotationFile = useMemo<string | null>(() => {
-    if (currentAnnotationId === null) return null;
-    return annotations.find((a) => a.id === currentAnnotationId)?.file ?? null;
-  }, [annotations, currentAnnotationId]);
+    if (cursorCardId === null) return null;
+    return annotations.find((a) => a.id === cursorCardId)?.file ?? null;
+  }, [annotations, cursorCardId]);
 
   const liveDiff = bundle && bundle.kind === "ok" ? bundle.diff : "";
   const liveFiles = useMemo<BundleFile[]>(
@@ -414,84 +430,84 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ?.scrollIntoView({ behavior: "instant", block: "center" });
   }, []);
 
+  // We hold `flatRowsList` further down; resolve via a ref so navigateBy
+  // doesn't need to be re-created on every flat-rows recomputation.
+  const flatRowsListRef = useRef<FlatRow[]>([]);
+
   const navigateBy = useCallback(
     (delta: -1 | 1) => {
-      const step = nextAnnotationNavStep({ topLevel, currentIdx, delta });
-      if (!step) return;
-      const { target, cursor: nextCursor } = step;
-      setCurrentAnnotationId(target.id);
-      setSelectedFile(target.file);
+      const target =
+        delta === 1
+          ? nextCard(cursor, flatRowsListRef.current)
+          : prevCard(cursor, flatRowsListRef.current);
+      if (!target) return;
+      const ann = topLevel.find((a) => a.id === target.annotationId);
+      if (!ann) return;
+      setSelectedFile(ann.file);
       setCollapsedOverrides((prev) =>
-        prev[target.file] === false ? prev : { ...prev, [target.file]: false },
+        prev[ann.file] === false ? prev : { ...prev, [ann.file]: false },
       );
-      revealFileAncestors(target.file);
-      scrollAnnotationIntoView(target.id);
-      // β-coupling per ADR 0012 (mirrors ADR 0011): annotation nav
-      // moves the line cursor too — and materializes it from null on
-      // first n/p so the same keystroke that moves currentAnnotationId
-      // also lights up the cursor at the target's anchor. Reverse
-      // direction (j/k/h/l/arrows) stays decoupled.
-      setCursor(nextCursor);
+      revealFileAncestors(ann.file);
+      scrollAnnotationIntoView(ann.id);
+      setCursor(target);
     },
-    [topLevel, currentIdx, revealFileAncestors, scrollAnnotationIntoView],
+    [cursor, topLevel, revealFileAncestors, scrollAnnotationIntoView],
   );
 
-  // Re-anchor cursor to the current top-level Annotation by id (n/p navigates
-  // top-level only; replies are not nav targets). On first sight of a
-  // non-empty list, anchor the tree to the URL `?ann=` target when valid,
-  // else the first top-level annotation; on SSE reload with the same id
-  // present, do nothing; if gone, re-anchor. Gated on the loaded Tour
-  // matching the routing Tour id so the in-flight Tour-switch window
-  // (URL Tour updated, new data still fetching) doesn't anchor the new
+  // Re-anchor cursor to a top-level Annotation card on bundle load (PRD #192
+  // / ADR 0022). When the URL carries `?ann=<id>` (or its `#<ann-id>`
+  // fragment shape from Issue #179), resolve it to a top-level Annotation;
+  // a stale id (deleted, hand-edited, or pointing at a Reply) falls back
+  // to the first top-level Annotation and the URL is rewritten by the
+  // mirror effect below. Gated on the loaded Tour matching the routing
+  // Tour id so the in-flight Tour-switch window doesn't anchor the new
   // URL's `ann=` against the previous Tour's annotations.
   useEffect(() => {
     if (!tourMeta || tourMeta.id !== tourId) return;
     if (topLevel.length === 0) {
-      setCurrentAnnotationId((curr) => (curr === null ? curr : null));
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
-    if (currentAnnotationId === null) {
+    if (cursorCardId === null) {
       const fromUrl = readAnnFromUrl();
       const target = topLevel.find((a) => a.id === fromUrl) ?? topLevel[0];
-      setCurrentAnnotationId(target.id);
+      setCursor(cursorFromAnnotation(target));
       setSelectedFile(target.file);
       revealFileAncestors(target.file);
       anchorInitial(target.id);
       return;
     }
-    const found = topLevel.some((a) => a.id === currentAnnotationId);
+    const found = topLevel.some((a) => a.id === cursorCardId);
     if (!found) {
       const first = topLevel[0];
-      setCurrentAnnotationId(first.id);
+      setCursor(cursorFromAnnotation(first));
       setSelectedFile(first.file);
       revealFileAncestors(first.file);
     }
-  }, [tourMeta, tourId, topLevel, currentAnnotationId, revealFileAncestors, anchorInitial]);
+  }, [tourMeta, tourId, topLevel, cursorCardId, revealFileAncestors, anchorInitial]);
 
-  // Mirror the current top-level Annotation cursor into the URL via
-  // replaceState — chosen over pushState so the browser back button steps
-  // over Tour switches, not over every n/p keystroke. Writes the new
-  // path + fragment shape `/<tour-id>#<ann-id>` (Issue #179) so the
-  // printed deep URL and the address bar agree, and so the legacy
-  // `?tour=&ann=` form self-heals on first cursor movement. Gate: skip
-  // only when the URL asserts a *different* tour-id than state (the
-  // in-flight Tour-switch window — Issue #180). A bare URL has no
-  // assertion at all; passing `tourId` as the fallback makes the
-  // resolver report agreement, so the writer runs and migrates `/` to
-  // `/<tour-id>#<ann-id>`. Also defer when topLevel is non-empty but
-  // the cursor is still null — the restorer is about to anchor, so we
-  // don't want to strip-then-restore a valid ann in a single cycle.
+  // Mirror the cursor's card target into the URL via replaceState —
+  // chosen over pushState so the browser back button steps over Tour
+  // switches, not over every n/p keystroke. URL shape `/<tour-id>#<ann-id>`
+  // (Issue #179) when the cursor is on a card; `/<tour-id>` when the
+  // cursor is on a row or null. Gate: skip when the URL asserts a
+  // *different* tour-id than state (the in-flight Tour-switch window —
+  // Issue #180). A bare URL has no assertion at all; passing `tourId` as
+  // the fallback makes the resolver report agreement, so the writer runs
+  // and migrates `/` to `/<tour-id>#<ann-id>`. Also defer when topLevel
+  // is non-empty but the cursor is still null — the restorer is about to
+  // anchor, so we don't want to strip-then-restore a valid ann in a
+  // single cycle.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!tourMeta || tourMeta.id !== tourId) return;
     if (readTourFromLocation(window.location, tourId) !== tourId) return;
-    if (currentAnnotationId === null && topLevel.length > 0) return;
-    const next = composeUrl(tourId, currentAnnotationId);
+    if (cursorCardId === null && topLevel.length > 0) return;
+    const next = composeUrl(tourId, cursorCardId);
     const current = window.location.pathname + window.location.search + window.location.hash;
     if (next === current) return;
     window.history.replaceState(window.history.state, "", next);
-  }, [currentAnnotationId, tourMeta, tourId, topLevel]);
+  }, [cursorCardId, tourMeta, tourId, topLevel]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -644,6 +660,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       isCollapsed,
     );
   }, [parsedFiles, plannedRowsByFile, isCollapsed]);
+  // Latest flat-rows mirror for stable callback closures (navigateBy reads
+  // this so it doesn't need to be re-created on every flat-rows recompute).
+  flatRowsListRef.current = flatRowsList;
 
   // Validate-in-place when the row sequence shifts under the cursor's
   // feet (collapse toggle, bundle reload, layout switch). The webapp
@@ -680,6 +699,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (seeded) setCursor(seeded);
     return seeded;
   }, [cursor, topLevel, flatRowsList]);
+
+  // Auto-recall (PRD #192 / ADR 0022). When `r` or `s` fires and the cursor's
+  // card is not in the viewport, smooth-scroll it to centre BEFORE mounting
+  // the composer / dispatching the agent. The pure logic lives in
+  // `./auto-recall.ts` so it can be unit-tested without mounting <App />.
+  const recallCardThen = useCallback(
+    (annotationId: string, then: () => void): void => {
+      recallCardIntoView({
+        cardElement: annotationRefs.current.get(annotationId) ?? null,
+        viewportHeight:
+          window.innerHeight || document.documentElement.clientHeight || 0,
+        then,
+      });
+    },
+    [],
+  );
 
   // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
   // side selection, annotate-at-cursor (a), annotation nav (n/p, with
@@ -728,6 +763,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           composerOpen: composerTarget !== null,
           pickerOpen,
           focusInEditable,
+          cursorOnCard: cursor?.kind === "card",
         },
       );
       if (action.type === "noop") return;
@@ -790,10 +826,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         case "annotate-at-cursor": {
           const c = cursor ?? materializeCursor();
           if (!c) return;
-          // Card cursors are out-of-scope for `a` (PRD #192 / ADR 0022,
-          // slice-2 webapp routing); for now the webapp only ever holds
-          // RowAnchors so this branch is unreachable, but the guard
-          // keeps the type narrow consistent.
+          // The keymap routes `a` to a noop when cursorOnCard is true,
+          // so this only fires for row cursors (and null → seeded to a
+          // row). Defensive guard keeps the type narrow consistent.
           if (c.kind !== "row") return;
           // Interactive rows (gap-row family, collapsed-file) are not
           // annotatable — `a` is a silent no-op (issue #154, PRD #107 US 14).
@@ -805,6 +840,75 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             side: c.side,
             line_start: c.lineNumber,
             line_end: c.lineNumber,
+          });
+          return;
+        }
+        case "open-reply-on-card": {
+          // PRD #192 / ADR 0022. `r` on a card opens the Reply composer
+          // for the latest Annotation in that thread (matches the in-card
+          // Reply button's #191 semantics). When the cursor's card is off-
+          // screen the renderer auto-recalls it before the composer mounts
+          // (US 14 — the action reveals its target).
+          if (cursor?.kind !== "card") return;
+          const cardId = cursor.annotationId;
+          const cardAnn = annotations.find((a) => a.id === cardId);
+          if (!cardAnn) return;
+          const descendants = annotations.filter((a) => {
+            // Walk the descendant chain rooted at cardAnn.
+            let cur: typeof a | undefined = a;
+            while (cur && cur.replies_to) {
+              if (cur.replies_to === cardId) return true;
+              const parent = annotations.find((x) => x.id === cur!.replies_to);
+              cur = parent;
+            }
+            return false;
+          });
+          const latestId = latestAnnotationId(cardAnn, descendants);
+          recallCardThen(cardId, () => {
+            setComposerError(null);
+            setComposerTarget({ kind: "reply", replies_to: latestId });
+          });
+          return;
+        }
+        case "send-on-card": {
+          // PRD #192 / ADR 0022. `s` on a card dispatches the latest human
+          // leaf in that thread to the configured reply-agent. Hidden /
+          // disabled cases (agent-card, already-replied, lock-held, no
+          // agent configured) are silently skipped — the verdict gate is
+          // the existing per-card `canSendToAgent` predicate.
+          if (cursor?.kind !== "card") return;
+          if (!tourId || !replyAgent) return;
+          const cardId = cursor.annotationId;
+          const cardAnn = annotations.find((a) => a.id === cardId);
+          if (!cardAnn) return;
+          const descendants = annotations.filter((a) => {
+            let cur: typeof a | undefined = a;
+            while (cur && cur.replies_to) {
+              if (cur.replies_to === cardId) return true;
+              const parent = annotations.find((x) => x.id === cur!.replies_to);
+              cur = parent;
+            }
+            return false;
+          });
+          const leafId = latestHumanLeafId(cardAnn, descendants);
+          if (!leafId) return;
+          const leaf = annotations.find((a) => a.id === leafId);
+          if (!leaf) return;
+          const verdict = canSendToAgent({
+            replyAgentConfigured: true,
+            lockHeld: replyLock !== null,
+            authorKind: leaf.author_kind,
+            hasReply: false,
+          });
+          if (!verdict.enabled) return;
+          recallCardThen(cardId, () => {
+            void fetch(`/api/tours/${tourId}/request-reply`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ annotation_id: leafId }),
+            }).catch(() => {
+              // Network transient — watcher events stay the source of truth.
+            });
           });
           return;
         }
@@ -820,6 +924,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     composerTarget,
     flatRowsList,
     materializeCursor,
+    annotations,
+    recallCardThen,
+    tourId,
+    replyAgent,
+    replyLock,
   ]);
 
   const closeComposer = useCallback(() => {
@@ -853,6 +962,20 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       setCursor({ kind: "row", file, lineNumber: line, side, preferredSide: side });
     },
     [],
+  );
+
+  // Click anywhere on an Annotation card → lands the cursor on that card
+  // (PRD #192 / ADR 0022 slice 2). Mouse-driven path matches keyboard
+  // n/p: both write a CardAnchor for the clicked / nav'd top-level
+  // annotation.
+  const setCursorFromCardClick = useCallback(
+    (annotationId: string) => {
+      const a = annotations.find((x) => x.id === annotationId);
+      if (!a) return;
+      setCursor({ kind: "card", annotationId });
+      setSelectedFile(a.file);
+    },
+    [annotations],
   );
 
   // Plus-button overlay (PRD #136). Mounts a real-DOM `<button>` next to
@@ -1072,7 +1195,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               repliesByRoot={repliesByRoot}
               navIndexById={navIndexById}
               navTotal={navTotal}
-              currentAnnotationId={currentAnnotationId}
+              currentAnnotationId={cursorCardId}
               registerAnnotationRef={registerAnnotationRef}
               composerTarget={composerTarget}
               composerError={composerError}
@@ -1082,6 +1205,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               replyLock={replyLock}
               replyAgent={replyAgent}
               onSendToAgent={sendToAgent}
+              onCardClick={setCursorFromCardClick}
             />
           ) : (
             parsedFiles.map((f) => (
@@ -1098,7 +1222,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 onPierreFileRendered={onPierreFileRendered}
                 collapsed={isCollapsed(f.name)}
                 onToggleCollapsed={toggleCollapsed}
-                currentAnnotationId={currentAnnotationFile === f.name ? currentAnnotationId : null}
+                currentAnnotationId={currentAnnotationFile === f.name ? cursorCardId : null}
                 registerAnnotationRef={registerAnnotationRef}
                 layout={layout}
                 composerTarget={composerTarget}
@@ -1110,6 +1234,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 replyLock={replyLock}
                 replyAgent={replyAgent}
                 onSendToAgent={sendToAgent}
+                onCardClick={setCursorFromCardClick}
               />
             ))
           )}
@@ -1263,6 +1388,7 @@ interface FileBlockProps {
   replyLock: ReplyLock | null;
   replyAgent?: string | null;
   onSendToAgent: (annotationId: string) => void;
+  onCardClick: (annotationId: string) => void;
 }
 
 // Pierre's hidden-context expansion needs the full pre/post-image of each
@@ -1326,6 +1452,7 @@ function FileBlockInner({
   replyLock,
   replyAgent,
   onSendToAgent,
+  onCardClick,
 }: FileBlockProps): React.JSX.Element {
   const reason = modelFile?.classification?.reason;
 
@@ -1421,6 +1548,7 @@ function FileBlockInner({
           replyLock={replyLock}
           replyAgent={replyAgent}
           onSendToAgent={onSendToAgent}
+          onCardClick={onCardClick}
         />
       );
     },
@@ -1438,6 +1566,7 @@ function FileBlockInner({
       replyLock,
       replyAgent,
       onSendToAgent,
+      onCardClick,
     ],
   );
 
@@ -1549,6 +1678,11 @@ interface AnnotationCardProps {
   // Null/undefined → the "Send to {agent}" affordance is hidden.
   replyAgent?: string | null;
   onSendToAgent?: (annotationId: string) => void;
+  // Cursor-landing callback (PRD #192 / ADR 0022 slice 2). Fires when the
+  // user clicks anywhere on the card so the cursor follows the click — a
+  // subsequent keyboard `r` / `s` then targets the same card. Receives the
+  // top-level annotation id (the cursor stop), not any clicked Reply id.
+  onCardClick?: (annotationId: string) => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -1607,6 +1741,7 @@ export function AnnotationCard({
   replyLock,
   replyAgent,
   onSendToAgent,
+  onCardClick,
 }: AnnotationCardProps): React.JSX.Element {
   const range =
     annotation.line_start === annotation.line_end
@@ -1649,6 +1784,8 @@ export function AnnotationCard({
     <div
       className={isCurrent ? "annotation-block current" : "annotation-block"}
       ref={(el) => registerRef?.(annotation.id, el)}
+      data-annotation-id={annotation.id}
+      onClick={() => onCardClick?.(annotation.id)}
     >
       <div className="ann-header">
         {isCurrent ? (
@@ -1720,6 +1857,9 @@ export function AnnotationCard({
               className="reply-button"
               onClick={(e) => {
                 e.stopPropagation();
+                // Land the cursor on this card so a follow-up keyboard `r`
+                // / `s` targets it (PRD #192 / ADR 0022 slice 2).
+                onCardClick?.(annotation.id);
                 onOpenReply(replyTargetForOpen);
               }}
             >
@@ -1734,6 +1874,7 @@ export function AnnotationCard({
               title={sendTooltip}
               onClick={(e) => {
                 e.stopPropagation();
+                onCardClick?.(annotation.id);
                 if (sendVerdict.enabled) onSendToAgent(sendLeafId);
               }}
             >
@@ -1840,6 +1981,7 @@ interface AnnotationListProps {
   replyLock: ReplyLock | null;
   replyAgent?: string | null;
   onSendToAgent: (annotationId: string) => void;
+  onCardClick: (annotationId: string) => void;
 }
 
 function AnnotationList({
@@ -1857,6 +1999,7 @@ function AnnotationList({
   replyLock,
   replyAgent,
   onSendToAgent,
+  onCardClick,
 }: AnnotationListProps): React.JSX.Element {
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
   return (
@@ -1886,6 +2029,7 @@ function AnnotationList({
             replyLock={replyLock}
             replyAgent={replyAgent}
             onSendToAgent={onSendToAgent}
+            onCardClick={onCardClick}
           />
         );
       })}
@@ -1902,8 +2046,12 @@ interface SequencePillProps {
 
 function SequencePill({ idx, total, onPrev, onNext }: SequencePillProps): React.JSX.Element | null {
   if (total === 0) return null;
-  const prevDisabled = idx <= 0;
-  const nextDisabled = idx >= total - 1;
+  // idx === -1 ⇔ cursor is on a row (or null) — both chevrons stay live so
+  // a single keystroke from a row cursor advances onto the first/last card
+  // (PRD #192 / ADR 0022 mirroring the TUI's `—/M` treatment).
+  const offCard = idx === -1;
+  const prevDisabled = !offCard && idx <= 0;
+  const nextDisabled = !offCard && idx >= total - 1;
   return (
     <div className="sequence-pill" role="navigation" aria-label="Annotation navigation">
       <button
@@ -1916,7 +2064,7 @@ function SequencePill({ idx, total, onPrev, onNext }: SequencePillProps): React.
         ‹
       </button>
       <span className="pill-position">
-        {idx + 1} / {total}
+        {offCard ? "—" : idx + 1} / {total}
       </span>
       <button
         type="button"

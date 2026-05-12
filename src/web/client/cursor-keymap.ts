@@ -1,13 +1,15 @@
 /**
- * Webapp keyboard cursor dispatcher (ADR 0012). Mirror of the TUI's
- * `dispatchKey` shape but tuned for browser-side keymap rules: editable
- * focus suppression, picker-open inert, composer-open suppression for
- * cursor motion (so editing the composer's textarea isn't fighting line
- * cursor keys), and the lowercase `l → L` rebind for layout toggle.
+ * Webapp keyboard cursor dispatcher (ADR 0012 / ADR 0022). Mirror of the
+ * TUI's `dispatchKey` shape but tuned for browser-side keymap rules:
+ * editable focus suppression, picker-open inert, composer-open suppression
+ * for cursor motion, and the lowercase `l → L` rebind for layout toggle.
  *
- * The dispatcher is pure: caller threads the relevant view state in,
- * receives a tagged action, and applies it. Keeps the keyboard contract
- * independent of React state plumbing for tests.
+ * Action-key gating by cursor row kind (PRD #192): `r` / `s` dispatch only
+ * when the cursor is on an Annotation card; `a` dispatches only when the
+ * cursor is on a row (or null — App-side `a` lazy-materializes to a row).
+ * The single `cursorOnCard` flag in `KeymapContext` collapses the routing
+ * decision into the pure dispatcher so the action contract is testable
+ * independent of React state plumbing.
  */
 
 export interface CursorKeymapContext {
@@ -20,6 +22,9 @@ export interface CursorKeymapContext {
   /** Focus is in an INPUT / TEXTAREA / contentEditable — never steal
    *  text input. */
   focusInEditable: boolean;
+  /** Cursor is on an Annotation card (CardAnchor). Routes `r`/`s` to the
+   *  card-targeting actions and `a` to a no-op (PRD #192 stories 6-11). */
+  cursorOnCard: boolean;
 }
 
 export type CursorAction =
@@ -28,6 +33,8 @@ export type CursorAction =
   | { type: "set-side-additions" }
   | { type: "set-side-deletions" }
   | { type: "annotate-at-cursor" }
+  | { type: "open-reply-on-card" }
+  | { type: "send-on-card" }
   | { type: "nav-next-annotation" }
   | { type: "nav-prev-annotation" }
   | { type: "toggle-layout" }
@@ -62,14 +69,24 @@ export function dispatchCursorKey(
   // Layout toggle moved from `l` to Shift-L (ADR 0012, mirrors ADR 0011).
   if (e.shiftKey && e.key === "L") return { type: "toggle-layout" };
 
-  // `t` opens picker. Annotation nav `n`/`p` couples cursor + currentAnnotationId.
+  // `t` opens picker. Annotation nav `n`/`p` walks the card lane (PRD #192).
   if (!e.shiftKey) {
     if (e.key === "t") return { type: "open-picker" };
     if (e.key === "n") return { type: "nav-next-annotation" };
     if (e.key === "p") return { type: "nav-prev-annotation" };
-    // `a` opens the composer at the cursor anchor; the App-side handler
-    // materializes the cursor first if it's still null (lazy materialization).
-    if (e.key === "a") return { type: "annotate-at-cursor" };
+    // `r` / `s` dispatch only on a CardAnchor; `a` only on a row (or null).
+    // The cross-axis cases (`r` on row, `a` on card) are silent no-ops —
+    // the webapp has no footer line so an offscreen-card miss is mitigated
+    // by auto-recall in the App-side handler, not a hint.
+    if (e.key === "r") {
+      return ctx.cursorOnCard ? { type: "open-reply-on-card" } : { type: "noop" };
+    }
+    if (e.key === "s") {
+      return ctx.cursorOnCard ? { type: "send-on-card" } : { type: "noop" };
+    }
+    if (e.key === "a") {
+      return ctx.cursorOnCard ? { type: "noop" } : { type: "annotate-at-cursor" };
+    }
   }
 
   // Cursor motion / side selection. Suppressed when the composer is open

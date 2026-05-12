@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   toPierreLineAnnotations,
   buildRangeBackgroundCSS,
-  resolveCursorById,
 } from "../../src/web/client/annotations.js";
 import type { Annotation } from "../../src/web/client/types.js";
 
@@ -177,33 +176,3 @@ describe("buildRangeBackgroundCSS", () => {
   });
 });
 
-describe("resolveCursorById", () => {
-  it("returns -1 for an empty list (no cursor)", () => {
-    expect(resolveCursorById([], "a1")).toBe(-1);
-    expect(resolveCursorById([], null)).toBe(-1);
-  });
-
-  it("returns 0 when prevId is null (initial state with annotations)", () => {
-    expect(resolveCursorById([ann({ id: "a1" }), ann({ id: "a2" })], null)).toBe(0);
-  });
-
-  it("preserves the cursor id by relocating to its new index after a prepend", () => {
-    const before = [ann({ id: "a1" }), ann({ id: "a2" })];
-    const after = [ann({ id: "a0" }), ann({ id: "a1" }), ann({ id: "a2" })];
-    expect(resolveCursorById(before, "a2")).toBe(1);
-    expect(resolveCursorById(after, "a2")).toBe(2);
-  });
-
-  it("preserves the cursor index after an append (id still resolves)", () => {
-    const before = [ann({ id: "a1" }), ann({ id: "a2" })];
-    const after = [ann({ id: "a1" }), ann({ id: "a2" }), ann({ id: "a3" })];
-    expect(resolveCursorById(before, "a2")).toBe(1);
-    expect(resolveCursorById(after, "a2")).toBe(1);
-  });
-
-  it("resets to 0 when the cursor id is no longer present", () => {
-    expect(
-      resolveCursorById([ann({ id: "a1" }), ann({ id: "a2" })], "missing"),
-    ).toBe(0);
-  });
-});
