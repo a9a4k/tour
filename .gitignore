@@ -2,6 +2,7 @@
 node_modules/
 dist/
 .tour/
+.kanban/
 .npmrc
 .*.bun-build
 .DS_Store
