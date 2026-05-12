@@ -106,6 +106,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tour serve` no longer caches a stale client bundle across source
+  edits (issue #202).** Dev-mode `tour serve` (running from
+  `bun src/main.ts serve` or `npm run cli serve`) snapshotted the
+  webapp client bundle on the very first `/client.js` request and held
+  that snapshot for the lifetime of the process. Editing source and
+  re-running `bun scripts/build-client.ts` kept serving the old bytes
+  until the user killed and restarted serve — every hard browser
+  reload returned the stale bundle silently, masking source-level
+  fixes during live verification. The two-mode cache now sticks only
+  on the immutable compiled-binary fast-path (`EMBEDDED_CLIENT_JS` /
+  `EMBEDDED_PIERRE_WORKER_JS` are baked at compile time); in dev mode
+  the bundle is rebuilt on every request, with concurrent calls
+  coalesced into one in-flight `Bun.build` so a single page load
+  fetching `/client.js` + `/pierre-worker.js` triggers one build, not
+  two. Errors are also no longer sticky-cached — fixing a broken
+  source file no longer requires a serve restart.
+
 - **`tour create` defaults `--base` to the merge-base with HEAD's
   upstream on multi-commit branches (issue #201).** Previously the
   default was always `<head>^` (`HEAD` for `WIP`), which is correct for
