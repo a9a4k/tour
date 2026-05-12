@@ -100,6 +100,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: `s` now dispatches the latest human leaf in the focused Thread,
+  not the cursor-focused top-level Annotation.** Previously, once a
+  Thread had any Reply, the per-Annotation `canSendToAgent` predicate
+  rejected the top-level with `already-replied` — the footer hint
+  disappeared and pressing `s` was a silent no-op, so `s` stopped
+  working as soon as the conversation had started. The keystroke now
+  targets the latest human leaf in the Thread via the existing
+  `latestHumanLeafId` helper (the same one the webapp uses post-#190
+  / #191). The footer `s: send to {agent}` hint appears whenever
+  `--reply-agent` is set AND the focused Thread has a non-null latest
+  human leaf; pressing `s` dispatches `requestReply` against that
+  leaf's id. When the latest turn is agent-authored, the hint hides
+  and `s` is a silent no-op (the user is expected to write a human
+  Reply first). Lock-held + no-cursor footer-status flashes are
+  preserved unchanged. `n`/`p` annotation navigation still walks
+  top-levels only — this fix makes `s` Thread-aware so the navigation
+  gap doesn't dead-end dispatch. (#196, PRD #181)
+
 - **Webapp: unified Cursor + auto-recall (Slice 2 of PRD #192 / ADR 0022).**
   The webapp now uses the same tagged-union `Cursor` the TUI adopted in
   #193 — `currentAnnotationId` state is fully gone. Click on a diff row

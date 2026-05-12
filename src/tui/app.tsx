@@ -50,7 +50,8 @@ import {
   type ComposerState,
 } from "./composer-state.js";
 import { createComposerSubmitter } from "./composer-submit.js";
-import { topLevelAnnotations } from "../core/threads.js";
+import { buildThreads, topLevelAnnotations } from "../core/threads.js";
+import { tuiSendTarget } from "./send-target.js";
 import {
   fileCardPlaceholder,
   fileClassification,
@@ -252,6 +253,15 @@ function App(props: AppProps) {
   }, [bundle]);
   const liveReplyLock = replyLock;
   const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
+  // Per-root descendant index used by the `s` keystroke + footer hint to
+  // identify the latest human leaf in the focused Thread (issue #196, PRD
+  // #181). Memoised alongside the bundle so re-renders don't rebuild the
+  // tree.
+  const repliesByRoot = useMemo(() => {
+    const out = new Map<string, Annotation[]>();
+    for (const t of buildThreads(liveAnnotations)) out.set(t.root.id, t.replies);
+    return out;
+  }, [liveAnnotations]);
   // 1-based nav-order index per top-level annotation id, for rendering the
   // `i / n` counter in each AnnotationCard header (mirrors webapp).
   const navIndexById = useMemo(() => {
@@ -556,19 +566,23 @@ function App(props: AppProps) {
       ? liveTopLevel.findIndex((a) => a.id === cursorCardId)
       : -1;
 
-  // Show the `s: send to {agent}` hint whenever `canSendToAgent.visible`
-  // is true — i.e. when the cursor's card is human-authored and
-  // `--reply-agent` is set, regardless of the lock.
-  const sendHintVerdict = cursorCardAnnotation
-    ? canSendToAgent({
-        replyAgentConfigured: !!props.replyAgent,
-        lockHeld: liveReplyLock !== null,
-        authorKind: cursorCardAnnotation.author_kind,
-        hasReply: liveAnnotations.some(
-          (a) => a.replies_to === cursorCardAnnotation.id,
-        ),
-      })
-    : { visible: false, enabled: false };
+  // Show the `s: send to {agent}` hint whenever the focused Thread has a
+  // latest human leaf (issue #196, PRD #181). The cursor walks top-levels
+  // only, so the cursor-focused Annotation may not be the dispatch
+  // target — the helper resolves the actual target inside the Thread.
+  // The latest leaf is by construction a leaf (`hasReply: false`) and
+  // human (per `latestHumanLeafId`'s contract), so the predicate inputs
+  // collapse to the agent-configured + lock-held axes.
+  const sendTarget = tuiSendTarget(cursor, liveTopLevel, repliesByRoot);
+  const sendHintVerdict =
+    sendTarget !== null
+      ? canSendToAgent({
+          replyAgentConfigured: !!props.replyAgent,
+          lockHeld: liveReplyLock !== null,
+          authorKind: "human",
+          hasReply: false,
+        })
+      : { visible: false, enabled: false };
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
     showSendHint: sendHintVerdict.visible,
@@ -913,10 +927,18 @@ function App(props: AppProps) {
     setComposer(state);
   };
 
-  // Send the focused human Annotation to the configured reply-agent
-  // (issue #184). `s` is a no-op with a footer hint when:
-  //  - no annotation is focused (null cursor on the annotation list),
-  //  - the current annotation is agent-authored / has a Reply / no agent,
+  // Send the latest human leaf in the focused Thread to the configured
+  // reply-agent (issue #196, PRD #181). The cursor walks top-levels
+  // only — once the conversation has started, the cursor-focused
+  // top-level is `already-replied` and would dead-end the keystroke
+  // under the per-Annotation rule. Targeting the leaf mirrors the
+  // webapp's #190/#191 collapse so `s` keeps working as soon as there
+  // are Replies in the Thread.
+  //
+  // `s` is a no-op with a footer hint when:
+  //  - no annotation is focused (null cursor / row cursor),
+  //  - the latest turn in the focused Thread is agent-authored,
+  //  - `--reply-agent` is unset,
   //  - the lock is held by another in-flight dispatch on this tour.
   // The dispatch itself is fire-and-forget — the watcher's lock + bundle
   // events drive the in-flight pill and the landed Reply into view.
@@ -928,31 +950,38 @@ function App(props: AppProps) {
       setFooterStatus("no annotation under cursor — n/p to navigate");
       return;
     }
-    const current = cursorCardAnnotation;
-    const hasReply = liveAnnotations.some((a) => a.replies_to === current.id);
-    const verdict = canSendToAgent({
-      replyAgentConfigured: true,
-      lockHeld: liveReplyLock !== null,
-      authorKind: current.author_kind,
-      hasReply,
-    });
+    const target = tuiSendTarget(cursor, liveTopLevel, repliesByRoot);
+    // The latest leaf is by construction a leaf (`hasReply: false`) and
+    // human; the per-Annotation verdict inputs collapse to the
+    // agent-configured + lock-held axes.
+    const verdict =
+      target !== null
+        ? canSendToAgent({
+            replyAgentConfigured: true,
+            lockHeld: liveReplyLock !== null,
+            authorKind: "human",
+            hasReply: false,
+          })
+        : { visible: false, enabled: false };
     if (!verdict.enabled) {
       if (verdict.reason === "lock-held") {
         setFooterStatus(`${liveReplyLock?.agent ?? props.replyAgent} is replying — wait`);
       }
-      // agent-card and already-replied both fall out of the visible set
-      // (footer hint hidden), so pressing `s` on those is a silent no-op.
+      // target === null (latest turn is agent) falls out of the visible
+      // set (footer hint hidden), so pressing `s` is a silent no-op.
       return;
     }
     setFooterStatus(null);
-    // Auto-recall (PRD #192 user story 14): pull an off-screen card into
+    // Auto-recall (PRD #192 user story 14): pull the focused card into
     // view before dispatching so the user sees the card the agent is
-    // about to act on when the next render lands.
+    // about to act on when the next render lands. The card the cursor
+    // is on (top-level) is the anchor — the leaf is rendered inline
+    // inside the same card's Thread.
     const sb = diffScrollRef.current;
-    if (sb) scrollChildIntoView(sb, `annotation-${current.id}`);
+    if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
     const cwd = props.cwd;
     const tourId = liveTour.id;
-    const annotationId = current.id;
+    const annotationId = target!.leafId;
     const agent = props.replyAgent;
     void requestReply({ cwd, tourId, annotationId, agent }).catch(() => {
       // transient — the watcher's reload will surface any state change
