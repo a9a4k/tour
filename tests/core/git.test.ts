@@ -7,6 +7,7 @@ import {
   getDiff,
   isShaResolvable,
   gitShow,
+  resolveDefaultBase,
 } from "../../src/core/git.js";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -168,5 +169,88 @@ describe("gitShow", () => {
     const parent = await resolveRef("HEAD^", repo);
     const content = await gitShow(parent, "new.txt", repo);
     expect(content).toBe("");
+  });
+});
+
+// Synthesises a local "upstream" by cloning the initial-commit-only repo
+// into a bare repo, adding it as `origin`, configuring HEAD's upstream
+// tracking, then adding the requested number of feature commits on top.
+// Mirrors the "branch ahead of origin/main" topology used in CI/PR flows
+// without needing a network or external remote.
+async function makeRepoAheadOfUpstream(featureCommits: number): Promise<string> {
+  const repo = await createTempRepo();
+  const bare = await mkdtemp(join(tmpdir(), "tour-git-upstream-"));
+  await gitCmd(["clone", "--bare", repo, bare], repo);
+  await gitCmd(["remote", "add", "origin", bare], repo);
+  await gitCmd(["fetch", "origin"], repo);
+  // The default branch name varies by git config (main vs master); read
+  // it from HEAD instead of hard-coding.
+  const branch = await gitCmd(["rev-parse", "--abbrev-ref", "HEAD"], repo);
+  await gitCmd(["branch", `--set-upstream-to=origin/${branch}`, branch], repo);
+  for (let i = 0; i < featureCommits; i++) {
+    await writeFile(join(repo, `feature-${i}.txt`), `feature ${i}\n`);
+    await gitCmd(["add", "."], repo);
+    await gitCmd(["commit", "-m", `feature ${i}`], repo);
+  }
+  return repo;
+}
+
+describe("resolveDefaultBase", () => {
+  it("returns the merge-base on a multi-commit branch ahead of upstream", async () => {
+    const repo = await makeRepoAheadOfUpstream(3);
+    const upstreamSha = await resolveRef("HEAD@{upstream}", repo);
+    const result = await resolveDefaultBase("HEAD", "HEAD^", repo);
+    expect(result.sha).toBe(upstreamSha);
+    expect(result.source).toBe("merge-base(HEAD@{upstream})");
+  });
+
+  it("falls back to HEAD^ on a single-commit branch (merge-base equals HEAD^)", async () => {
+    const repo = await makeRepoAheadOfUpstream(1);
+    const parentSha = await resolveRef("HEAD^", repo);
+    const result = await resolveDefaultBase("HEAD", "HEAD^", repo);
+    expect(result.sha).toBe(parentSha);
+    expect(result.source).toBe("HEAD^");
+  });
+
+  it("falls back to HEAD^ when no upstream is configured", async () => {
+    const repo = await createTempRepo();
+    await writeFile(join(repo, "second.txt"), "second\n");
+    await gitCmd(["add", "."], repo);
+    await gitCmd(["commit", "-m", "second"], repo);
+    const parentSha = await resolveRef("HEAD^", repo);
+    const result = await resolveDefaultBase("HEAD", "HEAD^", repo);
+    expect(result.sha).toBe(parentSha);
+    expect(result.source).toBe("HEAD^");
+  });
+
+  it("falls back to HEAD^ on detached HEAD", async () => {
+    const repo = await makeRepoAheadOfUpstream(3);
+    const headSha = await resolveRef("HEAD", repo);
+    await gitCmd(["checkout", "--detach", headSha], repo);
+    const parentSha = await resolveRef("HEAD^", repo);
+    const result = await resolveDefaultBase("HEAD", "HEAD^", repo);
+    expect(result.sha).toBe(parentSha);
+    expect(result.source).toBe("HEAD^");
+  });
+
+  it("falls back to HEAD when WIP base-selection has zero commits ahead", async () => {
+    // WIP shape: tipRef = parentRef = HEAD. With no upstream commits
+    // ahead, merge-base equals HEAD itself — must fall back, not return
+    // an empty diff.
+    const repo = await makeRepoAheadOfUpstream(0);
+    const headSha = await resolveRef("HEAD", repo);
+    const result = await resolveDefaultBase("HEAD", "HEAD", repo);
+    expect(result.sha).toBe(headSha);
+    expect(result.source).toBe("HEAD");
+  });
+
+  it("returns the merge-base for WIP base-selection on a multi-commit branch", async () => {
+    // WIP: tipRef = parentRef = HEAD, but the branch is 3 commits ahead
+    // of upstream — merge-base is older than HEAD, so use it.
+    const repo = await makeRepoAheadOfUpstream(3);
+    const upstreamSha = await resolveRef("HEAD@{upstream}", repo);
+    const result = await resolveDefaultBase("HEAD", "HEAD", repo);
+    expect(result.sha).toBe(upstreamSha);
+    expect(result.source).toBe("merge-base(HEAD@{upstream})");
   });
 });

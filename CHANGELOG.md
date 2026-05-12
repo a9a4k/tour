@@ -106,6 +106,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tour create` defaults `--base` to the merge-base with HEAD's
+  upstream on multi-commit branches (issue #201).** Previously the
+  default was always `<head>^` (`HEAD` for `WIP`), which is correct for
+  a single-commit branch but too narrow for a multi-commit one — only
+  the last commit shows up in the Tour. Users worked around it by
+  passing `--base origin/main`, which has the inverse failure mode:
+  every commit that landed on main since the branch diverged appears
+  as inverted deletions, burying the user's actual changes. The new
+  default probes `<head>@{upstream}` (HEAD@{upstream} for `WIP`) and
+  uses the merge-base only when it's strictly between `<head>` and
+  `<head>^` (i.e. the branch is ≥2 commits ahead of upstream) —
+  matching the scope GitHub uses for PR diffs. Detached HEAD, no
+  configured upstream, single-commit branches, and any other
+  resolution failure fall back to `<head>^` (or `HEAD` for `WIP`),
+  unchanged from before. Explicit `--base <ref>` is honored verbatim
+  in every case. `base_source` now records the resolved label
+  (`merge-base(<tip>@{upstream})`, `HEAD^`, `HEAD`, or the user's
+  literal flag) so `tour show` makes the choice visible.
+
 - **`j`/`k` now steps onto Annotation cards instead of skipping them
   (PRD #192 / ADR 0023, supersedes ADR 0022's two-lane rule).** Pressing
   `j` from the diff row immediately above an Annotation card landed the

@@ -83,3 +83,32 @@ export async function gitShow(
     return "";
   }
 }
+
+// Resolves the default base when `tour create` is invoked without --base.
+//
+// Probes `<tipRef>@{upstream}`. If present and the branch is ≥2 commits
+// ahead of upstream (merge-base strictly between tip and parent), returns
+// the merge-base — the same scope GitHub uses for PR diffs. Otherwise
+// returns `parentRef`, matching today's behavior. Never throws: any git
+// failure (detached HEAD, no upstream, tipRef is a SHA) falls back to
+// parentRef. See issue #201.
+export async function resolveDefaultBase(
+  tipRef: string,
+  parentRef: string,
+  cwd: string,
+): Promise<{ sha: string; source: string }> {
+  const parentSha = await resolveRef(parentRef, cwd);
+
+  try {
+    const upstreamSha = await resolveRef(`${tipRef}@{upstream}`, cwd);
+    const tipSha = await resolveRef(tipRef, cwd);
+    const mergeBase = await git(["merge-base", tipSha, upstreamSha], cwd);
+    if (mergeBase && mergeBase !== parentSha && mergeBase !== tipSha) {
+      return { sha: mergeBase, source: `merge-base(${tipRef}@{upstream})` };
+    }
+  } catch {
+    // No upstream / detached HEAD / SHA tipRef — fall through.
+  }
+
+  return { sha: parentSha, source: parentRef };
+}

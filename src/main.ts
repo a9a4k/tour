@@ -75,6 +75,7 @@ Usage:
   tour tui [<id>] [--reply-agent <name>]   (open TUI for a specific tour)
   tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
+                                        (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^.)
   tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour annotate <id> --batch - [--json]

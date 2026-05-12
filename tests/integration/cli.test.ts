@@ -122,6 +122,103 @@ describe("CLI integration", () => {
       expect(tour.wip_snapshot).toBe(true);
       expect(tour.head_source).toBe("WIP");
     });
+
+    describe("default --base resolution (issue #201)", () => {
+      async function addUpstream(dir: string): Promise<void> {
+        const bare = await mkdtemp(join(tmpdir(), "tour-cli-upstream-"));
+        await gitCmd(["clone", "--bare", dir, bare], dir);
+        await gitCmd(["remote", "add", "origin", bare], dir);
+        await gitCmd(["fetch", "origin"], dir);
+        const branch = await gitCmd(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+        await gitCmd(["branch", `--set-upstream-to=origin/${branch}`, branch], dir);
+      }
+
+      it("uses merge-base with upstream on a multi-commit branch", async () => {
+        // The temp repo starts with 2 commits. Pin upstream to the first,
+        // putting HEAD 2 commits ahead — merge-base(HEAD, upstream) == initial.
+        await gitCmd(["reset", "--hard", "HEAD^"], repo);
+        await addUpstream(repo);
+        await writeFile(join(repo, "hello.txt"), "hello world\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "update hello"], repo);
+        await writeFile(join(repo, "third.txt"), "third\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "third"], repo);
+
+        const expectedBase = await gitCmd(["merge-base", "HEAD@{upstream}", "HEAD"], repo);
+        const result = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(result.exitCode).toBe(0);
+        const tour = JSON.parse(result.stdout);
+        expect(tour.base_sha).toBe(expectedBase);
+        expect(tour.base_source).toBe("merge-base(HEAD@{upstream})");
+      });
+
+      it("falls back to HEAD^ on a single-commit branch ahead of upstream", async () => {
+        await gitCmd(["reset", "--hard", "HEAD^"], repo);
+        await addUpstream(repo);
+        await writeFile(join(repo, "hello.txt"), "hello world\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "single feature"], repo);
+
+        const expectedBase = await gitCmd(["rev-parse", "HEAD^"], repo);
+        const result = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(result.exitCode).toBe(0);
+        const tour = JSON.parse(result.stdout);
+        expect(tour.base_sha).toBe(expectedBase);
+        expect(tour.base_source).toBe("HEAD^");
+      });
+
+      it("falls back to HEAD^ when no upstream is configured", async () => {
+        // Repo from createTempRepo has 2 commits and no remote.
+        const expectedBase = await gitCmd(["rev-parse", "HEAD^"], repo);
+        const result = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(result.exitCode).toBe(0);
+        const tour = JSON.parse(result.stdout);
+        expect(tour.base_sha).toBe(expectedBase);
+        expect(tour.base_source).toBe("HEAD^");
+      });
+
+      it("honors explicit --base verbatim on a multi-commit branch", async () => {
+        await gitCmd(["reset", "--hard", "HEAD^"], repo);
+        await addUpstream(repo);
+        await writeFile(join(repo, "hello.txt"), "hello world\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "update hello"], repo);
+        await writeFile(join(repo, "third.txt"), "third\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "third"], repo);
+
+        const headParent = await gitCmd(["rev-parse", "HEAD^"], repo);
+        const result = await run(
+          ["create", "--head", "HEAD", "--base", "HEAD^", "--json"],
+          repo,
+        );
+        expect(result.exitCode).toBe(0);
+        const tour = JSON.parse(result.stdout);
+        expect(tour.base_sha).toBe(headParent);
+        expect(tour.base_source).toBe("HEAD^");
+      });
+
+      it("applies merge-base logic to WIP tours", async () => {
+        await gitCmd(["reset", "--hard", "HEAD^"], repo);
+        await addUpstream(repo);
+        await writeFile(join(repo, "hello.txt"), "hello world\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "update hello"], repo);
+        await writeFile(join(repo, "third.txt"), "third\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "third"], repo);
+        await writeFile(join(repo, "wip.txt"), "wip changes\n");
+
+        const expectedBase = await gitCmd(["merge-base", "HEAD@{upstream}", "HEAD"], repo);
+        const result = await run(["create", "--head", "WIP", "--json"], repo);
+        expect(result.exitCode).toBe(0);
+        const tour = JSON.parse(result.stdout);
+        expect(tour.wip_snapshot).toBe(true);
+        expect(tour.base_sha).toBe(expectedBase);
+        expect(tour.base_source).toBe("merge-base(HEAD@{upstream})");
+      });
+    });
   });
 
   describe("list", () => {
