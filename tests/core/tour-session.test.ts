@@ -4,6 +4,7 @@ import {
   initialTourSessionState,
   TourSessionStore,
   isPickerOpen,
+  isBundleResolved,
   pickerHighlighted,
   currentTourSummary,
   map,
@@ -174,12 +175,42 @@ describe("reduce — bundle slice", () => {
     expect(r.intents).toEqual([]);
   });
 
-  it("bundle.loaded applies CONTEXT-pinned reset rules: layout preserved, picker closed, replyLock reset", () => {
+  it("bundle.refreshed replaces the bundle slice in place and leaves picker / replyLock / currentTourId / layout untouched", () => {
+    // Set up a state with an OPEN picker and a LOADED reply-lock — the
+    // two slots that `tour.switched` (the Tour-switch sibling) resets.
+    // `bundle.refreshed` is the same-tour-refresh path: the user is still
+    // mid-flight, so neither slot must be touched.
+    let s: TourSessionState = initialTourSessionState();
+    const lock = { agent: "claude", started_at: "2026-05-12T00:00:00Z" };
+    s = {
+      ...s,
+      currentTourId: "a",
+      layout: "unified",
+      replyLock: { kind: "ok", value: lock },
+    };
+    s = reduce(s, { type: "picker.open", rows: [pickerRow("a"), pickerRow("b")] }).state;
+    s = reduce(s, { type: "picker.move", delta: 1 }).state; // cursor=1
+    const b = mkBundle("a");
+    const r = reduce(s, { type: "bundle.refreshed", bundle: b });
+    expect(r.state.bundle).toEqual({ kind: "ok", value: b });
+    // Untouched slots:
+    expect(r.state.currentTourId).toBe("a");
+    expect(r.state.layout).toBe("unified");
+    expect(r.state.picker).toEqual({
+      kind: "open",
+      rows: [pickerRow("a"), pickerRow("b")],
+      cursor: 1,
+    });
+    expect(r.state.replyLock).toEqual({ kind: "ok", value: lock });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("tour.switched applies CONTEXT-pinned reset rules: layout preserved, picker closed, replyLock reset", () => {
     let s = initialTourSessionState();
     s = { ...s, layout: "unified", replyLock: { kind: "ok", value: null } };
     s = reduce(s, { type: "picker.open", rows: [pickerRow("a")] }).state;
     const b = mkBundle("a");
-    const r = reduce(s, { type: "bundle.loaded", tourId: "a", bundle: b });
+    const r = reduce(s, { type: "tour.switched", tourId: "a", bundle: b });
     expect(r.state.bundle).toEqual({ kind: "ok", value: b });
     expect(r.state.currentTourId).toBe("a");
     expect(r.state.layout).toBe("unified");
@@ -197,6 +228,16 @@ describe("reduce — bundle slice", () => {
     expect(r.state.bundle).toEqual({ kind: "err", error: "boom" });
     expect(r.state.currentTourId).toBe("x");
     expect(r.intents).toEqual([]);
+  });
+
+  it("replyLock.loaded replaces the replyLock slice (used by watcher / SSE / tour-switch handlers)", () => {
+    const s = initialTourSessionState();
+    const lock = { agent: "claude", started_at: "2026-05-12T00:00:00Z" };
+    const r = reduce(s, { type: "replyLock.loaded", replyLock: lock });
+    expect(r.state.replyLock).toEqual({ kind: "ok", value: lock });
+    expect(r.intents).toEqual([]);
+    const r2 = reduce(r.state, { type: "replyLock.loaded", replyLock: null });
+    expect(r2.state.replyLock).toEqual({ kind: "ok", value: null });
   });
 });
 
@@ -228,6 +269,44 @@ describe("selectors", () => {
       rows: [pickerRow("a")],
     }).state;
     expect(isPickerOpen(s)).toBe(true);
+  });
+
+  it("isBundleResolved unwraps the outer RemoteData.ok layer regardless of bundle.kind", () => {
+    expect(isBundleResolved(initialTourSessionState())).toBeNull();
+    // Loading bundle slice → not resolved.
+    const loadingState = reduce(initialTourSessionState(), {
+      type: "bundle.loading",
+      tourId: "x",
+    }).state;
+    expect(isBundleResolved(loadingState)).toBeNull();
+    // Failed bundle slice → not resolved.
+    const failedState = reduce(initialTourSessionState(), {
+      type: "bundle.failed",
+      tourId: "x",
+      error: "boom",
+    }).state;
+    expect(isBundleResolved(failedState)).toBeNull();
+    // ok-kind bundle resolves to the TourBundle value.
+    const okBundle = mkBundle("a");
+    const okState = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: okBundle,
+    }).state;
+    expect(isBundleResolved(okState)).toBe(okBundle);
+    // snapshot-lost-kind bundle still resolves — the helper unwraps the
+    // outer RemoteData layer; the inner kind is the caller's concern.
+    const snapBundle: TourBundle = {
+      kind: "snapshot-lost",
+      tour: tour({ id: "b" }),
+      annotations: [] as Annotation[],
+    };
+    const snapState = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "b",
+      bundle: snapBundle,
+    }).state;
+    expect(isBundleResolved(snapState)).toBe(snapBundle);
   });
 
   it("pickerHighlighted returns the row at cursor; null when closed", () => {

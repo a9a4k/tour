@@ -16,6 +16,7 @@ import {
   TourSessionStore,
   useTourSession,
   isPickerOpen,
+  isBundleResolved,
   pickerHighlighted,
   initialTourSessionState,
   type TourSummary as SessionTourSummary,
@@ -141,12 +142,6 @@ interface AppProps {
   replyAgent?: string | null;
 }
 
-interface LoadState {
-  bundle: TourBundle | null;
-  error: string | null;
-  loaded: boolean;
-}
-
 function defaultCollapsedFor(file: BundleFile, annotations: Annotation[]): boolean {
   const reason = file.classification.reason;
   if (reason === "binary") return true;
@@ -170,13 +165,14 @@ function readAnnFromUrl(): string | null {
 }
 
 export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
-  // Tour-session store (PRD #207 slice 1, issue #210). One store per SPA
-  // mount, seeded with the URL-resolved tour id so the initial render sees
-  // the right currentTourId. `picker` and `tourList` slots are authoritative
-  // in the store; `bundle` is dispatched through the store as a sync mirror
-  // (the React `state` below remains the rendering source-of-truth because
-  // the SSE annotation-changed refresh must NOT trigger the bundle.loaded
-  // reset rules — those apply on Tour-switch, not on same-tour refresh).
+  // Tour-session store (PRD #207 slice 1, issue #210; bundle hoisted into
+  // the store in issue #211). One store per SPA mount, seeded with the
+  // URL-resolved tour id so the initial render sees the right
+  // currentTourId. The store's `bundle` slice is the rendering source of
+  // truth: `tour.switched` lands on picker.commit / popstate / auto-pick
+  // resolves (applies the CONTEXT-pinned reset cascade);
+  // `bundle.refreshed` lands on SSE annotation-changed (same-tour
+  // refresh; no resets).
   const storeRef = useRef<TourSessionStore | null>(null);
   if (storeRef.current === null) {
     storeRef.current = new TourSessionStore({
@@ -192,8 +188,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ? (sessionState.tourList.value as TourSummary[])
       : null;
   const pickerOpen = isPickerOpen(sessionState);
+  const bundle = isBundleResolved(sessionState);
+  const bundleError =
+    sessionState.bundle.kind === "err" ? sessionState.bundle.error : null;
+  const bundleLoaded =
+    sessionState.bundle.kind === "ok" || sessionState.bundle.kind === "err";
 
-  const [state, setState] = useState<LoadState>({ bundle: null, error: null, loaded: false });
   const [replyLock, setReplyLock] = useState<ReplyLock | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
@@ -229,11 +229,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // against the freshly-rendered diff DOM.
   const [expansionVersion, setExpansionVersion] = useState(0);
 
-  // Fetches /api/tours/<id>, dispatches bundle.loaded/failed into the store
-  // (per PRD #207 / issue #210 intent listener contract), and mirrors the
-  // result into local React state which remains the bundle-rendering
-  // source-of-truth. Stale-response guard: drops the response if a later
-  // tour-switch has moved the store's currentTourId off `tourId`.
+  // Fetches /api/tours/<id> and dispatches `tour.switched` (or
+  // `bundle.failed`) into the store (issue #211: the store's bundle slice
+  // is now authoritative). Stale-response guard: drops the response if a
+  // later tour-switch has moved the store's currentTourId off `tourId`.
   // Caller is responsible for ensuring bundle.loading was dispatched (the
   // reducer's picker.commit does this; popstate / auto-pick / initial mount
   // do it explicitly below).
@@ -246,16 +245,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (store.getState().currentTourId !== id) return;
           if ("error" in data) {
             store.dispatch({ type: "bundle.failed", tourId: id, error: data.error });
-            setState({ bundle: null, error: data.error, loaded: true });
           } else {
-            store.dispatch({ type: "bundle.loaded", tourId: id, bundle: data });
-            setState({ bundle: data, error: null, loaded: true });
+            store.dispatch({ type: "tour.switched", tourId: id, bundle: data });
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (store.getState().currentTourId !== id) return;
           store.dispatch({ type: "bundle.failed", tourId: id, error: message });
-          setState({ bundle: null, error: message, loaded: true });
         }
       })();
     },
@@ -336,8 +332,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (fromUrl !== null && fromUrl !== current) {
         // popstate is the equivalent of a picker-commit (issue #210): the
         // session action sets bundle = loading + currentTourId, and the
-        // App-side fetcher dispatches bundle.loaded/failed. No mirrorUrl
-        // — popstate is following the URL, not writing it.
+        // App-side fetcher dispatches tour.switched / bundle.failed. No
+        // mirrorUrl — popstate is following the URL, not writing it.
         store.dispatch({ type: "bundle.loading", tourId: fromUrl });
         loadBundle(fromUrl);
       }
@@ -360,7 +356,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [store, loadBundle]);
 
   // Slice 2+ Tour-switch resets (cursor, folds, composer, selected file).
-  // The reducer's bundle.loaded branch owns the reset rules for slice-1
+  // The reducer's tour.switched branch owns the reset rules for slice-1
   // slots (picker, replyLock, layout); slots not yet in the reducer stay
   // here until later slices migrate them.
   useEffect(() => {
@@ -398,7 +394,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (msg.type === "annotation-changed") {
         const res = await fetch(`/api/tours/${tourId}`);
         const data = (await res.json()) as TourBundle | { error: string };
-        if (!("error" in data)) setState({ bundle: data, error: null, loaded: true });
+        if (cancelled) return;
+        if ("error" in data) return;
+        // Same-tour refresh (issue #211): dispatch `bundle.refreshed`
+        // (NOT `tour.switched`) so the SSE refresh doesn't trigger the
+        // CONTEXT-pinned Tour-switch reset cascade (picker close +
+        // replyLock idle).
+        store.dispatch({ type: "bundle.refreshed", bundle: data });
       } else if (msg.type === "reply-in-flight" || msg.type === "reply-cleared") {
         await refetchLock();
       }
@@ -409,7 +411,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     };
   }, [tourId]);
 
-  const bundle = state.bundle;
   const tourMeta = bundle?.tour ?? null;
   const annotations = useMemo(() => bundle?.annotations ?? [], [bundle?.annotations]);
   const topLevel = useMemo(() => topLevelAnnotations(annotations), [annotations]);
@@ -650,15 +651,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const tourListData = store.getState().tourList;
     if (tourListData.kind !== "ok") return;
     const counts: Record<string, number> = {};
-    const b = state.bundle;
-    if (b) counts[b.tour.id] = b.annotations.length;
+    if (bundle) counts[bundle.tour.id] = bundle.annotations.length;
     const rows = buildPickerRows({
       tours: tourListData.value,
       annotationCounts: counts,
       now: Date.now(),
     });
     store.dispatch({ type: "picker.open", rows });
-  }, [store, state.bundle]);
+  }, [store, bundle]);
 
   const closePicker = useCallback(() => {
     store.dispatch({ type: "picker.close" });
@@ -1201,7 +1201,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [tourId, composerTarget, closeComposer],
   );
 
-  if (!state.loaded && !tourList) {
+  if (!bundleLoaded && !tourList) {
     return <div className="empty">Loading…</div>;
   }
 
@@ -1209,8 +1209,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return <div className="empty">No tours found. Create one with: tour create --head HEAD</div>;
   }
 
-  if (state.error) {
-    return <div className="empty">Error: {state.error}</div>;
+  if (bundleError) {
+    return <div className="empty">Error: {bundleError}</div>;
   }
 
   if (!bundle || !tourMeta) {
