@@ -122,11 +122,14 @@ export function tokenize(content: string, lang: string): TokenLines {
   const cached = memo.get(key);
   if (cached) return cached;
 
-  const result =
-    highlighter && isSupportedLang(lang)
-      ? renderTokens(highlighter, content, lang)
-      : plainTextLines(content);
+  // Only cache the styled path. Caching the plain-text fallback would
+  // poison the key for the rest of the session — once the highlighter
+  // resolves, the same (lang, content) would still return the cached
+  // fallback. The fallback is cheap to recompute (split + escape).
+  const styled = highlighter !== null && isSupportedLang(lang);
+  if (!styled) return plainTextLines(content);
 
+  const result = renderTokens(highlighter, content, lang);
   memo.set(key, result);
   return result;
 }

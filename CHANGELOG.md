@@ -219,6 +219,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`syntax-highlight` no longer caches its pre-init fallback at the
+  same key, so the first post-`ensureHighlighter()` call returns styled
+  output (issue #214).** `tokenize()` cached every result, including the
+  plain-text fallback returned when the Shiki highlighter had not yet
+  initialised. Once a key was cached pre-init, no later post-init call
+  at the same `(lang, content)` key returned the styled output —
+  `useLazyHighlight`-driven calls that fired before
+  `ensureHighlighter()` resolved would paint a file as plain text for
+  the rest of the session. The fix is small: only cache the styled
+  path. The fallback paint is cheap (split + escape) so recomputing on
+  pre-init calls is sub-millisecond per file per render. A new
+  `tokenize — init transition` regression test exercises the pre→post-
+  init sequence without `resetForTests()` between calls. (#214)
+
 - **`tour create` stdout is now the tour-id alone; the "Open with: tour
   tui &lt;id&gt;" hint moves to stderr (issue #205).** Previously the non-JSON
   path wrote both lines to stdout, so `TOUR_ID=$(tour create --head HEAD)`

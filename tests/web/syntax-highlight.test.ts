@@ -152,3 +152,29 @@ describe("tokenize — post-init", () => {
     expect(tokenize("", "klingon").size).toBe(0);
   });
 });
+
+describe("tokenize — init transition", () => {
+  // Regression for issue #214: the pre-init fallback must not poison the
+  // per-key cache, or the renderer paints plain text forever at that key
+  // even after the highlighter resolves. This block intentionally does NOT
+  // call resetForTests() between the pre-init and post-init calls — the bug
+  // only reproduces when the cache survives across the transition.
+
+  afterAll(() => {
+    resetForTests();
+  });
+
+  it("does not poison the cache when called before highlighter is ready", async () => {
+    resetForTests();
+    // Pre-init call at a supported lang + content key.
+    const pre = tokenize("const x = 1;", "typescript");
+    expect(pre.get(1) ?? "").not.toMatch(/<span[^>]*style="[^"]*color:#/);
+
+    await ensureHighlighter();
+
+    // Same key, post-init. Must return styled output, not the cached
+    // plain-text Map.
+    const post = tokenize("const x = 1;", "typescript");
+    expect(post.get(1) ?? "").toMatch(/<span[^>]*style="[^"]*color:#/);
+  });
+});
