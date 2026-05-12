@@ -5,4 +5,15 @@
 #
 # Usage: prepend this directory to PATH for dev sessions:
 #   PATH="$PWD/scripts:$PATH" bun src/main.ts serve <id> --reply-agent claude
-exec bun "$(dirname "$0")/../src/main.ts" "$@"
+#
+# Or symlink from anywhere on PATH (e.g. `ln -s .../scripts/tour ~/bin/tour`).
+
+# Resolve symlinks so ~/bin/tour → scripts/tour still finds src/main.ts.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" != /* ]] && src="$dir/$src"
+done
+dir="$(cd -P "$(dirname "$src")" && pwd)"
+exec bun "$dir/../src/main.ts" "$@"
