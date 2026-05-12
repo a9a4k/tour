@@ -35,7 +35,7 @@ function formatAge(deltaMs: number): string {
   return `${Math.floor(ms / YEAR)}y ago`;
 }
 
-export type AutoPickTour = Pick<Tour, "id" | "status" | "created_at">;
+type AutoPickTour = Pick<Tour, "id" | "status" | "created_at">;
 
 // The shared "auto-pick a tour when none was specified" rule, consumed
 // by both the server's bare-`tour serve` pre-pick (issue #187) and the
