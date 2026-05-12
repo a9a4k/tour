@@ -86,13 +86,12 @@ export function useLazyHighlight(
     };
   }, [visible]);
 
+  // `ready` is in the deps so the memo recomputes when the highlighter
+  // transitions ready, swapping the plain-text fallback for the styled
+  // output. `tokenize()` caches the styled path; the unsupported-lang
+  // plain-text path's reference stability comes from this useMemo.
   return useMemo<TokenLines | null>(() => {
     if (!visible) return null;
     return tokenize(content, lang);
-    // `ready` is included in the deps so the memo recomputes when the
-    // highlighter transitions ready, swapping the plain-text fallback
-    // for the styled output. tokenize()'s own cache handles the styled
-    // path; the unsupported-lang plain-text path's reference stability
-    // comes from useMemo across same-arg re-renders.
   }, [visible, ready, content, lang]);
 }

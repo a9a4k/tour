@@ -8,7 +8,7 @@ import {
   expect,
   it,
 } from "vitest";
-import { act, createElement, useRef, type RefObject } from "react";
+import { act, createElement, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useLazyHighlight } from "../../src/web/client/use-lazy-highlight.js";
 import {
@@ -94,35 +94,29 @@ class FakeIntersectionObserver {
 // ---- React harness ---------------------------------------------------------
 
 // The hook depends on a RefObject<HTMLElement | null> pointing at the
-// observed block. The harness mounts a host component, captures the most
-// recent hook return value on a per-slot Snapshot, and exposes a forceRender
-// callback for the same-input re-render reference-identity test.
+// observed block. The harness mounts a host component and captures the
+// most recent hook return value on a per-slot Snapshot.
 
 type Snapshot = {
   tokens: TokenLines | null;
-  renderCount: number;
 };
 
 function createSnapshot(): Snapshot {
-  return { tokens: null, renderCount: 0 };
+  return { tokens: null };
 }
 
 function HookHost({
   content,
   lang,
   snap,
-  refOut,
 }: {
   content: string;
   lang: string;
   snap: Snapshot;
-  refOut: { current: RefObject<HTMLDivElement | null> | null };
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  refOut.current = ref;
   const tokens = useLazyHighlight(ref, content, lang);
   snap.tokens = tokens;
-  snap.renderCount += 1;
   return createElement("div", { ref });
 }
 
@@ -192,9 +186,6 @@ describe("useLazyHighlight — pre-IO", () => {
 
   it("returns null before the IntersectionObserver fires", async () => {
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -202,7 +193,6 @@ describe("useLazyHighlight — pre-IO", () => {
           content: "const x = 1;",
           lang: "typescript",
           snap,
-          refOut,
         }),
       );
     });
@@ -213,9 +203,6 @@ describe("useLazyHighlight — pre-IO", () => {
 
   it("constructs the observer with rootMargin: 200px", async () => {
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -223,7 +210,6 @@ describe("useLazyHighlight — pre-IO", () => {
           content: "x",
           lang: "typescript",
           snap,
-          refOut,
         }),
       );
     });
@@ -239,9 +225,6 @@ describe("useLazyHighlight — post-IO", () => {
 
   it("returns Shiki-styled tokens after IO fires for a supported lang", async () => {
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -249,7 +232,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "const x = 1;",
           lang: "typescript",
           snap,
-          refOut,
         }),
       );
     });
@@ -264,9 +246,6 @@ describe("useLazyHighlight — post-IO", () => {
 
   it("returns plain-text fallback for an unsupported lang (HTML-escaped)", async () => {
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -274,7 +253,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "<script>alert(1)</script>",
           lang: "klingon",
           snap,
-          refOut,
         }),
       );
     });
@@ -290,9 +268,6 @@ describe("useLazyHighlight — post-IO", () => {
 
   it("memoizes same (content, lang) — re-render returns the same Map reference", async () => {
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -300,7 +275,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "let v: number = 42;",
           lang: "typescript",
           snap,
-          refOut,
         }),
       );
     });
@@ -318,7 +292,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "let v: number = 42;",
           lang: "typescript",
           snap,
-          refOut,
         }),
       );
     });
@@ -330,9 +303,6 @@ describe("useLazyHighlight — post-IO", () => {
     // the hook now owns that stability so re-renders on non-bundled langs
     // don't cascade downstream React.memo invalidations.
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -340,7 +310,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "alpha\nbeta\ngamma",
           lang: "klingon",
           snap,
-          refOut,
         }),
       );
     });
@@ -356,7 +325,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "alpha\nbeta\ngamma",
           lang: "klingon",
           snap,
-          refOut,
         }),
       );
     });
@@ -365,9 +333,6 @@ describe("useLazyHighlight — post-IO", () => {
 
   it("disconnects the observer on unmount", async () => {
     const snap = createSnapshot();
-    const refOut: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
     await act(async () => {
       root = createRoot(container);
       root.render(
@@ -375,7 +340,6 @@ describe("useLazyHighlight — post-IO", () => {
           content: "x",
           lang: "typescript",
           snap,
-          refOut,
         }),
       );
     });
@@ -407,12 +371,6 @@ describe("useLazyHighlight — pre→post-init race", () => {
   it("two concurrent hooks during highlighter await both end up with styled output", async () => {
     const snapA = createSnapshot();
     const snapB = createSnapshot();
-    const refOutA: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
-    const refOutB: { current: RefObject<HTMLDivElement | null> | null } = {
-      current: null,
-    };
 
     const containerA = container;
     const containerB = document.createElement("div");
@@ -428,7 +386,6 @@ describe("useLazyHighlight — pre→post-init race", () => {
             content: "const a = 1;",
             lang: "typescript",
             snap: snapA,
-            refOut: refOutA,
           }),
         );
         rootB.render(
@@ -436,7 +393,6 @@ describe("useLazyHighlight — pre→post-init race", () => {
             content: "const b = 2;",
             lang: "typescript",
             snap: snapB,
-            refOut: refOutB,
           }),
         );
       });
