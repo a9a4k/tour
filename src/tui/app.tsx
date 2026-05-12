@@ -711,14 +711,16 @@ function App(props: AppProps) {
     setCursor((prev) => cursorFromAnnotation(ann, preferredSideOf(prev)));
   };
 
-  // gotoPrev/NextAnnotation walk the card lane via `nextCard` / `prevCard`
-  // (PRD #192 / ADR 0022; issue #197). Walkers track top-level Annotation
-  // order — the same order the `[N/M]` pill counter reads — so `n` from
-  // `K/M` always lands on `K+1/M`. When the cursor isn't a card, the
-  // walkers pick the first / last top-level so the user can land on the
-  // nav target with a single keystroke from any cursor state.
+  // gotoPrev/NextAnnotation walk via `nextCard` / `prevCard` (PRD #192).
+  // From a CardAnchor: walks top-level Annotation order — the same order
+  // the `[N/M]` pill counter reads — so `n` from `K/M` always lands on
+  // `K+1/M` (issue #197). From a RowAnchor: position-aware jump in
+  // stream (display + line) order — `n` from a row past annotation K
+  // lands on K+1, not back on K (issue #203). `files` is already in
+  // stream display order via `sortFilesForStream`.
   const gotoPrevAnnotation = () => {
-    const target = prevCard(cursor, liveTopLevel);
+    const fileOrder = files.map((f) => f.name);
+    const target = prevCard(cursor, liveTopLevel, fileOrder);
     if (target) {
       const ann = liveAnnotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);
@@ -726,7 +728,8 @@ function App(props: AppProps) {
   };
 
   const gotoNextAnnotation = () => {
-    const target = nextCard(cursor, liveTopLevel);
+    const fileOrder = files.map((f) => f.name);
+    const target = nextCard(cursor, liveTopLevel, fileOrder);
     if (target) {
       const ann = liveAnnotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);

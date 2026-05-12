@@ -328,58 +328,64 @@ describe("moveCursor", () => {
   });
 });
 
-// Card lane walker (PRD #192 / ADR 0022; reordering fix issue #197).
-// `n` / `p` walk the canonical top-level Annotation order — the same
-// order the `[N/M]` pill counter reads — NOT flat-row display order.
-// For real Tours whose JSONL `created_at` order disagrees with file
-// display order, those two orderings diverge; the walker tracks the
-// pill so a `n` from `K/M` always lands on `K+1/M`.
-describe("nextCard / prevCard (PRD #192, issue #197)", () => {
+// Card lane walker (PRD #192 / ADR 0022; reordering fix issue #197;
+// row-cursor position-aware jump issue #203).
+// From a CardAnchor: walks the canonical top-level Annotation order —
+// the same order the `[N/M]` pill counter reads — NOT flat-row display
+// order (#197).
+// From a RowAnchor: position-aware jump — `nextCard` returns the first
+// top-level annotation in `topLevel` order whose anchor is at or after
+// the cursor's stream position; `prevCard` is the symmetric backwards
+// walk (issue #203).
+// From a null cursor: lazy-materialization fallback at the topLevel
+// edge.
+describe("nextCard / prevCard (PRD #192, issues #197 + #203)", () => {
   const a1 = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 1, line_end: 1 });
   const a2 = ann({ id: "a2", file: "x.txt", side: "additions", line_start: 2, line_end: 2 });
   const topLevel = [a1, a2];
+  const files = ["x.txt"];
 
-  it("nextCard from a row cursor picks the first card in top-level order, threading preferredSide", () => {
+  it("nextCard from a row cursor at the stream start lands on the first reachable card (issue #203)", () => {
     const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "deletions" });
-    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "deletions" });
+    expect(nextCard(c, topLevel, files)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "deletions" });
   });
 
   it("nextCard from a card cursor lands on the following card in top-level order", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
+    expect(nextCard(c, topLevel, files)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
   });
 
   it("nextCard from the last card returns null", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a2", preferredSide: "additions" };
-    expect(nextCard(c, topLevel)).toBeNull();
+    expect(nextCard(c, topLevel, files)).toBeNull();
   });
 
   it("prevCard from a card cursor lands on the preceding card in top-level order", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a2", preferredSide: "additions" };
-    expect(prevCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    expect(prevCard(c, topLevel, files)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
   });
 
   it("prevCard from the first card returns null", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    expect(prevCard(c, topLevel)).toBeNull();
+    expect(prevCard(c, topLevel, files)).toBeNull();
   });
 
   it("nextCard from a null cursor picks the first top-level annotation", () => {
-    expect(nextCard(null, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    expect(nextCard(null, topLevel, files)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
   });
 
   it("prevCard from a null cursor picks the last top-level annotation", () => {
-    expect(prevCard(null, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
+    expect(prevCard(null, topLevel, files)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
   });
 
   it("nextCard preserves a card cursor's preferredSide on the destination CardAnchor (issue #200)", () => {
     const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "deletions" };
-    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "deletions" });
+    expect(nextCard(c, topLevel, files)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "deletions" });
   });
 
   it("returns null when there are no top-level annotations", () => {
-    expect(nextCard(null, [])).toBeNull();
-    expect(prevCard(null, [])).toBeNull();
+    expect(nextCard(null, [], [])).toBeNull();
+    expect(prevCard(null, [], [])).toBeNull();
   });
 
   // Bug A repro (issue #197): a Tour whose JSONL `created_at` order
@@ -415,27 +421,138 @@ describe("nextCard / prevCard (PRD #192, issue #197)", () => {
     });
     // Top-level order (JSONL / created_at): aFirst, aSecond, aThird.
     const topLevelMixed = [aFirst, aSecond, aThird];
+    // Stream / display order: a.txt, m.txt, z.txt.
+    const filesMixed = ["a.txt", "m.txt", "z.txt"];
     const c1: CardAnchor = { kind: "card", annotationId: "aFirst", preferredSide: "additions" };
-    expect(nextCard(c1, topLevelMixed)).toEqual({ kind: "card", annotationId: "aSecond", preferredSide: "additions" });
+    expect(nextCard(c1, topLevelMixed, filesMixed)).toEqual({ kind: "card", annotationId: "aSecond", preferredSide: "additions" });
     const c2: CardAnchor = { kind: "card", annotationId: "aSecond", preferredSide: "additions" };
-    expect(nextCard(c2, topLevelMixed)).toEqual({ kind: "card", annotationId: "aThird", preferredSide: "additions" });
+    expect(nextCard(c2, topLevelMixed, filesMixed)).toEqual({ kind: "card", annotationId: "aThird", preferredSide: "additions" });
     const c3: CardAnchor = { kind: "card", annotationId: "aThird", preferredSide: "additions" };
-    expect(nextCard(c3, topLevelMixed)).toBeNull();
-    expect(prevCard(c3, topLevelMixed)).toEqual({ kind: "card", annotationId: "aSecond", preferredSide: "additions" });
-    expect(prevCard(c2, topLevelMixed)).toEqual({ kind: "card", annotationId: "aFirst", preferredSide: "additions" });
+    expect(nextCard(c3, topLevelMixed, filesMixed)).toBeNull();
+    expect(prevCard(c3, topLevelMixed, filesMixed)).toEqual({ kind: "card", annotationId: "aSecond", preferredSide: "additions" });
+    expect(prevCard(c2, topLevelMixed, filesMixed)).toEqual({ kind: "card", annotationId: "aFirst", preferredSide: "additions" });
   });
 
-  it("stale CardAnchor (annotation removed from top-level) walks from the edge", () => {
+  // Issue #203: from a stale CardAnchor (id not in topLevel) we cannot
+  // reconstruct a (file, lineNumber). Simplest implementation: return
+  // null — `validateCursor` null-clears the stale cursor independently,
+  // then lazy materialization re-seeds on the next interaction.
+  it("stale CardAnchor (annotation removed from top-level) returns null (issue #203)", () => {
     const ghost: CardAnchor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
-    expect(nextCard(ghost, topLevel)).toEqual({
-      kind: "card",
-      annotationId: "a1",
-      preferredSide: "additions",
+    expect(nextCard(ghost, topLevel, files)).toBeNull();
+    expect(prevCard(ghost, topLevel, files)).toBeNull();
+  });
+
+  // Issue #203: position-aware jump from a RowAnchor.
+  describe("position-aware row → next/prev (issue #203)", () => {
+    // Canonical fixture: ann1 anchored to SKILL.md:3-21 (top-level[0]),
+    // ann2 anchored later (top-level[1]). The bug report's scenario:
+    // cursor on SKILL.md:22 (a row past ann1's anchor) — `n` should
+    // forward-jump to ann2, NOT backward-jump to ann1.
+    const ann1 = ann({ id: "ann1", file: "SKILL.md", side: "additions", line_start: 3, line_end: 21 });
+    const ann2 = ann({ id: "ann2", file: "SKILL.md", side: "additions", line_start: 30, line_end: 35 });
+    const tl = [ann1, ann2];
+    const fl = ["SKILL.md"];
+
+    it("nextCard from a row past the first annotation's line_end jumps forward (the bug repro)", () => {
+      const c = row({ file: "SKILL.md", lineNumber: 22, side: "additions", preferredSide: "additions" });
+      expect(nextCard(c, tl, fl)).toEqual({ kind: "card", annotationId: "ann2", preferredSide: "additions" });
     });
-    expect(prevCard(ghost, topLevel)).toEqual({
-      kind: "card",
-      annotationId: "a2",
-      preferredSide: "additions",
+
+    it("nextCard from a row past the LAST annotation returns null (no wrap)", () => {
+      const c = row({ file: "SKILL.md", lineNumber: 99, side: "additions", preferredSide: "additions" });
+      expect(nextCard(c, tl, fl)).toBeNull();
+    });
+
+    it("prevCard from a row before the FIRST annotation returns null (no wrap)", () => {
+      const c = row({ file: "SKILL.md", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      expect(prevCard(c, tl, fl)).toBeNull();
+    });
+
+    it("nextCard from a row exactly on an annotation's line_end includes that annotation", () => {
+      // Edge case from the issue: "cursor at line 21, annotation at
+      // lines 3-21 — `n` includes this annotation (line_end >= cursor
+      // lineNumber). Pressing `n` lands on its card."
+      const c = row({ file: "SKILL.md", lineNumber: 21, side: "additions", preferredSide: "additions" });
+      expect(nextCard(c, tl, fl)).toEqual({ kind: "card", annotationId: "ann1", preferredSide: "additions" });
+    });
+
+    it("prevCard from a row exactly on an annotation's line_end includes that annotation", () => {
+      const c = row({ file: "SKILL.md", lineNumber: 35, side: "additions", preferredSide: "additions" });
+      expect(prevCard(c, tl, fl)).toEqual({ kind: "card", annotationId: "ann2", preferredSide: "additions" });
+    });
+
+    it("nextCard from a row threads preferredSide onto the destination card", () => {
+      const c = row({ file: "SKILL.md", lineNumber: 22, side: "deletions", preferredSide: "deletions" });
+      expect(nextCard(c, tl, fl)).toEqual({ kind: "card", annotationId: "ann2", preferredSide: "deletions" });
+    });
+
+    it("nextCard from a row in an annotation-free file between two annotated files picks the stream-next file's annotation", () => {
+      // Files in display order: a.txt, empty.txt, c.txt.
+      // Annotations: ann at a.txt:1 (before cursor), ann at c.txt:1 (after).
+      const aBefore = ann({ id: "aBefore", file: "a.txt", side: "additions", line_start: 1, line_end: 1 });
+      const aAfter = ann({ id: "aAfter", file: "c.txt", side: "additions", line_start: 1, line_end: 1 });
+      const tlMid = [aBefore, aAfter];
+      const flMid = ["a.txt", "empty.txt", "c.txt"];
+      const c = row({ file: "empty.txt", lineNumber: 5, side: "additions", preferredSide: "additions" });
+      expect(nextCard(c, tlMid, flMid)).toEqual({ kind: "card", annotationId: "aAfter", preferredSide: "additions" });
+      expect(prevCard(c, tlMid, flMid)).toEqual({ kind: "card", annotationId: "aBefore", preferredSide: "additions" });
+    });
+
+    it("nextCard from a row before the first annotation lands on the first annotation in topLevel order", () => {
+      // The "happens to match topLevel[0] in this case" edge case from
+      // the issue — current behaviour was right *only* because position-
+      // based lookup coincided with topLevel[0]. We assert position-based
+      // semantics still produce the right answer.
+      const c = row({ file: "SKILL.md", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      expect(nextCard(c, tl, fl)).toEqual({ kind: "card", annotationId: "ann1", preferredSide: "additions" });
+    });
+
+    // Multi-file fixture where topLevel order disagrees with file
+    // display order — the same fixture class that uncovered #197 and
+    // #199 (see the per-AC list in the issue).
+    it("nextCard from a row in the middle file iterates topLevel and returns the first match by stream position", () => {
+      // Display order: a.txt, m.txt, z.txt.
+      // topLevel order (created_at): aFirst (z.txt), aSecond (a.txt), aThird (m.txt).
+      const aFirst = ann({
+        id: "aFirst", file: "z.txt", side: "additions", line_start: 1, line_end: 1,
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      const aSecond = ann({
+        id: "aSecond", file: "a.txt", side: "additions", line_start: 1, line_end: 1,
+        created_at: "2026-02-01T00:00:00Z",
+      });
+      const aThird = ann({
+        id: "aThird", file: "m.txt", side: "additions", line_start: 1, line_end: 1,
+        created_at: "2026-03-01T00:00:00Z",
+      });
+      const tlMix = [aFirst, aSecond, aThird];
+      const flMix = ["a.txt", "m.txt", "z.txt"];
+      // Cursor at (m.txt, line 5): aFirst (z.txt > m.txt) matches in
+      // topLevel iteration order; aSecond (a.txt < m.txt) does not;
+      // aThird (m.txt = m.txt, line_end=1 < 5) does not. Returns aFirst.
+      const c = row({ file: "m.txt", lineNumber: 5, side: "additions", preferredSide: "additions" });
+      expect(nextCard(c, tlMix, flMix)).toEqual({ kind: "card", annotationId: "aFirst", preferredSide: "additions" });
+      // prevCard: reverse topLevel iteration — aThird (m.txt, 1 <= 5)
+      // matches first. Returns aThird.
+      expect(prevCard(c, tlMix, flMix)).toEqual({ kind: "card", annotationId: "aThird", preferredSide: "additions" });
+    });
+
+    it("repeated nextCard from a fresh row at the stream start walks every annotation in display + line order", () => {
+      const ax1 = ann({ id: "ax1", file: "a.txt", side: "additions", line_start: 1, line_end: 1 });
+      const ax2 = ann({ id: "ax2", file: "a.txt", side: "additions", line_start: 5, line_end: 5 });
+      const bx1 = ann({ id: "bx1", file: "b.txt", side: "additions", line_start: 3, line_end: 3 });
+      const tlWalk = [ax1, ax2, bx1];
+      const flWalk = ["a.txt", "b.txt"];
+      const c0 = row({ file: "a.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      const step1 = nextCard(c0, tlWalk, flWalk);
+      expect(step1).toEqual({ kind: "card", annotationId: "ax1", preferredSide: "additions" });
+      const step2 = nextCard(step1, tlWalk, flWalk);
+      expect(step2).toEqual({ kind: "card", annotationId: "ax2", preferredSide: "additions" });
+      const step3 = nextCard(step2, tlWalk, flWalk);
+      expect(step3).toEqual({ kind: "card", annotationId: "bx1", preferredSide: "additions" });
+      const step4 = nextCard(step3, tlWalk, flWalk);
+      expect(step4).toBeNull();
     });
   });
 });
