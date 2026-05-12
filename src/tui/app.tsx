@@ -43,6 +43,7 @@ import {
   TourSessionStore,
   useTourSession,
   pickerHighlighted,
+  isBundleResolved,
   initialTourSessionState,
   type TourSummary,
 } from "../core/tour-session.js";
@@ -192,19 +193,18 @@ const SIDEBAR_BORDER = 2;
 const SIDEBAR_CONTENT_WIDTH = SIDEBAR_WIDTH - SIDEBAR_BORDER;
 
 function App(props: AppProps) {
-  const [bundle, setBundle] = useState<TourBundle>(props.bundle);
-  const [replyLock, setReplyLock] = useState<ReplyLock | null>(props.replyLock ?? null);
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const [repliesCollapsed, setRepliesCollapsed] = useState(false);
-  // Tour-session store (PRD #207 slice 1, issue #209). The picker slice's
-  // state lives in the reducer; the TUI dispatches `picker.*` /
-  // `tourList.*` / `bundle.*` actions and realizes the emitted intents in
-  // its own substrate. The store is per-TUI-process — instantiated once
-  // on first render and stable across re-renders.
+  // Tour-session store (PRD #207 slice 1, issue #209; bundle / replyLock
+  // moved to the store in issue #211). The store is the single source of
+  // truth for bundle + replyLock + picker + tourList; the TUI dispatches
+  // actions and realizes emitted intents in its own substrate. The store
+  // is per-TUI-process — instantiated once on first render and stable
+  // across re-renders.
   const [store] = useState<TourSessionStore>(
     () =>
       new TourSessionStore({
@@ -215,6 +215,19 @@ function App(props: AppProps) {
       }),
   );
   const sessionState = useTourSession(store);
+  // Bundle / replyLock read from the store. During the in-flight window
+  // of a tour switch (picker.commit → bundle.loading → tour.switched), the
+  // store's bundle slice transiently goes to `loading`; we keep showing
+  // the previous resolved bundle via a tiny render-time cache so the diff
+  // pane doesn't flash blank between commit and load. `tour.switched`
+  // overwrites the cache on the next render. Not a React state — just a
+  // memo of the last `ok` value the store has yielded.
+  const lastBundleRef = useRef<TourBundle>(props.bundle);
+  const resolvedBundle = isBundleResolved(sessionState);
+  if (resolvedBundle !== null) lastBundleRef.current = resolvedBundle;
+  const bundle = lastBundleRef.current;
+  const replyLock =
+    sessionState.replyLock.kind === "ok" ? sessionState.replyLock.value : null;
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
   // Footer status line that flashes after an `s` no-op so the user knows
@@ -316,7 +329,11 @@ function App(props: AppProps) {
       try {
         const next = await props.loadTour(liveTour.id);
         if (cancelled) return;
-        setBundle(next);
+        // Same-tour refresh (issue #211): dispatch `bundle.refreshed`
+        // (NOT `tour.switched`) so the watcher reload doesn't trigger
+        // the CONTEXT-pinned Tour-switch reset cascade (picker close +
+        // replyLock idle).
+        store.dispatch({ type: "bundle.refreshed", bundle: next });
         // Re-seed orphan windows on watcher reload (annotations may have
         // changed; orphan windows recompute). seedFromOrphans unions per-side
         // by max so manually expanded user state is preserved (issue #114).
@@ -332,7 +349,7 @@ function App(props: AppProps) {
       try {
         const next = await props.loadReplyLock(liveTour.id);
         if (cancelled) return;
-        setReplyLock(next);
+        store.dispatch({ type: "replyLock.loaded", replyLock: next });
       } catch {
         // transient — keep current pill state
       }
@@ -693,20 +710,9 @@ function App(props: AppProps) {
           try {
             const next = await props.loadTour!(tourId);
             if (unmounted) return;
-            setBundle(next);
-            if (props.loadReplyLock) {
-              try {
-                const lock = await props.loadReplyLock(tourId);
-                if (!unmounted) setReplyLock(lock);
-              } catch {
-                if (!unmounted) setReplyLock(null);
-              }
-            } else {
-              setReplyLock(null);
-            }
             // CONTEXT-pinned Tour-switch resets that don't yet live in
             // the reducer (slice 1: only picker + replyLock + bundle
-            // are reset by `bundle.loaded`). Cursor / folds / overrides /
+            // are reset by `tour.switched`). Cursor / folds / overrides /
             // expansion are reset here; they migrate into the reducer
             // in subsequent slices.
             setSelectedRowIdx(0);
@@ -719,10 +725,27 @@ function App(props: AppProps) {
                 next.kind === "ok" ? flattenOrphanWindows(next.files) : [],
               ),
             );
-            // Drive the reducer's `bundle.loaded` cascade — picker closes
-            // (defensively; commit already closed it) and replyLock
-            // resets to idle in the store's shadow.
-            store.dispatch({ type: "bundle.loaded", tourId, bundle: next });
+            // Drive the reducer's `tour.switched` cascade — bundle is
+            // replaced, picker closes (defensively; commit already closed
+            // it), and replyLock resets to idle.
+            store.dispatch({ type: "tour.switched", tourId, bundle: next });
+            // Reply-lock fetch for the new tour. Must dispatch AFTER
+            // `tour.switched` (which resets replyLock to idle) so the
+            // freshly-loaded lock isn't clobbered.
+            if (props.loadReplyLock) {
+              try {
+                const lock = await props.loadReplyLock(tourId);
+                if (!unmounted) {
+                  store.dispatch({ type: "replyLock.loaded", replyLock: lock });
+                }
+              } catch {
+                if (!unmounted) {
+                  store.dispatch({ type: "replyLock.loaded", replyLock: null });
+                }
+              }
+            } else {
+              store.dispatch({ type: "replyLock.loaded", replyLock: null });
+            }
           } catch (e) {
             if (unmounted) return;
             const error = e instanceof Error ? e.message : String(e);
@@ -1061,8 +1084,11 @@ function App(props: AppProps) {
       applyBundleReload: (refreshed) => {
         // The CLI's `tour annotate` would let the watcher re-render. The
         // TUI path skips the watcher loop and reloads the bundle directly
-        // so the new entry shows up immediately on submit.
-        setBundle(refreshed);
+        // so the new entry shows up immediately on submit. Same-tour
+        // refresh — dispatch `bundle.refreshed` (issue #211), NOT
+        // `tour.switched`, so the picker / replyLock survive a composer
+        // submit.
+        store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
         if (refreshed.kind === "ok") {
           setExpansion((prev) =>
             seedFromOrphans(prev, flattenOrphanWindows(refreshed.files)),

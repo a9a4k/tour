@@ -62,8 +62,10 @@ export type Action =
   | { type: "picker.move"; delta: number }
   | { type: "picker.commit" }
   | { type: "bundle.loading"; tourId: string }
-  | { type: "bundle.loaded"; tourId: string; bundle: TourBundle }
+  | { type: "bundle.refreshed"; bundle: TourBundle }
   | { type: "bundle.failed"; tourId: string; error: string }
+  | { type: "tour.switched"; tourId: string; bundle: TourBundle }
+  | { type: "replyLock.loaded"; replyLock: ReplyLock | null }
   | { type: "tourList.loading" }
   | { type: "tourList.loaded"; tours: TourSummary[] }
   | { type: "tourList.failed"; error: string };
@@ -144,10 +146,28 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: NO_INTENTS,
       };
 
-    case "bundle.loaded":
+    case "bundle.refreshed":
+      // Same-tour bundle update (watcher reload / SSE annotation-changed).
+      // Replaces the bundle slice in place; intentionally does NOT touch
+      // picker / replyLock / currentTourId — the user is still on the same
+      // tour, so the Tour-switch reset cascade must not fire.
+      return {
+        state: { ...state, bundle: { kind: "ok", value: action.bundle } },
+        intents: NO_INTENTS,
+      };
+
+    case "bundle.failed":
+      return {
+        state: { ...state, bundle: { kind: "err", error: action.error } },
+        intents: NO_INTENTS,
+      };
+
+    case "tour.switched":
       // CONTEXT-pinned Tour-switch reset rules: layout preserved; picker
       // closed; reply-lock reset; cursor/folds/composer reset when those
-      // slices land in later slices (no-op for slice 1).
+      // slices land in later slices (no-op for slice 1). Distinct from
+      // `bundle.refreshed` so a same-tour watcher reload doesn't dump
+      // picker / replyLock state.
       return {
         state: {
           ...state,
@@ -159,9 +179,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: NO_INTENTS,
       };
 
-    case "bundle.failed":
+    case "replyLock.loaded":
       return {
-        state: { ...state, bundle: { kind: "err", error: action.error } },
+        state: { ...state, replyLock: { kind: "ok", value: action.replyLock } },
         intents: NO_INTENTS,
       };
 
@@ -198,6 +218,15 @@ export function currentTourSummary(state: TourSessionState): TourSummary | null 
   if (state.tourList.kind !== "ok") return null;
   const id = state.currentTourId;
   return state.tourList.value.find((t) => t.id === id) ?? null;
+}
+
+// Returns the resolved TourBundle when the bundle slice is in `ok` state,
+// regardless of the bundle's inner `{kind: "ok" | "snapshot-lost"}` domain
+// discriminator. Lets callers ask "is the bundle ready to render?" in one
+// call instead of two `if` ladders. Returns null when the bundle is idle /
+// loading / failed.
+export function isBundleResolved(state: TourSessionState): TourBundle | null {
+  return state.bundle.kind === "ok" ? state.bundle.value : null;
 }
 
 // --- Store ------------------------------------------------------------------

@@ -44,6 +44,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session reducer: `bundle.loaded` split into `bundle.refreshed`
+  + `tour.switched`.** The single `bundle.loaded` action conflated two
+  semantically distinct events: same-tour refresh (watcher / SSE
+  `annotation-changed`) and tour-switch (`picker.commit` / `popstate` /
+  auto-pick resolution). The reducer now exports two actions:
+  `bundle.refreshed { bundle }` replaces the bundle slice in place
+  (does NOT touch picker / replyLock / currentTourId / layout — the
+  user is still on the same tour) and `tour.switched { tourId, bundle }`
+  applies the CONTEXT-pinned Tour-switch reset cascade (replaces
+  bundle, sets currentTourId, closes picker, resets replyLock to idle,
+  preserves layout). A new `replyLock.loaded { replyLock }` action
+  replaces the reply-lock slice for the watcher / SSE paths; a new
+  `isBundleResolved(state)` selector unwraps the outer `RemoteData.ok`
+  layer and returns the TourBundle (or null). Both Apps' local
+  `useState`s for the bundle (and the TUI's local `replyLock`
+  `useState`) are deleted — rendering reads bundle from
+  `isBundleResolved(sessionState)` as the single source of truth. The
+  store's bundle slice is now authoritative, unblocking slice 2
+  (Cursor + Watcher) which depends on synchronous reducer transitions
+  when the watcher fires. (#211 · PRD #207)
 - **TUI Picker now routes through the Tour-session store (slice 1
   surface wiring, TUI side).** The TUI's `t` keystroke, `j`/`k` picker
   navigation, `Enter` commit, and `Esc`/`t` close all dispatch into
