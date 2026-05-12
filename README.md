@@ -39,13 +39,13 @@ Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tou
 
 ## For agents
 
-Install the Tour skill so AI agents (Claude Code, Codex, Cursor, Gemini CLI, OpenCode, …) automatically reach for Tour when the user asks to *"review this branch"*, *"walk me through this diff"*, *"leave feedback on these changes"*, or similar:
+Teach your AI agent to leave a Tour every time you ask for a review:
 
 ```sh
 npx skills add a9a4k/tour -g
 ```
 
-The skill teaches the canonical author flow (`tour create` → `tour annotate --batch -` → `tour serve --reply-agent <name> &`) and the narrative-walkthrough style: zero-context reader, *why* not *what*, concise (typically 2–4 sentences per annotation).
+Works across Claude Code, Codex, Cursor, Gemini CLI, OpenCode, and other agents in the [skills.sh](https://skills.sh) ecosystem. Once installed, asking your agent to "review my branch" or "walk me through this diff" produces a Tour rather than a wall of chat: annotations anchored to specific lines, written so a teammate with no context can follow along, opened in your browser at a clickable URL.
 
 For direct CLI use without the skill — e.g., in foreign repos with no global install:
 
