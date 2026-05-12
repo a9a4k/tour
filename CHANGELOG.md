@@ -44,6 +44,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Foundation for the Pierre → Tour-owned web row renderer migration.**
+  New `src/web/client/syntax-highlight.ts` deep module exposes
+  `tokenize(content, lang) → Map<lineNumber, html>` over a singleton
+  Shiki highlighter pre-loaded with the common-language set (TypeScript,
+  TSX, JavaScript, JSX, JSON, Markdown, Bash, YAML, CSS, HTML, Python,
+  Rust, Go) under `github-dark-default`. Memoized per `(content, lang)`;
+  returns a stable empty Map for empty content; HTML-escapes the
+  plain-text fallback for unsupported langs or pre-init calls.
+  `detectLang(filename)` maps file extensions to bundled languages.
+  Companion ADR 0024 documents the renderer-replacement migration; no
+  existing rendering paths change in this slice — the old Pierre
+  renderer continues to run.
+
+  Issue: #212 · ADR: 0024
+
 - **Tour-session reducer: `bundle.loaded` split into `bundle.refreshed`
   + `tour.switched`.** The single `bundle.loaded` action conflated two
   semantically distinct events: same-tour refresh (watcher / SSE
