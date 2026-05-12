@@ -100,6 +100,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Bare `tour serve` prints the auto-picked tour-id in the URL.**
+  Previously, `tour serve` with no positional id printed
+  `http://127.0.0.1:<port>` — a bare base URL. The SPA then auto-picked
+  a tour client-side, but the terminal-printed URL was never refreshed,
+  so a user copying the URL out of the terminal shared an ambiguous
+  link. The server now pre-picks the same tour the SPA would
+  auto-select — the most-recent **open** tour — and bakes that id into
+  both `__INITIAL_TOUR_ID__` and the printed URL
+  (`http://127.0.0.1:<port>/<id>`). Explicit `tour serve <id>` is
+  unchanged. Zero open tours → bare URL, unchanged. The pick rule is
+  extracted to a shared `pickAutoTour` helper consumed by both
+  surfaces so the server's pre-pick and the SPA's auto-pick agree by
+  construction, not by accident. (#187)
+
 - **Address bar updates when the SPA is entered at bare `/`.** The
   URL-writer effect's "URL contradicts state" gate previously read the
   URL with a `null` fallback, so a bare `/` resolved to `null` and the

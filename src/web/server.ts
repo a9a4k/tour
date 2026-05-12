@@ -1,4 +1,5 @@
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
+import { pickAutoTour } from "../core/tour-list.js";
 import {
   createAnnotation,
   createReply,
@@ -176,14 +177,20 @@ function contentTypeFor(path: string): string {
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, portExplicit, cwd, replyAgent } = args;
 
-  // Path component appended to printed URLs when a positional tour-id was
-  // passed (issue #179). Lets the user Cmd-click straight to their tour in
-  // a modern terminal. The SPA reads tour-id from the path with higher
-  // precedence than the baked `__INITIAL_TOUR_ID__`, so the printed URL
-  // wins over whatever id the running server's HTML carries — load-bearing
-  // for the probe-reuse case where the server was started for a different
-  // tour. Bare `tour serve` (no id) prints the unchanged base URL.
-  const path = args.tourId ? `/${args.tourId}` : "";
+  // Path component appended to printed URLs (issue #179). Lets the user
+  // Cmd-click straight to their tour in a modern terminal. The SPA reads
+  // tour-id from the path with higher precedence than the baked
+  // `__INITIAL_TOUR_ID__`, so the printed URL wins over whatever id the
+  // running server's HTML carries — load-bearing for the probe-reuse case
+  // where the server was started for a different tour.
+  //
+  // Explicit positional id always wins. When omitted (issue #187), pre-pick
+  // the same tour the SPA's auto-select would land on — most-recent open —
+  // so the terminal URL routes to a real tour instead of bare `/`. Zero
+  // open tours → bare URL, unchanged from today.
+  const effectiveTourId =
+    args.tourId ?? (pickAutoTour(await listTours(cwd, { status: "all" })))?.id;
+  const path = effectiveTourId ? `/${effectiveTourId}` : "";
 
   // Reuse-if-running (issue #178). Probe the preferred port: if a Tour
   // server is already serving this cwd, log the existing URL and exit
@@ -412,7 +419,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
         }
 
-        return new Response(html(args.tourId, replyAgent), {
+        return new Response(html(effectiveTourId, replyAgent), {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       },

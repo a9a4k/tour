@@ -35,6 +35,31 @@ function formatAge(deltaMs: number): string {
   return `${Math.floor(ms / YEAR)}y ago`;
 }
 
+export type AutoPickTour = Pick<Tour, "id" | "status" | "created_at">;
+
+// The shared "auto-pick a tour when none was specified" rule, consumed
+// by both the server's bare-`tour serve` pre-pick (issue #187) and the
+// SPA's auto-select in App.tsx. Picks the most-recent **open** tour by
+// `created_at`. Returns null when no open tour exists — the server
+// prints the bare URL in that case, and the SPA falls back to closed
+// tours or shows the empty state. Tie-break on id (largest wins) keeps
+// the result stable across surfaces.
+export function pickAutoTour(tours: AutoPickTour[]): AutoPickTour | null {
+  const open = tours.filter((t) => t.status === "open");
+  if (open.length === 0) return null;
+  let best = open[0];
+  let bestMs = Date.parse(best.created_at);
+  for (let i = 1; i < open.length; i++) {
+    const t = open[i];
+    const ms = Date.parse(t.created_at);
+    if (ms > bestMs || (ms === bestMs && t.id.localeCompare(best.id) > 0)) {
+      best = t;
+      bestMs = ms;
+    }
+  }
+  return best;
+}
+
 export function buildPickerRows(args: BuildPickerRowsArgs): PickerRow[] {
   const { tours, annotationCounts, now } = args;
   const rows = tours.map<PickerRow>((t) => ({

@@ -105,17 +105,15 @@ describe("tour serve — deep URL on tour-id (issue #179)", () => {
     );
   }, 30000);
 
-  it("keeps the bare URL (no path) when invoked without a tour-id", async () => {
+  it("auto-picks the most-recent open tour when invoked without a tour-id (issue #187)", async () => {
     const port = basePort + 200 + Math.floor(Math.random() * 100);
     const result = await spawnServeUntilReady(bunPath, dir, [], port);
     activeProc = result.proc;
+    // The fixture has exactly one open tour, so the pre-pick resolves to
+    // it and the printed URL ends in `/<tour-id>` — the same id the SPA's
+    // auto-select would land on at bare `/`.
     expect(result.stdout).toContain(
-      `Tour server running at http://127.0.0.1:${port}`,
-    );
-    // No path component beyond the port — the banner ends with the port
-    // followed by a newline, not `/<id>`.
-    expect(result.stdout).not.toMatch(
-      new RegExp(`Tour server running at http://127\\.0\\.0\\.1:${port}/`),
+      `Tour server running at http://127.0.0.1:${port}/${tourId}`,
     );
   }, 30000);
 });

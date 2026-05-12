@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPickerRows } from "../../src/core/tour-list.js";
+import { buildPickerRows, pickAutoTour } from "../../src/core/tour-list.js";
 import type { Tour } from "../../src/core/types.js";
 
 const NOW = Date.parse("2026-05-09T12:00:00Z");
@@ -129,5 +129,47 @@ describe("buildPickerRows", () => {
       now: NOW,
     });
     expect(a.map((r) => r.id)).toEqual(b.map((r) => r.id));
+  });
+});
+
+describe("pickAutoTour", () => {
+  it("returns null for an empty list", () => {
+    expect(pickAutoTour([])).toBeNull();
+  });
+
+  it("picks the most-recent open tour", () => {
+    const got = pickAutoTour([
+      tour({ id: "a", status: "open", created_at: ago(60 * 60) }),
+      tour({ id: "b", status: "open", created_at: ago(10 * 60) }),
+      tour({ id: "c", status: "open", created_at: ago(30 * 60) }),
+    ]);
+    expect(got?.id).toBe("b");
+  });
+
+  it("ignores closed tours when at least one open exists — even when a closed tour is most-recent overall", () => {
+    const got = pickAutoTour([
+      tour({ id: "a", status: "open", created_at: ago(60 * 60) }),
+      tour({ id: "b", status: "closed", created_at: ago(5 * 60) }),
+      tour({ id: "c", status: "open", created_at: ago(30 * 60) }),
+    ]);
+    expect(got?.id).toBe("c");
+  });
+
+  it("returns null when every tour is closed", () => {
+    const got = pickAutoTour([
+      tour({ id: "a", status: "closed", created_at: ago(10 * 60) }),
+      tour({ id: "b", status: "closed", created_at: ago(60 * 60) }),
+    ]);
+    expect(got).toBeNull();
+  });
+
+  it("breaks ties on identical created_at deterministically by id (largest id wins)", () => {
+    const same = ago(60);
+    const got = pickAutoTour([
+      tour({ id: "aaa", status: "open", created_at: same }),
+      tour({ id: "zzz", status: "open", created_at: same }),
+      tour({ id: "mmm", status: "open", created_at: same }),
+    ]);
+    expect(got?.id).toBe("zzz");
   });
 });

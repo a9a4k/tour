@@ -12,7 +12,7 @@ import { fileIcon } from "./file-icon.js";
 import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
 import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
-import { buildPickerRows } from "../../core/tour-list.js";
+import { buildPickerRows, pickAutoTour } from "../../core/tour-list.js";
 import { buildThreads, isTopLevel, topLevelAnnotations } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import { canSendToAgent } from "../../core/can-send-to-agent.js";
@@ -194,9 +194,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (cancelled) return;
       setTourList(tours);
       if (!tourId && tours.length > 0) {
-        const open = tours.filter((t) => t.status === "open");
-        const target = open.length > 0 ? open[open.length - 1] : tours[tours.length - 1];
-        setTourId(target.id);
+        // Shared with the server's bare-`tour serve` pre-pick (issue #187):
+        // both surfaces resolve the same most-recent-open id so the printed
+        // terminal URL agrees with what the SPA would auto-select at bare /.
+        // Closed-only repos fall through to the most-recent overall, since
+        // the SPA can still render a closed tour where the server's print
+        // simply omits the path component.
+        const auto = pickAutoTour(tours);
+        setTourId(auto?.id ?? tours[tours.length - 1].id);
       }
     })();
     return () => {
