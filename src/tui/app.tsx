@@ -712,15 +712,13 @@ function App(props: AppProps) {
   };
 
   // gotoPrev/NextAnnotation walk via `nextCard` / `prevCard` (PRD #192).
-  // From a CardAnchor: walks top-level Annotation order — the same order
-  // the `[N/M]` pill counter reads — so `n` from `K/M` always lands on
-  // `K+1/M` (issue #197). From a RowAnchor: position-aware jump in
-  // stream (display + line) order — `n` from a row past annotation K
-  // lands on K+1, not back on K (issue #203). `files` is already in
-  // stream display order via `sortFilesForStream`.
+  // n/p is the jump gesture: walks top-level Annotation order — the
+  // same order the `[N/M]` pill counter reads — so `n` from `K/M` lands
+  // on `K+1/M` (issue #197). From a RowAnchor or null cursor the walk
+  // enters the track at the topLevel edge (cursor position not
+  // consulted; issue #206 revert of #203).
   const gotoPrevAnnotation = () => {
-    const fileOrder = files.map((f) => f.name);
-    const target = prevCard(cursor, liveTopLevel, fileOrder);
+    const target = prevCard(cursor, liveTopLevel);
     if (target) {
       const ann = liveAnnotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);
@@ -728,8 +726,7 @@ function App(props: AppProps) {
   };
 
   const gotoNextAnnotation = () => {
-    const fileOrder = files.map((f) => f.name);
-    const target = nextCard(cursor, liveTopLevel, fileOrder);
+    const target = nextCard(cursor, liveTopLevel);
     if (target) {
       const ann = liveAnnotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);

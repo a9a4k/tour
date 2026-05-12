@@ -119,89 +119,46 @@ export function moveCursor(
 
 /**
  * Card-lane walker (`n`/`p`). Moves the cursor to the next/previous
- * top-level Annotation. Returns null at the bounds (no wrap).
- *
- * Three input shapes, three behaviours:
- * - **CardAnchor**: walks the canonical top-level list directly by
- *   index — same order the `[N/M]` pill counter reads (issue #197), so
- *   `n` from `K/M` always lands on `K+1/M` even when JSONL `created_at`
- *   order disagrees with file display order.
- * - **RowAnchor**: position-aware jump (issue #203). Iterates topLevel
- *   in order; `nextCard` returns the first annotation whose anchor row
- *   is at or after the cursor's stream position (`a.file` after
- *   `cursor.file` in `files` order, or same file with
- *   `a.line_end >= cursor.lineNumber`). `prevCard` is the symmetric
- *   backwards walk over reverse topLevel order. So a reviewer who has
- *   stepped past annotation 1 onto a row below it presses `n` and
- *   lands on annotation 2 (forward in reading order), not annotation 1.
- * - **null** (lazy materialization seed) or **stale CardAnchor**
- *   (id not in topLevel — `validateCursor` clears these independently):
- *   null returns the topLevel edge (`nextCard` → first, `prevCard` →
- *   last). Stale CardAnchor returns null — the validation policy nulls
- *   it on the next render and lazy materialization re-seeds.
- *
- * `preferredSide` is threaded onto the destination CardAnchor in every
- * case (issue #200): from a Cursor, `cursor.preferredSide`; from null,
- * `"additions"`.
+ * top-level Annotation — same order the `[N/M]` pill counter reads
+ * (issue #197). Walks the canonical top-level list directly, not the
+ * flat-row display stream, so `n` from `K/M` always lands on `K+1/M`
+ * even when JSONL `created_at` order disagrees with file display order.
+ * Returns null at the bounds (no wrap). When the cursor is null, on a
+ * row, or pointing at a stale annotation, the walk picks the first
+ * (`nextCard`) or last (`prevCard`) top-level annotation — `n`/`p` is
+ * a pure topLevel-order gesture, independent of the cursor's stream
+ * position (issue #206 revert of #203).
  */
 export function nextCard(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Annotation>,
-  files: ReadonlyArray<string>,
 ): CardAnchor | null {
-  return walkCards(cursor, topLevel, files, 1);
+  return walkCards(cursor, topLevel, 1);
 }
 
 export function prevCard(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Annotation>,
-  files: ReadonlyArray<string>,
 ): CardAnchor | null {
-  return walkCards(cursor, topLevel, files, -1);
+  return walkCards(cursor, topLevel, -1);
 }
 
 function walkCards(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Annotation>,
-  files: ReadonlyArray<string>,
   step: 1 | -1,
 ): CardAnchor | null {
   if (topLevel.length === 0) return null;
-  if (cursor === null) {
-    const target = step === 1 ? topLevel[0] : topLevel[topLevel.length - 1];
-    return { kind: "card", annotationId: target.id, preferredSide: "additions" };
-  }
-  if (cursor.kind === "card") {
-    const idx = topLevel.findIndex((a) => a.id === cursor.annotationId);
-    if (idx === -1) return null;
-    const next = idx + step;
-    if (next < 0 || next >= topLevel.length) return null;
-    return { kind: "card", annotationId: topLevel[next].id, preferredSide: cursor.preferredSide };
-  }
-  const cursorFileIdx = files.indexOf(cursor.file);
-  if (cursorFileIdx === -1) return null;
-  const preferredSide = cursor.preferredSide;
-  if (step === 1) {
-    for (const a of topLevel) {
-      const aFileIdx = files.indexOf(a.file);
-      if (aFileIdx === -1) continue;
-      if (aFileIdx > cursorFileIdx ||
-          (aFileIdx === cursorFileIdx && a.line_end >= cursor.lineNumber)) {
-        return { kind: "card", annotationId: a.id, preferredSide };
-      }
-    }
-    return null;
-  }
-  for (let i = topLevel.length - 1; i >= 0; i--) {
-    const a = topLevel[i];
-    const aFileIdx = files.indexOf(a.file);
-    if (aFileIdx === -1) continue;
-    if (aFileIdx < cursorFileIdx ||
-        (aFileIdx === cursorFileIdx && a.line_end <= cursor.lineNumber)) {
-      return { kind: "card", annotationId: a.id, preferredSide };
-    }
-  }
-  return null;
+  const startIdx =
+    cursor && cursor.kind === "card"
+      ? topLevel.findIndex((a) => a.id === cursor.annotationId)
+      : -1;
+  // When the cursor isn't on a resolvable card, start one step beyond the
+  // boundary so the first move lands on the first/last entry.
+  const from = startIdx === -1 ? (step === 1 ? -1 : topLevel.length) : startIdx;
+  const next = from + step;
+  if (next < 0 || next >= topLevel.length) return null;
+  return { kind: "card", annotationId: topLevel[next].id, preferredSide: preferredSideOf(cursor) };
 }
 
 export function setCursorSide(

@@ -440,16 +440,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const navigateBy = useCallback(
     (delta: -1 | 1) => {
-      // CardAnchor: walks top-level order (issue #197 — same as the
-      // SequencePill counter). RowAnchor: position-aware jump in stream
-      // (display + line) order (issue #203) — `n` from a row past
-      // annotation K goes to K+1, not back to K. `parsedFiles` is the
-      // sorted display order produced by `sortFilesForStream`.
-      const fileOrder = parsedFiles.map((f) => f.name);
-      const target =
-        delta === 1
-          ? nextCard(cursor, topLevel, fileOrder)
-          : prevCard(cursor, topLevel, fileOrder);
+      // n/p is the jump gesture: walks top-level order (issue #197 — same
+      // as the SequencePill counter), independent of cursor position
+      // (issue #206 revert of #203). From a RowAnchor or null cursor, the
+      // walk enters the track at the topLevel edge (first for `n`, last
+      // for `p`).
+      const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.annotationId);
       if (!ann) return;
@@ -461,7 +457,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       scrollAnnotationIntoView(ann.id);
       setCursor(target);
     },
-    [cursor, topLevel, parsedFiles, revealFileAncestors, scrollAnnotationIntoView],
+    [cursor, topLevel, revealFileAncestors, scrollAnnotationIntoView],
   );
 
   // Re-anchor cursor to a top-level Annotation card on bundle load (PRD #192

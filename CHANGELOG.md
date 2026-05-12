@@ -66,6 +66,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`n` / `p` is a pure topLevel-order jump again; cursor row position is
+  not consulted (issue #206 reverts #203).** Pre-revert, `n` / `p` from
+  a `RowAnchor` ran a position-aware walk over `topLevel` and returned
+  the first annotation at or after the cursor's stream position.
+  Design review concluded that's a design overreach: `n` / `p` is the
+  **jump** gesture (ADR 0023) — its job is to drive the `[N/M]` pill
+  counter through `topLevel` (created_at) order, period. The cursor's
+  row position is a separate track. Under the canonical model, from a
+  `RowAnchor` `n` enters the annotation track at `topLevel[0]`, `p`
+  enters at `topLevel[topLevel.length - 1]`, and subsequent presses
+  walk the `topLevel` index. Reviewers who want the next annotation in
+  reading order from a row press `k` (which honours stream order
+  natively) — `n` / `p` and `j` / `k` are deliberately different
+  gestures. The `files: ReadonlyArray<string>` parameter introduced by
+  #203 is removed from `nextCard` / `prevCard` / `walkCards`; both call
+  sites drop the `.map(f => f.name)` rigging. `CardAnchor` semantics
+  (still walks `topLevel` by index, issue #197) and null-cursor
+  semantics (still falls back to the `topLevel` edge) are unchanged.
+  Stale `CardAnchor` (id not in `topLevel`) falls back to the
+  `topLevel` edge again — same as a null cursor — reversing the
+  null-return introduced by #203. The pill counter logic
+  (`currentIdx = topLevel.findIndex(a => a.id === cursorCardId)`
+  showing `— / M` from a `RowAnchor`) is unchanged. (#206)
+
 - **`tour serve` reuses a running server when one already exists for the
   same working directory — even on a fallback port.** Before binding,
   the entry point now probes **every** port in the fallback range
@@ -124,30 +148,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on SIGINT/SIGTERM/uncaughtException, not just child exit). In dev mode
   the marker stays `"dev"` regardless of what's in the strings, so the
   cache falls through to the runtime Bun.build path. (#204)
-
-- **`n` from a diff row now jumps to the next annotation in stream order,
-  not back to `topLevel[0]` (issue #203).** Under the step/jump motion
-  model (ADR 0023), `n` / `p` from a `RowAnchor` cursor always landed on
-  the first / last top-level Annotation regardless of where the cursor
-  sat in the diff stream — so a reviewer who had pressed `j` past
-  annotation 1's card and onto a diff row below it pressed `n` and
-  jumped *backward* to annotation 1 instead of forward to annotation 2.
-  Root cause: `walkCards`'s row-cursor case treated the row identically
-  to a null cursor (start one step beyond the boundary), never reading
-  the cursor's `(file, lineNumber)`. The walker now takes a `files`
-  argument (file display order, produced by `sortFilesForStream` —
-  already computed at both call sites). From a `RowAnchor`, `nextCard`
-  iterates `topLevel` and returns the first annotation whose anchor is
-  at or after the cursor's stream position (`a.file` later in display
-  order, or same file with `a.line_end >= cursor.lineNumber`); `prevCard`
-  is the symmetric reverse-order walk. `CardAnchor` semantics are
-  unchanged (still walks `topLevel` by index, issue #197). Null cursor
-  still falls back to the `topLevel` edge for lazy-materialization.
-  Stale `CardAnchor` (id not in `topLevel`) now returns null —
-  `validateCursor` clears the stale cursor on the next render and the
-  null-cursor edge fallback re-seeds. Both surfaces (TUI + webapp)
-  consume the same core helper and flip together. (#203, PRD #192 /
-  ADR 0023)
 
 - **`tour serve` no longer caches a stale client bundle across source
   edits (issue #202).** Dev-mode `tour serve` (running from
