@@ -12,9 +12,9 @@ import type { AuthorKind } from "./types.js";
 //     authored card never carries the affordance even if the renderer is
 //     later restarted with --reply-agent.
 //   - already-replied > lock-held: one-shot terminal beats the transient
-//     in-flight lock. Once a Reply has landed, the affordance is gone
-//     forever for this parent, regardless of whether the lock is currently
-//     held by some other dispatch on the tour.
+//     in-flight lock on the reason axis. Once a Reply has landed, the
+//     affordance is hidden forever for this parent, regardless of whether
+//     the lock is currently held by some other dispatch on the tour.
 export interface CanSendToAgentInput {
   replyAgentConfigured: boolean;
   lockHeld: boolean;
@@ -44,7 +44,7 @@ export function canSendToAgent(
     return { visible: false, enabled: false, reason: "no-reply-agent" };
   }
   if (input.hasReply) {
-    return { visible: true, enabled: false, reason: "already-replied" };
+    return { visible: false, enabled: false, reason: "already-replied" };
   }
   if (input.lockHeld) {
     return { visible: true, enabled: false, reason: "lock-held" };

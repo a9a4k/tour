@@ -100,6 +100,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **"Send to {agent}" affordance is hidden once a Reply has landed on the
+  parent.** Previously, the predicate returned `{ visible: true, enabled:
+  false }` for the `already-replied` case, so the webapp rendered a
+  permanently-greyed "Send to {agent}" button on every replied-to
+  Annotation and the TUI footer showed the `s` hint with no tooltip on
+  press. PRD #181 story 16 and ADR 0021's "one-shot terminal" clause
+  both specify the affordance should *disappear* once a Reply lands.
+  The predicate now returns `visible: false` on `already-replied`; both
+  surfaces' existing visibility gates pick the change up. The
+  `already-replied > lock-held` reason precedence is unchanged — both
+  are simply now hidden. (#188)
+
 - **Bare `tour serve` prints the auto-picked tour-id in the URL.**
   Previously, `tour serve` with no positional id printed
   `http://127.0.0.1:<port>` — a bare base URL. The SPA then auto-picked

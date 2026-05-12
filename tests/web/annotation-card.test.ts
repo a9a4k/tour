@@ -231,7 +231,7 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
     expect(container.querySelector(".send-to-agent-button")).toBeNull();
   });
 
-  it("disables the button when a reply has already landed (already-replied terminal)", () => {
+  it("hides the button when a reply has already landed (already-replied terminal)", () => {
     const reply: Annotation = {
       ...baseAnnotation,
       id: "ann-2",
@@ -252,11 +252,7 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
         onOpenReply: () => {},
       }),
     );
-    const btn = container.querySelector(
-      ".send-to-agent-button",
-    ) as HTMLButtonElement | null;
-    expect(btn).not.toBeNull();
-    expect(btn?.disabled).toBe(true);
+    expect(container.querySelector(".send-to-agent-button")).toBeNull();
   });
 
   it("disables the button + carries an agent-name tooltip when a reply-lock is held tour-wide", () => {

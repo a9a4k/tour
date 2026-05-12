@@ -7,9 +7,9 @@ import { canSendToAgent } from "../../src/core/can-send-to-agent.js";
 //   visibility: agent-card > no-reply-agent  (the card-level reason wins,
 //     because the affordance is structurally absent on agent cards even
 //     if the renderer is later restarted with --reply-agent set)
-//   enabled:    already-replied > lock-held  (one-shot terminal beats the
+//   reason:     already-replied > lock-held  (one-shot terminal beats the
 //     transient in-flight lock — the affordance is gone for this parent
-//     forever, regardless of lock state)
+//     forever, regardless of lock state; both are hidden)
 describe("canSendToAgent", () => {
   it("visible+enabled when human card, configured, no lock, no reply", () => {
     expect(
@@ -33,7 +33,7 @@ describe("canSendToAgent", () => {
     ).toEqual({ visible: true, enabled: false, reason: "lock-held" });
   });
 
-  it("visible+disabled with reason=already-replied when the parent has a Reply (one-shot terminal)", () => {
+  it("hidden with reason=already-replied when the parent has a Reply (one-shot terminal)", () => {
     expect(
       canSendToAgent({
         replyAgentConfigured: true,
@@ -41,10 +41,10 @@ describe("canSendToAgent", () => {
         authorKind: "human",
         hasReply: true,
       }),
-    ).toEqual({ visible: true, enabled: false, reason: "already-replied" });
+    ).toEqual({ visible: false, enabled: false, reason: "already-replied" });
   });
 
-  it("already-replied wins over lock-held when both are true", () => {
+  it("already-replied wins over lock-held on the reason axis when both are true (both hidden)", () => {
     expect(
       canSendToAgent({
         replyAgentConfigured: true,
@@ -52,7 +52,7 @@ describe("canSendToAgent", () => {
         authorKind: "human",
         hasReply: true,
       }),
-    ).toEqual({ visible: true, enabled: false, reason: "already-replied" });
+    ).toEqual({ visible: false, enabled: false, reason: "already-replied" });
   });
 
   it("hidden with reason=no-reply-agent when the renderer was not launched with --reply-agent", () => {
@@ -111,10 +111,10 @@ describe("canSendToAgent", () => {
   }>([
     // Configured, lock=false, human
     { cfg: true,  lock: false, kind: "human", rep: false, out: { visible: true, enabled: true } },
-    { cfg: true,  lock: false, kind: "human", rep: true,  out: { visible: true, enabled: false, reason: "already-replied" } },
+    { cfg: true,  lock: false, kind: "human", rep: true,  out: { visible: false, enabled: false, reason: "already-replied" } },
     // Configured, lock=true, human
     { cfg: true,  lock: true,  kind: "human", rep: false, out: { visible: true, enabled: false, reason: "lock-held" } },
-    { cfg: true,  lock: true,  kind: "human", rep: true,  out: { visible: true, enabled: false, reason: "already-replied" } },
+    { cfg: true,  lock: true,  kind: "human", rep: true,  out: { visible: false, enabled: false, reason: "already-replied" } },
     // Configured, agent (all hidden — agent-card dominates)
     { cfg: true,  lock: false, kind: "agent", rep: false, out: { visible: false, enabled: false, reason: "agent-card" } },
     { cfg: true,  lock: false, kind: "agent", rep: true,  out: { visible: false, enabled: false, reason: "agent-card" } },

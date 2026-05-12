@@ -930,8 +930,8 @@ function App(props: AppProps) {
       if (verdict.reason === "lock-held") {
         setFooterStatus(`${liveReplyLock?.agent ?? props.replyAgent} is replying — wait`);
       }
-      // Other reasons (agent-card, already-replied) — the footer hint was
-      // hidden anyway; pressing `s` is a silent no-op.
+      // agent-card and already-replied both fall out of the visible set
+      // (footer hint hidden), so pressing `s` on those is a silent no-op.
       return;
     }
     setFooterStatus(null);
