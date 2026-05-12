@@ -323,7 +323,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [annotations]);
   // The cursor's card target (PRD #192 / ADR 0022) when the cursor is on
   // an Annotation card; null on row / null cursor. Drives the active-card
-  // visual treatment, the SequencePill counter, and the URL `?ann=` mirror.
+  // visual treatment and the SequencePill counter. (The URL mirror reads
+  // the full `cursor` directly — see `decideMirrorUrl`.)
   const cursorCardId: string | null =
     cursor?.kind === "card" ? cursor.annotationId : null;
   const currentIdx = useMemo(() => {
