@@ -53,7 +53,10 @@ export class ReplyRunner {
   // human-authored Annotations don't fire the agent on first launch. Call
   // once before wiring up the watcher.
   async prime(): Promise<void> {
-    const annotations = await this.readSafely();
+    const annotations = await readAnnotationsSafely(
+      this.opts.cwd,
+      this.opts.tourId,
+    );
     for (const a of annotations) this.seen.add(a.id);
     this.initialized = true;
   }
@@ -62,7 +65,10 @@ export class ReplyRunner {
     if (!this.initialized) await this.prime();
     if (this.inFlight) return;
 
-    const annotations = await this.readSafely();
+    const annotations = await readAnnotationsSafely(
+      this.opts.cwd,
+      this.opts.tourId,
+    );
     const newlyHuman: Annotation[] = [];
     for (const a of annotations) {
       if (this.seen.has(a.id)) continue;
@@ -80,14 +86,6 @@ export class ReplyRunner {
     await this.dispatch(triggering, annotations);
   }
 
-  private async readSafely(): Promise<Annotation[]> {
-    try {
-      return await readAnnotations(this.opts.cwd, this.opts.tourId);
-    } catch {
-      return [];
-    }
-  }
-
   private async dispatch(
     triggering: Annotation,
     annotations: Annotation[],
@@ -99,13 +97,10 @@ export class ReplyRunner {
       // the pill's age counter is stable across the placeholder/patch
       // sequence.
       const startedAt = new Date().toISOString();
-      const lockBase = {
+      await writeReplyLock(this.opts.cwd, this.opts.tourId, {
         agent: this.opts.agent,
         responding_to: triggering.id,
         started_at: startedAt,
-      };
-      await writeReplyLock(this.opts.cwd, this.opts.tourId, {
-        ...lockBase,
         pid: 0,
       });
       await runDispatch({
@@ -116,8 +111,6 @@ export class ReplyRunner {
         triggering,
         annotations,
         startedAt,
-        startedAtMs: Date.parse(startedAt),
-        lockBase,
       });
     } finally {
       this.inFlight = false;
@@ -167,13 +160,10 @@ export async function requestReply(
   }
 
   const startedAt = new Date().toISOString();
-  const lockBase = {
+  const acquired = await tryAcquireReplyLock(opts.cwd, opts.tourId, {
     agent: opts.agent,
     responding_to: opts.annotationId,
     started_at: startedAt,
-  };
-  const acquired = await tryAcquireReplyLock(opts.cwd, opts.tourId, {
-    ...lockBase,
     pid: 0,
   });
   if (!acquired) return { kind: "busy" };
@@ -186,8 +176,6 @@ export async function requestReply(
     triggering,
     annotations,
     startedAt,
-    startedAtMs: Date.parse(startedAt),
-    lockBase,
   });
   return { kind: "dispatched" };
 }
@@ -215,8 +203,6 @@ interface RunDispatchOptions {
   triggering: Annotation;
   annotations: Annotation[];
   startedAt: string;
-  startedAtMs: number;
-  lockBase: { agent: string; responding_to: string; started_at: string };
 }
 
 async function runDispatch(opts: RunDispatchOptions): Promise<void> {
@@ -236,7 +222,9 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
       adapter: opts.adapter,
     });
     await writeReplyLock(opts.cwd, opts.tourId, {
-      ...opts.lockBase,
+      agent: opts.agent,
+      responding_to: opts.triggering.id,
+      started_at: opts.startedAt,
       pid: spawned.pid,
     });
 
@@ -260,7 +248,7 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
     await logger.finalize({
       code: result.code,
       signal: result.signal,
-      durationMs: Date.now() - opts.startedAtMs,
+      durationMs: Date.now() - Date.parse(opts.startedAt),
       error: result.error,
     });
     await persistReply(opts.cwd, opts.tourId, opts.agent, opts.triggering, result, logPath);
