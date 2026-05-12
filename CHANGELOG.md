@@ -106,6 +106,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tour create` stdout is now the tour-id alone; the "Open with: tour
+  tui &lt;id&gt;" hint moves to stderr (issue #205).** Previously the non-JSON
+  path wrote both lines to stdout, so `TOUR_ID=$(tour create --head HEAD)`
+  captured a two-line value and downstream `tour annotate "$TOUR_ID"` failed
+  with a no-matching-prefix error because the prefix lookup saw the hint
+  appended. The hint now goes to `console.error`, so it still reaches an
+  interactive TTY (stderr defaults to the same terminal) but is excluded
+  from `$()` substitution. `2>/dev/null` suppresses it cleanly without
+  affecting the captured id. `--json` mode is unchanged: stdout carries
+  the structured Tour object, stderr is empty. (#205)
+
 - **`tour serve` dev mode discriminator no longer trips when
   `embedded-client.ts` is in a populated state (issue #204).** The
   dev-vs-binary discriminator inside `tour serve` was a truthy-check on

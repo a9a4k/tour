@@ -52,7 +52,10 @@ export async function create(args: CreateArgs): Promise<void> {
   if (json) {
     printOutput(tour, true);
   } else {
+    // stdout is the id alone so `TOUR_ID=$(tour create --head HEAD)` captures
+    // it directly; the hint goes to stderr where it still reaches an
+    // interactive TTY but stays out of `$()` substitution. (Issue #205)
     console.log(id);
-    console.log(`Open with: tour tui ${id}`);
+    console.error(`Open with: tour tui ${id}`);
   }
 }

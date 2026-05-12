@@ -7,7 +7,7 @@ Worked examples for the three phases.
 Context: user has refactored a function. Wants a narrative tour for a teammate.
 
 ```sh
-TOUR_ID=$(tour create --head HEAD --title "Extract validation into its own module" | head -1)
+TOUR_ID=$(tour create --head HEAD --title "Extract validation into its own module")
 
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/validate.ts","side":"additions","line_start":1,"line_end":3,"body":"## Setup\n\nExtracts inline validation from `process.ts` into its own module. Lets us unit-test validation without `process.ts`'s file-I/O. No rule changes."}
@@ -26,7 +26,7 @@ Four annotations as narrative beats: setup → what moved → what was left → 
 Context: a security scan produced a list of issues. Convert to Tour for the human to triage.
 
 ```sh
-TOUR_ID=$(tour create --head HEAD --title "Security scan findings" | head -1)
+TOUR_ID=$(tour create --head HEAD --title "Security scan findings")
 
 # Findings from your scan tool, transformed to Tour JSONL
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
@@ -105,7 +105,7 @@ The reply lives in the Tour; the actual change lives in your commit history. The
 Context: agent walks through a config schema rename. Compact body with table, bullet list, and inline code — all render natively in the webapp.
 
 ```sh
-TOUR_ID=$(tour create --head HEAD --title "Migrate config from flat to namespaced keys" | head -1)
+TOUR_ID=$(tour create --head HEAD --title "Migrate config from flat to namespaced keys")
 
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/config.ts","side":"additions","line_start":1,"line_end":12,"body":"## Schema rename\n\n| Before | After |\n|---|---|\n| `timeout` | `network.timeout_ms` |\n| `retries` | `network.retries` |\n| `cache_size` | `cache.max_entries` |\n\n**Why namespace:** flat keys had started to collide — `timeout` meant two different things in different code paths. Namespacing makes ownership obvious and prevents future collisions.\n\n**One-way migration:** old keys are not read after this PR. The bottom-of-file `migrateLegacyConfig` helper converts on-disk configs once; remove it after one release."}
@@ -121,7 +121,7 @@ One annotation, four GFM elements (heading, table, bold, inline code). The webap
 Context: agent introduces a background refresh queue. A diagram lands the flow faster than a paragraph would.
 
 ```sh
-TOUR_ID=$(tour create --head HEAD --title "Add background refresh queue" | head -1)
+TOUR_ID=$(tour create --head HEAD --title "Add background refresh queue")
 
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/queue.ts","side":"additions","line_start":1,"line_end":3,"body":"## Refresh pipeline\n\nThis PR adds a background queue so stale items refresh without blocking the request path.\n\n```mermaid\nsequenceDiagram\n    Client->>API: GET /resource\n    API->>Cache: lookup\n    Cache-->>API: hit (possibly stale)\n    API-->>Client: response (fast path)\n    Note over API,Queue: if served stale\n    API->>Queue: enqueue refresh\n    Queue->>Source: fetch fresh\n    Source-->>Queue: data\n    Queue->>Cache: write\n```\n\n**Invariant:** the request path never waits on the queue. If the queue is full or the source is down, stale-served data is returned and the refresh is dropped — never the reverse."}
