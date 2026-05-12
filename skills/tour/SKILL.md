@@ -67,10 +67,7 @@ Aim for the second. ~40% the length, same content.
 ## Author — quick start
 
 ```sh
-# Pick the right diff base — matches GitHub's PR diff (merge-base with upstream).
-# Falls back to HEAD^ on detached HEAD, no upstream, or single-commit branches.
-BASE=$(git merge-base @{upstream} HEAD 2>/dev/null || echo "HEAD^")
-TOUR_ID=$(tour create --head HEAD --base "$BASE" --json | jq -r .id)
+TOUR_ID=$(tour create --head HEAD --json | jq -r .id)
 
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/foo.ts","side":"additions","line_start":12,"line_end":14,"body":"..."}
@@ -80,7 +77,7 @@ JSONL
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-**Why the merge-base, not `origin/main`**: `git diff origin/main..HEAD` includes the *inverse* of every commit that landed on main since your branch diverged — they appear as inverted deletions in the Tour, burying your actual changes. The merge-base is the point where your branch diverged; diffing from there gives the same scope GitHub uses for PR diffs. Tour's CLI default is `HEAD^`, which is correct for single-commit branches but too narrow for multi-commit ones — hence the merge-base computation in the snippet above.
+**Diff scope (background)**: with no `--base`, Tour resolves to the merge-base of HEAD with its upstream — matching what GitHub uses for PR diffs. Falls back to `HEAD^` on single-commit branches, detached HEAD, or no upstream. Don't override with `--base origin/main`: `git diff origin/main..HEAD` includes the *inverse* of every commit that landed on main since the branch diverged, burying your actual changes under inverted deletions. The default already does the right thing.
 
 Always end with `tour serve <id> --reply-agent <name> &` — the server starts in the background and prints a deep URL (`http://127.0.0.1:<port>/<id>`); modern terminals render it Cmd/Ctrl-clickable. Don't pass `--open`: the agent's job ends with the handoff, not by hijacking the user's browser. If a Tour server is already running for this repo's cwd, the second invocation reuses it and prints *"Tour already running at ..."* with the same deep URL — no port conflict, no duplicate server. The `--reply-agent` enables the per-card "Send to {agent}" affordance so the human can dispatch a reply-agent response on any individual comment they choose; without it, the Send affordance is hidden and the human's comments flow to you at `tour pickup` time instead. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for picking `<name>`.
 
