@@ -10,6 +10,7 @@ import {
   readReplyLock,
   writeReplyLock,
   deleteReplyLock,
+  tryAcquireReplyLock,
 } from "./reply-lock.js";
 import {
   buildEnvelope,
@@ -93,18 +94,11 @@ export class ReplyRunner {
   ): Promise<void> {
     this.inFlight = true;
     try {
-      const tour = await getTour(this.opts.cwd, this.opts.tourId);
-      const envelope = buildEnvelope(tour, annotations, triggering);
-      const tourDir = join(this.opts.cwd, ".tour", this.opts.tourId);
-      const systemPrompt = replyAgentSystemPrompt();
-      const logPath = join(tourDir, "logs", `reply-${triggering.id}.log`);
-
       // Write a placeholder lock with pid=0 first so the renderer's pill
       // surfaces *before* the spawn returns. started_at is captured once so
       // the pill's age counter is stable across the placeholder/patch
       // sequence.
       const startedAt = new Date().toISOString();
-      const startedAtMs = Date.now();
       const lockBase = {
         agent: this.opts.agent,
         responding_to: triggering.id,
@@ -114,91 +108,209 @@ export class ReplyRunner {
         ...lockBase,
         pid: 0,
       });
-
-      const spawned = spawnReplyAgent({
-        agent: this.opts.agent,
-        envelope,
-        systemPrompt,
+      await runDispatch({
         cwd: this.opts.cwd,
-        tourDir,
-        adapter: this.opts.adapter,
-      });
-      await writeReplyLock(this.opts.cwd, this.opts.tourId, {
-        ...lockBase,
-        pid: spawned.pid,
-      });
-
-      const logger = await createDispatchLogger(logPath, {
-        agent: this.opts.agent,
-        triggeringId: triggering.id,
         tourId: this.opts.tourId,
+        agent: this.opts.agent,
+        adapter: this.opts.adapter,
+        triggering,
+        annotations,
         startedAt,
-        pid: spawned.pid,
-        envelopeBytes: Buffer.byteLength(JSON.stringify(envelope), "utf8"),
-        systemPromptBytes: Buffer.byteLength(systemPrompt, "utf8"),
+        startedAtMs: Date.parse(startedAt),
+        lockBase,
       });
-      spawned.onStdout((chunk) => {
-        void logger.onStdout(chunk);
-      });
-      spawned.onStderr((chunk) => {
-        void logger.onStderr(chunk);
-      });
-
-      const result = await spawned.exit;
-      await logger.finalize({
-        code: result.code,
-        signal: result.signal,
-        durationMs: Date.now() - startedAtMs,
-        error: result.error,
-      });
-      await this.persistReply(triggering, result, logPath);
     } finally {
-      await deleteReplyLock(this.opts.cwd, this.opts.tourId);
       this.inFlight = false;
     }
   }
+}
 
-  // Stdout-as-reply contract (ADR 0012): trim, then write iff the agent
-  // exited cleanly with a non-empty body. Spawn errors, non-zero exits and
-  // empty stdout all log a clear stderr line and skip the write. Each
-  // failure-mode line carries a `; see <log path>` suffix (ADR 0014) so the
-  // user can inspect the dispatch log to find out *why*.
-  private async persistReply(
-    triggering: Annotation,
-    result: { code: number | null; stdout: string; error?: Error },
-    logPath: string,
-  ): Promise<void> {
-    const agent = this.opts.agent;
-    if (result.error) {
-      process.stderr.write(
-        `reply-agent ${agent}: spawn failed: ${result.error.message}; see ${logPath}\n`,
-      );
-      return;
-    }
-    if (result.code !== 0) {
-      process.stderr.write(
-        `reply-agent ${agent}: exited with code ${result.code} — no reply written; see ${logPath}\n`,
-      );
-      return;
-    }
-    const body = result.stdout.trim();
-    if (body === "") {
-      // Empty stdout is a normal dispatch completion (ADR 0015) — the seam
-      // would reject the empty body anyway (PRD #140 rule 1/5), so we
-      // short-circuit, record a rejection entry in the dispatch log (header
-      // already carries agent + triggering id), and skip the write. The
-      // lock clears via the caller's finally.
-      await appendFile(logPath, "=== rejected: empty body — no reply written\n");
-      process.stderr.write(
-        `reply-agent ${agent}: produced no output — no reply written; see ${logPath}\n`,
-      );
-      return;
-    }
-    await createReply(this.opts.cwd, this.opts.tourId, {
-      replies_to: triggering.id,
-      body,
-      author: agent,
-      author_kind: "agent",
-    });
+// The single dispatch entry point both surfaces converge on (issue #182).
+// Validates the annotation, atomically acquires the per-tour reply lock,
+// and delegates to the shared `runDispatch` helper. The watcher-driven
+// `ReplyRunner` path remains for back-compat; subsequent slices will
+// retire it in favour of explicit user-triggered dispatch.
+export interface RequestReplyOptions {
+  cwd: string;
+  tourId: string;
+  annotationId: string;
+  // The renderer-configured reply-agent name. Absent / empty means the
+  // renderer was launched without `--reply-agent` and dispatch is refused
+  // at the seam.
+  agent?: string;
+  // Test-only override so callers can inject a fake adapter without
+  // touching the shipped registry. Mirrors `ReplyRunnerOptions.adapter`.
+  adapter?: ShippedAdapter;
+}
+
+export type RequestReplyResult =
+  | { kind: "dispatched" }
+  | { kind: "busy" }
+  | { kind: "invalid-annotation" }
+  | { kind: "no-reply-agent" };
+
+export async function requestReply(
+  opts: RequestReplyOptions,
+): Promise<RequestReplyResult> {
+  if (!opts.agent) return { kind: "no-reply-agent" };
+
+  const annotations = await readAnnotationsSafely(opts.cwd, opts.tourId);
+  const triggering = annotations.find((a) => a.id === opts.annotationId);
+  // Three precondition rejections collapse to one result kind — the caller
+  // only needs "this annotation isn't a valid dispatch target", not the
+  // sub-reason (the UI already encoded those at affordance-visibility time
+  // via `canSendToAgent`; defence-in-depth here is enough).
+  if (!triggering) return { kind: "invalid-annotation" };
+  if (!shouldDispatchReply(triggering)) return { kind: "invalid-annotation" };
+  if (annotations.some((a) => a.replies_to === opts.annotationId)) {
+    return { kind: "invalid-annotation" };
   }
+
+  const startedAt = new Date().toISOString();
+  const lockBase = {
+    agent: opts.agent,
+    responding_to: opts.annotationId,
+    started_at: startedAt,
+  };
+  const acquired = await tryAcquireReplyLock(opts.cwd, opts.tourId, {
+    ...lockBase,
+    pid: 0,
+  });
+  if (!acquired) return { kind: "busy" };
+
+  await runDispatch({
+    cwd: opts.cwd,
+    tourId: opts.tourId,
+    agent: opts.agent,
+    adapter: opts.adapter,
+    triggering,
+    annotations,
+    startedAt,
+    startedAtMs: Date.parse(startedAt),
+    lockBase,
+  });
+  return { kind: "dispatched" };
+}
+
+async function readAnnotationsSafely(
+  cwd: string,
+  tourId: string,
+): Promise<Annotation[]> {
+  try {
+    return await readAnnotations(cwd, tourId);
+  } catch {
+    return [];
+  }
+}
+
+// Shared spawn-and-persist-and-release helper used by both `ReplyRunner`
+// and `requestReply`. Assumes the caller has already written the
+// pid=0 placeholder lock so the renderer's pill is visible during spawn
+// setup; releases the lock in its own `finally`.
+interface RunDispatchOptions {
+  cwd: string;
+  tourId: string;
+  agent: string;
+  adapter?: ShippedAdapter;
+  triggering: Annotation;
+  annotations: Annotation[];
+  startedAt: string;
+  startedAtMs: number;
+  lockBase: { agent: string; responding_to: string; started_at: string };
+}
+
+async function runDispatch(opts: RunDispatchOptions): Promise<void> {
+  try {
+    const tour = await getTour(opts.cwd, opts.tourId);
+    const envelope = buildEnvelope(tour, opts.annotations, opts.triggering);
+    const tourDir = join(opts.cwd, ".tour", opts.tourId);
+    const systemPrompt = replyAgentSystemPrompt();
+    const logPath = join(tourDir, "logs", `reply-${opts.triggering.id}.log`);
+
+    const spawned = spawnReplyAgent({
+      agent: opts.agent,
+      envelope,
+      systemPrompt,
+      cwd: opts.cwd,
+      tourDir,
+      adapter: opts.adapter,
+    });
+    await writeReplyLock(opts.cwd, opts.tourId, {
+      ...opts.lockBase,
+      pid: spawned.pid,
+    });
+
+    const logger = await createDispatchLogger(logPath, {
+      agent: opts.agent,
+      triggeringId: opts.triggering.id,
+      tourId: opts.tourId,
+      startedAt: opts.startedAt,
+      pid: spawned.pid,
+      envelopeBytes: Buffer.byteLength(JSON.stringify(envelope), "utf8"),
+      systemPromptBytes: Buffer.byteLength(systemPrompt, "utf8"),
+    });
+    spawned.onStdout((chunk) => {
+      void logger.onStdout(chunk);
+    });
+    spawned.onStderr((chunk) => {
+      void logger.onStderr(chunk);
+    });
+
+    const result = await spawned.exit;
+    await logger.finalize({
+      code: result.code,
+      signal: result.signal,
+      durationMs: Date.now() - opts.startedAtMs,
+      error: result.error,
+    });
+    await persistReply(opts.cwd, opts.tourId, opts.agent, opts.triggering, result, logPath);
+  } finally {
+    await deleteReplyLock(opts.cwd, opts.tourId);
+  }
+}
+
+// Stdout-as-reply contract (ADR 0012): trim, then write iff the agent
+// exited cleanly with a non-empty body. Spawn errors, non-zero exits and
+// empty stdout all log a clear stderr line and skip the write. Each
+// failure-mode line carries a `; see <log path>` suffix (ADR 0014) so the
+// user can inspect the dispatch log to find out *why*.
+async function persistReply(
+  cwd: string,
+  tourId: string,
+  agent: string,
+  triggering: Annotation,
+  result: { code: number | null; stdout: string; error?: Error },
+  logPath: string,
+): Promise<void> {
+  if (result.error) {
+    process.stderr.write(
+      `reply-agent ${agent}: spawn failed: ${result.error.message}; see ${logPath}\n`,
+    );
+    return;
+  }
+  if (result.code !== 0) {
+    process.stderr.write(
+      `reply-agent ${agent}: exited with code ${result.code} — no reply written; see ${logPath}\n`,
+    );
+    return;
+  }
+  const body = result.stdout.trim();
+  if (body === "") {
+    // Empty stdout is a normal dispatch completion (ADR 0015) — the seam
+    // would reject the empty body anyway (PRD #140 rule 1/5), so we
+    // short-circuit, record a rejection entry in the dispatch log (header
+    // already carries agent + triggering id), and skip the write. The
+    // lock clears via the caller's finally.
+    await appendFile(logPath, "=== rejected: empty body — no reply written\n");
+    process.stderr.write(
+      `reply-agent ${agent}: produced no output — no reply written; see ${logPath}\n`,
+    );
+    return;
+  }
+  await createReply(cwd, tourId, {
+    replies_to: triggering.id,
+    body,
+    author: agent,
+    author_kind: "agent",
+  });
 }

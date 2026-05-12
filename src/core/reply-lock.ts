@@ -52,6 +52,31 @@ export async function writeReplyLock(
   await writeFile(replyLockPath(repoRoot, tourId), JSON.stringify(lock));
 }
 
+// Atomic try-acquire: returns true iff the caller is now the lock holder.
+// First does a self-heal read (dead-pid locks clear themselves via
+// `readReplyLock`), then attempts an O_CREAT|O_EXCL write. The exclusive
+// flag is what makes the acquire safe against a racing concurrent caller —
+// two callers seeing "no lock" in parallel still resolve to exactly one
+// successful write.
+export async function tryAcquireReplyLock(
+  repoRoot: string,
+  tourId: string,
+  lock: ReplyLock,
+): Promise<boolean> {
+  if (await readReplyLock(repoRoot, tourId)) return false;
+  try {
+    await writeFile(
+      replyLockPath(repoRoot, tourId),
+      JSON.stringify(lock),
+      { flag: "wx" },
+    );
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw err;
+  }
+}
+
 export async function deleteReplyLock(
   repoRoot: string,
   tourId: string,

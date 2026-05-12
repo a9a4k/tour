@@ -28,6 +28,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Core seam for explicit reply-agent dispatch.** Two new pure entry
+  points land in `core/` ahead of the dispatch-trigger flip (PRD #181):
+  `requestReply(opts)` in `core/reply-runner.ts` is the single dispatch
+  entry point both surfaces will converge on — it validates the
+  annotation (must exist, be human-authored, and not yet have a Reply),
+  atomically acquires `.reply-lock.json`, spawns the configured agent,
+  captures stdout as the Reply Annotation, and releases the lock,
+  returning a discriminated `{ kind: "dispatched" | "busy" |
+  "invalid-annotation" | "no-reply-agent" }`. `canSendToAgent(...)` in
+  `core/can-send-to-agent.ts` is the pure predicate consumed by both
+  surfaces to decide visibility/enabled state of the per-card
+  affordance. No surface or watcher wiring is changed in this slice —
+  the watcher-driven auto-dispatch still works exactly as today. (#182)
 - `tour serve` prints a one-line tip when exactly one shipped agent CLI
   (`claude`, `codex`, `gemini`, `opencode`, `pi`) is reachable on PATH
   and `--reply-agent` is not passed, suggesting the flag. Zero or
