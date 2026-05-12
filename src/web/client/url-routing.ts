@@ -12,12 +12,6 @@
 // back-compat fallback so existing links keep working; new navigation
 // always writes path + fragment via `composeUrl`.
 
-export interface UrlLocation {
-  pathname: string;
-  search: string;
-  hash: string;
-}
-
 // First non-empty path segment of `pathname` (e.g., "/abc" → "abc",
 // "/abc/foo" → "abc", "/" → null). Decodes the segment so a hand-typed
 // id with URL-encoded characters round-trips.
