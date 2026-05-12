@@ -100,6 +100,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: "Send to {agent}" + "Reply" affordances now render on every
+  human Reply, not just the top-level Annotation.** Previously, the
+  webapp `AnnotationCard` rendered its action row exactly once per
+  thread (after the inline Replies list), so a human Reply inside the
+  Thread had header + body only — no `Send to {agent}`, no `Reply`. A
+  human could author a reply to the agent's Reply via the keyboard
+  composer, but the webapp surface offered no way to dispatch that
+  human reply to the agent, terminating the Thread at the first human
+  turn from the webapp's perspective. The inline-Reply rendering loop
+  now produces an action row per human Reply, gated by the same shared
+  `canSendToAgent` predicate applied per-Annotation — the one-shot-
+  terminal rule applies per-Annotation, not per-Thread, so a Reply
+  whose own child has landed hides its Send button. Agent-authored
+  Replies render no action row (`agent-card` reason). The Send button
+  on a Reply calls `POST /api/tours/:id/request-reply` with that
+  Reply's id; the Reply button opens the composer targeted at the
+  Reply. (PRD #181 story 11, #189)
+
 - **"Send to {agent}" affordance is hidden once a Reply has landed on the
   parent.** Previously, the predicate returned `{ visible: true, enabled:
   false }` for the `already-replied` case, so the webapp rendered a

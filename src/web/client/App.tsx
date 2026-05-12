@@ -1382,8 +1382,14 @@ function FileBlockInner({
       if (!meta.isAnchor) return null;
       const a = meta.annotation;
       const replies = repliesByRoot.get(a.id) ?? [];
-      const isReplying =
-        composerTarget?.kind === "reply" && composerTarget.replies_to === a.id;
+      // Composer renders inline beneath whichever annotation in this
+      // thread is being replied to — top-level or any Reply (issue #189).
+      const replyTargetId =
+        composerTarget?.kind === "reply" &&
+        (composerTarget.replies_to === a.id ||
+          replies.some((r) => r.id === composerTarget.replies_to))
+          ? composerTarget.replies_to
+          : null;
       return (
         <AnnotationCard
           annotation={a}
@@ -1392,14 +1398,14 @@ function FileBlockInner({
           navIndex={navIndexById.get(a.id) ?? null}
           navTotal={navTotal}
           registerRef={registerAnnotationRef}
-          replying={isReplying}
-          composerError={isReplying ? composerError : null}
-          onOpenReply={() => onOpenReply(a.id)}
+          replyTargetId={replyTargetId}
+          composerError={replyTargetId !== null ? composerError : null}
+          onOpenReply={onOpenReply}
           onSubmitReply={onSubmit}
           onCancelReply={onCancel}
           replyLock={replyLock}
           replyAgent={replyAgent}
-          onSendToAgent={() => onSendToAgent(a.id)}
+          onSendToAgent={onSendToAgent}
         />
       );
     },
@@ -1509,16 +1515,25 @@ interface AnnotationCardProps {
   navIndex: number | null;
   navTotal: number;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
-  replying?: boolean;
   composerError?: string | null;
-  onOpenReply?: () => void;
+  // The annotation id (top-level or inline Reply) currently targeted by
+  // the reply composer; null/undefined → composer not open in this card.
+  // When set, the composer renders below the matching annotation's
+  // action row — top-level beneath the replies list, inline Reply
+  // beneath the Reply itself.
+  replyTargetId?: string | null;
+  // Callbacks now take the annotation id so inline-Reply rows can address
+  // themselves (issue #189, PRD #181 story 11). Top-level callers pass
+  // the function directly; the action row computes the right id at
+  // click time.
+  onOpenReply?: (annotationId: string) => void;
   onSubmitReply?: (body: string) => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181).
   // Null/undefined → the "Send to {agent}" affordance is hidden.
   replyAgent?: string | null;
-  onSendToAgent?: () => void;
+  onSendToAgent?: (annotationId: string) => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -1569,8 +1584,8 @@ export function AnnotationCard({
   navIndex,
   navTotal,
   registerRef,
-  replying,
   composerError,
+  replyTargetId,
   onOpenReply,
   onSubmitReply,
   onCancelReply,
@@ -1584,22 +1599,27 @@ export function AnnotationCard({
       : `${annotation.line_start}-${annotation.line_end}`;
   const showPill =
     !!replyLock && pillTargetsThisCard(annotation.id, replies, replyLock);
-  // Compute the "Send to {agent}" affordance via the shared core
-  // predicate (issue #184, PRD #181). Visibility hides the button
-  // entirely; disabled keeps it visible but unclickable with a tooltip.
-  // Focused-card emphasis is applied via CSS — `.annotation-block.current
-  // .send-to-agent-button` lights up in the accent colour; peer cards
-  // stay muted (see spa.ts).
+  const lockHeld = replyLock !== null && replyLock !== undefined;
+  // Per-Annotation verdicts so each human card (top-level + inline
+  // Replies) gets its own `Send to {agent}` decision. The one-shot-
+  // terminal rule applies per Annotation, not per Thread (PRD #181
+  // story 11) — a Reply with a child of its own hides Send on that
+  // Reply, even if the top-level still has Send hidden because *it*
+  // has a Reply.
   const sendVerdict = canSendToAgent({
     replyAgentConfigured: !!replyAgent,
-    lockHeld: replyLock !== null && replyLock !== undefined,
+    lockHeld,
     authorKind: annotation.author_kind,
     hasReply: (replies?.length ?? 0) > 0,
   });
+  const lockedTooltip = lockHeld && replyLock
+    ? `${replyLock.agent} is replying — wait`
+    : undefined;
   const sendTooltip =
-    sendVerdict.reason === "lock-held" && replyLock
-      ? `${replyLock.agent} is replying — wait`
-      : undefined;
+    sendVerdict.reason === "lock-held" ? lockedTooltip : undefined;
+  // The composer renders inline beneath whichever annotation in this
+  // thread matches replyTargetId — top-level or any Reply (issue #189).
+  const composerAt = replyTargetId ?? null;
   return (
     <div
       className={isCurrent ? "annotation-block current" : "annotation-block"}
@@ -1625,28 +1645,87 @@ export function AnnotationCard({
       </div>
       {replies && replies.length > 0 ? (
         <div className="ann-replies">
-          {replies.map((r) => (
-            <div
-              className="ann-reply"
-              key={r.id}
-              ref={(el) => registerRef?.(r.id, el)}
-              id={`annotation-${r.id}`}
-            >
-              <div className="ann-header">
-                <span className={`author-kind ${r.author_kind}`}>
-                  [{r.author_kind}]
-                </span>
-                {r.author !== r.author_kind ? <> {r.author}</> : null}
+          {replies.map((r) => {
+            const replyHasChild = replies.some((o) => o.replies_to === r.id);
+            const replyVerdict = canSendToAgent({
+              replyAgentConfigured: !!replyAgent,
+              lockHeld,
+              authorKind: r.author_kind,
+              hasReply: replyHasChild,
+            });
+            const replyTooltip =
+              replyVerdict.reason === "lock-held" ? lockedTooltip : undefined;
+            // Agent Replies get no action row (existing webapp convention
+            // for agent-authored Annotations). Human Replies always get a
+            // Reply button when onOpenReply is wired; Send is gated by
+            // the verdict.
+            const showReplyBtn = r.author_kind === "human" && !!onOpenReply;
+            const showSendBtn = replyVerdict.visible && !!onSendToAgent;
+            const showActions = showReplyBtn || showSendBtn;
+            const showComposerHere = composerAt === r.id;
+            return (
+              <div
+                className="ann-reply"
+                key={r.id}
+                ref={(el) => registerRef?.(r.id, el)}
+                id={`annotation-${r.id}`}
+              >
+                <div className="ann-header">
+                  <span className={`author-kind ${r.author_kind}`}>
+                    [{r.author_kind}]
+                  </span>
+                  {r.author !== r.author_kind ? <> {r.author}</> : null}
+                </div>
+                <div className="ann-body">
+                  <AnnotationMarkdown body={r.body} />
+                </div>
+                {showComposerHere ? (
+                  <div className="ann-reply-composer">
+                    <Composer
+                      placeholder="Reply…"
+                      submitLabel="Reply"
+                      error={composerError ?? null}
+                      onSubmit={(body) => onSubmitReply?.(body)}
+                      onCancel={() => onCancelReply?.()}
+                    />
+                  </div>
+                ) : showActions ? (
+                  <div className="ann-actions">
+                    {showReplyBtn ? (
+                      <button
+                        type="button"
+                        className="reply-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenReply!(r.id);
+                        }}
+                      >
+                        Reply
+                      </button>
+                    ) : null}
+                    {showSendBtn ? (
+                      <button
+                        type="button"
+                        className="send-to-agent-button"
+                        disabled={!replyVerdict.enabled}
+                        title={replyTooltip}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (replyVerdict.enabled) onSendToAgent!(r.id);
+                        }}
+                      >
+                        Send to {replyAgent}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-              <div className="ann-body">
-                <AnnotationMarkdown body={r.body} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
       {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
-      {replying ? (
+      {composerAt === annotation.id ? (
         <div className="ann-reply-composer">
           <Composer
             placeholder="Reply…"
@@ -1664,7 +1743,7 @@ export function AnnotationCard({
               className="reply-button"
               onClick={(e) => {
                 e.stopPropagation();
-                onOpenReply();
+                onOpenReply(annotation.id);
               }}
             >
               Reply
@@ -1678,7 +1757,7 @@ export function AnnotationCard({
               title={sendTooltip}
               onClick={(e) => {
                 e.stopPropagation();
-                if (sendVerdict.enabled) onSendToAgent();
+                if (sendVerdict.enabled) onSendToAgent(annotation.id);
               }}
             >
               Send to {replyAgent}
@@ -1806,25 +1885,30 @@ function AnnotationList({
   return (
     <>
       {topLevel.map((a) => {
-        const isReplying =
-          composerTarget?.kind === "reply" && composerTarget.replies_to === a.id;
+        const replies = repliesByRoot.get(a.id) ?? [];
+        const replyTargetId =
+          composerTarget?.kind === "reply" &&
+          (composerTarget.replies_to === a.id ||
+            replies.some((r) => r.id === composerTarget.replies_to))
+            ? composerTarget.replies_to
+            : null;
         return (
           <AnnotationCard
             key={a.id}
             annotation={a}
-            replies={repliesByRoot.get(a.id) ?? []}
+            replies={replies}
             isCurrent={a.id === currentAnnotationId}
             navIndex={navIndexById.get(a.id) ?? null}
             navTotal={navTotal}
             registerRef={registerAnnotationRef}
-            replying={isReplying}
-            composerError={isReplying ? composerError : null}
-            onOpenReply={() => onOpenReply(a.id)}
+            replyTargetId={replyTargetId}
+            composerError={replyTargetId !== null ? composerError : null}
+            onOpenReply={onOpenReply}
             onSubmitReply={onSubmit}
             onCancelReply={onCancel}
             replyLock={replyLock}
             replyAgent={replyAgent}
-            onSendToAgent={() => onSendToAgent(a.id)}
+            onSendToAgent={onSendToAgent}
           />
         );
       })}
