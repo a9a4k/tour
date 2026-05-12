@@ -44,6 +44,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`file-grid-css` module for the Tour-owned web row renderer.** New
+  `src/web/client/file-grid-css.ts` exports `FILE_GRID_CSS`, the layout
+  + visual-cue stylesheet the new web row renderer (PRD #212 slice 3)
+  injects at the diff pane root. Owns: per-file `<div>` grid with split
+  (4-column: gutter-L, code-L, gutter-R, code-R) and unified (2-column:
+  gutter, code) templates flipped by `data-layout`; per-row `<div>`
+  subgrid spanning all columns; `+` / `-` / `change-*` line-type
+  backgrounds keyed on `data-line-type`; cursor outline keyed on a
+  `.is-cursor` className (prop-driven, ADR 0024's "cursor outline is a
+  prop" decision — replaces the legacy attribute-mutated selector);
+  range tint via `.in-range`; sticky `.tour-file-header`; comment-
+  affordance pointer on annotatable rows; side-anchored cards
+  (`.tour-card[data-side]`, cols 1-2 deletions / 3-4 additions in
+  split, full-width in unified). All colors source from `core/theme.ts`
+  tokens — no new tokens, no duplicated hex literals. Unused at this
+  slice's merge time; slices 4-6 wire it into `<FileBlock>` and swap
+  in `App.tsx`.
+
+  Issue: #216 · PRD: #212 · ADR: 0024
+
 - **Foundation for the Pierre → Tour-owned web row renderer migration.**
   New `src/web/client/syntax-highlight.ts` deep module exposes
   `tokenize(content, lang) → Map<lineNumber, html>` over a singleton
