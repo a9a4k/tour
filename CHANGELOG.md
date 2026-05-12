@@ -44,6 +44,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI Picker now routes through the Tour-session store (slice 1
+  surface wiring, TUI side).** The TUI's `t` keystroke, `j`/`k` picker
+  navigation, `Enter` commit, and `Esc`/`t` close all dispatch into
+  the `TourSessionStore` from `core/tour-session.ts`. Picker state
+  (`pickerOpen` / `pickerCursor` / `pickerTours` / `pickerCounts`)
+  is no longer held in `tui/app.tsx` `useState`; reads come from the
+  store via `useTourSession`. The initial Tour-list fetch dispatches
+  `tourList.loading` → `tourList.loaded` / `tourList.failed`. An
+  intent listener realizes `loadTour` (in-process bundle reload +
+  CONTEXT-pinned cursor / folds / overrides / expansion resets;
+  picker close + reply-lock idle come from the reducer's
+  `bundle.loaded` cascade) and `scrollPickerRow` (OpenTUI
+  `scrollChildIntoView` on the picker modal scrollbox); `mirrorUrl`
+  is ignored (TUI has no URL). Webapp untouched. (#209 · PRD #207)
 - **Tour-session foundation module (slice 1: Picker).** New
   `core/tour-session.ts` lands the live state aggregate a single
   surface drives for one opened Tour as a pure `(state, action) →

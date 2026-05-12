@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { CURSOR_GLYPH } from "./DiffLine.js";
@@ -6,6 +8,10 @@ interface TourPickerProps {
   rows: PickerRow[];
   currentTourId: string | null;
   cursor: number;
+  // Ref onto the picker's inner scrollbox so the Tour-session intent
+  // listener can realize `scrollPickerRow` by scrolling
+  // `picker-row-${idx}` into view.
+  scrollRef?: Ref<ScrollBoxRenderable | null>;
 }
 
 function rowLabel(r: PickerRow): string {
@@ -14,7 +20,7 @@ function rowLabel(r: PickerRow): string {
   return ` ${r.glyph} ${age}  ${r.title}${badge} `;
 }
 
-export function TourPicker({ rows, currentTourId, cursor }: TourPickerProps) {
+export function TourPicker({ rows, currentTourId, cursor, scrollRef }: TourPickerProps) {
   return (
     <box
       position="absolute"
@@ -29,7 +35,7 @@ export function TourPicker({ rows, currentTourId, cursor }: TourPickerProps) {
       zIndex={100}
       backgroundColor={theme.canvas.default}
     >
-      <scrollbox height="100%">
+      <scrollbox ref={scrollRef} height="100%">
         {rows.length === 0 ? (
           <text fg={theme.fg.muted}>{" (no tours) "}</text>
         ) : (
@@ -45,7 +51,7 @@ export function TourPicker({ rows, currentTourId, cursor }: TourPickerProps) {
             else if (isCurrent) bg = theme.bg.accentCurrent.tui;
             const glyph = isCursor ? CURSOR_GLYPH : " ";
             return (
-              <box key={r.id} flexDirection="row">
+              <box key={r.id} id={`picker-row-${i}`} flexDirection="row">
                 <text fg={theme.fg.accent} bg={bg}>{glyph}</text>
                 <text fg={theme.fg.default} bg={bg}>{rowLabel(r)}</text>
               </box>

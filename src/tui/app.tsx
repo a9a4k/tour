@@ -39,6 +39,13 @@ import {
   type VisibleRow,
 } from "../core/file-tree.js";
 import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
+import {
+  TourSessionStore,
+  useTourSession,
+  pickerHighlighted,
+  initialTourSessionState,
+  type TourSummary,
+} from "../core/tour-session.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
@@ -193,10 +200,21 @@ function App(props: AppProps) {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const [repliesCollapsed, setRepliesCollapsed] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerCursor, setPickerCursor] = useState(0);
-  const [pickerTours, setPickerTours] = useState<Tour[]>([]);
-  const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
+  // Tour-session store (PRD #207 slice 1, issue #209). The picker slice's
+  // state lives in the reducer; the TUI dispatches `picker.*` /
+  // `tourList.*` / `bundle.*` actions and realizes the emitted intents in
+  // its own substrate. The store is per-TUI-process — instantiated once
+  // on first render and stable across re-renders.
+  const [store] = useState<TourSessionStore>(() => {
+    const replyLockInit = props.replyLock !== undefined ? props.replyLock : null;
+    return new TourSessionStore({
+      ...initialTourSessionState(),
+      currentTourId: props.bundle.tour.id,
+      bundle: { kind: "ok", value: props.bundle },
+      replyLock: { kind: "ok", value: replyLockInit },
+    });
+  });
+  const sessionState = useTourSession(store);
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
   // Footer status line that flashes after an `s` no-op so the user knows
@@ -223,6 +241,7 @@ function App(props: AppProps) {
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const pickerScrollRef = useRef<ScrollBoxRenderable | null>(null);
   // First-paint-per-tour guard for the side effects that ride alongside the
   // cursor: revealAndLocate the first annotation's file in the sidebar tree
   // and drop sidebar focus so j/k routes to the diff pane (issue #132
@@ -617,79 +636,117 @@ function App(props: AppProps) {
   const baseFooter = `${footerPreview}  ·  ${footerHints}`;
   const footer = footerStatus ? `${baseFooter}  ·  ${footerStatus}` : baseFooter;
 
-  const pickerRows = useMemo(
-    () =>
-      buildPickerRows({
-        tours: pickerTours,
-        annotationCounts: pickerCounts,
-        now: Date.now(),
-      }),
-    [pickerTours, pickerCounts],
-  );
-
+  // Open the Tour picker (PRD #207 / issue #209). Routes through the
+  // Tour-session store: `tourList.loading` → fetch → `tourList.loaded`
+  // (or `tourList.failed`) → `picker.open` with the built rows.
+  // The initial picker cursor lands on the first non-current tour
+  // (mirrors the prior UX); we walk there via `picker.move(+1)` since
+  // the reducer's `picker.open` always opens at cursor 0.
   const openPicker = async () => {
-    if (pickerOpen) return;
-    if (props.loadTours) {
-      try {
-        const { tours, annotationCounts: counts } = await props.loadTours();
-        setPickerTours(tours);
-        setPickerCounts(counts);
-        const rows = buildPickerRows({ tours, annotationCounts: counts, now: Date.now() });
-        setPickerCursor(initialPickerCursor(rows, liveTour.id));
-      } catch {
-        setPickerTours([]);
-        setPickerCounts({});
-        setPickerCursor(0);
-      }
-    } else {
-      setPickerCursor(initialPickerCursor(pickerRows, liveTour.id));
-    }
-    setPickerOpen(true);
-  };
-
-  const closePicker = () => {
-    setPickerOpen(false);
-  };
-
-  const commitTour = async (id: string) => {
-    if (!props.loadTour) {
-      closePicker();
+    if (store.getState().picker.kind === "open") return;
+    if (!props.loadTours) {
+      store.dispatch({ type: "picker.open", rows: [] });
       return;
     }
-    if (id === liveTour.id) {
-      closePicker();
-      return;
-    }
+    store.dispatch({ type: "tourList.loading" });
     try {
-      const next = await props.loadTour(id);
-      setBundle(next);
-      if (props.loadReplyLock) {
-        try {
-          setReplyLock(await props.loadReplyLock(id));
-        } catch {
-          setReplyLock(null);
-        }
-      } else {
-        setReplyLock(null);
+      const { tours, annotationCounts: counts } = await props.loadTours();
+      const summaries: TourSummary[] = tours.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        created_at: t.created_at,
+      }));
+      store.dispatch({ type: "tourList.loaded", tours: summaries });
+      const rows = buildPickerRows({ tours, annotationCounts: counts, now: Date.now() });
+      store.dispatch({ type: "picker.open", rows });
+      const initialIdx = initialPickerCursor(rows, liveTour.id);
+      for (let i = 0; i < initialIdx; i++) {
+        store.dispatch({ type: "picker.move", delta: 1 });
       }
-      setSelectedRowIdx(0);
-      setCursor(null);
-      setCollapsedOverrides({});
-      setCollapsedFolders(new Set());
-      // Reset expansion fresh, then seed from the new tour's orphan windows
-      // (issue #114). Tour switch always wipes user-driven expansion per
-      // CONTEXT.md guidance; orphan windows are part of the new tour's
-      // planner-init state.
-      setExpansion(
-        seedFromOrphans(
-          emptyExpansion(),
-          next.kind === "ok" ? flattenOrphanWindows(next.files) : [],
-        ),
-      );
-    } finally {
-      closePicker();
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      store.dispatch({ type: "tourList.failed", error });
+      store.dispatch({ type: "picker.open", rows: [] });
     }
   };
+
+  // Intent listener — realizes the reducer's emitted intents in the TUI
+  // substrate (PRD #207 slice 1 contract). `loadTour` performs the
+  // in-process bundle reload and applies the TUI-local resets that
+  // aren't yet in the reducer (cursor / folds / overrides / expansion /
+  // bundle + replyLock useState). `scrollPickerRow` scrolls the picker
+  // modal scrollbox. `mirrorUrl` is ignored — the TUI has no URL.
+  useEffect(() => {
+    let unmounted = false;
+    const unsubscribe = store.onIntent((intent) => {
+      if (intent.type === "loadTour") {
+        const tourId = intent.tourId;
+        if (!props.loadTour) return;
+        if (tourId === liveTour.id) {
+          // Same-tour Enter: keymap short-circuited to picker.close, so
+          // this branch is defensive against direct loadTour intents from
+          // future call sites.
+          return;
+        }
+        (async () => {
+          try {
+            const next = await props.loadTour!(tourId);
+            if (unmounted) return;
+            setBundle(next);
+            if (props.loadReplyLock) {
+              try {
+                const lock = await props.loadReplyLock(tourId);
+                if (!unmounted) setReplyLock(lock);
+              } catch {
+                if (!unmounted) setReplyLock(null);
+              }
+            } else {
+              setReplyLock(null);
+            }
+            // CONTEXT-pinned Tour-switch resets that don't yet live in
+            // the reducer (slice 1: only picker + replyLock + bundle
+            // are reset by `bundle.loaded`). Cursor / folds / overrides /
+            // expansion are reset here; they migrate into the reducer
+            // in subsequent slices.
+            setSelectedRowIdx(0);
+            setCursor(null);
+            setCollapsedOverrides({});
+            setCollapsedFolders(new Set());
+            setExpansion(
+              seedFromOrphans(
+                emptyExpansion(),
+                next.kind === "ok" ? flattenOrphanWindows(next.files) : [],
+              ),
+            );
+            // Drive the reducer's `bundle.loaded` cascade — picker closes
+            // (defensively; commit already closed it) and replyLock
+            // resets to idle in the store's shadow.
+            store.dispatch({ type: "bundle.loaded", tourId, bundle: next });
+          } catch (e) {
+            if (unmounted) return;
+            const error = e instanceof Error ? e.message : String(e);
+            store.dispatch({ type: "bundle.failed", tourId, error });
+          }
+        })();
+        return;
+      }
+      if (intent.type === "scrollPickerRow") {
+        const sb = pickerScrollRef.current;
+        if (!sb) return;
+        scrollChildIntoView(sb, `picker-row-${intent.idx}`);
+        return;
+      }
+      // mirrorUrl: TUI has no URL — ignored per the slice-1 contract.
+    });
+    return () => {
+      unmounted = true;
+      unsubscribe();
+    };
+    // store / props.loadTour / props.loadReplyLock are stable for the
+    // TUI's CLI invocation; liveTour.id is read inside the closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, props.loadTour, props.loadReplyLock, liveTour.id]);
 
   const jumpToAnnotation = (ann: Annotation) => {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
@@ -1029,23 +1086,28 @@ function App(props: AppProps) {
       }
       return;
     }
-    if (pickerOpen) {
+    if (sessionState.picker.kind === "open") {
       if (key.ctrl || key.shift) return;
       if (key.name === "escape" || key.name === "t") {
-        closePicker();
+        store.dispatch({ type: "picker.close" });
         return;
       }
       if (key.name === "j" || key.name === "down") {
-        setPickerCursor((c) => Math.min(pickerRows.length - 1, c + 1));
+        store.dispatch({ type: "picker.move", delta: 1 });
         return;
       }
       if (key.name === "k" || key.name === "up") {
-        setPickerCursor((c) => Math.max(0, c - 1));
+        store.dispatch({ type: "picker.move", delta: -1 });
         return;
       }
       if (key.name === "return") {
-        const r = pickerRows[pickerCursor];
-        if (r) void commitTour(r.id);
+        const highlighted = pickerHighlighted(sessionState);
+        if (!highlighted) return;
+        if (highlighted.id === liveTour.id) {
+          store.dispatch({ type: "picker.close" });
+          return;
+        }
+        store.dispatch({ type: "picker.commit" });
         return;
       }
       return;
@@ -1463,11 +1525,12 @@ function App(props: AppProps) {
         <text fg={theme.fg.muted}>{footer}</text>
       </box>
 
-      {pickerOpen && (
+      {sessionState.picker.kind === "open" && (
         <TourPicker
-          rows={pickerRows}
+          rows={sessionState.picker.rows}
           currentTourId={liveTour.id}
-          cursor={pickerCursor}
+          cursor={sessionState.picker.cursor}
+          scrollRef={pickerScrollRef}
         />
       )}
 
