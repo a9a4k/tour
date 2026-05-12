@@ -44,6 +44,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`<FileBlock>`: per-file React component owning the grid, lazy
+  highlight, planner walk, and row dispatch (PRD #212 slice 5).** New
+  `src/web/client/FileBlock.tsx` exports a `React.memo`'d `<FileBlock>`
+  that renders one file's diff via the Tour-owned path. Owns the
+  sticky file header (rename pill + classification reason), the
+  file-level grid container (`<div class="tour-file-block"
+  data-layout>`), and the per-file planner walk that dispatches each
+  `PlannedRow` to `<DiffRow>` / `<CardRow>` / `<InteractiveRow>` from
+  #217. Calls `useLazyHighlight` (#215) twice — additions side on
+  `file.newContent`, deletions side on `file.oldContent` — and routes
+  the resulting token maps into `<DiffRow>`'s `tokensLeft` /
+  `tokensRight` props. Hunk-header rows promote to `<InteractiveRow>`
+  (`boundary-top` for hunkIndex 0, `hunk-separator` otherwise) so the
+  `@@` row and the expansion affordance share one component;
+  `gap-mid-top` / `boundary-bottom` route directly. `isCursor` flows
+  from the `cursor` prop via type-aware matching: `RowAnchor` (file +
+  side + lineNumber, or `interactive.subKind` + `boundaryRef` for
+  gap-row family) for rows, `CardAnchor` (annotationId) for cards.
+  Expansion clicks dispatch a discriminated `ExpandAction` to the
+  parent — `{ kind: "expand", file, boundaryRef, direction, count }`
+  for gap expansion, `{ kind: "expand-file", file }` for collapsed
+  files. Composer rendering: when `composerAnchor` matches a diff row
+  in this file, the parent-supplied `composerSlot` renders inline at
+  that row's position via a `.tour-card`-positioned wrapper (same
+  grid-column rules as `<CardRow>`). Collapsed state suppresses the
+  grid body while keeping the header visible + toggleable. Unused at
+  this slice's merge time; slice 6 swaps `<FileDiff>` /
+  `<MultiFileDiff>` → the `<FileBlock>` list and deletes the Pierre
+  adapter pile.
+
+  Issue: #218 · PRD: #212 · ADR: 0024
+
 - **`row-components`: `<DiffRow>`, `<CardRow>`, `<InteractiveRow>` —
   memo'd prop-driven row primitives for the Tour-owned web row renderer
   (PRD #212 slice 4).** New `src/web/client/row-components.tsx` exports
