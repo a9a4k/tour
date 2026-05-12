@@ -31,7 +31,11 @@ async function createTempRepoWithTour(): Promise<string> {
 
 function bindBlocker(port: number): Promise<Server> {
   return new Promise((resolve, reject) => {
-    const server = createServer();
+    // Per-socket error handler silences the ECONNRESET that fires when
+    // the probe fetch aborts (same fix as tests/integration/serve-reuse.test.ts).
+    const server = createServer((socket) => {
+      socket.on("error", () => {});
+    });
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => resolve(server));
   });
