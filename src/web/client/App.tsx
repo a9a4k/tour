@@ -16,6 +16,7 @@ import {
   TourSessionStore,
   useTourSession,
   isPickerOpen,
+  pickerHighlighted,
   initialTourSessionState,
   type TourSummary as SessionTourSummary,
 } from "../../core/tour-session.js";
@@ -243,14 +244,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           const res = await fetch(`/api/tours/${id}`);
           const data = (await res.json()) as TourBundle | { error: string };
           if (store.getState().currentTourId !== id) return;
-          if (data && typeof data === "object" && "error" in data) {
-            const err = (data as { error: string }).error;
-            store.dispatch({ type: "bundle.failed", tourId: id, error: err });
-            setState({ bundle: null, error: err, loaded: true });
+          if ("error" in data) {
+            store.dispatch({ type: "bundle.failed", tourId: id, error: data.error });
+            setState({ bundle: null, error: data.error, loaded: true });
           } else {
-            const bundleData = data as TourBundle;
-            store.dispatch({ type: "bundle.loaded", tourId: id, bundle: bundleData });
-            setState({ bundle: bundleData, error: null, loaded: true });
+            store.dispatch({ type: "bundle.loaded", tourId: id, bundle: data });
+            setState({ bundle: data, error: null, loaded: true });
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -276,9 +275,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           const el = document.querySelector(
             `[data-picker-row-idx="${intent.idx}"]`,
           );
-          if (el instanceof HTMLElement) {
-            el.scrollIntoView({ block: "nearest" });
-          }
+          el?.scrollIntoView({ block: "nearest" });
           break;
         }
         case "mirrorUrl":
@@ -680,8 +677,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     // re-fetch the bundle, just close the picker. Preserves the pre-refactor
     // "Enter on current row" behavior (commitTour's `if (id !== tourId)`).
     const s = store.getState();
-    if (s.picker.kind !== "open" || s.picker.rows.length === 0) return;
-    const target = s.picker.rows[s.picker.cursor];
+    const target = pickerHighlighted(s);
+    if (!target) return;
     if (target.id === s.currentTourId) {
       store.dispatch({ type: "picker.close" });
     } else {
