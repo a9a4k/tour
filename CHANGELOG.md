@@ -106,6 +106,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`n` from a diff row now jumps to the next annotation in stream order,
+  not back to `topLevel[0]` (issue #203).** Under the step/jump motion
+  model (ADR 0023), `n` / `p` from a `RowAnchor` cursor always landed on
+  the first / last top-level Annotation regardless of where the cursor
+  sat in the diff stream — so a reviewer who had pressed `j` past
+  annotation 1's card and onto a diff row below it pressed `n` and
+  jumped *backward* to annotation 1 instead of forward to annotation 2.
+  Root cause: `walkCards`'s row-cursor case treated the row identically
+  to a null cursor (start one step beyond the boundary), never reading
+  the cursor's `(file, lineNumber)`. The walker now takes a `files`
+  argument (file display order, produced by `sortFilesForStream` —
+  already computed at both call sites). From a `RowAnchor`, `nextCard`
+  iterates `topLevel` and returns the first annotation whose anchor is
+  at or after the cursor's stream position (`a.file` later in display
+  order, or same file with `a.line_end >= cursor.lineNumber`); `prevCard`
+  is the symmetric reverse-order walk. `CardAnchor` semantics are
+  unchanged (still walks `topLevel` by index, issue #197). Null cursor
+  still falls back to the `topLevel` edge for lazy-materialization.
+  Stale `CardAnchor` (id not in `topLevel`) now returns null —
+  `validateCursor` clears the stale cursor on the next render and the
+  null-cursor edge fallback re-seeds. Both surfaces (TUI + webapp)
+  consume the same core helper and flip together. (#203, PRD #192 /
+  ADR 0023)
+
 - **`tour serve` no longer caches a stale client bundle across source
   edits (issue #202).** Dev-mode `tour serve` (running from
   `bun src/main.ts serve` or `npm run cli serve`) snapshotted the
