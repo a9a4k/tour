@@ -1,5 +1,7 @@
 ---
 name: webapp-perf-cross-check
+metadata:
+  internal: true
 description: Cross-check methodology for diagnosing webapp re-render cascades. React DevTools' "DOM commit" column counts fiber commits, not real browser mutations — it can overstate cost by 100×. Always verify against a Chrome trace (Layout/Paint/EventDispatch durations) and a MutationObserver (actual mutations) before chasing a cascade. Use when profiling webapp lag, suspected re-render storms, slow interactions, or whenever React DevTools shows high render counts but the page feels fine. Pairs with the diagnose skill — this is the "instrument" phase for React perf.
 ---
 

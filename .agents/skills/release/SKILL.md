@@ -1,5 +1,7 @@
 ---
 name: release
+metadata:
+  internal: true
 description: Cut a new Tour release end-to-end — sync with origin, review what's shipping, suggest the semver bump from commit titles, run the release script, handle preflight failures (flaky tests, stale tests, ahead-of-remote), and watch CI. Use when the user says "release", "ship a new version", "cut a release", "bump the version", or asks how to publish.
 ---
 
