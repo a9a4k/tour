@@ -168,20 +168,11 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
         );
       }
       // Unknown bundle ids (e.g., the in-flight-switch test asks for
-      // `/api/tours/different-tour-id`) → error payload so the App's
-      // bundle-fetch effect sets state.error rather than storing a
-      // malformed bundle.
-      if (/^\/api\/tours\/[^/?]+$/.test(u) || u.includes("/api/tours/")) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ error: "not found" }), {
-            status: 404,
-            headers: { "content-type": "application/json" },
-          }),
-        );
-      }
+      // `/api/tours/different-tour-id`) → 404 so the App's bundle-fetch
+      // effect sets state.error rather than storing a malformed bundle.
       return Promise.resolve(
-        new Response(JSON.stringify({}), {
-          status: 200,
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
           headers: { "content-type": "application/json" },
         }),
       );
@@ -223,11 +214,11 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
       root = createRoot(container);
       root.render(createElement(App, { initialTourId: tourId }));
     });
-    // The path-reader wins, so the App fetches `/different-tour-id` (404
-    // from our fallback). tourId state ends up as `different-tour-id`,
-    // but the bundle's id is the original tourId — the in-flight window.
-    // The URL must remain `/different-tour-id` (no fragment appended
-    // from the stale bundle).
+    // The path-reader wins, so tourId state ends up as
+    // `different-tour-id` and the App fetches its bundle (404 from our
+    // fallback). The URL must remain `/different-tour-id` — the writer
+    // must not blast over a URL that asserts a tour-id different from
+    // state's id, even transiently while the new bundle is loading.
     await flush();
     expect(window.location.pathname).toBe("/different-tour-id");
     expect(window.location.hash).toBe("");
