@@ -196,6 +196,9 @@ function App(props: AppProps) {
   const [pickerCounts, setPickerCounts] = useState<Record<string, number>>({});
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
+  // Footer status line that flashes after an `s` no-op so the user knows
+  // why the keystroke didn't dispatch. Cleared by any subsequent key.
+  const [footerStatus, setFooterStatus] = useState<string | null>(null);
   // After a top-level annotate-submit, holds the id of the freshly-created
   // Annotation until the post-submit effect scrolls its card into view.
   // currentAnnotationId is intentionally NOT advanced (seed-once-per-tour
@@ -566,13 +569,13 @@ function App(props: AppProps) {
     return idx === -1 ? 0 : idx;
   }, [liveTopLevel, currentAnnotationId]);
 
-  // Show the `s send to {agent}` hint only when (a) the focused card is a
-  // human Annotation, (b) `--reply-agent` is set, AND (c) the lock is
-  // free. The visibility predicate matches the webapp's `canSendToAgent`
-  // — same {visible, enabled} test, just rendered as a footer hint
-  // instead of an in-card button. When the lock is held tour-wide the
-  // hint disappears (no muted-but-visible state in a single-line footer
-  // — App's footerStatus owns the "wait" message instead).
+  // Show the `s: send to {agent}` hint whenever `canSendToAgent.visible`
+  // is true — i.e. when the focused card is human-authored and
+  // `--reply-agent` is set, regardless of the lock. The single-line
+  // footer is already painted in theme.fg.muted so there's no
+  // separate "dimmed" rendering; the user's "wait" signal comes from
+  // the App-driven footerStatus flash when they press `s` against a
+  // held lock.
   const currentAnn = liveAnnotations.find((a) => a.id === currentAnnotationId) ?? null;
   const sendHintVerdict = currentAnn
     ? canSendToAgent({
@@ -584,12 +587,6 @@ function App(props: AppProps) {
     : { visible: false, enabled: false };
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
-    // canSendToAgent.visible means the affordance is in scope for this
-    // card — it includes the lock-held case, which the PRD describes as
-    // "dims to muted" rather than "disappears". The single-line muted
-    // footer is already rendered in theme.fg.muted, so the hint stays
-    // visible; pressing `s` while locked is handled by App and surfaces
-    // a "wait" footerStatus.
     showSendHint: sendHintVerdict.visible,
   });
   const baseFooter =
@@ -906,10 +903,6 @@ function App(props: AppProps) {
     if (!state) return;
     setComposer(state);
   };
-
-  // Footer status line that flashes after an `s` no-op so the user knows
-  // why the keystroke didn't dispatch. Cleared by any subsequent key.
-  const [footerStatus, setFooterStatus] = useState<string | null>(null);
 
   // Send the focused human Annotation to the configured reply-agent
   // (issue #184). `s` is a no-op with a footer hint when:
