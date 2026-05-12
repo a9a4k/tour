@@ -59,7 +59,7 @@ export interface TourSessionState {
 export type Action =
   | { type: "picker.open"; rows: PickerRow[] }
   | { type: "picker.close" }
-  | { type: "picker.move"; delta: 1 | -1 }
+  | { type: "picker.move"; delta: number }
   | { type: "picker.commit" }
   | { type: "bundle.loading"; tourId: string }
   | { type: "bundle.loaded"; tourId: string; bundle: TourBundle }
