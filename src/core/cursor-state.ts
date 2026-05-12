@@ -90,7 +90,7 @@ export function initialCursor(args: {
     (r): r is DiffFlatRow => r.kind === "diff",
   );
   if (!firstDiff) return null;
-  return cursorFromRow(firstDiff, firstDiff.side) as RowAnchor;
+  return cursorFromRow(firstDiff, firstDiff.side);
 }
 
 /**

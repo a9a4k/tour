@@ -954,11 +954,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (annotationId: string) => {
       const a = annotations.find((x) => x.id === annotationId);
       if (!a) return;
-      setCursor((prev) => ({
-        kind: "card",
-        annotationId,
-        preferredSide: preferredSideOf(prev),
-      }));
+      setCursor((prev) => cursorFromAnnotation(a, preferredSideOf(prev)));
       setSelectedFile(a.file);
     },
     [annotations],
