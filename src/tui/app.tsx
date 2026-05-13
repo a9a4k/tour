@@ -23,6 +23,7 @@ import {
 import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
+import { withFileSeparators } from "./FileSeparator.js";
 import {
   buildTree,
   compress,
@@ -1619,7 +1620,7 @@ function App(props: AppProps) {
               // no-op.
               viewportCulling={true}
             >
-              {files.map((file) => {
+              {withFileSeparators(files, (file) => {
                 const collapsed = isFileCollapsed(file.name);
                 const rows = plannedRowsByFile.get(file.name) ?? [];
                 const reason = fileClassification(classifications, file.name).reason;

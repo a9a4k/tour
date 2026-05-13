@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: horizontal `─` rule renders between consecutive files in the
+  diff pane (issue #263, mirrors webapp #249).** Pre-fix, the TUI
+  stacked every file in a tour's diff stream vertically inside a single
+  outer `┌─ Diff ─┐` box with no visible boundary between consecutive
+  files. The webapp shipped #249 to wrap each file in a 1px
+  `border.muted` rounded card with 16px margin so the eye can anchor on
+  file boundaries. The TUI now interleaves a 1-row horizontal rule of
+  `─` (U+2500 BOX DRAWINGS LIGHT HORIZONTAL) characters in
+  `theme.border.muted` between every consecutive pair of files inside
+  the diff pane. The file card above carries `marginBottom={1}` which
+  supplies the blank row above the rule; the separator owns the rule
+  line and a 1-row blank below. No separator renders before the first
+  file or after the last (the outer `┌─ Diff ─┐` box already provides
+  those boundaries); single-file tours render with no separator at
+  all. LIGHT weight matches the LIGHT `│` from #258 for visual
+  consistency. The rule uses `wrapMode="none"` so a long pre-filled
+  string is clipped by the 100%-width parent box rather than wrapping
+  to a second line. No planner / cursor / expansion / annotation /
+  scroll-helper change.
+
+  Issue: #263
+
 - **TUI: clicking an annotation card moves the cursor to that card
   (issue #261).** Pre-fix, the TUI's `DiffRows` annotation branch
   rendered an `AnnotationCard` (or a 50/50 split-layout wrapper
