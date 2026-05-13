@@ -1152,6 +1152,20 @@ function App(props: AppProps) {
     dispatchAnchorOrClear(next);
   };
 
+  // Shared file-row select handler for the sidebar — invoked by both the
+  // keyboard `select-file` action and the mouse `onMouseDown` on a file
+  // row. Drops sidebar focus (file rows transfer focus to the diff pane,
+  // matching "show me from the top"), scrolls the diff stream to the file
+  // card, and lands the cursor on the file's first annotatable row. Kept
+  // out-of-switch so the two entry points can't drift.
+  const selectSidebarFile = (filePath: string) => {
+    setSidebarFocused(false);
+    if (diffScrollRef.current) {
+      scrollChildIntoView(diffScrollRef.current, `file-card-${filePath}`);
+    }
+    dispatchCursor(cursorAtFirstFileRow(filePath, flatRowsList));
+  };
+
   // Lazy materialization (ADR 0011 Revisions). Returns the seeded
   // cursor (or the existing one if already materialized) so the caller
   // can chain into composer-open / motion in one step. The dispatch is
@@ -1356,16 +1370,12 @@ function App(props: AppProps) {
         return;
       case "select-file": {
         if (selectedRow?.kind !== "file") return;
-        setSidebarFocused(false);
-        if (diffScrollRef.current) {
-          scrollChildIntoView(diffScrollRef.current, `file-card-${selectedRow.path}`);
-        }
         // PRD US 20: explicit sidebar-driven file selection moves the
         // cursor to that file's first annotatable row. Folded files
         // contribute no rows so cursor clears. currentAnnotationId is
         // unchanged — annotation focus is independent of code-reading
-        // position.
-        dispatchCursor(cursorAtFirstFileRow(selectedRow.path, flatRowsList));
+        // position. Shared with the mouse path via `selectSidebarFile`.
+        selectSidebarFile(selectedRow.path);
         return;
       }
       case "toggle-collapse": {
@@ -1604,18 +1614,22 @@ function App(props: AppProps) {
             {visibleRows.map((row, idx) => {
               const isSelected = idx === safeRowIdx;
               const bg = isSelected ? theme.bg.accentCursor.tui : undefined;
-              const onRowMouseDown = () => {
-                setSidebarFocused(true);
+              const onRowMouseDown = (event: { stopPropagation: () => void }) => {
+                // OpenTUI mouse events bubble (Renderable.processMouseEvent
+                // calls parent unless `propagationStopped`). Without this
+                // stop, the sidebar container's `onMouseDown` would fire
+                // afterwards and force `sidebarFocused = true`, overriding
+                // the file-row's focus transfer to the diff pane.
+                event.stopPropagation();
                 setSelectedRowIdx(idx);
                 if (row.kind === "file") {
-                  if (diffScrollRef.current) {
-                    scrollChildIntoView(diffScrollRef.current, `file-card-${row.path}`);
-                  }
-                  // Same semantics as the select-file action above (PRD
-                  // US 20): clicking a file in the sidebar expresses "show
-                  // me from the top." A folded click yields null since
-                  // the file contributes no flat rows.
-                  dispatchCursor(cursorAtFirstFileRow(row.path, flatRowsList));
+                  // Routes through the shared helper so mouse + keyboard
+                  // can't drift on what "select a file" means.
+                  selectSidebarFile(row.path);
+                } else {
+                  // Folder click is tree-internal navigation, not a "go to
+                  // this file" gesture — keep focus on the sidebar.
+                  setSidebarFocused(true);
                 }
               };
               if (row.kind === "folder") {

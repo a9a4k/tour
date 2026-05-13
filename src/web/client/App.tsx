@@ -28,6 +28,7 @@ import { planRows, GAP_TWO_ROW_THRESHOLD, type PlannedRow } from "../../core/dif
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
 import { emptyExpansion, getBoundary, type OrphanWindow } from "../../core/expansion-state.js";
 import {
+  cursorAtFirstFileRow,
   cursorFromAnnotation,
   initialCursor,
   moveCursor,
@@ -273,14 +274,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         case "scrollCursorTarget": {
           // Defer to RAF so cursor.set landing under a fresh bundle waits
           // for React's commit before querying DOM — matches the existing
-          // scrollAnnotationIntoView pattern.
+          // scrollAnnotationIntoView pattern. Placement is dictated by the
+          // reducer: `nearest` for in-flight navigation (n/p, j/k, click);
+          // `center` for fresh landings (initial materialize, URL restore).
           if (typeof document === "undefined") break;
           const target = intent.target;
+          const placement = intent.placement;
           requestAnimationFrame(() => {
             if (target.kind === "card") {
               annotationRefs.current
                 .get(target.annotationId)
-                ?.scrollIntoView({ behavior: "instant", block: "center" });
+                ?.scrollIntoView({ behavior: "instant", block: placement });
               return;
             }
             const inputs = intentInputsRef.current;
@@ -290,7 +294,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             const cell = block.querySelector<HTMLElement>(
               `.tour-row-gutter[data-side="${target.side}"][data-line-number="${target.lineNumber}"]`,
             );
-            cell?.scrollIntoView({ block: "nearest" });
+            cell?.scrollIntoView({ block: placement });
           });
           break;
         }
@@ -579,17 +583,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [store],
   );
 
-  // Initial-anchor scroll (URL `?ann=` restore / default first annotation).
-  // Post-cutover the row renderer paints synchronously so a single
-  // scrollIntoView lands the target without R1/R2 race mitigation. The
-  // intent is `behavior: "instant"` because the user is landing on a
-  // bookmark — a smooth animation would visibly jitter on first paint.
-  const anchorInitial = useCallback((id: string) => {
-    annotationRefs.current
-      .get(id)
-      ?.scrollIntoView({ behavior: "instant", block: "center" });
-  }, []);
-
   const navigateBy = useCallback(
     (delta: -1 | 1) => {
       // n/p is the jump gesture: walks top-level order (issue #197 — same
@@ -640,14 +633,19 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
     const action = decideReanchor(cursor, readAnnFromUrl(), topLevel);
     if (action.kind === "noop") return;
+    // Fresh landing (URL `?ann=` restore or stale-fallback to first
+    // annotation): cursor.set carries `placement: "center"` so the
+    // scrollCursorTarget intent frames the card mid-viewport. In-flight
+    // moves (n/p, j/k, click) omit placement and fall back to the
+    // reducer's `nearest` default.
     store.dispatch({
       type: "cursor.set",
       anchor: cursorFromAnnotation(action.target, preferredSideOf(cursor)),
+      placement: "center",
     });
     setSelectedFile(action.target.file);
     revealFileAncestors(action.target.file);
-    if (action.kind === "url-restore") anchorInitial(action.target.id);
-  }, [tourMeta, tourId, view, cursor, revealFileAncestors, anchorInitial, store]);
+  }, [tourMeta, tourId, view, cursor, revealFileAncestors, store]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -769,9 +767,20 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (name: string) => {
       setSelectedFile(name);
       const el = findFileBlock(name);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Instant scroll, file header at the top: clicking a file expresses
+      // "show me from the top." Smooth scroll over multi-viewport distances
+      // is disorienting in a code-review surface.
+      if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+      // Cursor follows the click — matches the TUI rule (PRD US 20). The
+      // reducer's `nearest` default for scrollCursorTarget keeps the
+      // first-row scroll from fighting the file-block scroll above: the
+      // row is already at the top after `block: "start"`, so `nearest`
+      // is a no-op. `?ann=` (annotation-focus bookmark) is left untouched.
+      if (view.kind !== "ok") return;
+      const seeded = cursorAtFirstFileRow(name, view.rows.flatRowsList);
+      if (seeded) store.dispatch({ type: "cursor.set", anchor: seeded });
     },
-    [findFileBlock],
+    [findFileBlock, view, store],
   );
 
   // Tour-level (PR-equivalent) `+N -M` totals for the title-bar indicator

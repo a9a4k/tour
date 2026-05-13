@@ -118,7 +118,7 @@ export type Action =
   | { type: "tourList.loading" }
   | { type: "tourList.loaded"; tours: TourSummary[] }
   | { type: "tourList.failed"; error: string }
-  | { type: "cursor.set"; anchor: Cursor }
+  | { type: "cursor.set"; anchor: Cursor; placement?: ScrollPlacement }
   | { type: "cursor.clear" }
   | { type: "cursor.setSide"; side: "additions" | "deletions" }
   | { type: "cursor.materialize"; anchor: Cursor }
@@ -157,12 +157,18 @@ export type ScrollCursorTarget =
   | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
   | { kind: "card"; annotationId: string };
 
+// `nearest`: only scroll when target is off-screen — used for `n`/`p` and
+// `j`/`k` so adjacent landings don't jolt. `center`: always frame the target
+// in the middle — used for fresh landings (initial bundle load, URL `?ann=`
+// restore, post-create scroll-to-new-card) where the user is arriving cold.
+export type ScrollPlacement = "nearest" | "center";
+
 export type Intent =
   | { type: "loadTour"; tourId: string }
   | { type: "scrollPickerRow"; idx: number }
   | { type: "mirrorUrl"; tourId: string }
   | { type: "revalidateCursor" }
-  | { type: "scrollCursorTarget"; target: ScrollCursorTarget }
+  | { type: "scrollCursorTarget"; target: ScrollCursorTarget; placement: ScrollPlacement }
   | { type: "revealSidebarFile"; file: string }
   | { type: "mirrorAnnUrl"; annotationId: string | null }
   | { type: "submitAnnotation"; tourId: string; target: ComposerTarget; body: string }
@@ -312,7 +318,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
 
     case "cursor.set":
-      return setCursor(state, action.anchor);
+      return setCursor(state, action.anchor, action.placement ?? "nearest");
 
     case "cursor.clear": {
       if (state.cursor === null) return { state, intents: NO_INTENTS };
@@ -355,9 +361,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // only initialises when the cursor is null. A non-null cursor is a
       // strict no-op — same state ref, no intents — so subsequent
       // keystrokes use `cursor.set` to update an already-materialised
-      // anchor.
+      // anchor. First-landing uses `center` placement: the surface frames
+      // the cursor mid-viewport because the user is arriving cold.
       if (state.cursor !== null) return { state, intents: NO_INTENTS };
-      return setCursor(state, action.anchor);
+      return setCursor(state, action.anchor, "center");
 
     case "expansion.expand":
       return withExpansion(
@@ -543,9 +550,13 @@ function enterSubmitting(
 // or Row→Card move doesn't reveal anything. `mirrorAnnUrl` fires when
 // the annotation-id under the cursor changed (entering, leaving, or
 // switching cards) so the webapp `?ann=` URL stays in sync.
-function setCursor(state: TourSessionState, next: Cursor): ReduceResult {
+function setCursor(
+  state: TourSessionState,
+  next: Cursor,
+  placement: ScrollPlacement,
+): ReduceResult {
   const intents: Intent[] = [
-    { type: "scrollCursorTarget", target: scrollTargetOf(next) },
+    { type: "scrollCursorTarget", target: scrollTargetOf(next), placement },
   ];
   const prevFile = isRowAnchor(state.cursor) ? state.cursor.file : null;
   const nextFile = isRowAnchor(next) ? next.file : null;

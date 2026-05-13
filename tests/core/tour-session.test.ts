@@ -488,6 +488,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 7 },
+        placement: "nearest",
       },
       { type: "revealSidebarFile", file: "foo.ts" },
     ]);
@@ -506,6 +507,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 5 },
+        placement: "nearest",
       },
     ]);
   });
@@ -533,7 +535,11 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     });
     expect(r.state.cursor).toEqual(cardAnchor({ annotationId: "ann-7" }));
     expect(r.intents).toEqual([
-      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-7" } },
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", annotationId: "ann-7" },
+        placement: "nearest",
+      },
       { type: "mirrorAnnUrl", annotationId: "ann-7" },
     ]);
   });
@@ -551,6 +557,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 4 },
+        placement: "nearest",
       },
       { type: "revealSidebarFile", file: "foo.ts" },
       { type: "mirrorAnnUrl", annotationId: null },
@@ -567,7 +574,11 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       anchor: cardAnchor({ annotationId: "ann-2" }),
     });
     expect(r.intents).toEqual([
-      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-2" } },
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", annotationId: "ann-2" },
+        placement: "nearest",
+      },
       { type: "mirrorAnnUrl", annotationId: "ann-2" },
     ]);
   });
@@ -582,7 +593,11 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       anchor: cardAnchor({ annotationId: "ann-1", preferredSide: "deletions" }),
     });
     expect(r.intents).toEqual([
-      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-1" } },
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", annotationId: "ann-1" },
+        placement: "nearest",
+      },
     ]);
   });
 
@@ -618,7 +633,11 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     const r = reduce(initialTourSessionState(), { type: "cursor.materialize", anchor });
     expect(r.state.cursor).toBe(anchor);
     expect(r.intents).toEqual([
-      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-5" } },
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", annotationId: "ann-5" },
+        placement: "center",
+      },
       { type: "mirrorAnnUrl", annotationId: "ann-5" },
     ]);
   });
@@ -932,6 +951,7 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
       {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 42 },
+        placement: "nearest",
       },
       { type: "revealSidebarFile", file: "foo.ts" },
     ]);
@@ -967,6 +987,7 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
       {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 1 },
+        placement: "nearest",
       },
     ]);
   });
