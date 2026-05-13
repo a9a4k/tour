@@ -302,6 +302,9 @@ describe("FILE_GRID_CSS — hunk-header expand affordance (#252)", () => {
   const beforeRuleBody = FILE_GRID_CSS.match(
     /\.tour-hunk-header::before\s*\{([^}]*)\}/,
   )?.[1] ?? "";
+  const bannerRuleBody = FILE_GRID_CSS.match(
+    /\.tour-hunk-header\s*\{([^}]*)\}/,
+  )?.[1] ?? "";
 
   it("declares a .tour-hunk-header::before rule (visual-only cue area)", () => {
     expect(FILE_GRID_CSS).toContain(".tour-hunk-header::before");
@@ -347,16 +350,10 @@ describe("FILE_GRID_CSS — hunk-header expand affordance (#252)", () => {
   });
 
   it("declares `position: relative` on .tour-hunk-header so the ::before anchors to the banner", () => {
-    const bannerRuleBody = FILE_GRID_CSS.match(
-      /\.tour-hunk-header\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
     expect(bannerRuleBody).toMatch(/position:\s*relative/);
   });
 
   it("bumps the banner's padding-left to clear the 44px cue area + 16px gap (60px total)", () => {
-    const bannerRuleBody = FILE_GRID_CSS.match(
-      /\.tour-hunk-header\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
     // The padding shorthand may be four-value (top right bottom left)
     // or two-value + separate padding-left. Either is fine; the
     // requirement is that the resolved padding-left is 60px so the
