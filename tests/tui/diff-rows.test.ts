@@ -63,6 +63,7 @@ function callDiffRows(args: {
     side: "additions" | "deletions",
     lineNumber: number,
   ) => void;
+  onCardClick?: (annotationId: string) => void;
 }): unknown {
   return DiffRows({
     fileName: args.fileName ?? "x.txt",
@@ -71,6 +72,7 @@ function callDiffRows(args: {
     cursorCardId: null,
     cursor: args.cursor ?? null,
     onCursorClick: args.onCursorClick,
+    onCardClick: args.onCardClick,
   });
 }
 
@@ -893,48 +895,6 @@ index 1..2 100644
       }
     });
 
-    it("annotation card rows do NOT receive a click handler on their wrapper", () => {
-      const annDiff = `diff --git a/x.txt b/x.txt
-index 1..2 100644
---- a/x.txt
-+++ b/x.txt
-@@ -1,2 +1,2 @@
- ctx
--old
-+new
-`;
-      const file = parseFile(annDiff);
-      const annotation = {
-        id: "ann-1",
-        tour_id: "t",
-        file: "x.txt",
-        side: "additions" as const,
-        line_start: 2,
-        line_end: 2,
-        body: "n",
-        author: "u",
-        created_at: "2025-01-01T00:00:00Z",
-      };
-      const rows = planRows(file, [annotation], "split");
-      const annIdx = rows.findIndex((r) => r.kind === "annotation");
-      expect(annIdx).toBeGreaterThanOrEqual(0);
-      const onCursorClick = vi.fn();
-      const tree = callDiffRows({
-        rows: rows.slice(annIdx, annIdx + 1),
-        layout: "split",
-        onCursorClick,
-      });
-      // No element in the annotation row's subtree should carry onMouseDown
-      // tied to onCursorClick.
-      for (const el of flatten(tree)) {
-        const handler = el.props["onMouseDown"];
-        if (typeof handler === "function") {
-          (handler as () => void)();
-        }
-      }
-      expect(onCursorClick).not.toHaveBeenCalled();
-    });
-
     it("split: dispatched cursor + side compose into a top-level composer at the clicked anchor (smoke)", async () => {
       const { buildTopLevelComposer } = await import("../../src/tui/composer-state.js");
       const file = parseFile(SIMPLE_DIFF);
@@ -975,6 +935,152 @@ index 1..2 100644
       expect(composer!.side).toBe("deletions");
       expect(composer!.line_start).toBe(ctxRow.leftLineNumber);
       expect(composer!.line_end).toBe(ctxRow.leftLineNumber);
+    });
+  });
+
+  // Issue #261: ADR 0022 unified the cursor; CardAnchor is first-class and
+  // mouse-click on a card must place the cursor on it, mirroring the
+  // webapp's `setCursorFromCardClick`. The annotation branch in DiffRows
+  // wires `onMouseDown` on the card's wrapper, calling `onCardClick` with
+  // the row's annotation id. In split layout, only the card half carries
+  // the handler — the empty sibling stays a no-op.
+  describe("mouse click on annotation card → cursor (issue #261)", () => {
+    const ANN_DIFF = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,2 @@
+ ctx
+-old
++new
+`;
+
+    function makeAnn(side: "additions" | "deletions"): import("../../src/core/types.js").Annotation {
+      return {
+        id: `ann-${side}`,
+        tour_id: "t",
+        file: "x.txt",
+        side,
+        line_start: side === "additions" ? 2 : 1,
+        line_end: side === "additions" ? 2 : 1,
+        body: "n",
+        author: "u",
+        created_at: "2025-01-01T00:00:00Z",
+      };
+    }
+
+    it("unified: clicking the card wrapper dispatches onCardClick with the annotation id", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("additions");
+      const rows = planRows(file, [ann], "unified");
+      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      expect(annIdx).toBeGreaterThanOrEqual(0);
+      const onCardClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "unified",
+        onCardClick,
+      });
+      const withHandler = flatten(tree).find(
+        (el) => typeof el.props["onMouseDown"] === "function",
+      );
+      expect(withHandler).toBeDefined();
+      (withHandler!.props["onMouseDown"] as () => void)();
+      expect(onCardClick).toHaveBeenCalledTimes(1);
+      expect(onCardClick).toHaveBeenCalledWith(ann.id);
+    });
+
+    it("split (additions card): right half wrapper fires onCardClick; left empty half is a no-op", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("additions");
+      const rows = planRows(file, [ann], "split");
+      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const onCardClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "split",
+        onCardClick,
+      });
+      // The annotation row in split layout is a flexDirection="row" box
+      // holding two 50%-width halves. The card sits in the side that
+      // matches the annotation's side; the opposite half is empty.
+      const splitWrapper = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["width"] === "100%",
+      );
+      expect(splitWrapper).toBeDefined();
+      const halves = (splitWrapper!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
+      expect(halves.length).toBe(2);
+      const [leftHalf, rightHalf] = halves;
+      expect(leftHalf.props["onMouseDown"]).toBeUndefined();
+      expect(typeof rightHalf.props["onMouseDown"]).toBe("function");
+      (rightHalf.props["onMouseDown"] as () => void)();
+      expect(onCardClick).toHaveBeenCalledTimes(1);
+      expect(onCardClick).toHaveBeenCalledWith(ann.id);
+    });
+
+    it("split (deletions card): left half wrapper fires onCardClick; right empty half is a no-op", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("deletions");
+      const rows = planRows(file, [ann], "split");
+      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const onCardClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "split",
+        onCardClick,
+      });
+      const splitWrapper = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["width"] === "100%",
+      );
+      const halves = (splitWrapper!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
+      const [leftHalf, rightHalf] = halves;
+      expect(typeof leftHalf.props["onMouseDown"]).toBe("function");
+      expect(rightHalf.props["onMouseDown"]).toBeUndefined();
+      (leftHalf.props["onMouseDown"] as () => void)();
+      expect(onCardClick).toHaveBeenCalledTimes(1);
+      expect(onCardClick).toHaveBeenCalledWith(ann.id);
+    });
+
+    it("does not invoke onCursorClick on the annotation card wrapper", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("additions");
+      const rows = planRows(file, [ann], "split");
+      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const onCursorClick = vi.fn();
+      const onCardClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "split",
+        onCursorClick,
+        onCardClick,
+      });
+      for (const el of flatten(tree)) {
+        const handler = el.props["onMouseDown"];
+        if (typeof handler === "function") (handler as () => void)();
+      }
+      expect(onCursorClick).not.toHaveBeenCalled();
+      expect(onCardClick).toHaveBeenCalled();
+    });
+
+    it("annotation branch does not wire onMouseDown when onCardClick is omitted", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("additions");
+      const rows = planRows(file, [ann], "split");
+      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "split",
+      });
+      for (const el of flatten(tree)) {
+        // The card itself is a function component; only intrinsic wrapper
+        // boxes can carry onMouseDown. No wrapper in the subtree should
+        // declare one when the App-shell hasn't supplied onCardClick.
+        expect(el.props["onMouseDown"]).toBeUndefined();
+      }
     });
   });
 

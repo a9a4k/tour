@@ -153,6 +153,7 @@ function fileCardBody(
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
   ) => void,
+  onCardClick: (annotationId: string) => void,
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
@@ -170,6 +171,7 @@ function fileCardBody(
       cursor={cursor}
       onCursorClick={onCursorClick}
       onInteractiveClick={onInteractiveClick}
+      onCardClick={onCardClick}
       repliesCollapsed={repliesCollapsed}
       replyLock={replyLock}
       now={now}
@@ -941,6 +943,25 @@ function App(props: AppProps) {
     // intent (emitted on cross-file `cursor.set` for RowAnchors).
   };
 
+  // Mouse click on an annotation card (issue #261). ADR 0022 unified the
+  // cursor — CardAnchor is first-class — so the click writes a card
+  // anchor for the clicked top-level annotation, mirroring the keyboard
+  // n/p path (`jumpToAnnotation`) and the webapp's
+  // `setCursorFromCardClick`. preferredSide is threaded from the
+  // existing cursor so a subsequent h/l honours the user's choice.
+  const onCardClick = (annotationId: string) => {
+    const ann = annotations.find((a) => a.id === annotationId);
+    if (!ann) return;
+    setSidebarFocused(false);
+    store.dispatch({
+      type: "cursor.set",
+      anchor: cursorFromAnnotation(ann, preferredSideOf(cursor)),
+    });
+    // Cursor-follow useEffect handles the scroll-into-view via the
+    // reducer's `scrollCursorTarget` intent — no parallel scroll call
+    // here (would race the centred scroller).
+  };
+
   // Hunk-separator gap size = lines between previous hunk's additions end
   // and this hunk's additions start, on the additions side (gap is symmetric
   // across both sides for context). Returns 0 when the cursor isn't on a
@@ -1623,6 +1644,7 @@ function App(props: AppProps) {
                       cursor,
                       onCursorClick,
                       onInteractiveClick,
+                      onCardClick,
                       repliesCollapsed,
                       replyLock,
                       now,

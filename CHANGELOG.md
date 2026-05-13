@@ -8,6 +8,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: clicking an annotation card moves the cursor to that card
+  (issue #261).** Pre-fix, the TUI's `DiffRows` annotation branch
+  rendered an `AnnotationCard` (or a 50/50 split-layout wrapper
+  containing the card on the appropriate side) with no `onMouseDown`
+  handler anywhere in the tree — clicking a card was a no-op. The
+  webapp moves the cursor to the clicked card via
+  `setCursorFromCardClick`. The regression went unnoticed because the
+  diff-rows test suite still asserted "annotation card rows do NOT
+  receive a click handler on their wrapper" — a stale invariant from
+  the pre-ADR 0022 design when annotation cards were not cursor
+  stops. ADR 0022 unified the cursor (`CardAnchor` became
+  first-class), the keyboard paths (`j`/`k`/`n`/`p`/`Enter`) were
+  updated, but the mouse-click path was not. `DiffRows` now accepts
+  an `onCardClick?: (annotationId: string) => void` prop — mirroring
+  `onCursorClick` (diff rows) and `onInteractiveClick` (interactive
+  rows) — and wires `onMouseDown` on the annotation card's wrapper.
+  The App-shell supplies a callback that dispatches `cursor.set`
+  with `cursorFromAnnotation(ann, preferredSideOf(cursor))` — the
+  exact shape `jumpToAnnotation` (the `n`/`p` keyboard path) writes.
+  In split layout only the half hosting the card carries the handler;
+  the empty sibling stays a no-op. Clicks on a reply nested inside
+  the card bubble up to the same wrapper, so the cursor lands on the
+  parent top-level annotation (cursor walks top-levels only per ADR
+  0022). Click on the already-current card is a no-op via the
+  reducer's same-anchor short-circuit. Cursor-follow scroll runs
+  through the existing `cursor.set` → `scrollCursorTarget` intent
+  → `centerChildInView` path; no parallel scroll plumbing. The stale
+  negative test is deleted; a new describe block ("mouse click on
+  annotation card → cursor (issue #261)") asserts the positive
+  behaviour: unified wrapper fires `onCardClick`, split layout fires
+  only on the card half (additions / deletions), the
+  `onCardClick`-omitted case wires no handler. No planner / cursor
+  reducer / AnnotationCard / scroll-helper change.
+
+  Issue: #261
+
 - **TUI: split-layout single-side rows paint a neutral fill on the
   empty side (issue #260, mirrors webapp #227).** Pre-fix, the empty
   side of a pure-addition or pure-deletion row in split layout rendered

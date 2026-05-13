@@ -43,6 +43,14 @@ interface DiffRowsProps {
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
   ) => void;
+  /** Mouse-click handler for an annotation card (issue #261). ADR 0022
+   *  unified the cursor — CardAnchor is first-class — so clicking a card
+   *  must place the cursor on it, mirroring the webapp's
+   *  `setCursorFromCardClick`. In split layout, only the half hosting
+   *  the card carries the handler; the empty sibling stays a no-op.
+   *  Clicks on replies nested inside the card flow up to the same
+   *  wrapper handler — the cursor walks top-level annotations only. */
+  onCardClick?: (annotationId: string) => void;
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
@@ -155,6 +163,7 @@ export function DiffRows({
   cursor,
   onCursorClick,
   onInteractiveClick,
+  onCardClick,
   repliesCollapsed,
   replyLock,
   now,
@@ -269,14 +278,35 @@ export function DiffRows({
               navTotal={navTotal ?? 0}
             />
           );
-          if (slot === "full") return card;
-          // Match the per-row split shape (two 50% cells) so the card lines
-          // up with the diff column it discusses. Empty sibling reserves the
-          // opposite half so subsequent rows keep their column alignment.
+          // Issue #261: click anywhere on the card (or a nested reply)
+          // bubbles to this wrapper's onMouseDown, dispatching the
+          // top-level annotation id to onCardClick. ADR 0022's cursor
+          // walks top-level annotations only, so the row's `id` (the
+          // top-level annotation id, not a reply id) is the right value.
+          const onCardMouseDown =
+            onCardClick ? () => onCardClick(row.annotation.id) : undefined;
+          if (slot === "full") {
+            // Unified layout: wrap the card so the wrapper can carry the
+            // click handler. Function-component cards can't host
+            // `onMouseDown` directly under OpenTUI.
+            return (
+              <box key={`ann-${row.id}`} width="100%" onMouseDown={onCardMouseDown}>
+                {card}
+              </box>
+            );
+          }
+          // Split layout: match the per-row split shape (two 50% cells)
+          // so the card lines up with the diff column it discusses.
+          // Empty sibling reserves the opposite half so subsequent rows
+          // keep their column alignment — and stays a no-op on click.
           return (
             <box key={`ann-${row.id}`} flexDirection="row" width="100%">
-              <box width="50%">{slot === "left" ? card : null}</box>
-              <box width="50%">{slot === "right" ? card : null}</box>
+              <box width="50%" onMouseDown={slot === "left" ? onCardMouseDown : undefined}>
+                {slot === "left" ? card : null}
+              </box>
+              <box width="50%" onMouseDown={slot === "right" ? onCardMouseDown : undefined}>
+                {slot === "right" ? card : null}
+              </box>
             </box>
           );
         }
