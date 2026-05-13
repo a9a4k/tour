@@ -1412,13 +1412,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // shape.
   const submitComposer = useCallback(() => {
     const c = store.getState().composer;
-    if (c.kind === "open") {
-      if (c.body.trim().length === 0) return;
-      store.dispatch({ type: "composer.submit" });
-    } else if (c.kind === "errored") {
-      if (c.body.trim().length === 0) return;
-      store.dispatch({ type: "composer.retry" });
-    }
+    if (c.kind !== "open" && c.kind !== "errored") return;
+    if (c.body.trim().length === 0) return;
+    store.dispatch(
+      c.kind === "open"
+        ? { type: "composer.submit" }
+        : { type: "composer.retry" },
+    );
   }, [store]);
 
   const onComposerBodyChange = useCallback(
