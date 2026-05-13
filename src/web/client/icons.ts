@@ -1,6 +1,7 @@
 export {
   ChevronDownIcon,
   ChevronRightIcon,
+  CopyIcon,
   FileAddedIcon,
   FileDiffIcon,
   FileDirectoryFillIcon,

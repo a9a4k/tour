@@ -208,6 +208,190 @@ describe("<FileBlock> — collapsed state", () => {
 });
 
 // ---------------------------------------------------------------------------
+// GitHub-style header chrome (#225)
+// ---------------------------------------------------------------------------
+
+describe("<FileBlock> — GitHub-style header chrome (#225)", () => {
+  it("renders left and right regions with chevron + status icon on the left, copy button on the right", () => {
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const left = c.querySelector(".tour-file-header-left");
+    const right = c.querySelector(".tour-file-header-right");
+    expect(left).not.toBeNull();
+    expect(right).not.toBeNull();
+    expect(left!.querySelector(".tour-file-chevron")).not.toBeNull();
+    expect(left!.querySelector(".tour-file-status-icon")).not.toBeNull();
+    expect(left!.querySelector(".tour-file-name")).not.toBeNull();
+    expect(right!.querySelector(".tour-file-copy-button")).not.toBeNull();
+  });
+
+  it("renders the down chevron when the file is expanded", () => {
+    const c = mount(
+      createElement(FileBlock, defaultProps({ isCollapsed: false })),
+    );
+    const chevron = c.querySelector(".tour-file-chevron") as SVGElement;
+    expect(chevron).not.toBeNull();
+    // Octicons attach `octicon-chevron-down` / `octicon-chevron-right` to
+    // the rendered svg's class list — use that to differentiate.
+    expect(chevron.classList.contains("octicon-chevron-down")).toBe(true);
+    expect(chevron.classList.contains("octicon-chevron-right")).toBe(false);
+  });
+
+  it("renders the right chevron when the file is collapsed", () => {
+    const c = mount(
+      createElement(FileBlock, defaultProps({ isCollapsed: true })),
+    );
+    const chevron = c.querySelector(".tour-file-chevron") as SVGElement;
+    expect(chevron.classList.contains("octicon-chevron-right")).toBe(true);
+    expect(chevron.classList.contains("octicon-chevron-down")).toBe(false);
+  });
+
+  it("applies the success status class for 'new' files", () => {
+    const file: BundleFile = { ...baseFile, type: "new" };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const icon = c.querySelector(".tour-file-status-icon") as SVGElement;
+    expect(icon).not.toBeNull();
+    expect(icon.classList.contains("added")).toBe(true);
+  });
+
+  it("applies the danger status class for 'deleted' files", () => {
+    const file: BundleFile = { ...baseFile, type: "deleted" };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const icon = c.querySelector(".tour-file-status-icon") as SVGElement;
+    expect(icon.classList.contains("deleted")).toBe(true);
+  });
+
+  it("applies the renamed status class for rename* files", () => {
+    const file: BundleFile = { ...baseFile, type: "rename-changed" };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const icon = c.querySelector(".tour-file-status-icon") as SVGElement;
+    expect(icon.classList.contains("renamed")).toBe(true);
+  });
+
+  it("renders the reason tag in the right region when present", () => {
+    const file: BundleFile = {
+      ...baseFile,
+      classification: { collapsed: false, reason: "generated" },
+    };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const right = c.querySelector(".tour-file-header-right");
+    expect(right!.textContent).toContain("generated");
+  });
+
+  it("renders the rename indicator in the left region when prevName differs", () => {
+    const file: BundleFile = {
+      ...baseFile,
+      name: "new.ts",
+      prevName: "old.ts",
+    };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const left = c.querySelector(".tour-file-header-left");
+    expect(left!.querySelector(".rename-path")).not.toBeNull();
+  });
+
+  it("gives the copy button an accessible aria-label", () => {
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.getAttribute("aria-label")).toBe("Copy file path");
+  });
+
+  it("copies file.name to the clipboard when the copy button is clicked", () => {
+    const writes: string[] = [];
+    const savedClipboard = (
+      navigator as unknown as { clipboard?: { writeText: (s: string) => Promise<void> } }
+    ).clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (s: string) => {
+          writes.push(s);
+          return Promise.resolve();
+        },
+      },
+    });
+    try {
+      const c = mount(createElement(FileBlock, defaultProps()));
+      const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+      act(() => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(writes).toEqual(["x.ts"]);
+    } finally {
+      if (savedClipboard) {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: savedClipboard,
+        });
+      } else {
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+      }
+    }
+  });
+
+  it("does NOT toggle collapse when the copy button is clicked", () => {
+    let toggled = 0;
+    const savedClipboard = (
+      navigator as unknown as { clipboard?: { writeText: (s: string) => Promise<void> } }
+    ).clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: () => Promise.resolve() },
+    });
+    try {
+      const c = mount(
+        createElement(
+          FileBlock,
+          defaultProps({ onToggleCollapse: () => (toggled += 1) }),
+        ),
+      );
+      const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+      act(() => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(toggled).toBe(0);
+    } finally {
+      if (savedClipboard) {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: savedClipboard,
+        });
+      } else {
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+      }
+    }
+  });
+
+  it("silently swallows clipboard rejections", () => {
+    const savedClipboard = (
+      navigator as unknown as { clipboard?: { writeText: (s: string) => Promise<void> } }
+    ).clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error("denied")) },
+    });
+    try {
+      const c = mount(createElement(FileBlock, defaultProps()));
+      const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+      // Click must not throw or bubble up an unhandled rejection synchronously.
+      expect(() => {
+        act(() => {
+          button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+      }).not.toThrow();
+    } finally {
+      if (savedClipboard) {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: savedClipboard,
+        });
+      } else {
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Planner walk + row dispatch
 // ---------------------------------------------------------------------------
 

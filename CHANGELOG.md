@@ -78,6 +78,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp file header: GitHub-style chrome — status icon, collapse
+  chevron, copy-path button (issue #225).** The per-file sticky header
+  now renders as a flex row with a left disclosure / identity region and
+  a right actions / metadata region, matching the GitHub PR
+  file-header pattern. The left region carries a collapse chevron
+  (`ChevronDownIcon` when expanded, `ChevronRightIcon` when collapsed)
+  immediately followed by the diff-status icon (reuses the existing
+  `fileIcon(file.type)` helper from the sidebar — `FileAddedIcon` for
+  added in `fg.success`, `FileRemovedIcon` for deleted in `fg.danger`,
+  `FileMovedIcon` for renames in `fg.muted`, `FileDiffIcon` for
+  modified in `fg.muted`), then the existing rename indicator and
+  file path. The right region carries the existing classification
+  reason tag and a new icon-only copy-path button (`CopyIcon` from
+  `@primer/octicons-react`, re-exported via `./icons.ts`). Clicking
+  the copy button writes `file.name` to the clipboard via
+  `navigator.clipboard.writeText(...)` and stops propagation so it
+  doesn't toggle collapse. The button carries `aria-label="Copy file
+  path"`, is keyboard-activatable, and shows a subtle hover tint
+  (`bg.neutralSubtle`). The header retains its sticky position and
+  `canvas.subtle` background. Clipboard failures are swallowed
+  silently — the button is best-effort.
+
+  Issue: #225 · PRD: #212 · ADR: 0024
+
 - **Webapp interactive rows: banner treatment for gap / boundary /
   collapsed-file expansion affordances (issue #224).** The
   `<InteractiveRow>` primitive (gap-mid-top, boundary-top,

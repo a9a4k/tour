@@ -19,6 +19,8 @@ import {
   type DiffRowKind,
 } from "./row-components.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
+import { ChevronDownIcon, ChevronRightIcon, CopyIcon } from "./icons.js";
+import { fileIcon } from "./file-icon.js";
 
 /**
  * Per-file React component for the web row renderer. Owns the file-level
@@ -188,12 +190,34 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
   const navIndexById = annotationProps?.navIndexById;
   const navTotal = annotationProps?.navTotal ?? 0;
 
+  const Chevron = isCollapsed ? ChevronRightIcon : ChevronDownIcon;
+  const { Icon: StatusIcon, statusClass } = fileIcon(file.type);
+
+  const handleCopyPath = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    void navigator.clipboard?.writeText?.(file.name).catch(() => {});
+  };
+
   return (
     <div className="tour-file-outer" data-file={file.name}>
       <div className="tour-file-header" onClick={onToggleCollapse}>
-        <RenameHeaderSpan name={file.name} prevName={file.prevName} />
-        <span className="tour-file-name">{file.name}</span>
-        {reason ? <span className="reason-tag">{reason}</span> : null}
+        <div className="tour-file-header-left">
+          <Chevron className="tour-file-chevron" />
+          <StatusIcon className={`tour-file-status-icon ${statusClass}`} />
+          <RenameHeaderSpan name={file.name} prevName={file.prevName} />
+          <span className="tour-file-name">{file.name}</span>
+        </div>
+        <div className="tour-file-header-right">
+          {reason ? <span className="reason-tag">{reason}</span> : null}
+          <button
+            type="button"
+            className="tour-file-copy-button"
+            aria-label="Copy file path"
+            onClick={handleCopyPath}
+          >
+            <CopyIcon />
+          </button>
+        </div>
       </div>
       {isCollapsed ? null : (
         <div

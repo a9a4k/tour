@@ -50,13 +50,80 @@ export const FILE_GRID_CSS = `
     grid-template-columns: auto auto 1fr;
   }
 
-  /* Sticky file header. */
+  /* Sticky file header: GitHub-style flex row with a left disclosure /
+     identity region and a right actions / metadata region. */
   .tour-file-header {
     position: sticky;
     top: 0;
     z-index: 10;
     cursor: pointer;
     background-color: ${theme.canvas.subtle};
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+  }
+
+  .tour-file-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .tour-file-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .tour-file-chevron {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: ${theme.fg.muted};
+  }
+
+  .tour-file-status-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: ${theme.fg.muted};
+  }
+
+  .tour-file-status-icon.added {
+    color: ${theme.fg.success};
+  }
+
+  .tour-file-status-icon.deleted {
+    color: ${theme.fg.danger};
+  }
+
+  .tour-file-copy-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: ${theme.fg.muted};
+    padding: 4px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font: inherit;
+  }
+
+  .tour-file-copy-button:hover {
+    background-color: ${theme.bg.neutralSubtle.web};
+    color: ${theme.fg.default};
+  }
+
+  .tour-file-copy-button:focus-visible {
+    outline: 1px solid ${theme.border.accent};
+    outline-offset: 1px;
   }
 
   /* Row subgrid: inherits the file's column tracks; spans the full width. */

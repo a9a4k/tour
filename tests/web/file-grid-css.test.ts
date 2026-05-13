@@ -251,6 +251,50 @@ describe("FILE_GRID_CSS — sticky file header", () => {
   });
 });
 
+describe("FILE_GRID_CSS — GitHub-style header chrome (#225)", () => {
+  it("declares the header as a flex row", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-header[^{]*\{[^}]*display:\s*flex/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-header[^{]*\{[^}]*align-items:\s*center/,
+    );
+  });
+
+  it("declares left and right region containers", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-header-left");
+    expect(FILE_GRID_CSS).toContain(".tour-file-header-right");
+  });
+
+  it("colors the status icon with the success token for added files", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-status-icon.added");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-status-icon\.added[^{]*\{[^}]*color:\s*#3fb950/i,
+    );
+  });
+
+  it("colors the status icon with the danger token for deleted files", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-status-icon.deleted");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-status-icon\.deleted[^{]*\{[^}]*color:\s*#f85149/i,
+    );
+  });
+
+  it("mutes the status icon by default (modified / renamed inherit fg.muted)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-status-icon[^{.]*\{[^}]*color:\s*#9198a1/i,
+    );
+  });
+
+  it("declares a copy button with a hover affordance", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-copy-button");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-copy-button[^{]*\{[^}]*cursor:\s*pointer/,
+    );
+    expect(FILE_GRID_CSS).toContain(".tour-file-copy-button:hover");
+  });
+});
+
 describe("FILE_GRID_CSS — comment-affordance pointer", () => {
   it("paints the click affordance on annotatable diff lines", () => {
     expect(FILE_GRID_CSS).toContain("cursor: pointer");
@@ -272,6 +316,8 @@ describe("FILE_GRID_CSS — no duplicated hex literals", () => {
       theme.fg.onEmphasis,
       theme.fg.accent,
       theme.fg.cursor,
+      theme.fg.success,
+      theme.fg.danger,
       theme.border.default,
       theme.border.muted,
       theme.border.accent,
