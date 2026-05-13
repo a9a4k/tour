@@ -228,7 +228,7 @@ describe("bundle reload preserves cursor", () => {
     expect(validateCursor(cursor, after, [f])).toEqual(cursor);
   });
 
-  it("snaps cursor when a file is removed from the new bundle", () => {
+  it("clears cursor when a file is removed from the new bundle", () => {
     const fa = fileFromName("a.txt");
     const fb = fileFromName("b.txt");
     const planned = new Map<string, PlannedRow[]>([
@@ -249,8 +249,10 @@ describe("bundle reload preserves cursor", () => {
     const afterPlanned = new Map<string, PlannedRow[]>([["b.txt", plannedFor("split")]]);
     const after = flatRows([fb], afterPlanned, () => false);
     const validated = validateCursor(cursor, after, [fb]);
-    // a.txt isn't in the new files list, so the snap can't anchor the
-    // pre-fold file and the cursor goes null per the contract.
+    // a.txt isn't in the new files list, so the cursor clears to null —
+    // the reconciled policy (issue #232) preserves the anchor when the
+    // file is in `files` but has no rows (folded), and clears it when
+    // the file is genuinely gone from the bundle.
     expect(validated).toBeNull();
   });
 });
