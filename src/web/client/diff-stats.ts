@@ -45,22 +45,18 @@ export function proportionSegments(
   additions: number,
   deletions: number,
 ): ProportionSegments {
+  if (additions <= 0 && deletions <= 0) return { greens: 0, reds: 0, neutrals: 5 };
+  if (deletions <= 0) return { greens: 5, reds: 0, neutrals: 0 };
+  if (additions <= 0) return { greens: 0, reds: 5, neutrals: 0 };
+
   const total = additions + deletions;
-  if (total <= 0) return { greens: 0, reds: 0, neutrals: 5 };
-
-  let greens = Math.round((additions / total) * 5);
-  let reds = Math.round((deletions / total) * 5);
-
-  if (additions > 0 && greens === 0) greens = 1;
-  if (deletions > 0 && reds === 0) reds = 1;
-  if (deletions === 0) greens = 5;
-  if (additions === 0) reds = 5;
+  let greens = Math.max(1, Math.round((additions / total) * 5));
+  let reds = Math.max(1, Math.round((deletions / total) * 5));
 
   while (greens + reds > 5) {
     if (greens >= reds) greens -= 1;
     else reds -= 1;
   }
 
-  const neutrals = 5 - greens - reds;
-  return { greens, reds, neutrals };
+  return { greens, reds, neutrals: 5 - greens - reds };
 }
