@@ -13,11 +13,10 @@ description: >
   reply on an existing Tour, via `tour pickup`.
 
   Does NOT apply to inline chat feedback consumed this turn, opening GitHub
-  PRs (use `gh pr create`), filing issues, or repo-wide notes with no line
+  PRs, filing issues, or repo-wide notes with no line
   anchor. For annotation style and authoring guidance, see the body of
   this skill.
-allowed-tools:
-  Bash(tour:*),
+allowed-tools: Bash(tour:*),
   Bash(bunx tourdiff:*),
   Bash(npx tourdiff:*),
   Bash(npx -y tourdiff:*),
@@ -51,11 +50,11 @@ Don't pass `--base origin/main`. The default merge-base-with-upstream matches Gi
 ## Annotation rules
 
 1. **Architectural scope.** Tour is the senior-engineer walkthrough — 5 minutes. Every annotation is real cost; if a beat doesn't earn its place, cut it.
-2. **Order by reading flow, motivation first.** Open with one annotation answering *why does this PR exist?* (the problem, not the diff) — anchored to a representative line or the first changed file. Then move through the changes in reading order, not file order.
+2. **Order by reading flow, motivation first.** Open with one annotation answering _why does this PR exist?_ (the problem, not the diff) — anchored to a representative line or the first changed file. Then move through the changes in reading order, not file order.
 3. **What to annotate**: new dependency shapes, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff doesn't explain, the bug's root cause.
 4. **What to skip**: variable renames, micro-formatting, "five lines instead of seven", linter-catchable nits. If the diff is the explanation, don't annotate.
-5. **Leverage every word.** Cut anything that doesn't carry the *why*. Inline any context the reader needs (linked issue, codebase convention, Slack thread) or drop the annotation.
-6. **Code and visuals beat prose.** A before/after snippet, small table, or Mermaid diagram says more than a paragraph. Reach for prose only when there's no code or shape to show.
+5. **Leverage every word.** Cut anything that doesn't carry the _why_. Inline any context the reader needs (linked issue, codebase convention, Slack thread) or drop the annotation.
+6. **Match medium to message.** Diagrams for flow, snippets for code changes, tables for comparisons, prose for the *why* and the narrative. Markdown renders rich in the webapp.
 7. **Findings batch**: external findings (security scan, lint, thorough-review) get one annotation per finding — drop the narrative arc.
 
 ## Continue (pickup)
@@ -68,11 +67,11 @@ tour pickup "$TOUR_ID" --json
 
 Returns a `ConversationTree`. Actors:
 
-| `author_kind` | `author` value | Actor |
-|---|---|---|
-| `"human"` | (any) | Human |
-| `"agent"` | `claude` / `codex` / `gemini` / `opencode` / `pi` | Reply-agent |
-| `"agent"` | other | You (earlier) |
+| `author_kind` | `author` value                                    | Actor         |
+| ------------- | ------------------------------------------------- | ------------- |
+| `"human"`     | (any)                                             | Human         |
+| `"agent"`     | `claude` / `codex` / `gemini` / `opencode` / `pi` | Reply-agent   |
+| `"agent"`     | other                                             | You (earlier) |
 
 Most human comments have no reply-agent child — they're directives for you. Comments with a reply-agent child already had one agent turn; you may need to follow up.
 
