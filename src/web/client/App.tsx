@@ -18,33 +18,20 @@ import {
   type TourSummary as SessionTourSummary,
 } from "../../core/tour-session.js";
 import {
+  topLevelAnnotations,
   buildThreads,
-  isTopLevel,
   latestAnnotationId,
   latestHumanLeafId,
-  topLevelAnnotations,
 } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
   canSendToAgent,
   type CanSendToAgentResult,
 } from "../../core/can-send-to-agent.js";
-import {
-  buildTree,
-  compress,
-  flatten,
-  revealAncestors,
-  sortFilesForStream,
-  type VisibleRow,
-} from "../../core/file-tree.js";
-import { flatRows as buildFlatRows } from "../../core/flat-rows.js";
+import { revealAncestors, type VisibleRow } from "../../core/file-tree.js";
 import { planRows, GAP_TWO_ROW_THRESHOLD, type PlannedRow } from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
-import {
-  emptyExpansion,
-  getBoundary,
-  type OrphanWindow,
-} from "../../core/expansion-state.js";
+import { emptyExpansion, getBoundary, type OrphanWindow } from "../../core/expansion-state.js";
 import {
   cursorFromAnnotation,
   initialCursor,
@@ -53,9 +40,13 @@ import {
   prevCard,
   preferredSideOf,
   setCursorSide,
-  validateCursor,
   type Cursor,
 } from "../../core/cursor-state.js";
+import {
+  deriveTourSessionView,
+  useTourSessionView,
+  type TourSessionView,
+} from "../../core/tour-session-view.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
 import { tourDiffStats } from "./diff-stats.js";
@@ -94,17 +85,24 @@ interface AppProps {
   replyAgent?: string | null;
 }
 
-function defaultCollapsedFor(file: BundleFile, annotations: Annotation[]): boolean {
-  const reason = file.classification.reason;
-  if (reason === "binary") return true;
-  if (
-    file.classification.collapsed === true &&
-    !annotations.some((a) => a.file === file.name && isTopLevel(a))
-  ) {
-    return true;
-  }
-  return false;
-}
+// Sentinel snapshot-lost bundle so `useTourSessionView` stays unconditional
+// before the real bundle lands.
+const EMPTY_BUNDLE: TourBundle = {
+  kind: "snapshot-lost",
+  tour: {
+    id: "",
+    title: "",
+    status: "open",
+    created_at: "",
+    closed_at: "",
+    head_sha: "",
+    base_sha: "",
+    head_source: "",
+    base_source: "",
+    wip_snapshot: false,
+  },
+  annotations: [],
+};
 
 function readTourFromUrl(fallback: string | null): string | null {
   if (typeof window === "undefined") return fallback;
@@ -254,63 +252,20 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           }
           break;
         case "revalidateCursor": {
-          // Bundle just landed (watcher SSE refresh). Recompute flat-rows
-          // from the fresh bundle + current layout / folds / expansion;
-          // call `validateCursor` to decide preserve / snap / clear. The
-          // recompute is inline because React hasn't re-rendered yet —
-          // useMemo's flatRowsList still reflects the old bundle.
+          // Bundle just landed (watcher SSE refresh). Re-derive the view
+          // pure-fn against the fresh bundle + state so the cursor anchor
+          // is validated against the new flat-rows. Inline because React
+          // hasn't re-rendered yet — `useTourSessionView`'s memo still
+          // reflects the old bundle.
           const state = store.getState();
           const cursor = state.cursor;
           if (cursor === null) break;
           const bundle =
             state.bundle.kind === "ok" ? state.bundle.value : null;
           if (!bundle || bundle.kind !== "ok") break;
-          const inputs = intentInputsRef.current;
-          if (!inputs) break;
-          const bundleAnnotations = bundle.annotations;
-          const parsedFilesFresh = sortFilesForStream(
-            parseFileDiffMetadata(bundle.diff),
-          );
-          const modelFilesFresh = new Map<string, BundleFile>();
-          for (const f of bundle.files) modelFilesFresh.set(f.name, f);
-          const overrides = state.collapsedOverrides;
-          const isClassifierCollapsedFresh = (name: string): boolean => {
-            const override = overrides[name];
-            if (override === false) return false;
-            const f = modelFilesFresh.get(name);
-            if (!f) return false;
-            if (!f.classification.collapsed) return false;
-            if (f.classification.reason === "binary") return false;
-            return true;
-          };
-          const isCollapsedFresh = (name: string): boolean => {
-            if (name in overrides) return overrides[name];
-            const f = modelFilesFresh.get(name);
-            return f ? defaultCollapsedFor(f, bundleAnnotations) : false;
-          };
-          const plannedFresh = new Map<string, PlannedRow[]>();
-          for (const f of parsedFilesFresh) {
-            const bf = modelFilesFresh.get(f.name);
-            plannedFresh.set(
-              f.name,
-              planRows(f, bundleAnnotations, state.layout, {
-                oldContent: bf?.oldContent,
-                newContent: bf?.newContent,
-                expansion: state.expansion,
-                classifierCollapsed: isClassifierCollapsedFresh(f.name),
-              }),
-            );
-          }
-          const flatFresh = buildFlatRows(
-            parsedFilesFresh.map((f) => ({
-              name: f.name,
-              type: "change",
-              hunks: [],
-            })),
-            plannedFresh,
-            isCollapsedFresh,
-          );
-          const validated = validateCursor(cursor, flatFresh, parsedFilesFresh);
+          const fresh = deriveTourSessionView(bundle, state);
+          if (fresh.kind !== "ok") break;
+          const validated = fresh.cursor.anchor;
           if (validated === cursor) break;
           if (validated === null) {
             store.dispatch({ type: "cursor.clear" });
@@ -567,100 +522,43 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [tourId]);
 
   const tourMeta = bundle?.tour ?? null;
-  const annotations = useMemo(() => bundle?.annotations ?? [], [bundle?.annotations]);
-  const topLevel = useMemo(() => topLevelAnnotations(annotations), [annotations]);
-  // 1-based nav-order index per top-level annotation id, for rendering the
-  // `i / n` counter in each AnnotationCard header. Stable Map so FileBlock's
-  // memo bails on cursor moves.
-  const navIndexById = useMemo(() => {
-    const m = new Map<string, number>();
-    topLevel.forEach((a, i) => m.set(a.id, i + 1));
-    return m;
-  }, [topLevel]);
-  const navTotal = topLevel.length;
-  const repliesByRoot = useMemo(() => {
-    const out = new Map<string, Annotation[]>();
-    for (const t of buildThreads(annotations)) {
-      out.set(t.root.id, t.replies);
-    }
-    return out;
-  }, [annotations]);
-  // The cursor's card target (PRD #192 / ADR 0022) when the cursor is on
-  // an Annotation card; null on row / null cursor. Drives the active-card
-  // visual treatment and the SequencePill counter. (URL mirroring lives
-  // in the store's `mirrorAnnUrl` intent — see the intent listener.)
-  const cursorCardId: string | null =
-    cursor?.kind === "card" ? cursor.annotationId : null;
-  const currentIdx = useMemo(() => {
-    if (cursorCardId === null) return -1;
-    return topLevel.findIndex((a) => a.id === cursorCardId);
-  }, [topLevel, cursorCardId]);
-  // Which file holds the cursor's card, so the active-card prop only goes
-  // to that one FileBlock. Before this, every FileBlock saw the prop
-  // change on every n/p and bailed React.memo, re-rendering all ~650 files
-  // for a single annotation step. Now only the old + new annotation's
-  // files re-render on nav.
-  const cursorCardFile = useMemo<string | null>(() => {
-    if (cursorCardId === null) return null;
-    return annotations.find((a) => a.id === cursorCardId)?.file ?? null;
-  }, [annotations, cursorCardId]);
-
-  const liveDiff = bundle && bundle.kind === "ok" ? bundle.diff : "";
-  const liveFiles = useMemo<BundleFile[]>(
-    () => (bundle && bundle.kind === "ok" ? bundle.files : []),
-    [bundle],
-  );
-  // O(1) lookup keyed by file name. The previous render-time
-  // `liveFiles.find(...)` per `<FileBlock>` is O(N) per file × N files
-  // per render = O(N²) and — more importantly — returns the same
-  // BundleFile reference each time, but inside a fresh arrow per
-  // render. Hoisting to a stable Map keeps the modelFile prop
-  // referentially stable across renders so React.memo can short-circuit.
-  const modelFilesByName = useMemo<Map<string, BundleFile>>(() => {
-    const m = new Map<string, BundleFile>();
-    for (const f of liveFiles) m.set(f.name, f);
-    return m;
-  }, [liveFiles]);
-  const snapshotLost = bundle?.kind === "snapshot-lost";
-
-  const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
-    if (!tourMeta || !liveDiff) return [];
-    const raw = parseFileDiffMetadata(liveDiff);
-    return sortFilesForStream(raw);
-  }, [liveDiff, tourMeta?.id]);
+  // Tour-session view (PRD #242 / issue #245). Per-namespace memoised
+  // projection from `(bundle, state)`; consumes through `view.*` instead
+  // of the parallel useMemo chain the App used to maintain. EMPTY_BUNDLE
+  // keeps the hook call unconditional before the real bundle lands.
+  const view: TourSessionView = useTourSessionView(store, bundle ?? EMPTY_BUNDLE);
 
   // Seed orphan windows on bundle load (and re-union on SSE refresh; new
   // annotations may add windows). seedFromOrphans is a union — per-side
   // expansion is `Math.max(prev, w.fromStart/fromEnd)` so manually-
   // expanded user state is preserved across reloads (mirrors TUI #114).
   useEffect(() => {
-    if (!liveFiles.length) return;
+    if (view.kind !== "ok") return;
+    const files = view.bundle.files;
+    if (!files.length) return;
     const windows: OrphanWindow[] = [];
-    for (const f of liveFiles) {
+    for (const f of files) {
       for (const w of f.orphanWindows) {
         windows.push({ file: f.name, ref: w.ref, fromStart: w.fromStart, fromEnd: w.fromEnd });
       }
     }
     if (windows.length === 0) return;
     store.dispatch({ type: "expansion.seedFromOrphans", windows });
-  }, [liveFiles, store]);
+  }, [view, store]);
 
-  const tree = useMemo(() => compress(buildTree(liveFiles)), [liveFiles]);
-  const annotationCounts = useMemo<Record<string, number>>(() => {
-    const out: Record<string, number> = {};
-    for (const a of topLevel) {
-      out[a.file] = (out[a.file] ?? 0) + 1;
-    }
-    return out;
-  }, [topLevel]);
-  const visibleRows = useMemo<VisibleRow<BundleFile>[]>(
-    () => flatten(tree, collapsedFolders, annotationCounts),
-    [tree, collapsedFolders, annotationCounts],
-  );
+  // tourStats re-plans every file with stable args (empty annotations /
+  // expansion, "split" layout) to compute the FULL-diff +N -M totals —
+  // that pass needs the FileDiffMetadata shape the view doesn't surface,
+  // so parse the raw diff once more here.
+  const parsedFiles = useMemo<FileDiffMetadata[]>(() => {
+    if (!bundle || bundle.kind !== "ok") return [];
+    return parseFileDiffMetadata(bundle.diff);
+  }, [bundle]);
 
   const revealFileAncestors = useCallback(
     (filePath: string) => {
-      const ancestors = revealAncestors(tree, filePath);
+      if (view.kind !== "ok") return;
+      const ancestors = revealAncestors(view.tree.root, filePath);
       if (ancestors.length === 0) return;
       // Dispatch `folds.toggleFolder` for ancestors that ARE in the set.
       // The reducer's toggleFolder branch is presence-aware (delete on
@@ -675,7 +573,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         }
       }
     },
-    [tree, store],
+    [view, store],
   );
 
   const toggleFolder = useCallback(
@@ -708,6 +606,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // resolved file is null on either end), so we still call
       // revealFileAncestors / setSelectedFile / collapsedOverrides
       // inline here.
+      if (view.kind !== "ok") return;
+      const topLevel = view.nav.topLevel;
       const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.annotationId);
@@ -721,7 +621,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       revealFileAncestors(ann.file);
       store.dispatch({ type: "cursor.set", anchor: target });
     },
-    [cursor, topLevel, revealFileAncestors, store],
+    [cursor, view, revealFileAncestors, store],
   );
 
   // Re-anchor cursor to a top-level Annotation card on bundle load (PRD #192
@@ -739,6 +639,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // already matches.
   useEffect(() => {
     if (!tourMeta || tourMeta.id !== tourId) return;
+    // Re-anchor reads top-level annotations from whichever view branch
+    // carries them. Snapshot-lost bundles still need the initial-selection
+    // / sidebar-reveal effects to fire when annotations are present.
+    const topLevel =
+      view.kind === "ok"
+        ? view.nav.topLevel
+        : topLevelAnnotations([...view.annotations]);
     if (topLevel.length === 0) {
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
@@ -752,7 +659,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     setSelectedFile(action.target.file);
     revealFileAncestors(action.target.file);
     if (action.kind === "url-restore") anchorInitial(action.target.id);
-  }, [tourMeta, tourId, topLevel, cursor, revealFileAncestors, anchorInitial, store]);
+  }, [tourMeta, tourId, view, cursor, revealFileAncestors, anchorInitial, store]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -816,13 +723,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
   }, []);
 
+  // Per-file fold predicate. Mirrors the view's `isFileFolded` rule
+  // (PRD #242 reconciliation): user override wins; otherwise only binary
+  // files fold automatically. Classifier-collapsed non-binary files now
+  // emit a synthetic CollapsedFileRow via the planner.
   const isCollapsed = useCallback(
     (fileName: string): boolean => {
       if (fileName in collapsedOverrides) return collapsedOverrides[fileName];
-      const f = liveFiles.find((x) => x.name === fileName);
-      return f ? defaultCollapsedFor(f, annotations) : false;
+      if (view.kind !== "ok") return false;
+      const f = view.bundle.filesByName.get(fileName);
+      return f ? f.classification.reason === "binary" : false;
     },
-    [collapsedOverrides, liveFiles, annotations],
+    [collapsedOverrides, view],
   );
 
   const toggleCollapsed = useCallback(
@@ -874,55 +786,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [findFileBlock],
   );
 
-  // Returns true when the planner should emit a synthetic CollapsedFileRow
-  // in place of this file's diff body (PRD #108 issue #113). Mirror of the
-  // TUI's isClassifierCollapsed — binary files are body-collapsed entirely,
-  // not synthetic-row-collapsed; classifier-collapsed non-binary files
-  // emit the synthetic row unless the user has overridden `c`.
-  const isClassifierCollapsed = useCallback(
-    (fileName: string): boolean => {
-      const override = collapsedOverrides[fileName];
-      if (override === false) return false;
-      const f = liveFiles.find((x) => x.name === fileName);
-      if (!f) return false;
-      if (!f.classification.collapsed) return false;
-      if (f.classification.reason === "binary") return false;
-      return true;
-    },
-    [collapsedOverrides, liveFiles],
-  );
-
-  // Cursor walk sequence (ADR 0012). Per-file planned rows are built from
-  // each parsed file + the annotation list + the active layout (split vs
-  // unified differ in pairing) + the per-tour expansion state. The flat-
-  // rows builder skips folded files and hunk-header / annotation rows,
-  // leaving a walkable sequence indexed by moveCursor.
-  const plannedRowsByFile = useMemo(() => {
-    const out = new Map<string, PlannedRow[]>();
-    for (const f of parsedFiles) {
-      const bf = modelFilesByName.get(f.name);
-      out.set(
-        f.name,
-        planRows(f, annotations, layout, {
-          oldContent: bf?.oldContent,
-          newContent: bf?.newContent,
-          expansion,
-          classifierCollapsed: isClassifierCollapsed(f.name),
-        }),
-      );
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedFiles, annotations, layout, expansion, modelFilesByName, isClassifierCollapsed]);
-
-  const flatRowsList = useMemo(() => {
-    return buildFlatRows(
-      parsedFiles.map((f) => ({ name: f.name, type: "change", hunks: [] })),
-      plannedRowsByFile,
-      isCollapsed,
-    );
-  }, [parsedFiles, plannedRowsByFile, isCollapsed]);
-
   // Tour-level (PR-equivalent) `+N -M` totals for the title-bar indicator
   // (issue #233 / PRD #212). Computed once per bundle by planning each
   // file's rows with stable args (split layout, empty expansion, no
@@ -930,10 +793,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // diff regardless of which files are currently collapsed in the UI or
   // classifier-flagged for collapse. Cursor moves, layout toggles,
   // expansion changes, and annotation navigation do NOT re-walk — none of
-  // them touch `parsedFiles` / `modelFilesByName`.
+  // them touch `parsedFiles` / `view.bundle.filesByName`.
+  const filesByName =
+    view.kind === "ok" ? view.bundle.filesByName : null;
   const tourStats = useMemo(() => {
     const files = parsedFiles.map((f) => {
-      const bf = modelFilesByName.get(f.name);
+      const bf = filesByName?.get(f.name);
       const rows = planRows(f, [], "split", {
         oldContent: bf?.oldContent,
         newContent: bf?.newContent,
@@ -943,23 +808,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       return { rows };
     });
     return tourDiffStats(files);
-  }, [parsedFiles, modelFilesByName]);
-
-  // Validate-in-place when the row sequence shifts under the cursor's
-  // feet on local-state changes the reducer can't see (fold toggle,
-  // layout switch). Bundle.refreshed is handled separately via the
-  // store's `revalidateCursor` intent — see the intent listener below.
-  // The reconciled `validateCursor` (issue #232) preserves the anchor
-  // when the cursor's file is in `files` but has no rows (collapsed
-  // file), so no surface-side discriminator is needed.
-  useEffect(() => {
-    if (cursor === null) return;
-    const validated = validateCursor(cursor, flatRowsList, parsedFiles);
-    if (validated === cursor) return;
-    if (validated === null) store.dispatch({ type: "cursor.clear" });
-    else store.dispatch({ type: "cursor.set", anchor: validated });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRowsList, parsedFiles]);
+  }, [parsedFiles, filesByName]);
 
   // Lazy materialization (ADR 0012). Dispatches `cursor.materialize` so
   // the reducer's strict no-op on a non-null cursor protects against
@@ -968,10 +817,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const materializeCursor = useCallback((): Cursor | null => {
     const c = store.getState().cursor;
     if (c) return c;
-    const seeded = initialCursor({ topLevelAnnotations: topLevel, flatRows: flatRowsList });
+    if (view.kind !== "ok") return null;
+    const seeded = initialCursor({
+      topLevelAnnotations: view.nav.topLevel,
+      flatRows: view.rows.flatRowsList,
+    });
     if (seeded) store.dispatch({ type: "cursor.materialize", anchor: seeded });
     return seeded;
-  }, [store, topLevel, flatRowsList]);
+  }, [store, view]);
 
   // Auto-recall (PRD #192 / ADR 0022). When `r` or `s` fires and the cursor's
   // card is not in the viewport, smooth-scroll it to centre BEFORE mounting
@@ -991,47 +844,42 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   // Gap-size lookups for the expansion dispatcher. Mirror of the TUI's
   // hunkSeparatorGapSize / boundaryTopGapSize / boundaryBottomGapSize
-  // (src/tui/app.tsx) — sourced from each file's parsed hunks plus the
-  // bundle's `newContent` for the trailing gap. The dispatcher needs gap
-  // size to drive `expand`'s saturation logic and the symmetric vs
-  // unilateral direction choice.
-  const parsedFilesByName = useMemo(() => {
-    const m = new Map<string, FileDiffMetadata>();
-    for (const f of parsedFiles) m.set(f.name, f);
-    return m;
-  }, [parsedFiles]);
-
+  // (src/tui/app.tsx) — sourced from each file's parsed hunks (now read
+  // from `view.bundle.filesByName`; the previous `parsedFilesByName`
+  // projection is gone) plus the bundle's `newContent` for the trailing
+  // gap. The dispatcher needs gap size to drive `expand`'s saturation
+  // logic and the symmetric vs unilateral direction choice.
   const hunkSeparatorGapSize = useCallback(
     (file: string, hunkIndex: number): number => {
-      const meta = parsedFilesByName.get(file);
+      const meta = filesByName?.get(file);
       if (!meta || hunkIndex <= 0 || hunkIndex >= meta.hunks.length) return 0;
       const prev = meta.hunks[hunkIndex - 1];
       const next = meta.hunks[hunkIndex];
       return Math.max(0, next.additionStart - (prev.additionStart + prev.additionCount));
     },
-    [parsedFilesByName],
+    [filesByName],
   );
   const boundaryTopGapSize = useCallback(
     (file: string): number => {
-      const meta = parsedFilesByName.get(file);
+      const meta = filesByName?.get(file);
       if (!meta || meta.hunks.length === 0) return 0;
       return Math.max(0, meta.hunks[0].additionStart - 1);
     },
-    [parsedFilesByName],
+    [filesByName],
   );
   const boundaryBottomGapSize = useCallback(
     (file: string): number => {
-      const meta = parsedFilesByName.get(file);
+      const meta = filesByName?.get(file);
       if (!meta || meta.hunks.length === 0) return 0;
       const last = meta.hunks[meta.hunks.length - 1];
       const lastEnd = last.additionStart + last.additionCount - 1;
-      const content = modelFilesByName.get(file)?.newContent;
+      const content = meta.newContent;
       if (!content) return 0;
       const trimmed = content.endsWith("\n") ? content.slice(0, -1) : content;
       const lineCount = trimmed === "" ? 0 : trimmed.split("\n").length;
       return Math.max(0, lineCount - lastEnd);
     },
-    [parsedFilesByName, modelFilesByName],
+    [filesByName],
   );
 
   // Translates the FileBlock-emitted ExpandAction into the matching
@@ -1169,7 +1017,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           composerOpen: composerTarget !== null,
           pickerOpen,
           focusInEditable,
-          cursorOnCard: cursor?.kind === "card",
+          cursorOnCard: view.kind === "ok" ? view.cursor.onCard : false,
         },
       );
       if (action.type === "noop") return;
@@ -1208,13 +1056,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Compute next pure via moveCursor against the latest
           // flat-rows; cursor.set dispatch fires scrollCursorTarget
           // which the intent listener realizes as scrollIntoView.
-          const next = moveCursor(cursor, "down", flatRowsList);
+          if (view.kind !== "ok") return;
+          const next = moveCursor(cursor, "down", view.rows.flatRowsList);
           if (next === null || next === cursor) return;
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
         }
         case "move-up": {
-          const next = moveCursor(cursor, "up", flatRowsList);
+          if (view.kind !== "ok") return;
+          const next = moveCursor(cursor, "up", view.rows.flatRowsList);
           if (next === null || next === cursor) return;
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
@@ -1226,13 +1076,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // preference path for cards / interactive rows; row anchors
           // route through `setCursorSide` + cursor.set so the lineNumber
           // recomputes for paired rows.
-          const next = setCursorSide(cursor, "additions", flatRowsList);
+          if (view.kind !== "ok") return;
+          const next = setCursorSide(cursor, "additions", view.rows.flatRowsList);
           if (next === null || next === cursor) return;
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
         }
         case "set-side-deletions": {
-          const next = setCursorSide(cursor, "deletions", flatRowsList);
+          if (view.kind !== "ok") return;
+          const next = setCursorSide(cursor, "deletions", view.rows.flatRowsList);
           if (next === null || next === cursor) return;
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
@@ -1265,11 +1117,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Reply button's #191 semantics). When the cursor's card is off-
           // screen the renderer auto-recalls it before the composer mounts
           // (US 14 — the action reveals its target).
-          if (cursor?.kind !== "card") return;
-          const cardId = cursor.annotationId;
-          const cardAnn = topLevel.find((a) => a.id === cardId);
-          if (!cardAnn) return;
-          const latestId = latestAnnotationId(cardAnn, repliesByRoot.get(cardId) ?? []);
+          if (view.kind !== "ok") return;
+          const cardAnn = view.cursor.cardAnnotation;
+          const cardId = view.cursor.cardId;
+          if (!cardAnn || !cardId) return;
+          const latestId = latestAnnotationId(
+            cardAnn,
+            [...(view.nav.repliesByRoot.get(cardId) ?? [])],
+          );
           recallCardThen(cardId, () => {
             store.dispatch({
               type: "composer.open",
@@ -1280,33 +1135,30 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         }
         case "send-on-card": {
           // PRD #192 / ADR 0022. `s` on a card dispatches the latest human
-          // leaf in that thread to the configured reply-agent. Hidden /
-          // disabled cases (agent-card, already-replied, lock-held, no
-          // agent configured) are silently skipped — the verdict gate is
-          // the existing per-card `canSendToAgent` predicate.
-          if (cursor?.kind !== "card") return;
+          // leaf in that thread to the configured reply-agent. The latest-
+          // human-leaf rule is consumed from `view.nav.sendTarget` (PRD
+          // #242), shared with the TUI's `s` dispatch. Hidden / disabled
+          // cases (agent-card, already-replied, lock-held, no agent
+          // configured) are silently skipped — the verdict gate is the
+          // existing per-card `canSendToAgent` predicate.
+          if (view.kind !== "ok") return;
           if (!tourId || !replyAgent) return;
-          const cardId = cursor.annotationId;
-          const cardAnn = topLevel.find((a) => a.id === cardId);
-          if (!cardAnn) return;
-          const descendants = repliesByRoot.get(cardId) ?? [];
-          const leafId = latestHumanLeafId(cardAnn, descendants);
-          if (!leafId) return;
-          const leaf =
-            leafId === cardId ? cardAnn : descendants.find((a) => a.id === leafId);
-          if (!leaf) return;
+          const target = view.nav.sendTarget;
+          if (!target) return;
           const verdict = canSendToAgent({
             replyAgentConfigured: true,
             lockHeld: replyLock !== null,
-            authorKind: leaf.author_kind,
+            authorKind: target.leaf.author_kind,
             hasReply: false,
           });
           if (!verdict.enabled) return;
+          const cardId = view.cursor.cardId;
+          if (!cardId) return;
           recallCardThen(cardId, () => {
             void fetch(`/api/tours/${tourId}/request-reply`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ annotation_id: leafId }),
+              body: JSON.stringify({ annotation_id: target.leafId }),
             }).catch(() => {
               // Network transient — watcher events stay the source of truth.
             });
@@ -1323,10 +1175,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     openPicker,
     cursor,
     composerTarget,
-    flatRowsList,
+    view,
     materializeCursor,
-    topLevel,
-    repliesByRoot,
     recallCardThen,
     tourId,
     replyAgent,
@@ -1360,7 +1210,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // annotation.
   const setCursorFromCardClick = useCallback(
     (annotationId: string) => {
-      const a = annotations.find((x) => x.id === annotationId);
+      if (view.kind !== "ok") return;
+      const a = view.bundle.annotations.find((x) => x.id === annotationId);
       if (!a) return;
       store.dispatch({
         type: "cursor.set",
@@ -1368,7 +1219,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       });
       setSelectedFile(a.file);
     },
-    [annotations, store],
+    [view, store],
   );
 
   const openReplyComposer = useCallback(
@@ -1453,6 +1304,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const titleIsEmpty = !tourMeta.title;
 
+  // SequencePill keeps the legacy `-1 = off-card / 0-based when on-card`
+  // contract; the view's `nav.currentIdx` is 1-based with 0 meaning
+  // off-card. Convert at the call site rather than churning the pill API.
+  const navTotal = view.kind === "ok" ? view.nav.navTotal : 0;
+  const pillIdx =
+    view.kind === "ok" && view.nav.currentIdx > 0
+      ? view.nav.currentIdx - 1
+      : -1;
+
   return (
     <>
       <div className="tour-header">
@@ -1490,8 +1350,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         </div>
         <div className="tour-header-right">
           <SequencePill
-            idx={currentIdx}
-            total={topLevel.length}
+            idx={pillIdx}
+            total={navTotal}
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
           />
@@ -1506,57 +1366,56 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       <div className="app-body">
         <aside className="app-sidebar">
           <h2>Files</h2>
-          {visibleRows.map((row) =>
-            row.kind === "folder" ? (
-              <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
-            ) : (
-              <FileRow
-                key={`f:${row.path}`}
-                row={row}
-                selected={selectedFile === row.path}
-                registerRef={registerSidebarRef}
-                onSelect={selectFile}
-              />
-            ),
-          )}
+          {view.kind === "ok"
+            ? view.tree.visibleRows.map((row) =>
+                row.kind === "folder" ? (
+                  <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
+                ) : (
+                  <FileRow
+                    key={`f:${row.path}`}
+                    row={row}
+                    selected={selectedFile === row.path}
+                    registerRef={registerSidebarRef}
+                    onSelect={selectFile}
+                  />
+                ),
+              )
+            : null}
         </aside>
         <main className="app-main">
-          {snapshotLost ? (
-            <div className="banner">
-              Snapshot lost — annotations preserved but diff cannot be displayed
-            </div>
-          ) : null}
-          {snapshotLost ? (
-            <AnnotationList
-              topLevel={topLevel}
-              repliesByRoot={repliesByRoot}
-              navIndexById={navIndexById}
-              navTotal={navTotal}
-              cursorCardId={cursorCardId}
-              registerAnnotationRef={registerAnnotationRef}
-              composerTarget={composerTarget}
-              composerBody={composerBody}
-              composerError={composerError}
-              onComposerBodyChange={onComposerBodyChange}
-              onOpenReply={openReplyComposer}
-              onSubmit={submitComposer}
-              onCancel={closeComposer}
-              replyLock={replyLock}
-              replyAgent={replyAgent}
-              onSendToAgent={sendToAgent}
-              onCardClick={setCursorFromCardClick}
-            />
+          {view.kind === "snapshot-lost" ? (
+            <>
+              <div className="banner">
+                Snapshot lost — annotations preserved but diff cannot be displayed
+              </div>
+              <AnnotationListSnapshotLost
+                annotations={view.annotations}
+                cursor={cursor}
+                registerAnnotationRef={registerAnnotationRef}
+                composerTarget={composerTarget}
+                composerBody={composerBody}
+                composerError={composerError}
+                onComposerBodyChange={onComposerBodyChange}
+                onOpenReply={openReplyComposer}
+                onSubmit={submitComposer}
+                onCancel={closeComposer}
+                replyLock={replyLock}
+                replyAgent={replyAgent}
+                onSendToAgent={sendToAgent}
+                onCardClick={setCursorFromCardClick}
+              />
+            </>
           ) : (
             <>
               <style>{FILE_GRID_CSS}</style>
-              {parsedFiles.map((f) => {
-                const bf = modelFilesByName.get(f.name);
+              {Array.from(view.rows.plannedRowsByFile.keys()).map((fileName) => {
+                const bf = view.bundle.filesByName.get(fileName);
                 if (!bf) return null;
-                const rows = plannedRowsByFile.get(f.name) ?? [];
+                const rows = view.rows.plannedRowsByFile.get(fileName) ?? [];
                 const topLevelComposer =
                   composerTarget &&
                   composerTarget.kind === "top-level" &&
-                  composerTarget.file === f.name
+                  composerTarget.file === fileName
                     ? composerTarget
                     : null;
                 const composerAnchor = topLevelComposer
@@ -1577,7 +1436,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                   composerTarget?.kind === "reply" ? composerTarget.replies_to : null;
                 return (
                   <FileBlock
-                    key={f.name}
+                    key={fileName}
                     file={bf}
                     rows={rows}
                     layout={layout}
@@ -1599,11 +1458,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       replyLock,
                       replyAgent,
                       onSendToAgent: sendToAgent,
-                      navIndexById,
-                      navTotal,
+                      navIndexById: view.nav.navIndexById,
+                      navTotal: view.nav.navTotal,
                     }}
-                    isCollapsed={isCollapsed(f.name)}
-                    onToggleCollapse={() => toggleCollapsed(f.name)}
+                    isCollapsed={isCollapsed(fileName)}
+                    onToggleCollapse={() => toggleCollapsed(fileName)}
                     composerAnchor={composerAnchor}
                     composerSlot={composerSlot}
                   />
@@ -2097,12 +1956,9 @@ function Composer({
   );
 }
 
-interface AnnotationListProps {
-  topLevel: Annotation[];
-  repliesByRoot: Map<string, Annotation[]>;
-  navIndexById: Map<string, number>;
-  navTotal: number;
-  cursorCardId: string | null;
+interface AnnotationListSnapshotLostProps {
+  annotations: ReadonlyArray<Annotation>;
+  cursor: Cursor | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
   composerBody: string;
@@ -2117,12 +1973,13 @@ interface AnnotationListProps {
   onCardClick: (annotationId: string) => void;
 }
 
-function AnnotationList({
-  topLevel,
-  repliesByRoot,
-  navIndexById,
-  navTotal,
-  cursorCardId,
+// Renders annotations when the bundle is `snapshot-lost`. The Tour-session
+// view's `nav` namespace isn't available in that branch (no diff to plan
+// rows against), so we re-derive top-level / replies / nav index inline
+// here — the snapshot-lost branch is degenerate and rare.
+function AnnotationListSnapshotLost({
+  annotations,
+  cursor,
   registerAnnotationRef,
   composerTarget,
   composerBody,
@@ -2135,12 +1992,22 @@ function AnnotationList({
   replyAgent,
   onSendToAgent,
   onCardClick,
-}: AnnotationListProps): React.JSX.Element {
+}: AnnotationListSnapshotLostProps): React.JSX.Element {
+  const annArr = [...annotations];
+  const topLevel = topLevelAnnotations(annArr);
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
+  const navIndexById = new Map<string, number>();
+  topLevel.forEach((a, i) => navIndexById.set(a.id, i + 1));
+  const repliesByRoot = new Map<string, ReadonlyArray<Annotation>>();
+  for (const t of buildThreads(annArr)) {
+    repliesByRoot.set(t.root.id, t.replies);
+  }
+  const cursorCardId =
+    cursor && cursor.kind === "card" ? cursor.annotationId : null;
   return (
     <>
       {topLevel.map((a) => {
-        const replies = repliesByRoot.get(a.id) ?? [];
+        const replies = [...(repliesByRoot.get(a.id) ?? [])];
         const replyTargetId =
           composerTarget?.kind === "reply" &&
           (composerTarget.replies_to === a.id ||
@@ -2154,7 +2021,7 @@ function AnnotationList({
             replies={replies}
             isCurrent={a.id === cursorCardId}
             navIndex={navIndexById.get(a.id) ?? null}
-            navTotal={navTotal}
+            navTotal={topLevel.length}
             registerRef={registerAnnotationRef}
             replyTargetId={replyTargetId}
             composerBody={replyTargetId !== null ? composerBody : ""}
