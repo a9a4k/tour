@@ -8,6 +8,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: split-layout gutter renders `+` / `-` sign column (issue #257,
+  mirrors webapp #221).** Pre-fix `splitGutter(lineNumber)` returned
+  `${pad(lineNumber)} ` — line number + trailing space, no sign. Tint
+  alone signalled addition / deletion / change rows in split layout,
+  which is insufficient for color-blind readers and didn't match the
+  TUI's own unified-layout behaviour (`unifiedSign` already emits
+  `+` / `-` / blank). Webapp shipped the sign column in both layouts
+  in #221; TUI was partial. Fix adds a `splitSign(row, side)` helper
+  that mirrors `unifiedSign`'s vocabulary but reads the sign from the
+  populated side: in split layout the planner emits both pure adds and
+  pure dels as `type: "change"` with one side's line number null,
+  so the sign on each side is `-` (left, deletions) or `+` (right,
+  additions) when that side carries content, and a blank space when
+  the side is empty or the row is `type: "context"`. `splitGutter`
+  takes the sign as a second argument and appends `${sign} ` after
+  the line-number column, keeping the gutter width uniform across all
+  row kinds. `INTERACTIVE_PAD_GUTTER` widens to match (LINE_NUMBER_WIDTH
+  + 3) so hunk-separator / collapsed-file rows still align their body
+  text with the diff column. Paired-change rows: deletions side `-`,
+  additions side `+`. Pure-add: additions side `+`, deletions side
+  blank. Pure-del: deletions side `-`, additions side blank. Context:
+  both sides blank. Unified layout unchanged.
+
+  Issue: #257
+
 - **TUI: top-level annotation submit no longer silently fails — diverged
   `WriteAnnotationInput` types and unrendered `errored` composer state fixed
   (issue #254).** Pre-fix `WriteAnnotationInput` was declared twice: once in

@@ -70,8 +70,20 @@ function unifiedSign(row: DiffRow): string {
   }
 }
 
-function splitGutter(lineNumber: number | null): string {
-  return `${pad(lineNumber)} `;
+// Issue #257 — per-side sign for split layout. Mirrors `unifiedSign`'s
+// vocabulary (`+` / `-` / blank) but resolves the sign from the row's
+// type + which side carries content, because in split layout the
+// planner emits both pure adds and pure dels as `type: "change"` and
+// the populated side (left vs right line number) discriminates them.
+// Context rows render a blank sign on both sides.
+function splitSign(row: DiffRow, side: "left" | "right"): string {
+  if (row.type !== "change") return " ";
+  if (side === "left") return row.leftLineNumber !== null ? "-" : " ";
+  return row.rightLineNumber !== null ? "+" : " ";
+}
+
+function splitGutter(lineNumber: number | null, sign: string): string {
+  return `${pad(lineNumber)} ${sign} `;
 }
 
 function unifiedGutter(row: DiffRow): string {
@@ -90,9 +102,10 @@ function interactiveRowId(
   return `interactive-row-${file}-${subKind}-${boundaryRef}`;
 }
 
-// Match the split-side gutter footprint (LINE_NUMBER_WIDTH + " ") so the
-// interactive row's text aligns with the diff column on its right.
-const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 1);
+// Match the split-side gutter footprint (LINE_NUMBER_WIDTH + " " + sign
+// + " " — post-#257) so the interactive row's text aligns with the diff
+// column on its right.
+const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 3);
 
 function splitClickTarget(
   row: DiffRow,
@@ -299,7 +312,7 @@ export function DiffRows({
             <box key={key} flexDirection="row" width="100%" minHeight={1}>
               <box id={leftId} width="50%" onMouseDown={onLeftMouseDown}>
                 <DiffLine
-                  gutter={splitGutter(row.leftLineNumber)}
+                  gutter={splitGutter(row.leftLineNumber, splitSign(row, "left"))}
                   text={row.leftText}
                   gutterTinted={!!row.leftTinted}
                   contentTinted={!!row.leftTinted && paired}
@@ -313,7 +326,7 @@ export function DiffRows({
               </box>
               <box id={rightId} width="50%" onMouseDown={onRightMouseDown}>
                 <DiffLine
-                  gutter={splitGutter(row.rightLineNumber)}
+                  gutter={splitGutter(row.rightLineNumber, splitSign(row, "right"))}
                   text={row.rightText}
                   gutterTinted={!!row.rightTinted}
                   contentTinted={!!row.rightTinted && paired}
