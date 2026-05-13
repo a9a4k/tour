@@ -107,6 +107,16 @@ function interactiveRowId(
 // column on its right.
 const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 3);
 
+// Issue #258 — terminal-native equivalent of the webapp #251 vertical
+// rule between the deletions and additions halves. `│` (U+2502 BOX
+// DRAWINGS LIGHT VERTICAL) painted in `theme.border.muted` — same token
+// the webapp picked for parity, and a lighter weight than the
+// file-block's outer border so the inner divider doesn't compete.
+// Banner rows (hunk-header, interactive) take the full-width branch and
+// skip this composition entirely, so the rule naturally breaks at each
+// banner — matches GitHub.
+const DIVIDER_GLYPH = "│";
+
 function splitClickTarget(
   row: DiffRow,
   column: "left" | "right",
@@ -324,6 +334,9 @@ export function DiffRows({
                   syntaxStyle={syntaxStyle}
                   width="100%"
                 />
+              </box>
+              <box width={1} alignSelf="stretch" flexShrink={0}>
+                <text fg={theme.border.muted}>{DIVIDER_GLYPH}</text>
               </box>
               <box id={rightId} width="50%" onMouseDown={onRightMouseDown}>
                 <DiffLine

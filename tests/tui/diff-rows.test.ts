@@ -298,6 +298,133 @@ index 1..2 100644
     });
   });
 
+  // Issue #258 — TUI split layout previously sat the two halves flush
+  // against each other with no visible separator. Mirror the webapp's
+  // #251: render a `│` (BOX DRAWINGS LIGHT VERTICAL, U+2502) in
+  // theme.border.muted at the column boundary on every diff row. The
+  // divider lives only in split layout; banner rows (hunk-header /
+  // interactive) skip the per-half composition entirely so the rule
+  // naturally breaks at each banner.
+  describe("split-layout vertical divider between halves (#258)", () => {
+    const isDivider = (el: AnyElement): boolean =>
+      typeof el.props.children === "string" && (el.props.children as string) === "│";
+
+    it("renders a `│` divider in theme.border.muted on a context row", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const divider = flatten(tree).find(isDivider);
+      expect(divider).toBeDefined();
+      expect(divider!.props.fg).toBe(theme.border.muted);
+    });
+
+    it("renders a `│` divider on paired change, pure-addition, and pure-deletion rows", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pairedIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber !== null,
+      );
+      const treePaired = callDiffRows({ rows: rows.slice(pairedIdx, pairedIdx + 1), layout: "split" });
+      expect(flatten(treePaired).some(isDivider)).toBe(true);
+
+      const pureAddIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber === null &&
+          r.rightLineNumber !== null,
+      );
+      const treePureAdd = callDiffRows({ rows: rows.slice(pureAddIdx, pureAddIdx + 1), layout: "split" });
+      expect(flatten(treePureAdd).some(isDivider)).toBe(true);
+
+      const delFile = parseFile(`diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,1 @@
+ ctx
+-only-del
+`);
+      const delRows = planRows(delFile, [], "split");
+      const pureDelIdx = delRows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber === null,
+      );
+      const treePureDel = callDiffRows({
+        rows: delRows.slice(pureDelIdx, pureDelIdx + 1),
+        layout: "split",
+      });
+      expect(flatten(treePureDel).some(isDivider)).toBe(true);
+    });
+
+    it("does NOT render a divider in unified layout (one rendered column → no column boundary)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const tree = callDiffRows({ rows, layout: "unified" });
+      expect(flatten(tree).some(isDivider)).toBe(false);
+    });
+
+    it("does NOT render a divider on banner rows (hunk-header / interactive); rule breaks at banners", () => {
+      const interactiveHunkRow: PlannedRow = {
+        kind: "hunk-header",
+        header: "@@ -10,3 +10,3 @@",
+        hunkIndex: 1,
+        gapAbove: 12,
+      };
+      const treeInteractive = callDiffRows({ rows: [interactiveHunkRow], layout: "split" });
+      expect(flatten(treeInteractive).some(isDivider)).toBe(false);
+
+      const inertHunkRow: PlannedRow = {
+        kind: "hunk-header",
+        header: "@@ -1,3 +1,3 @@",
+        hunkIndex: 0,
+        gapAbove: 0,
+      };
+      const treeInert = callDiffRows({ rows: [inertHunkRow], layout: "split" });
+      expect(flatten(treeInert).some(isDivider)).toBe(false);
+
+      const collapsedRow: PlannedRow = {
+        kind: "interactive",
+        subKind: "collapsed-file",
+        boundaryRef: "top",
+        text: "··· 42 lines hidden — Enter to expand ···",
+      };
+      const treeGeneric = callDiffRows({ rows: [collapsedRow], layout: "split" });
+      expect(flatten(treeGeneric).some(isDivider)).toBe(false);
+    });
+
+    it("divider sits between the two 50%-width halves in the split row composition", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const splitRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
+      );
+      expect(splitRowBox).toBeDefined();
+      const children = (splitRowBox!.props["children"] as AnyElement[]).filter(isElement);
+      // left half (50%) + divider (width=1) + right half (50%)
+      expect(children.length).toBe(3);
+      expect(children[0].props["width"]).toBe("50%");
+      expect(children[1].props["width"]).toBe(1);
+      expect(children[2].props["width"]).toBe("50%");
+      // divider carries the `│` text inside its 1-cell box
+      const dividerText = flatten(children[1]).find(
+        (el) => typeof el.props.children === "string" && el.props.children === "│",
+      );
+      expect(dividerText).toBeDefined();
+      expect(dividerText!.props.fg).toBe(theme.border.muted);
+    });
+  });
+
   describe("cursor row matching (ADR 0011)", () => {
     it("lights up the right (additions) cell on a paired row when cursor is on the additions side", () => {
       const file = parseFile(SIMPLE_DIFF);
@@ -493,12 +620,16 @@ index 1..2 100644
       );
 
       // Find the empty left half (no row id, but the column box still renders
-      // and should map any click to the populated side).
+      // and should map any click to the populated side). The split row now
+      // carries a 1-cell `│` divider between the two halves (#258); filter
+      // by `width="50%"` to isolate the half columns.
       const splitRowBox = flatten(tree).find(
         (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
       );
       expect(splitRowBox).toBeDefined();
-      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(isElement);
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
       expect(halves.length).toBe(2);
       const leftHalf = halves[0];
       const leftHandler = leftHalf.props["onMouseDown"];
@@ -542,7 +673,11 @@ index 1..2 100644
       const splitRowBox = flatten(tree).find(
         (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
       );
-      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(isElement);
+      // Filter by width="50%" to skip the 1-cell `│` divider between
+      // halves (#258).
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
       // Both halves must dispatch with deletions side + leftLineNumber.
       (halves[0].props["onMouseDown"] as () => void)();
       expect(onCursorClick).toHaveBeenLastCalledWith(
