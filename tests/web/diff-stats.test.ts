@@ -3,7 +3,7 @@ import {
   countDiffStats,
   proportionSegments,
   tourDiffStats,
-} from "../../src/web/client/diff-stats.js";
+} from "../../src/core/diff-stats.js";
 import type { PlannedRow } from "../../src/core/diff-rows.js";
 
 // Pure helpers driving the GitHub-style per-file diff-stats indicator

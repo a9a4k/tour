@@ -13,7 +13,8 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
+import { GAP_TWO_ROW_THRESHOLD, planRows } from "../core/diff-rows.js";
+import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
   getBoundary,
@@ -411,6 +412,34 @@ function App(props: AppProps) {
     }
     return out;
   }, [bundle]);
+
+  // Tour-level diff stats (issue #266 / webapp parity #233). Walk every
+  // file in the bundle through `planRows` with empty annotations / empty
+  // expansion / classifierCollapsed=false so the count reflects the FULL
+  // diff regardless of the current layout, expansion, classifier-collapse
+  // state, or annotation set. Layout pinned to "split" so paired changes
+  // count as one `change` row each (countDiffStats yields the same totals
+  // either way, but the canonical pin matches the webapp).
+  // Memoized on `bundle` — cursor moves, layout toggles, expansion changes,
+  // and annotation navigation do NOT re-walk.
+  const tourStats = useMemo<DiffStats>(() => {
+    if (bundle.kind !== "ok") return { additions: 0, deletions: 0 };
+    const bfByName = new Map<string, BundleFile>();
+    for (const bf of bundle.files) bfByName.set(bf.name, bf);
+    const filesForStats: { rows: PlannedRow[] }[] = [];
+    for (const meta of fileMetadata.values()) {
+      const bf = bfByName.get(meta.name);
+      filesForStats.push({
+        rows: planRows(meta, [], "split", {
+          oldContent: bf?.oldContent,
+          newContent: bf?.newContent,
+          expansion: emptyExpansion(),
+          classifierCollapsed: false,
+        }),
+      });
+    }
+    return tourDiffStats(filesForStats);
+  }, [bundle, fileMetadata]);
 
   const flatRowsList = rowsSlice?.flatRowsList ?? EMPTY_FLAT_ROWS;
   const plannedRowsByFile = rowsSlice?.plannedRowsByFile ?? EMPTY_PLANNED_ROWS;
@@ -1518,6 +1547,7 @@ function App(props: AppProps) {
         // snapshot-lost to the -1 sentinel.
         currentAnnotationIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
+        tourStats={tourStats}
         selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
         onPrevAnnotation={gotoPrevAnnotation}

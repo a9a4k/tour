@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { TopHeaderTui } from "../../src/tui/TopHeader.js";
 import { HamburgerButtonTui } from "../../src/tui/HamburgerButton.js";
+import { theme } from "../../src/core/theme.js";
 import type { Tour } from "../../src/core/types.js";
 
 // TopHeaderTui is a function component; calling it directly returns a
@@ -88,6 +89,7 @@ function render(
     layout: "split" as const,
     currentAnnotationIdx: 0,
     topLevelTotal: 3,
+    tourStats: { additions: 0, deletions: 0 },
     onOpenPicker: () => {},
     onPrevAnnotation: () => {},
     onNextAnnotation: () => {},
@@ -332,6 +334,96 @@ describe("TopHeaderTui (issue #93)", () => {
       const root = render({ selectedPath: "src/x.ts" });
       const directChildren = childrenOf(root).filter(isElement);
       expect(directChildren).toHaveLength(2);
+    });
+  });
+
+  // Tour-level diff stats — `+N -M` in the right cluster between the
+  // SequencePill and the LayoutToggle (issue #266 / webapp parity #233).
+  // Pure presentation: zero counts render nothing, non-zero counts paint
+  // in theme.fg.success / theme.fg.danger, single-space gap, no proportion
+  // bar.
+  describe("tour-level diff stats indicator (issue #266)", () => {
+    function additionTextNode(root: AnyElement): AnyElement | undefined {
+      return walk(root).find(
+        (e) =>
+          e.type === "text" &&
+          typeof e.props.children === "string" &&
+          /^\+\d+$/.test(e.props.children as string),
+      );
+    }
+    function deletionTextNode(root: AnyElement): AnyElement | undefined {
+      return walk(root).find(
+        (e) =>
+          e.type === "text" &&
+          typeof e.props.children === "string" &&
+          /^-\d+$/.test(e.props.children as string),
+      );
+    }
+
+    it("renders `+N` and `-M` text in the right cluster on a mixed bundle", () => {
+      const root = render({ tourStats: { additions: 12, deletions: 7 } });
+      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const rightText = walk(right)
+        .filter((e) => e.type === "text")
+        .map(textChildOf)
+        .join(" | ");
+      expect(rightText).toContain("+12");
+      expect(rightText).toContain("-7");
+    });
+
+    it("paints `+N` in theme.fg.success", () => {
+      const root = render({ tourStats: { additions: 5, deletions: 0 } });
+      const add = additionTextNode(root);
+      expect(add).toBeDefined();
+      expect(add!.props["fg"]).toBe(theme.fg.success);
+    });
+
+    it("paints `-M` in theme.fg.danger", () => {
+      const root = render({ tourStats: { additions: 0, deletions: 4 } });
+      const del = deletionTextNode(root);
+      expect(del).toBeDefined();
+      expect(del!.props["fg"]).toBe(theme.fg.danger);
+    });
+
+    it("renders nothing for a zero-total bundle (no `+0` / `-0`)", () => {
+      const root = render({ tourStats: { additions: 0, deletions: 0 } });
+      const headerText = walk(root)
+        .filter((e) => e.type === "text")
+        .map(textChildOf)
+        .join(" | ");
+      expect(headerText).not.toMatch(/\+\d/);
+      expect(headerText).not.toMatch(/-\d/);
+    });
+
+    it("omits the `-M` segment on a pure-addition tour", () => {
+      const root = render({ tourStats: { additions: 9, deletions: 0 } });
+      expect(additionTextNode(root)).toBeDefined();
+      expect(deletionTextNode(root)).toBeUndefined();
+    });
+
+    it("omits the `+N` segment on a pure-deletion tour", () => {
+      const root = render({ tourStats: { additions: 0, deletions: 6 } });
+      expect(additionTextNode(root)).toBeUndefined();
+      expect(deletionTextNode(root)).toBeDefined();
+    });
+
+    it("places the indicator inside the right cluster, not the left", () => {
+      const root = render({ tourStats: { additions: 3, deletions: 2 } });
+      const [left, right] = childrenOf(row1Of(root)).filter(isElement);
+      const inLeft = walk(left).some(
+        (e) =>
+          e.type === "text" &&
+          typeof e.props.children === "string" &&
+          /^[+-]\d+$/.test(e.props.children as string),
+      );
+      const inRight = walk(right).some(
+        (e) =>
+          e.type === "text" &&
+          typeof e.props.children === "string" &&
+          /^[+-]\d+$/.test(e.props.children as string),
+      );
+      expect(inLeft).toBe(false);
+      expect(inRight).toBe(true);
     });
   });
 });

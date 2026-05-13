@@ -1,4 +1,5 @@
 import type { Tour } from "../core/types.js";
+import type { DiffStats } from "../core/diff-stats.js";
 import { theme } from "../core/theme.js";
 import { HamburgerButtonTui } from "./HamburgerButton.js";
 
@@ -7,6 +8,10 @@ interface TopHeaderTuiProps {
   layout: "split" | "unified";
   currentAnnotationIdx: number;
   topLevelTotal: number;
+  // Tour-level additions / deletions summed across the bundle (issue #266
+  // / webapp parity #233). Zero totals render no indicator. Pure-addition
+  // / pure-deletion tours render only the non-zero side.
+  tourStats: DiffStats;
   // Full untruncated path of the row currently selected in the sidebar.
   // Surfaces information that the sidebar's middle-truncation may have
   // chipped away (issue #156). Renders nothing when undefined or empty.
@@ -38,6 +43,7 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
     layout,
     currentAnnotationIdx,
     topLevelTotal,
+    tourStats,
     selectedPath,
     onOpenPicker,
     onPrevAnnotation,
@@ -74,6 +80,10 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
             total={topLevelTotal}
             onPrev={onPrevAnnotation}
             onNext={onNextAnnotation}
+          />
+          <TourStatsIndicatorTui
+            additions={tourStats.additions}
+            deletions={tourStats.deletions}
           />
           <box width={1} />
           <LayoutToggleTui layout={layout} onSplit={onSplit} onUnified={onUnified} />
@@ -125,6 +135,32 @@ interface SequencePillTuiProps {
   total: number;
   onPrev: () => void;
   onNext: () => void;
+}
+
+interface TourStatsIndicatorTuiProps {
+  additions: number;
+  deletions: number;
+}
+
+// Tour-level (PR-equivalent) `+N -M` diff-stats indicator (issue #266 /
+// webapp parity #233). Display-only; no click handler. Sides are
+// independently omitted when their count is zero — a pure-addition /
+// pure-deletion tour renders only the non-zero side. Renders nothing
+// when both counts are zero (a degenerate empty-diff tour would otherwise
+// pay a `+0 -0` cost for no signal). Text-only by design; no proportion
+// bar — the TUI is text-only anyway and the count itself carries the
+// signal. A left-padding spacer keeps a single-column gap from the
+// SequencePill's `]`.
+function TourStatsIndicatorTui({ additions, deletions }: TourStatsIndicatorTuiProps) {
+  if (additions <= 0 && deletions <= 0) return null;
+  return (
+    <box flexDirection="row">
+      <box width={1} />
+      {additions > 0 ? <text fg={theme.fg.success}>{`+${additions}`}</text> : null}
+      {additions > 0 && deletions > 0 ? <text>{" "}</text> : null}
+      {deletions > 0 ? <text fg={theme.fg.danger}>{`-${deletions}`}</text> : null}
+    </box>
+  );
 }
 
 function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {

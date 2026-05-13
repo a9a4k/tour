@@ -1,4 +1,4 @@
-import type { PlannedRow } from "../../core/diff-rows.js";
+import type { PlannedRow } from "./diff-rows.js";
 
 /**
  * Diff-stats helpers for the GitHub-style indicators (issues #228 + #233).
@@ -16,6 +16,9 @@ import type { PlannedRow } from "../../core/diff-rows.js";
  *
  * `tourDiffStats` aggregates `countDiffStats` across every file in the
  * loaded bundle for the tour-level (PR-equivalent) title-bar indicator.
+ *
+ * Lives in `core` so both the webapp and the TUI consume the same helpers
+ * (issues #233 / #266).
  */
 
 export interface DiffStats {

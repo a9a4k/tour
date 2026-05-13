@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: tour-level diff stats `+N -M` in the top header (issue #266,
+  parity with webapp #233).** Pre-fix, the TUI's top header carried
+  hamburger toggle, tour title, source labels, annotation nav, and the
+  Split/Unified toggle — but no tour-level diff stats. The webapp ships
+  a `<TourStatsIndicator>` between the annotation nav and the layout
+  toggle that sums additions / deletions across every file in the
+  bundle. The TUI now renders the same `+N -M` text indicator in its
+  top header's right cluster, between the SequencePill and the
+  LayoutToggle. `+N` paints in `theme.fg.success`; `-M` in
+  `theme.fg.danger`; a single-space gap separates them. Zero totals
+  render nothing (a degenerate empty-diff tour would otherwise pay a
+  `+0 -0` cost for no signal). Pure-addition / pure-deletion tours
+  render only the non-zero side. The pure `countDiffStats` /
+  `tourDiffStats` helpers move from `src/web/client/diff-stats.ts` to
+  `src/core/diff-stats.ts` so both surfaces consume the same code;
+  `proportionSegments` rides along (still webapp-only at the call
+  site). Stats are memoized against the bundle / file-metadata refs —
+  cursor moves, layout toggles, expansion changes, and annotation
+  navigation do NOT re-walk.
+
+  Issue: #266
+
 - **TUI: horizontal `─` rule renders between consecutive files in the
   diff pane (issue #263, mirrors webapp #249).** Pre-fix, the TUI
   stacked every file in a tour's diff stream vertically inside a single
