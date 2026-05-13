@@ -1,8 +1,8 @@
 import type { PlannedRow } from "../../core/diff-rows.js";
 
 /**
- * Per-file diff-stats helpers for the GitHub-style file-header indicator
- * (issue #228). Pure functions over `PlannedRow[]` — no React, no DOM.
+ * Diff-stats helpers for the GitHub-style indicators (issues #228 + #233).
+ * Pure functions over `PlannedRow[]` — no React, no DOM.
  *
  * `countDiffStats` walks the planner output and counts addition / deletion
  * contributions per diff row. Paired `change` rows count as one addition
@@ -13,6 +13,9 @@ import type { PlannedRow } from "../../core/diff-rows.js";
  * additions get green segments, deletions red, the remainder neutral.
  * Rounding can push the round-trip over 5 (e.g. 1+1 → 3+3=6); the helper
  * subtracts from the larger count first to bring the sum back to 5.
+ *
+ * `tourDiffStats` aggregates `countDiffStats` across every file in the
+ * loaded bundle for the tour-level (PR-equivalent) title-bar indicator.
  */
 
 export interface DiffStats {
@@ -65,11 +68,9 @@ export function proportionSegments(
   return { greens, reds, neutrals: 5 - greens - reds };
 }
 
-// Tour-level (PR-equivalent) aggregate of additions / deletions across every
-// file in the loaded bundle (issue #233). Each file contributes via
-// `countDiffStats(rows)`; the totals are the sum. Inherits the per-row
-// `change`-shape inspection from `countDiffStats` for free — new-file rows
-// count `+1`, deleted-file rows count `-1`, paired-change rows count `+1 -1`.
+// Inherits the per-row `change`-shape inspection from `countDiffStats` for
+// free — new-file rows count `+1`, deleted-file rows count `-1`, paired-
+// change rows count `+1 -1`.
 export function tourDiffStats(files: ReadonlyArray<{ rows: PlannedRow[] }>): DiffStats {
   let additions = 0;
   let deletions = 0;
