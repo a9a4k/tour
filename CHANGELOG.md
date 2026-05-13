@@ -30,6 +30,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #266
 
+- **TUI: per-file diff stats `+N -M` next to the sidebar file label
+  (issue #265, parity with webapp #228).** Pre-fix, the TUI sidebar
+  rendered each file as ` ${indent}${icon} ${name} [${N}] ` with the
+  annotation count `[N]` as the only per-file numeric indicator —
+  reviewer could not tell at a glance whether a file was a 5-line or
+  500-line change. The webapp's #228 added a `+N -M` count + 5-segment
+  proportion bar to each file's header; the TUI's natural analogue is
+  the sidebar entry. The sidebar now renders `+N` in
+  `theme.fg.success` and `-M` in `theme.fg.danger` between the
+  filename and the annotation badge (e.g. ` M app.tsx +43 -27 [3] `).
+  Segments are omitted when their count is 0: deleted files show only
+  `-M`, new files show only `+N`, pure-rename files (no content
+  change, both counts 0) render no stats segments. Stats are derived
+  via the shared `countDiffStats` helper (relocated from
+  `src/web/client/diff-stats.ts` to `src/core/diff-stats.ts` for
+  cross-surface reuse) fed the file's `PlannedRow[]` from
+  `rowsSlice.plannedRowsByFile`. `fileRowLabel` (returning one string)
+  is replaced by `fileRowSegments` (returning structured leading /
+  additions / deletions / badge / trailing segments) so the renderer
+  can paint each segment in its own `<text>` foreground; the row is a
+  flex-row `<box>` with the selected-row background applied to the
+  box, preserving the existing selection highlight. `fileRowFixedCost`
+  now takes the per-file stats so the name budget shrinks to make
+  room for the stats segments — long filenames continue to truncate
+  with `…`. No theme change, no planner / cursor / expansion /
+  annotation-model change. No proportion bar in the TUI (text-only,
+  same call as #233).
+
+  Issue: #265
+
 - **TUI: horizontal `─` rule renders between consecutive files in the
   diff pane (issue #263, mirrors webapp #249).** Pre-fix, the TUI
   stacked every file in a tour's diff stream vertically inside a single
