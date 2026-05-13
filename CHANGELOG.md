@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: cursor-follow scroll defers to next macrotask so Yoga relayout
+  completes before centering math runs (issue #250).** Pre-fix the cursor-
+  follow `useEffect` in `src/tui/app.tsx` (deps: `[cursor, layout]`) called
+  `centerChildInView` / `scrollChildIntoView` synchronously after React's
+  commit. OpenTUI's Yoga relayout for newly-rendered rows runs on a later
+  render tick, so the synchronous call read positions against the previous
+  layout. Most visible trigger: cursor on an annotation card + `Shift-L`
+  layout flip — `centerChildInView` computed `desired` against the stale
+  content frame, parking the scrollbox where, in the new layout, only
+  stacked annotation cards live; every diff code row was pushed off-screen
+  above and below. The effect now schedules the scroll via `setTimeout(0)`,
+  and the cleanup cancels the pending callback so rapid cursor motion only
+  scrolls to the latest position. `requestAnimationFrame` does NOT work as
+  a substitute in this runtime — in bun/node it shims to `setImmediate` or
+  similar and fires before OpenTUI's render tick; the macrotask delay from
+  `setTimeout(0)` is what lands the callback after the layout pass.
+  Inline comment in the effect explains the race and explicitly warns
+  against the rAF "improvement". No change to `centerChildInView` /
+  `scrollChildIntoView`, the layout reducer, or the planner.
+
+  Issue: #250
+
 - **Hunk-header banner gains a visible expand affordance (issue #252).**
   Pre-fix the webapp hunk-header banner was clickable (per ADR 0013 the
   whole banner expands hidden context) but had no rest-state visual cue
