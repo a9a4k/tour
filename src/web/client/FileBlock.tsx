@@ -334,7 +334,6 @@ function renderDiffRow(
     : isCursorOnDeletions
       ? "deletions"
       : undefined;
-  const isInRange = !!(row.leftTinted || row.rightTinted);
   const handleClick = (side: Side) => {
     const lineNumber =
       side === "additions" ? row.rightLineNumber : row.leftLineNumber;
@@ -354,7 +353,8 @@ function renderDiffRow(
       tokensRight={tokensRight}
       isCursor={isCursor}
       cursorSide={cursorSide}
-      isInRange={isInRange}
+      leftInRange={!!row.leftTinted}
+      rightInRange={!!row.rightTinted}
       onClick={handleClick}
     />
   );

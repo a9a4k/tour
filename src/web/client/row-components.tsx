@@ -11,7 +11,7 @@ import type { TokenLines } from "./syntax-highlight.js";
  *
  * `file-grid-css` interprets the className / data-attribute vocabulary
  * these components emit (`.tour-row`, `.tour-card`, `.is-cursor`,
- * `.in-range`, `[data-line-type]`, `[data-side]`).
+ * `.in-range`, `.in-range-stripe`, `[data-line-type]`, `[data-side]`).
  *
  * `useLazyHighlight` supplies the `tokensLeft` / `tokensRight` maps
  * `<DiffRow>` paints with `dangerouslySetInnerHTML`.
@@ -49,7 +49,14 @@ export interface DiffRowProps {
    *  candidate). Falls back to the kind-implied side, then `preferredSide`,
    *  then the side with content. */
   cursorSide?: Side;
-  isInRange: boolean;
+  /** Whether the deletions side is in an annotation's range. Drives the
+   *  range tint on `.tour-row-gutter` / `.tour-row-symbol` /
+   *  `.tour-row-cell` of the deletions column, and the 3px inset stripe
+   *  on the deletions gutter when this is the leftmost tinted side. */
+  leftInRange?: boolean;
+  /** Whether the additions side is in an annotation's range. Mirror of
+   *  `leftInRange` for the additions column. */
+  rightInRange?: boolean;
   /** Informs which column reads the cursor outline in split layout when
    *  the row carries content on only one side. The component falls back
    *  to `kind` when this is omitted. */
@@ -133,6 +140,33 @@ function resolveCursorSide(args: {
   return candidate;
 }
 
+// Resolves which sides carry the range tint in split layout. The planner
+// sets at most one of `leftInRange` / `rightInRange` per annotation, but
+// rows can land in both ranges (rare multi-line annotation case). When a
+// flag points at a side with no content (defensive fallback), reroute to
+// the side that actually carries a line number.
+function resolveRangeSides(args: {
+  leftInRange?: boolean;
+  rightInRange?: boolean;
+  leftLineNumber: number | null;
+  rightLineNumber: number | null;
+}): { left: boolean; right: boolean } {
+  let left = !!args.leftInRange;
+  let right = !!args.rightInRange;
+  const onlyLeftContent =
+    args.leftLineNumber != null && args.rightLineNumber == null;
+  const onlyRightContent =
+    args.rightLineNumber != null && args.leftLineNumber == null;
+  if (onlyLeftContent && right && !left) {
+    left = true;
+    right = false;
+  } else if (onlyRightContent && left && !right) {
+    left = false;
+    right = true;
+  }
+  return { left, right };
+}
+
 function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   const {
     kind,
@@ -145,17 +179,15 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     tokensRight,
     isCursor,
     cursorSide,
-    isInRange,
+    leftInRange,
+    rightInRange,
     preferredSide,
     onClick,
     onMouseEnter,
   } = props;
 
-  // .is-cursor lives on the cursored .tour-row-cell, NOT on the row — split
-  // layout would otherwise outline both halves. Range tint stays row-wide.
-  const classes = ["tour-row"];
-  if (isInRange) classes.push("in-range");
-
+  // `.is-cursor` and `.in-range` live per-cell so split layout scopes both
+  // decorations to one half instead of spanning both columns.
   const cursorOnSide = resolveCursorSide({
     isCursor,
     cursorSide,
@@ -164,6 +196,20 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     leftLineNumber,
     rightLineNumber,
   });
+  const range = resolveRangeSides({
+    leftInRange,
+    rightInRange,
+    leftLineNumber,
+    rightLineNumber,
+  });
+  // 3px stripe sits at the leftmost edge of the row's tinted region.
+  // Deletions gutter is the row's leftmost edge, so it wins in the
+  // both-sides fallback case as well.
+  const stripeSide: Side | null = range.left
+    ? "deletions"
+    : range.right
+      ? "additions"
+      : null;
 
   const handleColumnClick = (side: Side) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -173,7 +219,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   if (layout === "split") {
     return (
       <div
-        className={classes.join(" ")}
+        className="tour-row"
         data-line-type={kind}
         style={ROW_STYLE}
         onMouseEnter={onMouseEnter}
@@ -185,6 +231,8 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           tokens={tokensLeft}
           symbol={symbolForColumn(kind, "deletions", leftLineNumber)}
           isCursor={cursorOnSide === "deletions"}
+          isInRange={range.left}
+          hasStripe={stripeSide === "deletions"}
           onClick={onClick ? handleColumnClick("deletions") : undefined}
         />
         <Column
@@ -194,6 +242,8 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           tokens={tokensRight}
           symbol={symbolForColumn(kind, "additions", rightLineNumber)}
           isCursor={cursorOnSide === "additions"}
+          isInRange={range.right}
+          hasStripe={stripeSide === "additions"}
           onClick={onClick ? handleColumnClick("additions") : undefined}
         />
       </div>
@@ -209,9 +259,12 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   const lineNumber = rightLineNumber ?? leftLineNumber;
   const text = impliedSide === "deletions" ? leftText : rightText;
   const tokens = impliedSide === "deletions" ? tokensLeft : tokensRight;
+  // Unified collapses sides; either tinted flag lights the single column,
+  // and the stripe sits at the (only) gutter's left edge.
+  const unifiedInRange = range.left || range.right;
   return (
     <div
-      className={classes.join(" ")}
+      className="tour-row"
       data-line-type={kind}
       style={ROW_STYLE}
       onMouseEnter={onMouseEnter}
@@ -223,6 +276,8 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
         tokens={tokens}
         symbol={symbolForColumn(kind, sideForClick, lineNumber)}
         isCursor={isCursor}
+        isInRange={unifiedInRange}
+        hasStripe={unifiedInRange}
         onClick={onClick ? handleColumnClick(sideForClick) : undefined}
       />
     </div>
@@ -236,6 +291,8 @@ interface ColumnProps {
   tokens?: TokenLines | null;
   symbol: string;
   isCursor: boolean;
+  isInRange: boolean;
+  hasStripe: boolean;
   onClick?: (e: React.MouseEvent) => void;
 }
 
@@ -246,21 +303,29 @@ function Column({
   tokens,
   symbol,
   isCursor,
+  isInRange,
+  hasStripe,
   onClick,
 }: ColumnProps): React.JSX.Element {
   const html = lineNumber != null ? tokens?.get(lineNumber) : undefined;
+  const gutterClasses = ["tour-row-gutter"];
+  if (isInRange) gutterClasses.push("in-range");
+  if (hasStripe) gutterClasses.push("in-range-stripe");
+  const symbolClasses = ["tour-row-symbol"];
+  if (isInRange) symbolClasses.push("in-range");
   const cellClasses = ["tour-row-cell"];
   if (isCursor) cellClasses.push("is-cursor");
+  if (isInRange) cellClasses.push("in-range");
   return (
     <>
       <span
-        className="tour-row-gutter"
+        className={gutterClasses.join(" ")}
         data-side={side}
         data-line-number={lineNumber ?? ""}
       >
         {lineNumber ?? ""}
       </span>
-      <span className="tour-row-symbol" data-side={side} aria-hidden="true">
+      <span className={symbolClasses.join(" ")} data-side={side} aria-hidden="true">
         {symbol}
       </span>
       <span className={cellClasses.join(" ")} data-side={side} onClick={onClick}>

@@ -471,6 +471,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp annotation range tint + 3px stripe scope to the annotated
+  side in split layout (issue #226).** Before this fix, `<DiffRow>`
+  received a single `isInRange: boolean` derived from
+  `!!(row.leftTinted || row.rightTinted)`, dropped the side
+  dimension, and painted the row-wide tint plus a stripe at the row's
+  leftmost edge — visually misleading when the annotation lived on
+  the additions (right) side. `<DiffRow>` now accepts `leftInRange?:
+  boolean` + `rightInRange?: boolean`. Each side's `.tour-row-gutter`,
+  `.tour-row-symbol`, and `.tour-row-cell` receive `.in-range` when
+  that side is tinted; the leftmost tinted gutter additionally
+  carries `.in-range-stripe` (the 3px accent stripe). Both-sides
+  fallback preserves the row-leftmost stripe (deletions gutter wins).
+  Unified layout collapses to a single tinted column with the stripe
+  on the only gutter. Defensive fallback re-routes a side flag that
+  points at a column without content to the side that carries a real
+  `lineNumber`. The CSS module replaces the `.tour-row.in-range` rule
+  with per-cell selectors (`.tour-row-gutter.in-range`,
+  `.tour-row-symbol.in-range`, `.tour-row-cell.in-range`,
+  `.tour-row-gutter.in-range-stripe`). (#226)
+
 - **Webapp cursor outline no longer spans both columns in split layout
   (issue #222).** After the Pierre cutover (PRD #212 slice 7), the
   cursor outline was painted as `.is-cursor` on the diff row, which

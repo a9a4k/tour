@@ -144,9 +144,27 @@ describe("FILE_GRID_CSS — cursor outline (prop, not attribute)", () => {
 });
 
 describe("FILE_GRID_CSS — range tint", () => {
-  it(".in-range paints the accent-range tint over annotated rows", () => {
-    expect(FILE_GRID_CSS).toContain(".tour-row.in-range");
+  it("paints the accent-range tint per-side on gutter, symbol, and cell (#226)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-row-gutter.in-range");
+    expect(FILE_GRID_CSS).toContain(".tour-row-symbol.in-range");
+    expect(FILE_GRID_CSS).toContain(".tour-row-cell.in-range");
     expect(FILE_GRID_CSS).toContain(theme.bg.accentRange.web);
+  });
+
+  it("scopes the 3px accent stripe to the leftmost tinted gutter (#226)", () => {
+    // The stripe className is added only to the gutter of the leftmost
+    // tinted side — never to a non-gutter cell, never on a non-stripe
+    // gutter. The renderer chooses which gutter wears the class.
+    expect(FILE_GRID_CSS).toContain(".tour-row-gutter.in-range-stripe");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter\.in-range-stripe[^{]*\{[^}]*box-shadow:\s*inset\s+3px\s+0\s+0/,
+    );
+  });
+
+  it("does NOT key the range tint on the row container (split layout would otherwise span both sides) (#226)", () => {
+    // Sanity check that the row-level rule from before #226 is gone — the
+    // tint must be per-cell, not row-wide, so split layout can scope it.
+    expect(FILE_GRID_CSS).not.toMatch(/\.tour-row\.in-range\b/);
   });
 });
 

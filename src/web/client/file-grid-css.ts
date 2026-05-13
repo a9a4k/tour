@@ -22,8 +22,11 @@ import { theme } from "../../core/theme.js";
  *   - `.is-cursor`: 2px accent outline around the cursored row. Driven
  *     by a React prop on `<DiffRow>` / `<InteractiveRow>`.
  *
- *   - `.in-range`: subtle blue tint + a 3px accent inset stripe at the
- *     row's left edge (ADR 0008's two-cue range treatment).
+ *   - `.in-range` (on `.tour-row-gutter` / `.tour-row-symbol` /
+ *     `.tour-row-cell`): subtle blue tint painted per-side so split
+ *     layout scopes the cue to the annotated half. Paired with
+ *     `.in-range-stripe` on the leftmost tinted gutter — the 3px accent
+ *     inset stripe (ADR 0008's two-cue range treatment).
  *
  *   - `[data-line-type]` two-tone tinting: the gutter + symbol cells
  *     carry a lighter range tint
@@ -184,10 +187,16 @@ export const FILE_GRID_CSS = `
     cursor: pointer;
   }
 
-  /* Range tint: subtle accent fill + 3px accent inset stripe at the
-     left edge (ADR 0008). */
-  .tour-row.in-range {
+  /* Range tint: subtle accent fill painted per-side so split-layout rows
+     scope the cue to the annotated half. The 3px accent inset stripe sits
+     on the leftmost tinted gutter (.in-range-stripe). ADR 0008. */
+  .tour-row-gutter.in-range,
+  .tour-row-symbol.in-range,
+  .tour-row-cell.in-range {
     background-color: ${theme.bg.accentRange.web};
+  }
+
+  .tour-row-gutter.in-range-stripe {
     box-shadow: inset 3px 0 0 ${theme.fg.accent};
   }
 

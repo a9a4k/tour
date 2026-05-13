@@ -67,7 +67,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "const x = 1;",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const row = c.querySelector(".tour-row");
@@ -85,7 +85,7 @@ describe("<DiffRow>", () => {
         leftText: "foo",
         rightText: "foo",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const row = c.querySelector(".tour-row") as HTMLElement;
@@ -104,7 +104,7 @@ describe("<DiffRow>", () => {
         leftText: "foo",
         rightText: "foo",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const gutters = c.querySelectorAll(".tour-row [data-line-number]");
@@ -123,7 +123,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const gutters = c.querySelectorAll(".tour-row [data-line-number]");
@@ -145,7 +145,7 @@ describe("<DiffRow>", () => {
         rightText: "const x = 1;",
         tokensRight,
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const code = c.querySelector('.tour-row [data-side="additions"] .tour-row-code');
@@ -164,7 +164,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "plain text",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const code = c.querySelector(".tour-row .tour-row-code");
@@ -182,7 +182,7 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: true,
-        isInRange: false,
+
       }),
     );
     let cell = c.querySelector(".tour-row-cell") as HTMLElement;
@@ -200,7 +200,7 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     cell = c.querySelector(".tour-row-cell") as HTMLElement;
@@ -220,7 +220,7 @@ describe("<DiffRow>", () => {
         rightText: "x",
         isCursor: true,
         cursorSide: "additions",
-        isInRange: false,
+
       }),
     );
     const additionsCell = c.querySelector(
@@ -247,7 +247,7 @@ describe("<DiffRow>", () => {
         rightText: "x",
         isCursor: true,
         cursorSide: "deletions",
-        isInRange: false,
+
       }),
     );
     const additionsCell = c.querySelector(
@@ -274,7 +274,7 @@ describe("<DiffRow>", () => {
         rightText: "new",
         isCursor: true,
         cursorSide: "deletions",
-        isInRange: false,
+
       }),
     );
     const additionsCell = c.querySelector(
@@ -287,7 +287,7 @@ describe("<DiffRow>", () => {
     expect(deletionsCell.classList.contains("is-cursor")).toBe(false);
   });
 
-  it("applies .in-range when isInRange is true", () => {
+  it("paints the per-cell range cue when rightInRange is true in unified layout (#226)", () => {
     const c = mount(
       createElement(DiffRow, {
         kind: "context",
@@ -297,11 +297,202 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-        isInRange: true,
+        rightInRange: true,
       }),
     );
+    const gutter = c.querySelector(".tour-row-gutter") as HTMLElement;
+    const symbol = c.querySelector(".tour-row-symbol") as HTMLElement;
+    const cell = c.querySelector(".tour-row-cell") as HTMLElement;
+    expect(gutter.classList.contains("in-range")).toBe(true);
+    expect(symbol.classList.contains("in-range")).toBe(true);
+    expect(cell.classList.contains("in-range")).toBe(true);
+    // Stripe sits on the single gutter — leftmost edge of the row.
+    expect(gutter.classList.contains("in-range-stripe")).toBe(true);
+    // Row container itself does NOT carry .in-range — the cue is per-cell now.
     const row = c.querySelector(".tour-row") as HTMLElement;
-    expect(row.classList.contains("in-range")).toBe(true);
+    expect(row.classList.contains("in-range")).toBe(false);
+  });
+
+  it("paints the per-cell range cue in unified layout when leftInRange is the only flag set (#226)", () => {
+    // Pre-#226, the planner emitted `rightTinted` for all unified annotations,
+    // but the renderer should still light up when only `leftInRange` is set.
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "unified",
+        leftLineNumber: 1,
+        rightLineNumber: 1,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+        leftInRange: true,
+      }),
+    );
+    const cell = c.querySelector(".tour-row-cell") as HTMLElement;
+    expect(cell.classList.contains("in-range")).toBe(true);
+  });
+
+  it("scopes the range tint to the additions cells only when rightInRange is true in split layout (#226)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+        rightInRange: true,
+      }),
+    );
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    const additionsSymbol = c.querySelector(
+      '.tour-row-symbol[data-side="additions"]',
+    ) as HTMLElement;
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const deletionsSymbol = c.querySelector(
+      '.tour-row-symbol[data-side="deletions"]',
+    ) as HTMLElement;
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    expect(additionsGutter.classList.contains("in-range")).toBe(true);
+    expect(additionsSymbol.classList.contains("in-range")).toBe(true);
+    expect(additionsCell.classList.contains("in-range")).toBe(true);
+    expect(deletionsGutter.classList.contains("in-range")).toBe(false);
+    expect(deletionsSymbol.classList.contains("in-range")).toBe(false);
+    expect(deletionsCell.classList.contains("in-range")).toBe(false);
+    // Stripe sits at the left edge of the additions gutter (boundary
+    // between the halves) — never on the deletions gutter.
+    expect(additionsGutter.classList.contains("in-range-stripe")).toBe(true);
+    expect(deletionsGutter.classList.contains("in-range-stripe")).toBe(false);
+  });
+
+  it("scopes the range tint to the deletions cells only when leftInRange is true in split layout (#226)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+        leftInRange: true,
+      }),
+    );
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsCell.classList.contains("in-range")).toBe(true);
+    expect(additionsCell.classList.contains("in-range")).toBe(false);
+    // Stripe sits at the left edge of the deletions gutter (row's
+    // leftmost edge).
+    expect(deletionsGutter.classList.contains("in-range-stripe")).toBe(true);
+    expect(additionsGutter.classList.contains("in-range-stripe")).toBe(false);
+  });
+
+  it("tints both sides but anchors the stripe to deletions gutter only in the both-sides fallback (#226)", () => {
+    // Rare multi-line annotation with anchors on both sides: both
+    // `leftInRange` and `rightInRange` are true. Both sides get the tint;
+    // only one stripe — at the row's leftmost edge (the deletions gutter).
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+        leftInRange: true,
+        rightInRange: true,
+      }),
+    );
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsCell.classList.contains("in-range")).toBe(true);
+    expect(additionsCell.classList.contains("in-range")).toBe(true);
+    // Exactly one gutter wears the stripe class — and it's the leftmost
+    // (deletions) gutter so the visual stripe stays at the row's left edge.
+    expect(deletionsGutter.classList.contains("in-range-stripe")).toBe(true);
+    expect(additionsGutter.classList.contains("in-range-stripe")).toBe(false);
+  });
+
+  it("re-routes a right-only flag to deletions on a deletion-only split-layout row when content lives on the left (#226)", () => {
+    // Defensive fallback: if the flag points at the side with no
+    // content, scope the cue to the side that actually carries a line
+    // number. Mirror of the cursor side-scoping fallback in #222.
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "deletion",
+        layout: "split",
+        leftLineNumber: 7,
+        rightLineNumber: null,
+        leftText: "old",
+        rightText: "",
+        isCursor: false,
+        rightInRange: true,
+      }),
+    );
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsCell.classList.contains("in-range")).toBe(true);
+    expect(additionsCell.classList.contains("in-range")).toBe(false);
+  });
+
+  it("composes per-cell range tint with the cursor outline scoped to the cursored cell (#226)", () => {
+    // Decorations are independent: the cursored cell carries .is-cursor,
+    // the tinted side carries .in-range, both can land on the same
+    // .tour-row-cell without one overriding the other.
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: true,
+        cursorSide: "additions",
+        rightInRange: true,
+      }),
+    );
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    expect(additionsCell.classList.contains("is-cursor")).toBe(true);
+    expect(additionsCell.classList.contains("in-range")).toBe(true);
   });
 
   it("calls onClick with the clicked column's side in split layout", () => {
@@ -315,7 +506,7 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
         onClick: (side: "additions" | "deletions") => calls.push(side),
       }),
     );
@@ -348,7 +539,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
         onClick: (side: string) => sides.push(side),
       }),
     );
@@ -369,7 +560,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "const x = 1;",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -392,7 +583,7 @@ describe("<DiffRow>", () => {
         leftText: "old line",
         rightText: "",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -411,7 +602,7 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -433,7 +624,7 @@ describe("<DiffRow>", () => {
         leftText: "old",
         rightText: "new",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -452,7 +643,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -471,7 +662,7 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-        isInRange: false,
+
         onMouseEnter: () => {
           hovered += 1;
         },
