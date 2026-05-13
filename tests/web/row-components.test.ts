@@ -274,6 +274,107 @@ describe("<DiffRow>", () => {
     expect(sides).toEqual(["additions"]);
   });
 
+  it("emits a tour-row-symbol cell with '+' on addition rows (#221)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "addition",
+        layout: "split",
+        leftLineNumber: null,
+        rightLineNumber: 42,
+        leftText: "",
+        rightText: "const x = 1;",
+        isCursor: false,
+        isInRange: false,
+      }),
+    );
+    const symbols = c.querySelectorAll(".tour-row-symbol");
+    expect(symbols.length).toBe(2);
+    // Deletion column is blank (null lineNumber on addition).
+    expect(symbols[0]!.textContent).toBe("");
+    expect((symbols[0] as HTMLElement).dataset.side).toBe("deletions");
+    // Additions column carries the '+'.
+    expect(symbols[1]!.textContent).toBe("+");
+    expect((symbols[1] as HTMLElement).dataset.side).toBe("additions");
+  });
+
+  it("emits a tour-row-symbol cell with '-' on deletion rows in split (#221)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "deletion",
+        layout: "split",
+        leftLineNumber: 7,
+        rightLineNumber: null,
+        leftText: "old line",
+        rightText: "",
+        isCursor: false,
+        isInRange: false,
+      }),
+    );
+    const symbols = c.querySelectorAll(".tour-row-symbol");
+    expect(symbols.length).toBe(2);
+    expect(symbols[0]!.textContent).toBe("-");
+    expect(symbols[1]!.textContent).toBe("");
+  });
+
+  it("emits blank tour-row-symbol cells on context rows (#221)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 1,
+        rightLineNumber: 1,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+        isInRange: false,
+      }),
+    );
+    const symbols = c.querySelectorAll(".tour-row-symbol");
+    // Cells still rendered to preserve column alignment.
+    expect(symbols.length).toBe(2);
+    expect(symbols[0]!.textContent).toBe("");
+    expect(symbols[1]!.textContent).toBe("");
+  });
+
+  it("emits paired -/+ symbols on change rows in split layout (#221)", () => {
+    // Planner emits split-mode change pairs as a single row with both
+    // sides populated; <FileBlock> maps that to kind: "change-addition".
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "change-addition",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "old",
+        rightText: "new",
+        isCursor: false,
+        isInRange: false,
+      }),
+    );
+    const symbols = c.querySelectorAll(".tour-row-symbol");
+    expect(symbols.length).toBe(2);
+    expect(symbols[0]!.textContent).toBe("-");
+    expect(symbols[1]!.textContent).toBe("+");
+  });
+
+  it("emits a single tour-row-symbol cell in unified layout (#221)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "addition",
+        layout: "unified",
+        leftLineNumber: null,
+        rightLineNumber: 99,
+        leftText: "",
+        rightText: "x",
+        isCursor: false,
+        isInRange: false,
+      }),
+    );
+    const symbols = c.querySelectorAll(".tour-row-symbol");
+    expect(symbols.length).toBe(1);
+    expect(symbols[0]!.textContent).toBe("+");
+  });
+
   it("calls onMouseEnter when the row is hovered", () => {
     let hovered = 0;
     const c = mount(
@@ -353,7 +454,7 @@ describe("<CardRow>", () => {
     expect(row.style.gridColumn).toMatch(/1\s*\/\s*-1/);
   });
 
-  it("anchors deletion cards to the left columns (cols 1-2) in split layout", () => {
+  it("anchors deletion cards to the left columns (cols 1-3) in split layout (#221)", () => {
     const c = mount(
       createElement(CardRow, {
         annotation: { ...baseAnnotation, side: "deletions" },
@@ -366,10 +467,10 @@ describe("<CardRow>", () => {
     );
     const row = c.querySelector(".tour-card") as HTMLElement;
     expect(row.dataset.side).toBe("deletions");
-    expect(row.style.gridColumn).toMatch(/1\s*\/\s*3/);
+    expect(row.style.gridColumn).toMatch(/1\s*\/\s*4/);
   });
 
-  it("anchors addition cards to the right columns (cols 3 / -1) in split layout", () => {
+  it("anchors addition cards to the right columns (cols 4 / -1) in split layout (#221)", () => {
     const c = mount(
       createElement(CardRow, {
         annotation: baseAnnotation,
@@ -382,7 +483,7 @@ describe("<CardRow>", () => {
     );
     const row = c.querySelector(".tour-card") as HTMLElement;
     expect(row.dataset.side).toBe("additions");
-    expect(row.style.gridColumn).toMatch(/3\s*\/\s*-1/);
+    expect(row.style.gridColumn).toMatch(/4\s*\/\s*-1/);
   });
 
   it("forwards registerRef so the App-level ref map is populated", () => {

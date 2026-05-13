@@ -81,6 +81,28 @@ function impliedSideFromKind(kind: DiffRowKind): Side | null {
   return null;
 }
 
+// Maps (kind, side, lineNumber) → the glyph emitted in the row's symbol cell.
+// Blank when the column doesn't carry content (lineNumber == null) or when
+// the row kind doesn't imply a +/- on that side (e.g. context). For paired
+// change rows in split layout (`kind === "change-addition"` with both sides
+// populated) the left column reads as a deletion ("-") and the right column
+// as an addition ("+").
+function symbolForColumn(
+  kind: DiffRowKind,
+  side: Side,
+  lineNumber: number | null,
+): string {
+  if (lineNumber == null) return "";
+  if (side === "additions") {
+    return kind === "addition" || kind === "change-addition" ? "+" : "";
+  }
+  return kind === "deletion" ||
+    kind === "change-deletion" ||
+    kind === "change-addition"
+    ? "-"
+    : "";
+}
+
 function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   const {
     kind,
@@ -120,6 +142,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           lineNumber={leftLineNumber}
           text={leftText}
           tokens={tokensLeft}
+          symbol={symbolForColumn(kind, "deletions", leftLineNumber)}
           onClick={onClick ? handleColumnClick("deletions") : undefined}
         />
         <Column
@@ -127,14 +150,15 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           lineNumber={rightLineNumber}
           text={rightText}
           tokens={tokensRight}
+          symbol={symbolForColumn(kind, "additions", rightLineNumber)}
           onClick={onClick ? handleColumnClick("additions") : undefined}
         />
       </div>
     );
   }
 
-  // Unified — a single gutter + code column. The side echoed back to
-  // `onClick` is determined by `kind` (an addition row is unambiguous);
+  // Unified — a single gutter + symbol + code column. The side echoed back
+  // to `onClick` is determined by `kind` (an addition row is unambiguous);
   // for context rows the caller's `preferredSide` wins, defaulting to
   // additions (same fallback rule as the TUI's context-row pairing).
   const impliedSide = impliedSideFromKind(kind);
@@ -154,6 +178,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
         lineNumber={lineNumber}
         text={text}
         tokens={tokens}
+        symbol={symbolForColumn(kind, sideForClick, lineNumber)}
         onClick={onClick ? handleColumnClick(sideForClick) : undefined}
       />
     </div>
@@ -165,6 +190,7 @@ interface ColumnProps {
   lineNumber: number | null;
   text: string;
   tokens?: TokenLines | null;
+  symbol: string;
   onClick?: (e: React.MouseEvent) => void;
 }
 
@@ -173,6 +199,7 @@ function Column({
   lineNumber,
   text,
   tokens,
+  symbol,
   onClick,
 }: ColumnProps): React.JSX.Element {
   const html = lineNumber != null ? tokens?.get(lineNumber) : undefined;
@@ -184,6 +211,9 @@ function Column({
         data-line-number={lineNumber ?? ""}
       >
         {lineNumber ?? ""}
+      </span>
+      <span className="tour-row-symbol" data-side={side} aria-hidden="true">
+        {symbol}
       </span>
       <span className="tour-row-cell" data-side={side} onClick={onClick}>
         {html !== undefined ? (
@@ -229,10 +259,11 @@ export interface CardRowProps {
 // `grid-column` is set inline so a card's positioning is visible on the
 // element itself; file-grid-css emits the same rules as a fallback for
 // callers (e.g. the future <FileBlock> integration test) that mount via
-// CSS only.
+// CSS only. Split layout has 6 tracks (gutter-L, symbol-L, code-L,
+// gutter-R, symbol-R, code-R after #221's symbol-column addition).
 function cardGridColumn(layout: Layout, side: Side): string {
   if (layout === "unified") return "1 / -1";
-  return side === "deletions" ? "1 / 3" : "3 / -1";
+  return side === "deletions" ? "1 / 4" : "4 / -1";
 }
 
 function CardRowImpl(props: CardRowProps): React.JSX.Element {

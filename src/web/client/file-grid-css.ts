@@ -11,8 +11,9 @@ import { theme } from "../../core/theme.js";
  *
  *   1. **File-level grid**: a per-file `<div data-layout="split|unified">`
  *      with `display: grid` and a column template baked from layout —
- *      `auto 1fr auto 1fr` (split: gutter-L, code-L, gutter-R, code-R) or
- *      `auto 1fr` (unified: gutter, code).
+ *      `auto auto 1fr auto auto 1fr` (split: gutter-L, symbol-L, code-L,
+ *      gutter-R, symbol-R, code-R) or `auto auto 1fr` (unified: gutter,
+ *      symbol, code).
  *
  *   2. **Row subgrid**: each row is a `<div class="tour-row">` declaring
  *      `grid-template-columns: subgrid` + `grid-column: 1 / -1`. Rows
@@ -30,15 +31,15 @@ import { theme } from "../../core/theme.js";
  *     row's left edge — the same two-cue treatment `annotations.ts`
  *     paints on Pierre rows today (ADR 0008).
  *
- *   - `[data-line-type]`: `+` / `-` / `change-*` row backgrounds,
- *     sourced from `bg.successRange.web` / `bg.dangerRange.web`. Context
- *     rows inherit the canvas background (no rule).
+ *   - `[data-line-type]` two-tone tinting (issue issue 221): the gutter +
+ *     symbol cells carry a lighter range tint
+ *     (`bg.successRange.web` / `bg.dangerRange.web`); the code cell
+ *     carries a darker fill (`bg.successCell.web` / `bg.dangerCell.web`).
+ *     Context rows inherit the canvas background (no rule).
  *
  *   - `.tour-card[data-side]`: side-anchored under the matching column
- *     pair in split layout (deletions cols 1-2, additions cols 3-4),
+ *     triple in split layout (deletions cols 1-3, additions cols 4-6),
  *     full-width otherwise.
- *
- * Injected as a `<style>` block at the diff pane root by `App.tsx`.
  */
 export const FILE_GRID_CSS = `
   /* File-level grid container. data-layout flips column count. */
@@ -48,11 +49,11 @@ export const FILE_GRID_CSS = `
   }
 
   .tour-file-block[data-layout="split"] {
-    grid-template-columns: auto 1fr auto 1fr;
+    grid-template-columns: auto auto 1fr auto auto 1fr;
   }
 
   .tour-file-block[data-layout="unified"] {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto auto 1fr;
   }
 
   /* Sticky file header — retargeted from Pierre's [data-diffs-header]. */
@@ -71,15 +72,47 @@ export const FILE_GRID_CSS = `
     grid-column: 1 / -1;
   }
 
-  /* Line-type backgrounds. Context rows inherit canvas (no rule). */
-  .tour-row[data-line-type="addition"],
-  .tour-row[data-line-type="change-addition"] {
+  /* Line-number gutter: right-aligned, muted color, breathing room. */
+  .tour-row-gutter {
+    text-align: right;
+    color: ${theme.fg.muted};
+    padding: 0 8px;
+    user-select: none;
+  }
+
+  /* Symbol column: single +/-/blank glyph, monospace, centered. */
+  .tour-row-symbol {
+    text-align: center;
+    padding: 0 4px;
+    user-select: none;
+    color: ${theme.fg.muted};
+  }
+
+  /* Two-tone line-type backgrounds (issue issue 221): the gutter + symbol cells
+     carry the lighter range tint; the code cell carries the darker fill.
+     Context rows inherit canvas (no rule). */
+  .tour-row[data-line-type="addition"] .tour-row-gutter,
+  .tour-row[data-line-type="addition"] .tour-row-symbol,
+  .tour-row[data-line-type="change-addition"] .tour-row-gutter,
+  .tour-row[data-line-type="change-addition"] .tour-row-symbol {
     background-color: ${theme.bg.successRange.web};
   }
 
-  .tour-row[data-line-type="deletion"],
-  .tour-row[data-line-type="change-deletion"] {
+  .tour-row[data-line-type="addition"] .tour-row-cell,
+  .tour-row[data-line-type="change-addition"] .tour-row-cell {
+    background-color: ${theme.bg.successCell.web};
+  }
+
+  .tour-row[data-line-type="deletion"] .tour-row-gutter,
+  .tour-row[data-line-type="deletion"] .tour-row-symbol,
+  .tour-row[data-line-type="change-deletion"] .tour-row-gutter,
+  .tour-row[data-line-type="change-deletion"] .tour-row-symbol {
     background-color: ${theme.bg.dangerRange.web};
+  }
+
+  .tour-row[data-line-type="deletion"] .tour-row-cell,
+  .tour-row[data-line-type="change-deletion"] .tour-row-cell {
+    background-color: ${theme.bg.dangerCell.web};
   }
 
   /* Comment-affordance pointer on annotatable diff lines. */
@@ -104,16 +137,17 @@ export const FILE_GRID_CSS = `
     border-radius: 4px;
   }
 
-  /* Cards: full-width by default; side-anchored in split layout. */
+  /* Cards: full-width by default; side-anchored in split layout
+     (deletions cols 1-3, additions cols 4-end after the new symbol track). */
   .tour-card {
     grid-column: 1 / -1;
   }
 
   .tour-file-block[data-layout="split"] .tour-card[data-side="deletions"] {
-    grid-column: 1 / 3;
+    grid-column: 1 / 4;
   }
 
   .tour-file-block[data-layout="split"] .tour-card[data-side="additions"] {
-    grid-column: 3 / -1;
+    grid-column: 4 / -1;
   }
 `;

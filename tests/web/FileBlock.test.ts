@@ -258,8 +258,8 @@ describe("<FileBlock> — planner walk + dispatch", () => {
     const card = c.querySelector(".tour-card");
     expect(card).not.toBeNull();
     expect(card!.textContent).toContain("comment body");
-    // In split layout, additions cards anchor to cols 3 / -1.
-    expect((card as HTMLElement).style.gridColumn).toMatch(/3\s*\/\s*-1/);
+    // In split layout, additions cards anchor to cols 4 / -1 (#221).
+    expect((card as HTMLElement).style.gridColumn).toMatch(/4\s*\/\s*-1/);
   });
 
   it("invokes onRowClick with file/side/lineNumber when a diff row is clicked", () => {
@@ -506,8 +506,8 @@ describe("<FileBlock> — composer slot", () => {
     const wrapper = composer!.closest(".tour-card") as HTMLElement;
     expect(wrapper).not.toBeNull();
     expect(wrapper.dataset.side).toBe("additions");
-    // In split layout, additions composer anchors to cols 3 / -1.
-    expect(wrapper.style.gridColumn).toMatch(/3\s*\/\s*-1/);
+    // In split layout, additions composer anchors to cols 4 / -1 (#221).
+    expect(wrapper.style.gridColumn).toMatch(/4\s*\/\s*-1/);
   });
 
   it("does not render the composer slot when composerAnchor is null", () => {

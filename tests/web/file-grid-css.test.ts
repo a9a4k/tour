@@ -18,15 +18,15 @@ describe("FILE_GRID_CSS — file-level grid", () => {
     expect(FILE_GRID_CSS).toContain('[data-layout="unified"]');
   });
 
-  it("split layout uses 4 column tracks (gutter-L code-L gutter-R code-R)", () => {
+  it("split layout uses 6 column tracks (gutter+symbol+code per side, #221)", () => {
     expect(FILE_GRID_CSS).toMatch(
-      /\[data-layout="split"\][^{]*\{[^}]*grid-template-columns:\s*auto 1fr auto 1fr/,
+      /\[data-layout="split"\][^{]*\{[^}]*grid-template-columns:\s*auto auto 1fr auto auto 1fr/,
     );
   });
 
-  it("unified layout uses 2 column tracks (gutter code)", () => {
+  it("unified layout uses 3 column tracks (gutter symbol code, #221)", () => {
     expect(FILE_GRID_CSS).toMatch(
-      /\[data-layout="unified"\][^{]*\{[^}]*grid-template-columns:\s*auto 1fr;/,
+      /\[data-layout="unified"\][^{]*\{[^}]*grid-template-columns:\s*auto auto 1fr;/,
     );
   });
 });
@@ -52,30 +52,76 @@ describe("FILE_GRID_CSS — cards", () => {
     );
   });
 
-  it("split layout side-anchors deletion cards under the left side (cols 1-2)", () => {
+  it("split layout side-anchors deletion cards under the left side (cols 1-3, #221)", () => {
     expect(FILE_GRID_CSS).toMatch(
-      /\[data-layout="split"\][^{}]*\.tour-card\[data-side="deletions"\][^{]*\{[^}]*grid-column:\s*1 \/ 3/,
+      /\[data-layout="split"\][^{}]*\.tour-card\[data-side="deletions"\][^{]*\{[^}]*grid-column:\s*1 \/ 4/,
     );
   });
 
-  it("split layout side-anchors addition cards under the right side (cols 3-4)", () => {
+  it("split layout side-anchors addition cards under the right side (cols 4-end, #221)", () => {
     expect(FILE_GRID_CSS).toMatch(
-      /\[data-layout="split"\][^{}]*\.tour-card\[data-side="additions"\][^{]*\{[^}]*grid-column:\s*3 \/ -1/,
+      /\[data-layout="split"\][^{}]*\.tour-card\[data-side="additions"\][^{]*\{[^}]*grid-column:\s*4 \/ -1/,
     );
   });
 });
 
-describe("FILE_GRID_CSS — line-type backgrounds", () => {
-  it("paints additions / change-additions with the success-range token", () => {
+describe("FILE_GRID_CSS — line-type backgrounds (two-tone, #221)", () => {
+  it("paints additions / change-additions gutter+symbol with the lighter success-range token", () => {
     expect(FILE_GRID_CSS).toContain('[data-line-type="addition"]');
     expect(FILE_GRID_CSS).toContain('[data-line-type="change-addition"]');
     expect(FILE_GRID_CSS).toContain(theme.bg.successRange.web);
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row\[data-line-type="addition"\] \.tour-row-gutter[\s\S]*?\.tour-row-symbol/,
+    );
   });
 
-  it("paints deletions / change-deletions with the danger-range token", () => {
+  it("paints additions / change-additions code cell with the darker success-cell token", () => {
+    expect(FILE_GRID_CSS).toContain(theme.bg.successCell.web);
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row\[data-line-type="addition"\] \.tour-row-cell[\s\S]*?background-color:\s*\$?\{?[^}]*\}?/,
+    );
+  });
+
+  it("paints deletions / change-deletions gutter+symbol with the lighter danger-range token", () => {
     expect(FILE_GRID_CSS).toContain('[data-line-type="deletion"]');
     expect(FILE_GRID_CSS).toContain('[data-line-type="change-deletion"]');
     expect(FILE_GRID_CSS).toContain(theme.bg.dangerRange.web);
+  });
+
+  it("paints deletions / change-deletions code cell with the darker danger-cell token", () => {
+    expect(FILE_GRID_CSS).toContain(theme.bg.dangerCell.web);
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row\[data-line-type="deletion"\] \.tour-row-cell[\s\S]*?background-color:\s*\$?\{?[^}]*\}?/,
+    );
+  });
+});
+
+describe("FILE_GRID_CSS — line-number polish (#221)", () => {
+  it("right-aligns line numbers", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter[\s\S]*?text-align:\s*right/,
+    );
+  });
+
+  it("mutes line-number color with theme.fg.muted", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter[\s\S]*?color:\s*#9198a1/i,
+    );
+  });
+
+  it("adds horizontal padding to line-number gutter", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter[\s\S]*?padding:\s*0\s+\d+px/,
+    );
+  });
+});
+
+describe("FILE_GRID_CSS — symbol column (#221)", () => {
+  it("declares a tour-row-symbol selector with centered, padded styling", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-row-symbol");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-symbol[\s\S]*?text-align:\s*center/,
+    );
   });
 });
 

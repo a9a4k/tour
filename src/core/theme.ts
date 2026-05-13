@@ -75,9 +75,17 @@ export const theme = {
       web: "rgba(63, 185, 80, 0.15)",
       tui: "#142a20",
     } satisfies AlphaPair,
+    successCell: {
+      web: "rgba(63, 185, 80, 0.25)",
+      tui: "#1a3b25",
+    } satisfies AlphaPair,
     dangerRange: {
       web: "rgba(248, 81, 73, 0.15)",
       tui: "#301b1e",
+    } satisfies AlphaPair,
+    dangerCell: {
+      web: "rgba(248, 81, 73, 0.25)",
+      tui: "#482124",
     } satisfies AlphaPair,
     attentionSubtle: {
       web: "rgba(210, 153, 34, 0.10)",
@@ -133,7 +141,9 @@ export function themeCSSVars(): string {
     `--bg-accent-range: ${theme.bg.accentRange.web};`,
     `--bg-cursor-row: ${theme.bg.cursorRow.web};`,
     `--bg-success-range: ${theme.bg.successRange.web};`,
+    `--bg-success-cell: ${theme.bg.successCell.web};`,
     `--bg-danger-range: ${theme.bg.dangerRange.web};`,
+    `--bg-danger-cell: ${theme.bg.dangerCell.web};`,
     `--bg-attention-subtle: ${theme.bg.attentionSubtle.web};`,
     `--bg-neutral-subtle: ${theme.bg.neutralSubtle.web};`,
     `--shadow-scrim: ${theme.shadow.scrim};`,

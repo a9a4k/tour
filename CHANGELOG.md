@@ -78,6 +78,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp diff rows: two-tone tinting + `+`/`-` symbol column (GitHub
+  parity, issue #221).** Diff rows now match GitHub's visual signature:
+  the line-number gutter + a new symbol cell carry a lighter green/red
+  tint (`bg.successRange.web` / `bg.dangerRange.web`); the code cell
+  carries a darker green/red tint sourced from two new theme tokens
+  (`bg.successCell.web` / `bg.dangerCell.web`). A narrow `+`/`-`/blank
+  symbol cell now sits between each line-number gutter and its code
+  cell — `+` on addition / change-addition rows, `-` on deletion /
+  change-deletion rows (and on the deletion side of paired change rows
+  in split layout), blank on context rows to keep columns aligned. Line
+  numbers are right-aligned, muted (`fg.muted`), and padded so they
+  don't butt the gutter edges. File-grid templates flip from 4 / 2
+  tracks to 6 / 3: split `auto auto 1fr auto auto 1fr`, unified
+  `auto auto 1fr`. Card / composer side-anchoring updates accordingly:
+  in split layout deletion cards span cols 1-3, addition cards span
+  cols 4-end. No planner / row-primitive-prop / annotation-model
+  changes — purely renderer-side. The cursor outline, range tint, and
+  interactive rows continue to span the full track count via
+  `grid-column: 1 / -1`.
+
+  Issue: #221 · PRD: #212 · ADR: 0024
+
 - **Parity test harness: render canonical Tours through both renderers
   + compare (PRD #212 slice 6).** New `tests/web/parity-render.test.ts`
   is the merge gate for the Pierre → Tour-owned web row renderer
