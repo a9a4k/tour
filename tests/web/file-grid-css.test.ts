@@ -421,6 +421,65 @@ describe("FILE_GRID_CSS — empty-side neutral fill (#227)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — code cell typography (#239)", () => {
+  // The pre-Pierre-cutover renderer relied on Pierre's <pre> wrapper to give
+  // diff-row code cells `font-family: monospace` + `white-space: pre`. After
+  // the cutover (#220) the Tour-owned `<span class="tour-row-code">` wrapper
+  // inherited the body's sans-serif font and `white-space: normal`, so every
+  // line of code rendered with collapsed indentation, word-wrapped at the
+  // cell edge, and proportional character widths. The CSS module gains a
+  // `.tour-row-code` rule that re-instates the equivalent text-rendering
+  // declarations; the rule sits orthogonal to the existing line-type
+  // backgrounds / range tints / cursor outline (which all paint backgrounds
+  // or outlines, not text properties), so no other rule needs to change.
+
+  it("declares a .tour-row-code rule (Tour-owned replacement for Pierre's <pre> wrapper)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-row-code");
+  });
+
+  it("renders the code cell in a monospace font", () => {
+    // The exact stack is the agent's call; the constraint is that the
+    // fallback chain ends in `monospace` so every platform resolves to a
+    // monospace face.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-code[^{]*\{[^}]*font-family:[^;]*monospace/,
+    );
+  });
+
+  it("preserves leading + internal whitespace with `white-space: pre`", () => {
+    // Path A: long lines extend horizontally rather than wrapping under the
+    // same logical line number. Issue #239 picks Path A explicitly.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-code[^{]*\{[^}]*white-space:\s*pre/,
+    );
+  });
+
+  it("declares a tab-size so `\\t` characters render at a sensible width", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-code[^{]*\{[^}]*tab-size:\s*\d+/,
+    );
+  });
+
+  it("declares a font-size so the code cell feels like code", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-code[^{]*\{[^}]*font-size:\s*\d+px/,
+    );
+  });
+
+  it("lets long lines overflow the cell horizontally rather than break row layout", () => {
+    // With `white-space: pre` on the code, the cell must allow horizontal
+    // overflow. `min-width: 0` is required on grid items so they can shrink
+    // below their content size — without it the 1fr code track stretches to
+    // the longest line and pushes the file-block past 100% width.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-cell[^{]*\{[^}]*overflow-x:\s*auto/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-cell[^{]*\{[^}]*min-width:\s*0/,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — no duplicated hex literals", () => {
   it("every hex literal in the emitted CSS appears in a core/theme.ts token", () => {
     // Whitelist of theme strings the module is allowed to reference.

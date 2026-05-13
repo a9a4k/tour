@@ -732,6 +732,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp diff-row code cells render as code again (issue #239).**
+  Pre-Pierre-cutover, Pierre's `<FileDiff>` wrapped each diff line in a
+  `<pre>` so the code cell inherited `font-family: monospace` +
+  `white-space: pre`. The Pierre cutover (#220) replaced that wrapper
+  with a Tour-owned `<span class="tour-row-code">` but didn't carry the
+  CSS over — `.tour-row-code` had no rule in `file-grid-css.ts`, so the
+  cell inherited the body's sans-serif stack and `white-space: normal`.
+  Visible result: leading indentation collapsed, long lines wrapped
+  mid-statement under one line number, characters had proportional
+  widths. The Shiki token spans were correct; the wrapping container
+  just wasn't told to treat its text as code. New `.tour-row-code` rule
+  in `file-grid-css.ts` declares `font-family: ui-monospace,
+  SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace`,
+  `white-space: pre` (Path A — long lines extend horizontally rather
+  than wrap), `tab-size: 2`, and `font-size: 12px`. A companion
+  `.tour-row-cell` rule adds `overflow-x: auto` + `min-width: 0` so the
+  1fr code track can shrink below content size and the long-line
+  overflow surfaces as a horizontal scrollbar at the cell instead of
+  pushing the file-block past 100% width. Sits orthogonal to the
+  existing line-type backgrounds, range tint, cursor outline, and
+  empty-side neutral fill — all of which paint backgrounds or outlines,
+  not text properties — so no other rule needed to change. Shiki's
+  per-token inline `color: #…` styles continue to apply unchanged.
+
+  Issue: #239
+
 - **Webapp annotation range tint + 3px stripe scope to the annotated
   side in split layout (issue #226).** Before this fix, `<DiffRow>`
   received a single `isInRange: boolean` derived from
