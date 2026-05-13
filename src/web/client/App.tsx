@@ -39,6 +39,7 @@ import { flatRows as buildFlatRows } from "../../core/flat-rows.js";
 import { planRows, GAP_TWO_ROW_THRESHOLD, type PlannedRow } from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
 import {
+  emptyExpansion,
   getBoundary,
   type OrphanWindow,
 } from "../../core/expansion-state.js";
