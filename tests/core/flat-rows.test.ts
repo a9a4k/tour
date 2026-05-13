@@ -351,12 +351,14 @@ describe("flatRows interactive rows (PRD #107)", () => {
   });
 });
 
-// PRD #151 / ADR 0018: hunk-header rows are cursor-addressable iff
-// gapAbove > 0. First-hunk interactive hunk-headers tag as `boundary-top` /
-// `"top"`; mid-file interactive hunk-headers tag as `hunk-separator` /
-// `hunkIndex`. PRD #270 / issue #271: `expand-up` / `expand-down` /
-// `expand-all` directional rows pass through unchanged.
-describe("flatRows gap-row family (PRD #151)", () => {
+// PRD #270 Slice 2 / issue #272: the hunk-header banner becomes a
+// display-only metadata row. The cursor no longer walks the hunk-header
+// row — `flatRows` skips `kind: "hunk-header"` entries entirely. The
+// affordance for revealing hidden context is the directional
+// `expand-up` / `expand-down` / `expand-all` rows emitted by
+// `expandRowsForGap` (Slice 1); those continue to flow through the
+// cursor stream unchanged.
+describe("flatRows hunk-header skip (PRD #270 Slice 2 / issue #272)", () => {
   it("skips a hunk-header with gapAbove === 0", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const rows: PlannedRow[] = [
@@ -366,30 +368,22 @@ describe("flatRows gap-row family (PRD #151)", () => {
     expect(flat.length).toBe(0);
   });
 
-  it("includes a first-hunk hunk-header with gapAbove > 0 as boundary-top / 'top'", () => {
+  it("skips a first-hunk hunk-header even when gapAbove > 0 (#272)", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const rows: PlannedRow[] = [
       { kind: "hunk-header", header: "@@ -5,3 +5,3 @@", hunkIndex: 0, gapAbove: 4 },
     ];
     const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
-    expect(flat.length).toBe(1);
-    expect(flat[0].kind).toBe("interactive");
-    if (flat[0].kind !== "interactive") throw new Error("narrow");
-    expect(flat[0].subKind).toBe("boundary-top");
-    expect(flat[0].boundaryRef).toBe("top");
+    expect(flat.length).toBe(0);
   });
 
-  it("includes a mid-file hunk-header with gapAbove > 0 as hunk-separator / hunkIndex", () => {
+  it("skips a mid-file hunk-header even when gapAbove > 0 (#272)", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const rows: PlannedRow[] = [
       { kind: "hunk-header", header: "@@ -10,3 +10,3 @@", hunkIndex: 3, gapAbove: 12 },
     ];
     const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
-    expect(flat.length).toBe(1);
-    expect(flat[0].kind).toBe("interactive");
-    if (flat[0].kind !== "interactive") throw new Error("narrow");
-    expect(flat[0].subKind).toBe("hunk-separator");
-    expect(flat[0].boundaryRef).toBe(3);
+    expect(flat.length).toBe(0);
   });
 
   it("passes through `expand-down` / `expand-up` directional rows into the cursor stream (PRD #270)", () => {

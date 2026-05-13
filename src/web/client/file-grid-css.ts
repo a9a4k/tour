@@ -386,57 +386,33 @@ export const FILE_GRID_CSS = `
      here — the two text segments flow inline). Range segment renders
      muted; context segment renders in the default fg.
 
-     Expand affordance (issue 252): leftmost 44px saturated-blue cue
-     area with a centered '…' glyph, painted via ::before. GitHub paints
-     the analogous cue on its 'td.blob-num-hunk' cell to signal "this row
-     expands hidden context"; pre-fix the Tour banner had no rest-state
-     cue (only 'cursor: pointer' on mouseover). Path B (CSS ::before)
-     rather than Path A (inline span): the cue is decorative-only — per
-     ADR 0013 the whole banner is one click target — so a pseudo-element
-     cannot accidentally become a separate click target. 'accentEmphasis'
-     (#1f6feb solid) gives a high-contrast saturated cue region against
-     the banner's accentSubtle wash; 'onEmphasis' (#ffffff) for the
-     glyph stays legible on the saturated bg. Width 44px matches
-     GitHub's 'blob-num-hunk' td width. 'padding-left' bumps from 16px
-     to 60px (44 cue + 16 gap) so the range/context text clears the cue.
-     'position: relative' is the absolute-positioning anchor for the
-     ::before. The cue paints even when gapAbove === 0 (file-top hunk
-     with no expandable context) — decorative-only; click short-circuits
-     inside FileBlock.renderHunkHeader.
+     PRD 270 Slice 2 / issue 272: the banner is display-only — the
+     directional expand affordance lives in the explicit expand-up /
+     expand-down / expand-all interactive rows (Slice 1). The 252
+     ::before '...' cue is removed (premise was "always show
+     expandability hint, click anywhere on banner" — the new model uses
+     explicit cursor-walkable buttons instead). position: relative
+     (252 anchor) and padding-left: 60px (44px cue + 16px gap) revert
+     to the pre-252 symmetric inset. cursor: pointer removed: the
+     banner no longer responds to clicks.
 
      Typography (issue 253): banner inherits MONO_STACK / 12px / 20px so
      the text reads as part of the diff stream rather than as UI chrome.
      Pre-253 the banner inherited the document body's sans-serif 16px /
      normal-line-height — visually mismatched against the monospace 12px
      20px-line-height code rows below. Child spans (.tour-hunk-header-
-     range, .tour-hunk-header-context) and the ::before cue's '…' glyph
-     all inherit these declarations naturally. */
+     range, .tour-hunk-header-context) inherit these declarations
+     naturally. */
   .tour-hunk-header {
     /* Override .tour-row's display:grid + subgrid template so the two
        text segments flow inline as block content instead of slotting
        into the gutter/symbol tracks (which would force-wrap the text). */
     display: block;
     background-color: ${theme.bg.accentSubtle.web};
-    padding: 6px 16px 6px 60px;
-    cursor: pointer;
-    position: relative;
+    padding: 6px 16px;
     font-family: ${MONO_STACK};
     font-size: 12px;
     line-height: 20px;
-  }
-
-  .tour-hunk-header::before {
-    content: "…";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 44px;
-    background-color: ${theme.bg.accentEmphasis};
-    color: ${theme.fg.onEmphasis};
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .tour-hunk-header-range {

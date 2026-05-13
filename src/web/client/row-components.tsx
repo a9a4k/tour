@@ -531,12 +531,10 @@ export interface HunkHeaderBannerProps {
   header: string;
   boundaryRef: BoundaryRef;
   direction: "up" | "both";
-  gapAbove: number;
+  /** Structurally retained so the `.is-cursor` outline rule still applies
+   *  on banners — in practice always `false` after PRD #270 Slice 2 /
+   *  issue #272 because the cursor no longer walks the hunk-header row. */
   isCursor: boolean;
-  /** Dispatches the expand action. Component computes `count` from the
-   *  click/key modifier (shift → `Math.max(gapAbove, EXPANSION_STEP)`,
-   *  otherwise `EXPANSION_STEP`). */
-  onActivate: (count: number) => void;
 }
 
 // `data-subkind` derives from `boundaryRef`: `"top"` (file-top) maps to
@@ -549,35 +547,28 @@ function hunkHeaderSubKind(
   return boundaryRef === "top" ? "boundary-top" : "hunk-separator";
 }
 
+// PRD #270 Slice 2 / issue #272: HunkHeaderBanner is a pure display
+// component — no `onClick`, no `onKeyDown`, no `role="button"`, no
+// `tabIndex`. The directional expand affordance is owned by the
+// `<InteractiveRow>` subkinds (`expand-up` / `expand-down` /
+// `expand-all`) emitted by `expandRowsForGap` (Slice 1). The banner
+// continues to render the parsed range + function-context spans for
+// reviewer wayfinding; the `data-*` attributes are decorative
+// (kept for selectors / debugging).
 function HunkHeaderBannerImpl(
   props: HunkHeaderBannerProps,
 ): React.JSX.Element {
-  const { header, boundaryRef, direction, gapAbove, isCursor, onActivate } =
-    props;
+  const { header, boundaryRef, direction, isCursor } = props;
   const classes = ["tour-row", "tour-hunk-header"];
   if (isCursor) classes.push("is-cursor");
-  const onClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onActivate(expansionCount(gapAbove, e.shiftKey));
-  };
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!isCursor) return;
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    onActivate(expansionCount(gapAbove, e.shiftKey));
-  };
   const { range, context } = parseHunkHeader(header);
   return (
     <div
       className={classes.join(" ")}
-      role="button"
-      tabIndex={0}
       data-subkind={hunkHeaderSubKind(boundaryRef)}
       data-direction={direction}
       data-boundary-ref={String(boundaryRef)}
       style={BANNER_STYLE}
-      onClick={onClick}
-      onKeyDown={onKeyDown}
     >
       <span className="tour-hunk-header-range">{range}</span>
       {context ? (

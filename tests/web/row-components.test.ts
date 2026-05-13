@@ -1192,19 +1192,17 @@ describe("parseHunkHeader (#223)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// HunkHeaderBanner (#223)
+// HunkHeaderBanner (#223; display-only per #272 / PRD #270 Slice 2)
 // ---------------------------------------------------------------------------
 
-describe("<HunkHeaderBanner> (#223)", () => {
+describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
   it("renders a full-width tour-row with the tour-hunk-header class", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -33,7 +33,7 @@ import {",
         boundaryRef: 1,
         direction: "both",
-        gapAbove: 5,
         isCursor: false,
-        onActivate: () => {},
       }),
     );
     const row = c.querySelector(".tour-row.tour-hunk-header") as HTMLElement;
@@ -1218,9 +1216,7 @@ describe("<HunkHeaderBanner> (#223)", () => {
         header: "@@ -33,7 +33,7 @@ import {",
         boundaryRef: 1,
         direction: "both",
-        gapAbove: 5,
         isCursor: false,
-        onActivate: () => {},
       }),
     );
     const range = c.querySelector(".tour-hunk-header-range") as HTMLElement;
@@ -1237,9 +1233,7 @@ describe("<HunkHeaderBanner> (#223)", () => {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
-        gapAbove: 0,
         isCursor: false,
-        onActivate: () => {},
       }),
     );
     const range = c.querySelector(".tour-hunk-header-range") as HTMLElement;
@@ -1254,9 +1248,7 @@ describe("<HunkHeaderBanner> (#223)", () => {
         header: "garbled header",
         boundaryRef: 1,
         direction: "both",
-        gapAbove: 5,
         isCursor: false,
-        onActivate: () => {},
       }),
     );
     const range = c.querySelector(".tour-hunk-header-range") as HTMLElement;
@@ -1265,23 +1257,19 @@ describe("<HunkHeaderBanner> (#223)", () => {
     expect(context).toBeNull();
   });
 
-  it("emits data attributes (subkind, direction, boundary-ref) for App-level lookup", () => {
+  it("emits data-subkind / data-direction / data-boundary-ref decorative attributes", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
-        gapAbove: 8,
         isCursor: false,
-        onActivate: () => {},
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
     expect(row.dataset.subkind).toBe("boundary-top");
     expect(row.dataset.direction).toBe("up");
     expect(row.dataset.boundaryRef).toBe("top");
-    expect(row.getAttribute("role")).toBe("button");
-    expect(row.getAttribute("tabindex")).toBe("0");
   });
 
   it("emits subkind=hunk-separator for numeric boundaryRef", () => {
@@ -1290,9 +1278,7 @@ describe("<HunkHeaderBanner> (#223)", () => {
         header: "@@ -33,7 +33,7 @@",
         boundaryRef: 2,
         direction: "both",
-        gapAbove: 8,
         isCursor: false,
-        onActivate: () => {},
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
@@ -1300,95 +1286,85 @@ describe("<HunkHeaderBanner> (#223)", () => {
     expect(row.dataset.boundaryRef).toBe("2");
   });
 
-  it("calls onActivate(EXPANSION_STEP) on a plain click", () => {
-    const calls: number[] = [];
+  // PRD #270 Slice 2 / issue #272: the banner is a pure display
+  // component — no click handler, no keyboard handler, no role,
+  // no tabIndex. The directional expand buttons emitted by
+  // `expandRowsForGap` (Slice 1) are the only affordance.
+  it("carries no role='button' attribute (display-only per #272)", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
-        gapAbove: 8,
         isCursor: false,
-        onActivate: (count: number) => calls.push(count),
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(calls).toEqual([EXPANSION_STEP]);
+    expect(row.getAttribute("role")).toBeNull();
   });
 
-  it("expands the full gap on shift-click (max(gapAbove, EXPANSION_STEP))", () => {
-    const calls: number[] = [];
+  it("carries no tabindex attribute (display-only per #272)", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        isCursor: false,
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    expect(row.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("clicking the banner is a no-op — does not bubble through to a handler nor dispatch (#272)", () => {
+    // Wrap the banner in a div that records clicks; the banner's own
+    // click handler is gone, so any synthetic click only registers via
+    // bubbling. We don't intercept it (no e.stopPropagation), but no
+    // dispatch happens because there is no onActivate prop.
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -33,7 +33,7 @@",
         boundaryRef: 1,
         direction: "both",
-        gapAbove: 60,
         isCursor: false,
-        onActivate: (count: number) => calls.push(count),
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    // No throw; no listener attached on the banner element. We verify
+    // shape (no onclick prop) rather than absence-of-effect (which
+    // would require a parent recorder — banner has no side-effect
+    // contract anymore).
+    expect((row as unknown as { onclick: unknown }).onclick).toBeNull();
     act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(calls).toEqual([Math.max(60, EXPANSION_STEP)]);
   });
 
-  it("calls onActivate on Enter while isCursor is true", () => {
-    const calls: number[] = [];
+  it("pressing Enter on the banner is a no-op (#272 — no keyboard handler)", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
-        gapAbove: 6,
         isCursor: true,
-        onActivate: (count: number) => calls.push(count),
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    expect((row as unknown as { onkeydown: unknown }).onkeydown).toBeNull();
     act(() => {
       row.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
       );
     });
-    expect(calls).toEqual([EXPANSION_STEP]);
   });
 
-  it("does NOT call onActivate on Enter when isCursor is false", () => {
-    const calls: number[] = [];
+  it("applies .is-cursor on the row when isCursor is true (structural; cursor no longer walks here)", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
-        gapAbove: 6,
-        isCursor: false,
-        onActivate: (count: number) => calls.push(count),
-      }),
-    );
-    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
-    act(() => {
-      row.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-      );
-    });
-    expect(calls).toEqual([]);
-  });
-
-  it("applies .is-cursor on the row when isCursor is true (full-banner outline)", () => {
-    const c = mount(
-      createElement(HunkHeaderBanner, {
-        header: "@@ -1,4 +1,4 @@",
-        boundaryRef: "top",
-        direction: "up",
-        gapAbove: 6,
         isCursor: true,
-        onActivate: () => {},
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
