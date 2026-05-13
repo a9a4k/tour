@@ -257,3 +257,42 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
     expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
   });
 });
+
+// Issue #259: hunk-header rows are metadata, not code. The webapp's
+// `.tour-hunk-header` paints the whole line in fg.muted; the TUI matches
+// by passing `mutedText` to DiffLine. The flag forces the plain <text>
+// branch (so the syntax highlighter does not paint `import` red, etc.)
+// and tints the content text in theme.fg.muted.
+describe("DiffLine mutedText (issue #259)", () => {
+  function contentInnerOf(root: AnyElement): AnyElement[] {
+    const kids = childrenOf(root).filter(isElement);
+    const wrap = kids[kids.length - 1]!;
+    return childrenOf(wrap).filter(isElement);
+  }
+
+  it("forces the plain <text> branch (skips <code>) even when filetype is supplied", () => {
+    const root = render({ mutedText: true, filetype: "ts" } as never);
+    const inner = contentInnerOf(root);
+    expect(inner.some((c) => c.type === "code")).toBe(false);
+    expect(inner.some((c) => c.type === "text")).toBe(true);
+  });
+
+  it("paints the content text in theme.fg.muted", () => {
+    const root = render({ mutedText: true, filetype: "ts" } as never);
+    const inner = contentInnerOf(root);
+    const textNode = inner.find((c) => c.type === "text");
+    expect(textNode).toBeDefined();
+    expect(textNode!.props["fg"]).toBe(theme.fg.muted);
+  });
+
+  it("leaves the content text un-tinted when mutedText is not set (default behaviour unchanged)", () => {
+    // Empty side of a pure +/- row in split: filetype is supplied but
+    // text is empty, so showCode is false and the plain <text> renders
+    // with no fg override. Pre-#259 behaviour.
+    const root = render({ filetype: "ts", text: "" } as never);
+    const inner = contentInnerOf(root);
+    const textNode = inner.find((c) => c.type === "text");
+    expect(textNode).toBeDefined();
+    expect(textNode!.props["fg"]).toBeUndefined();
+  });
+});

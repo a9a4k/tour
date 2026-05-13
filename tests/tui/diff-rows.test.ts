@@ -842,6 +842,31 @@ index 1..2 100644
       const node = findText(tree, (s) => s.startsWith("@@"));
       expect(node).toBeDefined();
       expect(node!.props.children).toBe("@@ -1,3 +1,3 @@");
+      // GitHub paints the whole hunk-header line in continuous fg.muted
+      // grey — the inert TUI path follows the same treatment.
+      expect(node!.props.fg).toBe(theme.fg.muted);
+    });
+
+    // Issue #259: previously the interactive hunk-header ran the
+    // function-context tail through the syntax highlighter (keyword `import`
+    // painted red, identifiers blue, etc), making the banner read as code
+    // and pulling attention from the diff rows below. GitHub renders the
+    // entire hunk-header line in one continuous fg.muted grey. The TUI
+    // matches by passing `mutedText` to DiffLine, which skips the syntax
+    // pipeline and tints the content text in theme.fg.muted.
+    it("interactive hunk-header passes mutedText=true to DiffLine — no syntax highlight on the function-context tail (issue #259)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -65,6 +65,46 @@ import {",
+          hunkIndex: 1,
+          gapAbove: 5,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split", fileName: "x.ts" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["mutedText"]).toBe(true);
     });
   });
 

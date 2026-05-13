@@ -194,6 +194,7 @@ export function DiffRows({
                 cursorActive={cursorActive}
                 filetype={filetype}
                 syntaxStyle={syntaxStyle}
+                mutedText
                 width="100%"
               />
             </box>

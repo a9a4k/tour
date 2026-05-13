@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI hunk-header renders in continuous fg.muted, no syntax highlighting on
+  the function-context tail (issue #259).** Pre-fix the interactive
+  hunk-header (`@@ -X,Y +Z,W @@ <function-context>` with `gapAbove > 0`)
+  routed its text through `DiffLine` with the same `filetype` /
+  `syntaxStyle` as the diff-row code cells. The function-context tail ran
+  through the syntax highlighter — `import` painted red, identifiers blue,
+  brackets white — and the banner read as a colourful element pulling
+  attention from the diff rows below. GitHub renders the entire
+  `td.blob-code-hunk` cell in one continuous `fg.muted` grey
+  (`#9198a1`); the webapp's `.tour-hunk-header` matches. The TUI now does
+  too: `DiffLine` grows a `mutedText?: boolean` prop that forces the plain
+  `<text>` branch regardless of filetype and tints the content in
+  `theme.fg.muted`. `DiffRows` passes `mutedText` for the interactive
+  hunk-header. The inert path (`gapAbove === 0`) was already rendered as
+  `<text fg={theme.fg.muted}>` and is unchanged. Cursor visual, gutter
+  padding, and the `↑` / `↓` / `↕` direction glyph + `··· N hidden ···`
+  suffix are unchanged — only the syntax pipeline is bypassed and the
+  text is tinted muted.
+
+  Issue: #259
+
 - **TUI: top-level annotation submit no longer silently fails — diverged
   `WriteAnnotationInput` types and unrendered `errored` composer state fixed
   (issue #254).** Pre-fix `WriteAnnotationInput` was declared twice: once in
