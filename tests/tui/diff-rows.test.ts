@@ -425,6 +425,118 @@ index 1..2 100644
     });
   });
 
+  // Issue #260 — TUI split layout previously rendered the empty side
+  // of a pure-addition / pure-deletion row as plain canvas, making the
+  // row read as a half-row floating against the page. Mirror webapp
+  // #227: paint the empty side's gutter + code cell in
+  // theme.canvas.inset so each row reads as "one side intentionally
+  // blank" rather than "content here, void there". Signal: pass
+  // `emptySide=true` to the DiffLine on the side whose lineNumber is
+  // null on a change row.
+  describe("split-layout empty-side neutral fill (#260)", () => {
+    it("pure-addition row: left (empty) cell carries emptySide=true; right (populated) cell carries emptySide=false", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pureAddIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber === null &&
+          r.rightLineNumber !== null,
+      );
+      expect(pureAddIdx).toBeGreaterThanOrEqual(0);
+      const tree = callDiffRows({ rows: rows.slice(pureAddIdx, pureAddIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["emptySide"]).toBe(true);
+      expect(cells[1].props["emptySide"]).toBeFalsy();
+    });
+
+    it("pure-deletion row: right (empty) cell carries emptySide=true; left (populated) cell carries emptySide=false", () => {
+      const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,1 @@
+ ctx
+-only-del
+`;
+      const file = parseFile(diff);
+      const rows = planRows(file, [], "split");
+      const pureDelIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber === null,
+      );
+      expect(pureDelIdx).toBeGreaterThanOrEqual(0);
+      const tree = callDiffRows({ rows: rows.slice(pureDelIdx, pureDelIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["emptySide"]).toBeFalsy();
+      expect(cells[1].props["emptySide"]).toBe(true);
+    });
+
+    it("paired change row: neither side carries emptySide=true (both halves populated)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pairedIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber !== null,
+      );
+      const tree = callDiffRows({ rows: rows.slice(pairedIdx, pairedIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["emptySide"]).toBeFalsy();
+      expect(cells[1].props["emptySide"]).toBeFalsy();
+    });
+
+    it("context row: neither side carries emptySide=true (rule does not apply)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["emptySide"]).toBeFalsy();
+      expect(cells[1].props["emptySide"]).toBeFalsy();
+    });
+
+    it("unified layout: never carries emptySide=true (concept does not apply — one rendered column)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const tree = callDiffRows({ rows, layout: "unified" });
+      const cells = diffLineCellsOf(tree);
+      for (const c of cells) expect(c.props["emptySide"]).toBeFalsy();
+    });
+
+    it("banner rows (hunk-header / interactive) do not carry emptySide=true", () => {
+      const interactiveHunkRow: PlannedRow = {
+        kind: "hunk-header",
+        header: "@@ -10,3 +10,3 @@",
+        hunkIndex: 1,
+        gapAbove: 12,
+      };
+      const treeInteractive = callDiffRows({ rows: [interactiveHunkRow], layout: "split" });
+      const interactiveCells = diffLineCellsOf(treeInteractive);
+      for (const c of interactiveCells) expect(c.props["emptySide"]).toBeFalsy();
+
+      const collapsedRow: PlannedRow = {
+        kind: "interactive",
+        subKind: "collapsed-file",
+        boundaryRef: "top",
+        text: "··· 42 lines hidden — Enter to expand ···",
+      };
+      const treeGeneric = callDiffRows({ rows: [collapsedRow], layout: "split" });
+      const genericCells = diffLineCellsOf(treeGeneric);
+      for (const c of genericCells) expect(c.props["emptySide"]).toBeFalsy();
+    });
+  });
+
   describe("cursor row matching (ADR 0011)", () => {
     it("lights up the right (additions) cell on a paired row when cursor is on the additions side", () => {
       const file = parseFile(SIMPLE_DIFF);

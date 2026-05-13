@@ -258,6 +258,43 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
   });
 });
 
+// Issue #260: split-layout single-side rows previously rendered the
+// empty side as plain canvas, indistinguishable from the inter-row gap.
+// The webapp's #227 shipped a canvas.inset fill on the three cells of
+// the empty side. The TUI matches by painting both the gutter and the
+// content cell of an emptySide-flagged DiffLine in theme.canvas.inset
+// — sub-canvas-default so the empty side recedes while the active side
+// sits at canvas. Cursor + range tint still win when they apply.
+describe("DiffLine emptySide (issue #260)", () => {
+  it("paints theme.canvas.inset on gutter and content when emptySide=true and no other bg", () => {
+    const root = render({ emptySide: true } as never);
+    expect(gutterBgOf(root)).toBe(theme.canvas.inset);
+    expect(contentBgOf(root)).toBe(theme.canvas.inset);
+  });
+
+  it("cursor fill wins over emptySide (cursored side keeps cursor plate)", () => {
+    const root = render({ emptySide: true, cursorActive: true } as never);
+    expect(gutterBgOf(root)).toBe(CURSOR_ROW_BG);
+    expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
+  });
+
+  it("annotation tint wins over emptySide (range tint paints the tinted cell)", () => {
+    const root = render({
+      emptySide: true,
+      gutterTinted: true,
+      contentTinted: true,
+    } as never);
+    expect(gutterBgOf(root)).toBe(TINT_BG);
+    expect(contentBgOf(root)).toBe(TINT_BG);
+  });
+
+  it("emptySide=false leaves the cells un-bgd (default behaviour)", () => {
+    const root = render({ emptySide: false } as never);
+    expect(gutterBgOf(root)).toBeFalsy();
+    expect(contentBgOf(root)).toBeFalsy();
+  });
+});
+
 // Issue #259: hunk-header rows are metadata, not code. The webapp's
 // `.tour-hunk-header` paints the whole line in fg.muted; the TUI matches
 // by passing `mutedText` to DiffLine. The flag forces the plain <text>

@@ -43,6 +43,13 @@ interface DiffLineProps {
   // otherwise paint keywords in the function-context tail (e.g.
   // `import` red, `function` red) breaking the muted continuity.
   mutedText?: boolean;
+  // Empty side of a single-side split-layout row (issue #260). When
+  // true, paint both gutter and content cells in theme.canvas.inset so
+  // the empty side recedes below canvas — parity with webapp #227. The
+  // active side renders untouched; cursor + annotation range tint still
+  // win when they apply (the empty side never carries either on
+  // single-side rows, so they are mutually exclusive in practice).
+  emptySide?: boolean;
   width: string | number;
 }
 
@@ -63,23 +70,28 @@ export function DiffLine({
   filetype,
   syntaxStyle,
   mutedText,
+  emptySide,
   width,
 }: DiffLineProps) {
   const diffColor = diffBgColor(diffBg);
-  // Composition rule (ADR 0011): cursor bg > annotation tint > +/- bg.
-  // Cursor bg fills both gutter and content so the active row reads as a
-  // single solid plate — the terminal-native equivalent of the web's
-  // outlined row.
+  const emptySideBg = emptySide ? theme.canvas.inset : undefined;
+  // Composition rule (ADR 0011 + #260): cursor bg > annotation tint >
+  // +/- bg > empty-side neutral fill. Cursor bg fills both gutter and
+  // content so the active row reads as a single solid plate — the
+  // terminal-native equivalent of the web's outlined row. The
+  // empty-side fill sits at the bottom of the stack; it only paints
+  // when no other layer claims the cell, which on a single-side row's
+  // blank half is always (no cursor / no range / no diff bg apply).
   const gutterBg = cursorActive
     ? CURSOR_ROW_BG
     : gutterTinted
       ? TINT_BG
-      : diffColor;
+      : (diffColor ?? emptySideBg);
   const contentBg = cursorActive
     ? CURSOR_ROW_BG
     : contentTinted
       ? TINT_BG
-      : diffColor;
+      : (diffColor ?? emptySideBg);
   const showCode = !!filetype && text.length > 0 && !mutedText;
   // Drop one leading char so the total gutter width is preserved when the
   // cursor glyph rides in front of the line number.

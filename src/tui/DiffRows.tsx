@@ -305,6 +305,13 @@ export function DiffRows({
             row.type === "change" && row.leftLineNumber !== null ? "deletion" : undefined;
           const rightDiffBg =
             row.type === "change" && row.rightLineNumber !== null ? "addition" : undefined;
+          // Empty-side neutral fill (issue #260). On single-side change
+          // rows the side with no line number recedes behind canvas via
+          // theme.canvas.inset — webapp #227 parity. Context rows have
+          // both sides populated; paired-change rows have both sides
+          // populated; only pure-add / pure-del trip this flag.
+          const leftEmptySide = row.type === "change" && row.leftLineNumber === null;
+          const rightEmptySide = row.type === "change" && row.rightLineNumber === null;
           const leftId =
             row.leftLineNumber !== null ? rowId(fileName, "deletions", row.leftLineNumber) : undefined;
           const rightId =
@@ -329,6 +336,7 @@ export function DiffRows({
                   contentTinted={!!row.leftTinted && paired}
                   gutterAccent={!!row.leftGutter}
                   diffBg={leftDiffBg}
+                  emptySide={leftEmptySide}
                   cursorActive={leftCursorActive}
                   filetype={filetype}
                   syntaxStyle={syntaxStyle}
@@ -346,6 +354,7 @@ export function DiffRows({
                   contentTinted={!!row.rightTinted && paired}
                   gutterAccent={!!row.rightGutter}
                   diffBg={rightDiffBg}
+                  emptySide={rightEmptySide}
                   cursorActive={rightCursorActive}
                   filetype={filetype}
                   syntaxStyle={syntaxStyle}

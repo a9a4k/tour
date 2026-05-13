@@ -8,6 +8,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: split-layout single-side rows paint a neutral fill on the
+  empty side (issue #260, mirrors webapp #227).** Pre-fix, the empty
+  side of a pure-addition or pure-deletion row in split layout rendered
+  as plain canvas — indistinguishable from the inter-row gap or the
+  page's outer canvas. The half "floated" with no boundary signal that
+  "this row exists; its other side is just blank." On consecutive
+  single-side rows the diff body lost coherence; the eye read "content
+  here, void there" rather than "row here, with one side intentionally
+  blank." Webapp shipped #227 painting the three cells of the empty
+  side with `theme.canvas.inset` (`#010409`, ~6% darker than
+  `canvas.default`). TUI matches via a new `emptySide?: boolean` prop
+  on `DiffLine`: when set, both the gutter and content cells paint
+  `theme.canvas.inset` so the empty side recedes below canvas while
+  the active side sits at canvas. `DiffRows` flags
+  `leftEmptySide = row.type === "change" && row.leftLineNumber === null`
+  (and the right-side mirror) on the split-layout branch and passes it
+  to the per-side `DiffLine`. Composition: cursor row-fill (ADR 0011)
+  and annotation range tint (ADR 0008) both win over the empty-side
+  fill, but the empty side of a single-side row never carries either —
+  the cursor anchors to the populated side and annotation ranges only
+  apply where there's content — so the priority resolves consistently.
+  Paired-change, context, and banner (hunk-header / interactive) rows
+  never trip the flag (no empty side concept). Unified layout
+  unchanged (one rendered column, no per-side concept). The diff +/-
+  tint (`bg.successRange.tui` / `bg.dangerRange.tui`) on the active
+  side is untouched. Three subtle depth layers now: empty side recedes
+  (`canvas.inset`), context side sits at canvas level, tinted active
+  cells lift "above" the page surface — same visual hierarchy the
+  webapp #227 established. No planner / cursor / expansion /
+  annotation / theme change; reuses the Tier-1 `theme.canvas.inset`
+  token (same hex on both surfaces).
+
+  Issue: #260
+
 - **TUI: split-layout renders a vertical `│` rule between the
   deletions and additions halves (issue #258, mirrors webapp #251).**
   Pre-fix the two halves sat flush against each other with no visible
