@@ -42,18 +42,21 @@ tour serve "$TOUR_ID" --reply-agent claude &
 
 The background server prints a Cmd/Ctrl-clickable URL. Your job ends there — don't pass `--open`. Same-cwd re-runs reuse the running server.
 
+For terminal review: `tour tui "$TOUR_ID"`.
+
 Pass `--reply-agent <name>` only when you can self-identify (Claude Code → `claude`, Codex → `codex`). If unsure, drop the flag — Tour auto-detects shipped CLIs on PATH. See [REFERENCE.md](REFERENCE.md#reply-agent-selection).
 
 Don't pass `--base origin/main`. The default merge-base-with-upstream matches GitHub's PR diff; `--base origin/main` inverts every commit landed on main since branch divergence and buries your changes.
 
 ## Annotation rules
 
-1. **Architectural scope.** Tour is for the senior-engineer walkthrough. Target ~10 minutes — roughly 5–15 annotations. If you write the 20th, stop; usually three or four collapse into one beat.
-2. **First beat is motivation.** One annotation answering *why does this PR exist?* — the problem, not the diff. Anchor to a representative line or the first changed file.
+1. **Architectural scope.** Tour is the senior-engineer walkthrough — 5 minutes. Every annotation is real cost; if a beat doesn't earn its place, cut it.
+2. **Order by reading flow, motivation first.** Open with one annotation answering *why does this PR exist?* (the problem, not the diff) — anchored to a representative line or the first changed file. Then move through the changes in reading order, not file order.
 3. **What to annotate**: new dependency shapes, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff doesn't explain, the bug's root cause.
-4. **What to skip**: variable renames, micro-formatting, "5 lines instead of 7", linter-catchable nits. If the diff is the explanation, don't annotate.
-5. **Per annotation**: 2–4 sentences in plain language; cut anything that doesn't carry the *why*. Order by reading flow, not file order. Visual when it helps — before/after snippets, small tables, Mermaid render in the webapp. If an annotation needs context from a linked issue, codebase convention, or Slack thread, inline it or drop the annotation.
-6. **Findings batch**: external findings (security scan, lint, thorough-review) get one annotation per finding — drop the narrative arc.
+4. **What to skip**: variable renames, micro-formatting, "five lines instead of seven", linter-catchable nits. If the diff is the explanation, don't annotate.
+5. **Leverage every word.** Cut anything that doesn't carry the *why*. Inline any context the reader needs (linked issue, codebase convention, Slack thread) or drop the annotation.
+6. **Code and visuals beat prose.** A before/after snippet, small table, or Mermaid diagram says more than a paragraph. Reach for prose only when there's no code or shape to show.
+7. **Findings batch**: external findings (security scan, lint, thorough-review) get one annotation per finding — drop the narrative arc.
 
 ## Continue (pickup)
 
