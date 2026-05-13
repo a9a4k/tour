@@ -120,7 +120,12 @@ function hunkHeaderDirection(hunkIndex: number): "up" | "both" {
 function interactiveDirection(
   subKind: InteractiveRowKind["subKind"],
 ): "up" | "down" | "both" {
-  if (subKind === "gap-mid-top") return "up";
+  // PRD #270 / issue #271 directional family: each row dispatches the
+  // direction named by its label. `expand-all` always reveals the entire
+  // remaining gap (`both` with `count = gapAbove`).
+  if (subKind === "expand-up") return "up";
+  if (subKind === "expand-down") return "down";
+  if (subKind === "expand-all") return "both";
   if (subKind === "boundary-bottom") return "down";
   if (subKind === "boundary-top") return "up";
   // collapsed-file uses `down` as a neutral default; activation routes

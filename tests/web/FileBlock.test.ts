@@ -740,6 +740,217 @@ describe("<FileBlock> — interactive row activation", () => {
     });
     expect(actions).toEqual([{ kind: "expand-file", file: "x.ts" }]);
   });
+
+  // PRD #270 / issue #271: directional + Expand-All button dispatch.
+  // Each directional subkind dispatches the direction named by its label
+  // through the FileBlock → onDispatchExpand bridge. `expand-all` dispatches
+  // `direction: "both"` with `count = gapAbove` (the full remaining gap).
+  it("forwards `expand-up` click → onDispatchExpand with direction='up' and count=EXPANSION_STEP (PRD #270)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-up",
+        boundaryRef: 1,
+        gapAbove: 73,
+        text: "↑ Expand Up",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const row = c.querySelector('.tour-row[data-subkind="expand-up"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions.length).toBe(1);
+    expect(actions[0]).toEqual({
+      kind: "expand",
+      file: "x.ts",
+      boundaryRef: 1,
+      direction: "up",
+      count: 20,
+    });
+  });
+
+  it("forwards `expand-down` click → onDispatchExpand with direction='down' and count=EXPANSION_STEP (PRD #270)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-down",
+        boundaryRef: 1,
+        gapAbove: 73,
+        text: "↓ Expand Down",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const row = c.querySelector('.tour-row[data-subkind="expand-down"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions.length).toBe(1);
+    expect(actions[0]).toEqual({
+      kind: "expand",
+      file: "x.ts",
+      boundaryRef: 1,
+      direction: "down",
+      count: 20,
+    });
+  });
+
+  it("forwards `expand-all` click → onDispatchExpand with direction='both' and count=gapAbove (PRD #270)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-all",
+        boundaryRef: 2,
+        gapAbove: 12,
+        text: "↕ Expand All 12 lines",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const row = c.querySelector('.tour-row[data-subkind="expand-all"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions.length).toBe(1);
+    expect(actions[0]).toEqual({
+      kind: "expand",
+      file: "x.ts",
+      boundaryRef: 2,
+      direction: "both",
+      count: 12, // count == gapAbove for expand-all
+    });
+  });
+
+  it("file-bottom `expand-down` dispatches with boundaryRef='bottom' (PRD #270)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-down",
+        boundaryRef: "bottom",
+        gapAbove: 100,
+        text: "↓ Expand Down",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const row = c.querySelector('.tour-row[data-subkind="expand-down"]') as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions[0]).toEqual({
+      kind: "expand",
+      file: "x.ts",
+      boundaryRef: "bottom",
+      direction: "down",
+      count: 20,
+    });
+  });
+
+  it("file-top `expand-up` dispatches with boundaryRef='top' (PRD #270)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-up",
+        boundaryRef: "top",
+        gapAbove: 100,
+        text: "↑ Expand Up",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const row = c.querySelector('.tour-row[data-subkind="expand-up"]') as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions[0]).toEqual({
+      kind: "expand",
+      file: "x.ts",
+      boundaryRef: "top",
+      direction: "up",
+      count: 20,
+    });
+  });
+
+  it("`expand-up` glyph renders the planner-supplied text (`↑ Expand Up`) and data-direction=up (PRD #270)", () => {
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-up",
+        boundaryRef: 1,
+        gapAbove: 73,
+        text: "↑ Expand Up",
+      },
+    ];
+    const c = mount(createElement(FileBlock, defaultProps({ rows })));
+    const row = c.querySelector('.tour-row[data-subkind="expand-up"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.dataset.direction).toBe("up");
+    expect(row.textContent).toContain("↑ Expand Up");
+  });
+
+  it("`expand-down` glyph renders the planner-supplied text (`↓ Expand Down`) and data-direction=down (PRD #270)", () => {
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-down",
+        boundaryRef: 1,
+        gapAbove: 73,
+        text: "↓ Expand Down",
+      },
+    ];
+    const c = mount(createElement(FileBlock, defaultProps({ rows })));
+    const row = c.querySelector('.tour-row[data-subkind="expand-down"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.dataset.direction).toBe("down");
+    expect(row.textContent).toContain("↓ Expand Down");
+  });
+
+  it("`expand-all` glyph renders the planner-supplied text (`↕ Expand All N lines`) and data-direction=both (PRD #270)", () => {
+    const rows: PlannedRow[] = [
+      {
+        kind: "interactive",
+        subKind: "expand-all",
+        boundaryRef: 1,
+        gapAbove: 12,
+        text: "↕ Expand All 12 lines",
+      },
+    ];
+    const c = mount(createElement(FileBlock, defaultProps({ rows })));
+    const row = c.querySelector('.tour-row[data-subkind="expand-all"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.dataset.direction).toBe("both");
+    expect(row.textContent).toContain("↕ Expand All 12 lines");
+  });
 });
 
 // ---------------------------------------------------------------------------

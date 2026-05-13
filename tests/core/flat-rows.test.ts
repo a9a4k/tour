@@ -354,7 +354,8 @@ describe("flatRows interactive rows (PRD #107)", () => {
 // PRD #151 / ADR 0018: hunk-header rows are cursor-addressable iff
 // gapAbove > 0. First-hunk interactive hunk-headers tag as `boundary-top` /
 // `"top"`; mid-file interactive hunk-headers tag as `hunk-separator` /
-// `hunkIndex`. gap-mid-top passes through.
+// `hunkIndex`. PRD #270 / issue #271: `expand-up` / `expand-down` /
+// `expand-all` directional rows pass through unchanged.
 describe("flatRows gap-row family (PRD #151)", () => {
   it("skips a hunk-header with gapAbove === 0", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
@@ -391,15 +392,31 @@ describe("flatRows gap-row family (PRD #151)", () => {
     expect(flat[0].boundaryRef).toBe(3);
   });
 
-  it("passes through gap-mid-top interactive rows into the cursor stream", () => {
+  it("passes through `expand-down` / `expand-up` directional rows into the cursor stream (PRD #270)", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const rows: PlannedRow[] = [
-      { kind: "interactive", subKind: "gap-mid-top", boundaryRef: 2 },
+      { kind: "interactive", subKind: "expand-down", boundaryRef: 2 },
+      { kind: "interactive", subKind: "expand-up", boundaryRef: 2 },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(2);
+    if (flat[0].kind !== "interactive") throw new Error("narrow");
+    expect(flat[0].subKind).toBe("expand-down");
+    expect(flat[0].boundaryRef).toBe(2);
+    if (flat[1].kind !== "interactive") throw new Error("narrow");
+    expect(flat[1].subKind).toBe("expand-up");
+    expect(flat[1].boundaryRef).toBe(2);
+  });
+
+  it("passes through `expand-all` interactive rows into the cursor stream (PRD #270)", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "interactive", subKind: "expand-all", boundaryRef: 2 },
     ];
     const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
     expect(flat.length).toBe(1);
     if (flat[0].kind !== "interactive") throw new Error("narrow");
-    expect(flat[0].subKind).toBe("gap-mid-top");
+    expect(flat[0].subKind).toBe("expand-all");
     expect(flat[0].boundaryRef).toBe(2);
   });
 

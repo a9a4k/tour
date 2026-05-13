@@ -1030,10 +1030,12 @@ function App(props: AppProps) {
   //
   // PRD #151: mid-file hunk-header Enter is direction-aware — large gaps
   // (remaining > 2N = 40) expand the bottom of the gap (lines appear
-  // above the @@); small gaps (≤ 40) expand symmetrically. gap-mid-top
-  // expands the top of the gap (lines appear adjacent to the previous
-  // hunk's content). Same `ref: hunkIndex` boundary key as the existing
-  // hunk-separator; direction control via the `direction` param.
+  // above the @@); small gaps (≤ 40) expand symmetrically. PRD #270 /
+  // issue #271 introduces directional `expand-up` / `expand-down` /
+  // `expand-all` rows that route to the same boundary key with their
+  // labelled direction; this helper still handles the legacy
+  // hunk-header banner click (Slice 1 keeps HunkHeaderBanner
+  // interactive as a fallback).
   const expandHunkBoundary = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
     if (typeof boundaryRef !== "number") return;
     const gapSize = hunkSeparatorGapSize(file, boundaryRef);
@@ -1051,16 +1053,38 @@ function App(props: AppProps) {
       gapSize,
     });
   };
-  const expandGapMidTop = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
-    if (typeof boundaryRef !== "number") return;
+  // PRD #270 / issue #271: each directional row dispatches the
+  // direction named by its subkind. `expand-all` uses `direction:
+  // "both"` with `mode: "all"` so the entire remaining gap reveals
+  // in one Enter; `expand-up` / `expand-down` use the symmetric-20
+  // ladder (or `all` when Shift modifier is held — `all` arg from
+  // the keymap router).
+  const expandDirectional = (
+    file: string,
+    boundaryRef: BoundaryRef,
+    direction: "up" | "down" | "both",
+    mode: "all" | "symmetric-20",
+  ) => {
+    if (boundaryRef === "top") {
+      const gapSize = boundaryTopGapSize(file);
+      if (gapSize === 0) return;
+      store.dispatch({ type: "expansion.expandTop", file, mode, gapSize });
+      return;
+    }
+    if (boundaryRef === "bottom") {
+      const gapSize = boundaryBottomGapSize(file);
+      if (gapSize === 0) return;
+      store.dispatch({ type: "expansion.expandBottom", file, mode, gapSize });
+      return;
+    }
     const gapSize = hunkSeparatorGapSize(file, boundaryRef);
     if (gapSize === 0) return;
     store.dispatch({
       type: "expansion.expand",
       file,
       ref: boundaryRef,
-      direction: "up",
-      mode: all ? "all" : "symmetric-20",
+      direction,
+      mode,
       gapSize,
     });
   };
@@ -1097,12 +1121,22 @@ function App(props: AppProps) {
   const dispatchPrimaryAction = (all: boolean) => {
     if (!cursor || cursor.kind !== "row" || !cursor.interactive) return;
     const { subKind, boundaryRef } = cursor.interactive;
+    const mode: "all" | "symmetric-20" = all ? "all" : "symmetric-20";
     switch (subKind) {
       case "hunk-separator":
         expandHunkBoundary(cursor.file, boundaryRef, all);
         return;
-      case "gap-mid-top":
-        expandGapMidTop(cursor.file, boundaryRef, all);
+      case "expand-up":
+        expandDirectional(cursor.file, boundaryRef, "up", mode);
+        return;
+      case "expand-down":
+        expandDirectional(cursor.file, boundaryRef, "down", mode);
+        return;
+      case "expand-all":
+        // Single Enter reveals the entire remaining gap (PRD #270 /
+        // issue #271). Force `mode: "all"` regardless of the
+        // Shift-modifier `all` arg.
+        expandDirectional(cursor.file, boundaryRef, "both", "all");
         return;
       case "boundary-top":
         expandTopBoundary(cursor.file, all);

@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { planRows, type PlannedRow } from "../../src/core/diff-rows.js";
+import {
+  expandRowsForGap,
+  planRows,
+  type PlannedRow,
+} from "../../src/core/diff-rows.js";
 import type { Annotation } from "../../src/core/types.js";
 
 function parseFile(rawDiff: string): FileDiffMetadata {
@@ -634,24 +638,24 @@ index 1..2 100644
     expect(top).toBeUndefined();
   });
 
-  it("emits a boundary-bottom interactive row when last hunk doesn't reach EOF (with newContent)", () => {
+  it("emits a directional row for the file-bottom gap when last hunk doesn't reach EOF (PRD #270)", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split", {
       oldContent: OLD_CONTENT_TWO_HUNK,
       newContent: NEW_CONTENT_TWO_HUNK,
     });
+    // newContent has 16 lines; second hunk's last line is 15; gap = 1 < 40 → expand-all.
     const bottom = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "boundary-bottom",
+      (r) => r.kind === "interactive" && r.subKind === "expand-all" && r.boundaryRef === "bottom",
     );
     expect(bottom).toBeDefined();
     if (bottom?.kind === "interactive") {
       expect(bottom.boundaryRef).toBe("bottom");
-      // newContent has 16 lines; second hunk's last line is 15; gap = 1.
       expect(bottom.gapAbove).toBe(1);
     }
   });
 
-  it("emits gapAbove on gap-mid-top reflecting the remaining gap size", () => {
+  it("emits gapAbove on the directional rows reflecting the remaining gap size (PRD #270)", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -665,31 +669,40 @@ index 1..2 100644
 `;
     const file = parseFile(diff);
     const rows = planRows(file, [], "split");
-    const gapTop = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "gap-mid-top",
+    // Mid-file gap: lines 2..49 hidden = 48. > 40 so the planner emits
+    // [expand-down, expand-up]; both carry gapAbove == remaining hidden.
+    const down = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "expand-down",
     );
-    expect(gapTop).toBeDefined();
-    if (gapTop?.kind === "interactive") {
-      // Mid-file gap: lines 2..49 hidden = 48. Greater than 2N=40, so
-      // gap-mid-top is emitted; gapAbove == remaining hidden lines.
-      expect(gapTop.gapAbove).toBe(48);
-    }
+    const up = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "expand-up",
+    );
+    expect(down).toBeDefined();
+    expect(up).toBeDefined();
+    if (down?.kind === "interactive") expect(down.gapAbove).toBe(48);
+    if (up?.kind === "interactive") expect(up.gapAbove).toBe(48);
   });
 
-  it("does NOT emit a boundary-bottom row when newContent is missing", () => {
+  it("does NOT emit a file-bottom directional row when newContent is missing", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split");
     const bottom = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "boundary-bottom",
+      (r) =>
+        r.kind === "interactive" &&
+        r.boundaryRef === "bottom" &&
+        (r.subKind === "expand-down" ||
+          r.subKind === "expand-up" ||
+          r.subKind === "expand-all" ||
+          r.subKind === "boundary-bottom"),
     );
     expect(bottom).toBeUndefined();
   });
 
-  // Issue #160 / PRD #151 US-10: boundary-bottom is a pure affordance row
-  // (no @@-metadata to carry, unlike hunk-header). Once Pierre has revealed
-  // every line of the file-bottom gap, the row should drop out — leaving
-  // it visible with "0 hidden below" is a cursor trap (Enter is a no-op).
-  it("does NOT emit a boundary-bottom row when file-bottom gap is fully absorbed", () => {
+  // Issue #160 / PRD #151 US-10: file-bottom affordance rows are pure
+  // affordances (no @@-metadata, unlike hunk-header). Once Pierre has
+  // revealed every line of the file-bottom gap, the row drops out —
+  // leaving it visible with "0 hidden" is a cursor trap.
+  it("does NOT emit a file-bottom directional row when the gap is fully absorbed", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     // file-bottom gap = 1 line ("ctx15" on line 16). down=1 absorbs it.
     const expansion = new Map([
@@ -709,12 +722,18 @@ index 1..2 100644
       expansion,
     });
     const bottom = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "boundary-bottom",
+      (r) =>
+        r.kind === "interactive" &&
+        r.boundaryRef === "bottom" &&
+        (r.subKind === "expand-down" ||
+          r.subKind === "expand-up" ||
+          r.subKind === "expand-all" ||
+          r.subKind === "boundary-bottom"),
     );
     expect(bottom).toBeUndefined();
   });
 
-  it("emits boundary-bottom with reduced count when file-bottom gap is partially absorbed", () => {
+  it("emits expand-all with reduced count when file-bottom gap is partially absorbed (PRD #270)", () => {
     // Build a one-hunk diff with a 5-line file-bottom gap (hunk ends at line
     // 3, newContent has 8 lines). Absorb 2 from the bottom → remaining = 3.
     const diff = `diff --git a/x.txt b/x.txt
@@ -742,27 +761,29 @@ index 1..2 100644
       ],
     ]);
     const rows = planRows(file, [], "split", { oldContent, newContent, expansion });
+    // remaining = 3 < 40 → expand-all row carries gapAbove = 3.
     const bottom = rows.find(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
-        r.kind === "interactive" && r.subKind === "boundary-bottom",
+        r.kind === "interactive" && r.boundaryRef === "bottom" && r.subKind === "expand-all",
     );
     expect(bottom).toBeDefined();
-    expect(bottom?.text).toContain("3 lines hidden");
+    expect(bottom?.gapAbove).toBe(3);
+    expect(bottom?.text).toContain("3");
   });
 
-  it("emits boundary-bottom with the original count when no file-bottom expansion has occurred", () => {
+  it("emits expand-all with the original count when no file-bottom expansion has occurred (PRD #270)", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split", {
       oldContent: OLD_CONTENT_TWO_HUNK,
       newContent: NEW_CONTENT_TWO_HUNK,
     });
+    // file-bottom gap = 1 line → expand-all carries gapAbove = 1.
     const bottom = rows.find(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
-        r.kind === "interactive" && r.subKind === "boundary-bottom",
+        r.kind === "interactive" && r.boundaryRef === "bottom" && r.subKind === "expand-all",
     );
     expect(bottom).toBeDefined();
-    // file-bottom gap = 1 line.
-    expect(bottom?.text).toContain("1 lines hidden");
+    expect(bottom?.gapAbove).toBe(1);
   });
 
   it("expansion state with non-zero up/down on a hunk-separator emits matching context rows from newContent", () => {
@@ -958,8 +979,9 @@ index 1..2 100644
 });
 
 // PRD #151 / ADR 0018: hunk-header becomes a first-class interactive gap-row.
-// gap-mid-top emitted for mid-file gaps > 2N (= 40); boundary-top dropped.
-describe("planRows gap-row family (PRD #151)", () => {
+// PRD #270 / issue #271 replaces gap-mid-top with directional rows:
+// `expand-up` / `expand-down` / `expand-all` emitted via `expandRowsForGap`.
+describe("planRows gap-row family (PRD #151 / #270)", () => {
   function buildLargeGapDiff(gapLines: number): {
     diff: string;
     newContent: string;
@@ -1054,12 +1076,18 @@ index 1..2 100644
     expect(headers[0].hunkIndex).toBe(0);
     expect(headers[0].gapAbove).toBe(9); // lines 1..9 hidden above hunk starting at 10
     expect(rows.some((r) => r.kind === "interactive" && r.subKind === "boundary-top")).toBe(false);
-    // A first-hunk file-top gap of 9 (< 40) is NOT large enough for gap-mid-top —
-    // but more importantly, file-edges never get gap-mid-top even when large.
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+    // PRD #270: a first-hunk file-top gap of 9 (< 40) emits a single `expand-all`.
+    const expandAll = rows.find(
+      (r) => r.kind === "interactive" && r.subKind === "expand-all",
+    );
+    expect(expandAll).toBeDefined();
+    if (expandAll?.kind === "interactive") {
+      expect(expandAll.boundaryRef).toBe("top");
+      expect(expandAll.gapAbove).toBe(9);
+    }
   });
 
-  it("file-edges do not get gap-mid-top even when the file-top gap > 2N", () => {
+  it("file-top hunk with gap >= 40 emits a single `expand-up` row (PRD #270)", () => {
     // First hunk starts at line 200; file-top gap = 199 (way > 40).
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
@@ -1071,29 +1099,38 @@ index 1..2 100644
 `;
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+    const interactives = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
+    );
+    // File-top edge: only one direction is meaningful; no `expand-down`.
+    expect(interactives.some((r) => r.subKind === "expand-down")).toBe(false);
+    const up = interactives.find((r) => r.subKind === "expand-up");
+    expect(up).toBeDefined();
+    expect(up?.boundaryRef).toBe("top");
+    expect(up?.gapAbove).toBe(199);
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[0].gapAbove).toBe(199);
   });
 
-  it("mid-file gap of 40 (= 2N) → ONE row (hunk-header); no gap-mid-top", () => {
+  it("mid-file gap of 40 (= 2N) → [expand-down, expand-up] (threshold is `< 40`)", () => {
     const { diff } = buildLargeGapDiff(40);
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
     const interactives = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
     );
-    // No gap-mid-top because gap === 2N (threshold is strictly >).
-    expect(interactives.some((r) => r.subKind === "gap-mid-top")).toBe(false);
+    expect(interactives.some((r) => r.subKind === "expand-down")).toBe(true);
+    expect(interactives.some((r) => r.subKind === "expand-up")).toBe(true);
+    expect(interactives.some((r) => r.subKind === "expand-all")).toBe(false);
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(40);
   });
 
-  it("mid-file gap of 41 (> 2N) → TWO rows: gap-mid-top immediately above hunk-header", () => {
+  it("mid-file gap of 41 (>= 40) → [expand-down, expand-up] immediately above hunk-header (PRD #270)", () => {
     const { diff } = buildLargeGapDiff(41);
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
@@ -1101,21 +1138,40 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(41);
-    // gap-mid-top is emitted with boundaryRef = the hunk's index.
-    const gmtIdx = rows.findIndex(
-      (r) => r.kind === "interactive" && r.subKind === "gap-mid-top",
+    // Two interactive rows above the second hunk-header, in DOM order Down then Up.
+    const headerIdx = rows.findIndex(
+      (r) => r.kind === "hunk-header" && r.hunkIndex === 1,
     );
-    expect(gmtIdx).toBeGreaterThanOrEqual(0);
-    // The very next row after gap-mid-top is the second hunk-header.
-    const nextRow = rows[gmtIdx + 1];
-    expect(nextRow.kind).toBe("hunk-header");
-    if (nextRow.kind === "hunk-header") {
-      expect(nextRow.hunkIndex).toBe(1);
+    const upRow = rows[headerIdx - 1];
+    const downRow = rows[headerIdx - 2];
+    expect(downRow.kind).toBe("interactive");
+    expect(upRow.kind).toBe("interactive");
+    if (downRow.kind === "interactive") {
+      expect(downRow.subKind).toBe("expand-down");
+      expect(downRow.boundaryRef).toBe(1);
+      expect(downRow.gapAbove).toBe(41);
     }
-    if (rows[gmtIdx].kind === "interactive") {
-      const interactive = rows[gmtIdx] as Extract<PlannedRow, { kind: "interactive" }>;
-      expect(interactive.boundaryRef).toBe(1);
+    if (upRow.kind === "interactive") {
+      expect(upRow.subKind).toBe("expand-up");
+      expect(upRow.boundaryRef).toBe(1);
+      expect(upRow.gapAbove).toBe(41);
     }
+  });
+
+  it("mid-file gap of 39 (< 40) → ONE `expand-all` row (PRD #270)", () => {
+    const { diff } = buildLargeGapDiff(39);
+    const file = parseLocal(diff);
+    const rows = planRows(file, [], "split");
+    const interactives = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
+    );
+    const expandAll = interactives.find((r) => r.subKind === "expand-all");
+    expect(expandAll).toBeDefined();
+    expect(expandAll?.boundaryRef).toBe(1);
+    expect(expandAll?.gapAbove).toBe(39);
+    // No directional rows for a gap below the 40 threshold.
+    expect(interactives.some((r) => r.subKind === "expand-down")).toBe(false);
+    expect(interactives.some((r) => r.subKind === "expand-up")).toBe(false);
   });
 
   it("hunk with gapAbove === 0 (adjacent hunks, no hidden context) → ONE inert hunk-header", () => {
@@ -1140,23 +1196,37 @@ index 1..2 100644
     );
     expect(headers.length).toBe(2);
     expect(headers[1].gapAbove).toBe(0);
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+    // No directional rows for an adjacent-hunks gap of 0.
+    const directional = rows.filter(
+      (r) =>
+        r.kind === "interactive" &&
+        (r.subKind === "expand-up" ||
+          r.subKind === "expand-down" ||
+          r.subKind === "expand-all"),
+    );
+    expect(directional.length).toBe(0);
   });
 
-  it("progressive expand: large → small → zero drops gap-mid-top then makes hunk-header inert", () => {
-    const { diff, oldContent, newContent } = buildLargeGapDiff(50); // mid-gap = 50 > 40
+  it("progressive expand: large → small → zero downgrades directional → expand-all → inert (PRD #270)", () => {
+    const { diff, oldContent, newContent } = buildLargeGapDiff(50); // mid-gap = 50 >= 40
     const file = parseLocal(diff);
 
-    // STAGE 1: no expansion → gap-mid-top + hunk-header (interactive).
+    const directionalCounts = (rows: PlannedRow[]) => ({
+      down: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-down").length,
+      up: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-up").length,
+      all: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-all").length,
+    });
+
+    // STAGE 1: no expansion → [expand-down, expand-up] + hunk-header.
     let rows = planRows(file, [], "split", { oldContent, newContent });
     let headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(50);
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(true);
+    expect(directionalCounts(rows)).toMatchObject({ down: 1, up: 1, all: 0 });
 
-    // STAGE 2: partial expansion brings remaining to 45 (still > 40) — both
-    // rows re-emit with updated gapAbove.
+    // STAGE 2: partial expansion brings remaining to 45 (still >= 40) — both
+    // directional rows re-emit with updated gapAbove.
     const stage2 = new Map([
       [
         "x.txt",
@@ -1171,16 +1241,16 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(45);
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(true);
+    expect(directionalCounts(rows)).toMatchObject({ down: 1, up: 1, all: 0 });
 
-    // STAGE 3: bring remaining to 40 — gap-mid-top drops out, hunk-header
-    // remains interactive (gapAbove > 0).
+    // STAGE 3: bring remaining to 39 (< 40) — directional drops out,
+    // single `expand-all` takes over (hunk-header still interactive).
     const stage3 = new Map([
       [
         "x.txt",
         {
           fileExpanded: false,
-          boundaries: new Map([[1, { up: 5, down: 5 }]]),
+          boundaries: new Map([[1, { up: 5, down: 6 }]]),
         },
       ],
     ]);
@@ -1188,10 +1258,10 @@ index 1..2 100644
     headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(40);
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+    expect(headers[1].gapAbove).toBe(39);
+    expect(directionalCounts(rows)).toMatchObject({ down: 0, up: 0, all: 1 });
 
-    // STAGE 4: full expansion → hunk-header becomes inert.
+    // STAGE 4: full expansion → all interactive rows drop out, hunk-header inert.
     const stage4 = new Map([
       [
         "x.txt",
@@ -1206,6 +1276,67 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(0);
-    expect(rows.some((r) => r.kind === "interactive" && r.subKind === "gap-mid-top")).toBe(false);
+    expect(directionalCounts(rows)).toMatchObject({ down: 0, up: 0, all: 0 });
+  });
+});
+
+// PRD #270 / issue #271: pure helper that decides which directional
+// expand buttons a gap emits. Tested in isolation from the planner
+// because the (gap-size × edge-position) decision is the slice's
+// load-bearing logic — the planner is just a caller.
+describe("expandRowsForGap (PRD #270)", () => {
+  it("returns [] when gapAbove === 0 (no hidden context, no row)", () => {
+    expect(expandRowsForGap(0, false, false)).toEqual([]);
+    expect(expandRowsForGap(0, true, false)).toEqual([]);
+    expect(expandRowsForGap(0, false, true)).toEqual([]);
+  });
+
+  it("returns [expand-all] for a small mid-file gap (gapAbove < 40)", () => {
+    expect(expandRowsForGap(1, false, false)).toEqual([{ subKind: "expand-all" }]);
+    expect(expandRowsForGap(20, false, false)).toEqual([{ subKind: "expand-all" }]);
+    expect(expandRowsForGap(39, false, false)).toEqual([{ subKind: "expand-all" }]);
+  });
+
+  it("returns [expand-all] for a small file-top gap (gapAbove < 40, isFirst)", () => {
+    expect(expandRowsForGap(9, true, false)).toEqual([{ subKind: "expand-all" }]);
+    expect(expandRowsForGap(39, true, false)).toEqual([{ subKind: "expand-all" }]);
+  });
+
+  it("returns [expand-all] for a small file-bottom gap (gapAbove < 40, isLast)", () => {
+    expect(expandRowsForGap(1, false, true)).toEqual([{ subKind: "expand-all" }]);
+    expect(expandRowsForGap(39, false, true)).toEqual([{ subKind: "expand-all" }]);
+  });
+
+  it("returns [expand-down, expand-up] for a large mid-file gap (gapAbove >= 40, DOM order Down then Up)", () => {
+    expect(expandRowsForGap(40, false, false)).toEqual([
+      { subKind: "expand-down" },
+      { subKind: "expand-up" },
+    ]);
+    expect(expandRowsForGap(100, false, false)).toEqual([
+      { subKind: "expand-down" },
+      { subKind: "expand-up" },
+    ]);
+  });
+
+  it("returns [expand-up] for a large file-top gap (only the upward direction is available)", () => {
+    expect(expandRowsForGap(40, true, false)).toEqual([{ subKind: "expand-up" }]);
+    expect(expandRowsForGap(199, true, false)).toEqual([{ subKind: "expand-up" }]);
+  });
+
+  it("returns [expand-down] for a large file-bottom gap (only the downward direction is available)", () => {
+    expect(expandRowsForGap(40, false, true)).toEqual([{ subKind: "expand-down" }]);
+    expect(expandRowsForGap(500, false, true)).toEqual([{ subKind: "expand-down" }]);
+  });
+
+  it("threshold is strictly `< 40` for expand-all; exactly 40 selects the directional family", () => {
+    expect(expandRowsForGap(39, false, false)).toEqual([{ subKind: "expand-all" }]);
+    expect(expandRowsForGap(40, false, false)).toEqual([
+      { subKind: "expand-down" },
+      { subKind: "expand-up" },
+    ]);
+  });
+
+  it("guards against negative inputs (defensive: gapAbove <= 0 → [])", () => {
+    expect(expandRowsForGap(-1, false, false)).toEqual([]);
   });
 });

@@ -49,21 +49,26 @@ export interface AnnotationRow {
 }
 
 /** An interactive row family the line cursor walks alongside diff rows
- *  (ADR 0013 + ADR 0018). After PRD #151, `boundary-top` is no longer
- *  emitted as a planner row kind — its semantics fold into the first
- *  hunk's `hunk-header` (interactive iff `gapAbove > 0`). The enum
- *  value persists internally because the cursor walker tags promoted
- *  first-hunk hunk-headers with `subKind: "boundary-top"` so dispatch
- *  routes to the file-top reducer path. `gap-mid-top` is emitted only
- *  when a mid-file gap exceeds `2N` (= 40), giving large gaps two cursor
- *  stops (one for each end). `boundary-bottom` continues to be emitted
- *  standalone — git has no hunk-footer to fold into. boundaryRef is
- *  opaque to the cursor: numeric for `hunk-separator` and `gap-mid-top`
- *  (the hunk-index whose gap-above this row addresses), `"top"` /
- *  `"bottom"` for file boundaries, `"top"` for collapsed-file rows. */
+ *  (ADR 0013 + ADR 0018, PRD #270). After PRD #270, the directional
+ *  subkinds `expand-up`, `expand-down`, `expand-all` replace the legacy
+ *  `gap-mid-top` and stand-alone `boundary-bottom`: every gap (file-top,
+ *  mid-file, file-bottom) emits the row sequence produced by
+ *  `expandRowsForGap`. `boundary-top` / `boundary-bottom` remain in the
+ *  vocabulary so the cursor walker can promote first-hunk hunk-headers
+ *  / file-bottom (for legacy banner click compatibility), but the
+ *  planner only emits directional rows for the gap itself.
+ *  `hunk-separator` continues to mark mid-file hunk-headers when the
+ *  cursor lands on them (HunkHeaderBanner remains interactive in slice
+ *  1; Slice 2 makes it display-only). boundaryRef is opaque to the
+ *  cursor: numeric for `hunk-separator` / `expand-up` / `expand-down` /
+ *  `expand-all` over a mid-file gap (the hunk-index whose gap-above
+ *  this row addresses), `"top"` for file-top boundaries +
+ *  collapsed-file rows, `"bottom"` for file-bottom boundaries. */
 export type InteractiveSubKind =
   | "hunk-separator"
-  | "gap-mid-top"
+  | "expand-up"
+  | "expand-down"
+  | "expand-all"
   | "boundary-top"
   | "boundary-bottom"
   | "collapsed-file";
@@ -77,10 +82,11 @@ export interface InteractiveRow {
   /** Optional human-readable body the planner can fill in (e.g. "··· 12
    *  hidden ···"); the cursor visual works regardless. */
   text?: string;
-  /** Lines hidden in the gap this row addresses. Set on `gap-mid-top`
-   *  (= remaining mid-file gap above the next hunk) and `boundary-bottom`
-   *  (= remaining file-bottom gap). Lets consumers (e.g. webapp gap-row
-   *  overlay shift-click) compute the full-gap expansion count directly
+  /** Lines hidden in the gap this row addresses. Set on `expand-up` /
+   *  `expand-down` / `expand-all` (= remaining gap) and the legacy
+   *  `boundary-bottom` (= remaining file-bottom gap). Lets consumers
+   *  (e.g. webapp gap-row overlay shift-click, the `expand-all`
+   *  dispatch count) compute the full-gap expansion count directly
    *  instead of passing a large sentinel and relying on receiver-side
    *  clamping. */
   gapAbove?: number;
@@ -255,16 +261,20 @@ function walkHunks(
       );
     }
 
-    // gap-mid-top: emitted ONLY for mid-file gaps whose remaining hidden
-    // count exceeds 2N (= 40). File-edges have a single meaningful
-    // direction (toward file start / end), so the two-row split would be
-    // pointless (ADR 0018).
-    if (!isFirst && gapAbove > GAP_TWO_ROW_THRESHOLD) {
+    // Directional + Expand-All buttons (PRD #270, issue #271). The
+    // planner emits zero, one, or two cursor-walkable rows before the
+    // hunk-header. `expandRowsForGap` encodes the per-edge-position +
+    // gap-size rules. The legacy `gap-mid-top` single-row split is
+    // fully replaced by `expand-down` + `expand-up` for large mid-file
+    // gaps. The hunk-header banner remains interactive in this slice
+    // (HunkHeaderBanner click handler stays as a fallback — Slice 2
+    // makes it display-only).
+    for (const spec of expandRowsForGap(gapAbove, isFirst, false)) {
       rows.push({
         kind: "interactive",
-        subKind: "gap-mid-top",
-        boundaryRef: hunkIndex,
-        text: gapMidTopText(gapAbove),
+        subKind: spec.subKind,
+        boundaryRef: isFirst ? "top" : hunkIndex,
+        text: expandRowText(spec.subKind, gapAbove),
         gapAbove,
       });
     }
@@ -385,16 +395,21 @@ function walkHunks(
         );
       }
       // Suppress when remaining === 0 (issue #160): unlike `hunk-header`,
-      // `boundary-bottom` carries no @@ metadata — it's a pure affordance row.
-      // Once Pierre has fully revealed the file-bottom gap, leaving the row
-      // visible with "0 hidden" would be a cursor trap (each Enter / click is
-      // a no-op).
-      if (remaining > 0) {
+      // file-bottom affordance rows carry no @@ metadata. Once Pierre has
+      // fully revealed the file-bottom gap, leaving the row(s) visible
+      // would be a cursor trap.
+      //
+      // PRD #270, issue #271: the file-bottom gap (formerly a lone
+      // `boundary-bottom` row) now emits the directional family via
+      // `expandRowsForGap(remaining, false, true)`. The boundaryRef
+      // stays `"bottom"` so existing reducer/keymap paths route
+      // unchanged; only the subkind vocabulary swaps to the new model.
+      for (const spec of expandRowsForGap(remaining, false, true)) {
         rows.push({
           kind: "interactive",
-          subKind: "boundary-bottom",
+          subKind: spec.subKind,
           boundaryRef: "bottom",
-          text: boundaryBottomText(remaining),
+          text: expandRowText(spec.subKind, remaining),
           gapAbove: remaining,
         });
       }
@@ -404,21 +419,53 @@ function walkHunks(
   return rows;
 }
 
-function boundaryBottomText(remaining: number): string {
-  return `··· ${remaining} lines hidden below ···`;
-}
-
-function gapMidTopText(remaining: number): string {
-  // ↑ glyph per D1 (row position == end of gap, ADR 0018): pressing
-  // Enter reveals lines above the row — toward the previous hunk's end.
-  return `↑ ··· ${remaining} lines hidden ···`;
-}
-
 /** Per-direction expansion step (N). The two-row threshold is 2N. Matches
  *  Pierre's `expansionLineCount: 20` and the TUI's prior symmetric-20
  *  semantics (ADR 0018). Exported so the TUI dispatch + render layers
  *  pick their direction glyph / Enter-direction from the same constant. */
 export const GAP_TWO_ROW_THRESHOLD = 40;
+
+/** Subkind family produced by `expandRowsForGap` (PRD #270 / issue #271). */
+export type ExpandSubKind = "expand-up" | "expand-down" | "expand-all";
+
+/**
+ * Pure helper that decides which directional buttons to emit for a gap.
+ * Mirrors GitHub's per-hunk Expand Up / Expand Down / Expand All
+ * affordance. Called once per gap (file-top, mid-file, file-bottom).
+ *
+ *   `gapAbove === 0`                               → []                 (no hidden lines, no row)
+ *   `gapAbove <  GAP_TWO_ROW_THRESHOLD` (= 40)     → [expand-all]       (single Enter reveals the entire gap)
+ *   `gapAbove >= 40` & mid-file (!isFirst,!isLast) → [expand-down, expand-up]  (DOM order: Down at top, Up just above hunk-header)
+ *   `gapAbove >= 40` & `isFirst`                   → [expand-up]        (file-top: only one direction available)
+ *   `gapAbove >= 40` & `isLast`                    → [expand-down]      (file-bottom: only one direction available)
+ *
+ * The caller assigns a `boundaryRef` per row (`"top"` for first-hunk
+ * gaps, the hunk index for mid-file gaps, `"bottom"` for file-bottom
+ * gaps) and threads `gapAbove` through so `expand-all` can dispatch
+ * `count = gapAbove` and Shift+click on the directional rows can fall
+ * through to "all" mode.
+ */
+export function expandRowsForGap(
+  gapAbove: number,
+  isFirst: boolean,
+  isLast: boolean,
+): { subKind: ExpandSubKind }[] {
+  if (gapAbove <= 0) return [];
+  if (gapAbove < GAP_TWO_ROW_THRESHOLD) return [{ subKind: "expand-all" }];
+  if (isFirst) return [{ subKind: "expand-up" }];
+  if (isLast) return [{ subKind: "expand-down" }];
+  return [{ subKind: "expand-down" }, { subKind: "expand-up" }];
+}
+
+/** Renderer text per directional subkind (PRD #270). Arrow + label
+ *  matching GitHub's affordance vocabulary. The label format is
+ *  shared with the TUI surface so both renderers paint the same
+ *  glyph from a single planner-side source. */
+function expandRowText(subKind: ExpandSubKind, gapAbove: number): string {
+  if (subKind === "expand-up") return `↑ Expand Up`;
+  if (subKind === "expand-down") return `↓ Expand Down`;
+  return `↕ Expand All ${gapAbove} lines`;
+}
 
 function applyAnnotationFlags(
   rows: PlannedRow[],

@@ -200,7 +200,9 @@ export function DiffRows({
           // Promoted to first-class interactive row (PRD #151, ADR 0018).
           // Direction glyph per D1 (row position == end of gap):
           //   hunkIndex===0 → `↑` (file-top, lines reveal toward line 1)
-          //   gapAbove > 2N → `↓` (mid-file large, paired with gap-mid-top above)
+          //   gapAbove > 2N → `↓` (mid-file large, paired with the directional
+          //                       `expand-up` / `expand-down` rows above —
+          //                       PRD #270 / issue #271)
           //   else          → `↕` (mid-file small, symmetric)
           const isFirstHunk = row.hunkIndex === 0;
           let glyph: "↑" | "↓" | "↕";
