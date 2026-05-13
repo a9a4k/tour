@@ -136,7 +136,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   // Unified — a single gutter + code column. The side echoed back to
   // `onClick` is determined by `kind` (an addition row is unambiguous);
   // for context rows the caller's `preferredSide` wins, defaulting to
-  // additions (mirrors `click-anchor.ts`'s context-fallback rule).
+  // additions (same fallback rule as the TUI's context-row pairing).
   const impliedSide = impliedSideFromKind(kind);
   const sideForClick: Side = impliedSide ?? preferredSide ?? "additions";
   const lineNumber = rightLineNumber ?? leftLineNumber;

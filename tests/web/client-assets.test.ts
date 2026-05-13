@@ -21,7 +21,7 @@ describe("createClientAssetsCache", () => {
   it("caches the embedded bundle (compiled-binary path is immutable)", async () => {
     let buildCalls = 0;
     const cache = createClientAssetsCache({
-      getEmbedded: () => ({ client: "EMBED_CLIENT", worker: "EMBED_WORKER" }),
+      getEmbedded: () => ({ client: "EMBED_CLIENT" }),
       buildFromSource: async () => {
         buildCalls++;
         return { assets: new Map(), error: null } satisfies AssetsResult;
@@ -31,7 +31,6 @@ describe("createClientAssetsCache", () => {
     const r1 = await cache();
     const r2 = await cache();
     expect(r1.assets?.get("/client.js")?.body).toBe("EMBED_CLIENT");
-    expect(r1.assets?.get("/pierre-worker.js")?.body).toBe("EMBED_WORKER");
     expect(r2.assets?.get("/client.js")?.body).toBe("EMBED_CLIENT");
     expect(buildCalls).toBe(0);
   });
@@ -110,16 +109,15 @@ describe("createClientAssetsCache", () => {
     expect(buildCalls).toBe(2);
   });
 
-  it("falls through to the dev builder when mode is \"dev\" but the embedded strings are populated (issue #204)", async () => {
+  it("falls through to the dev builder when mode is \"dev\" but the embedded string is populated (issue #204)", async () => {
     // Simulates a working tree where a binary build was interrupted (Ctrl-C,
-    // crash, partial stash pop) and left src/web/embedded-client.ts with real
-    // bundle strings but the committed `EMBEDDED_BUILD_MODE: "dev"` marker
-    // intact. `tour serve` MUST still rebuild from source on every request
-    // rather than silently serving the stale embedded bytes.
+    // crash, partial stash pop) and left src/web/embedded-client.ts with a
+    // real bundle string but the committed `EMBEDDED_BUILD_MODE: "dev"`
+    // marker intact. `tour serve` MUST still rebuild from source on every
+    // request rather than silently serving the stale embedded bytes.
     let buildCalls = 0;
     const cache = createClientAssetsCache({
-      getEmbedded: () =>
-        resolveEmbedded("dev", "STALE_EMBEDDED_CLIENT", "STALE_EMBEDDED_WORKER"),
+      getEmbedded: () => resolveEmbedded("dev", "STALE_EMBEDDED_CLIENT"),
       buildFromSource: async () => {
         buildCalls++;
         return {
@@ -159,23 +157,22 @@ describe("createClientAssetsCache", () => {
 });
 
 // Issue #204: the dev-vs-binary discriminator is the explicit
-// `EMBEDDED_BUILD_MODE` marker, not the truthiness of the bundle strings.
-// A working tree left with populated strings (e.g. by an interrupted binary
-// build) but the committed `"dev"` marker must still fall through to the
-// runtime builder.
+// `EMBEDDED_BUILD_MODE` marker, not the truthiness of the bundle string.
+// A working tree left with a populated string (e.g. by an interrupted
+// binary build) but the committed `"dev"` marker must still fall through
+// to the runtime builder.
 describe("resolveEmbedded (issue #204 build-mode discriminator)", () => {
-  it("mode \"dev\" + empty strings → null (falls through to dev builder)", () => {
-    expect(resolveEmbedded("dev", "", "")).toBeNull();
+  it("mode \"dev\" + empty string → null (falls through to dev builder)", () => {
+    expect(resolveEmbedded("dev", "")).toBeNull();
   });
 
-  it("mode \"dev\" + populated strings → null (the new behaviour: marker wins over string content)", () => {
-    expect(resolveEmbedded("dev", "STALE_CLIENT", "STALE_WORKER")).toBeNull();
+  it("mode \"dev\" + populated string → null (the new behaviour: marker wins over string content)", () => {
+    expect(resolveEmbedded("dev", "STALE_CLIENT")).toBeNull();
   });
 
-  it("mode \"binary\" + populated strings → embedded fast-path", () => {
-    expect(resolveEmbedded("binary", "REAL_CLIENT", "REAL_WORKER")).toEqual({
+  it("mode \"binary\" + populated string → embedded fast-path", () => {
+    expect(resolveEmbedded("binary", "REAL_CLIENT")).toEqual({
       client: "REAL_CLIENT",
-      worker: "REAL_WORKER",
     });
   });
 });

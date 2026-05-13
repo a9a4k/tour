@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { validateWebappCursor } from "../../src/web/client/cursor-validation.js";
-import { walkCursorRows } from "../../src/web/client/cursor-rows.js";
 import type { RowAnchor } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 
@@ -155,63 +154,3 @@ describe("validateWebappCursor: layout toggle preserves anchor", () => {
   });
 });
 
-// Pierre expandUnchanged (PRD #106) regression: clicking a chevron injects
-// new [data-line] cells. The DOM-based walker re-derives on every render,
-// so the new rows automatically join the cursor's walkable set without
-// any explicit notification or invalidation. Cursor anchor (already on a
-// pre-existing row) is invariant under DOM insertions — only the row
-// index in the derived sequence shifts. The test simulates Pierre's
-// post-expansion DOM state and asserts the new cells become walkable.
-describe("Pierre expandUnchanged: DOM-injected rows join the walkable set", () => {
-  beforeEach(() => {
-    document.body.innerHTML = "";
-  });
-
-  function el(tag: string, attrs: Record<string, string> = {}, children: Node[] = []): HTMLElement {
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    for (const c of children) node.appendChild(c);
-    return node;
-  }
-
-  function fileBlock(name: string, cells: HTMLElement[]): HTMLElement {
-    return el("div", { "data-file": name }, cells);
-  }
-
-  function cell(line: number, type: string): HTMLElement {
-    return el("div", { "data-line": String(line), "data-line-type": type });
-  }
-
-  it("newly-injected unchanged context cells appear as additional FlatRows on next walk", () => {
-    // Initial state: a single addition row (chevron not yet clicked).
-    const anchor = cell(10, "addition");
-    const block = fileBlock("x.ts", [anchor]);
-    document.body.appendChild(block);
-    const before = walkCursorRows(document.body);
-    expect(before.map((r) => r.lineNumber)).toEqual([10]);
-
-    // Pierre user clicks chevron → unchanged context cells are inserted
-    // before the existing row. Re-walk picks them up; no invalidation
-    // handshake required (the walker is stateless).
-    block.insertBefore(cell(7, "context"), anchor);
-    block.insertBefore(cell(8, "context"), anchor);
-    block.insertBefore(cell(9, "context"), anchor);
-    const after = walkCursorRows(document.body);
-    expect(after.map((r) => r.lineNumber)).toEqual([7, 8, 9, 10]);
-  });
-
-  it("cursor anchor on a pre-existing row is invariant after chevron expansion (resolves on the new flat sequence)", () => {
-    const anchor = cell(10, "addition");
-    const block = fileBlock("x.ts", [anchor]);
-    document.body.appendChild(block);
-    const cursor = baseCursor({ file: "x.ts", lineNumber: 10, side: "additions" });
-
-    // Inject unchanged-context rows (Pierre expandUnchanged).
-    block.insertBefore(cell(7, "context"), anchor);
-    block.insertBefore(cell(8, "context"), anchor);
-
-    const flatAfter = walkCursorRows(document.body);
-    const validated = validateWebappCursor(cursor, flatAfter, [{ name: "x.ts" }], () => false);
-    expect(validated).toEqual(cursor);
-  });
-});

@@ -42,6 +42,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #175 · PRD: #174
 
+### Changed
+
+- **Cutover: App.tsx swaps to `<FileBlock>`; Pierre adapter pile deleted
+  (PRD #212 slice 7).** The webapp's diff body no longer mounts Pierre's
+  `<FileDiff>` / `<MultiFileDiff>`. App.tsx now maps each parsed file to
+  a `<FileBlock>` (#218) walking the planner's `PlannedRow[]`, wires
+  `useState(ExpansionState)` from `core/expansion-state.ts` (orphan-
+  windows seeded on bundle load; both surfaces now share the reducer),
+  dispatches expansion via `onDispatchExpand`, mirrors clicks via
+  `onRowClick`, and emits a single `<style>{FILE_GRID_CSS}</style>` at
+  the diff pane root. Cursor outline is the `.is-cursor` className flow-
+  ing through `<FileBlock>` → row components — no more `data-tour-cursor`
+  attribute mutation. The Pierre worker pool, `WorkerPoolContextProvider`,
+  and worker-bundling entry-point are removed from the binary build;
+  `@pierre/diffs` stays only for `parsePatchFiles` and moves from
+  `devDependencies` to `dependencies` to match its new runtime-only role.
+  `shiki` is now a direct dependency.
+
+  Deletions: `gap-row-overlay.ts`, `pierre-expansion-bridge.ts`,
+  `cursor-overlay.ts` (DOM-mutation cursor + placement IO),
+  `cursor-rows.ts` (Pierre shadow-DOM walker), `dom-walk.ts`,
+  `plus-button-overlay.ts` (mouse `+` affordance — keyboard `a` still
+  opens the composer), `click-anchor.ts`, `annotations.ts` (Pierre
+  `lineAnnotations` + range-tint CSS injection), `cursor-css.ts`, the
+  seven App-level CSS-string blobs, the `pendingAnchorRef` + R1/R2
+  race mitigation, the wheel/touch/keydown cancel listeners,
+  `BASE_DIFF_OPTIONS`, the legacy `<FileBlock>` and `CopyPathButton`
+  in App.tsx. Test suite drops `parity-render.test.ts` (#219), its
+  parity fixtures, the DOM-mutation overlay tests, and `annotations`,
+  `click-anchor`, `cursor-css`, `plus-button-overlay`, `cursor-rows`,
+  `cursor-overlay`, `gap-row-overlay`, `pierre-expansion-bridge` tests.
+
+  Issue: #220 · PRD: #212 · ADR: 0024
+
 ### Added
 
 - **Parity test harness: render canonical Tours through both renderers

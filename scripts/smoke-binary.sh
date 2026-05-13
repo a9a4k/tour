@@ -73,7 +73,6 @@ assert_bundle() {
 }
 
 assert_bundle /client.js client.js.out
-assert_bundle /pierre-worker.js pierre-worker.js.out
 
 kill "$SERVE_PID" 2>/dev/null || true
 wait "$SERVE_PID" 2>/dev/null || true

@@ -70,12 +70,10 @@ export interface CardFlatRow {
 export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 
 /**
- * Build a DiffFlatRow from `(file, leftLineNumber, rightLineNumber)`. Shared
- * between the planRows-based walker (TUI + webapp v1) and the DOM-based
- * walker `web/client/cursor-rows.ts` (webapp v2 — handles Pierre
- * `expandUnchanged` chevron-revealed rows). Both surfaces must agree on
- * paired/side/lineNumber semantics so the cursor reducers in
- * `core/cursor-state.ts` resolve identically against either source.
+ * Build a DiffFlatRow from `(file, leftLineNumber, rightLineNumber)`. Used
+ * by `flatRows` to project the planner's `PlannedRow[]` into the cursor's
+ * walkable sequence on both surfaces. Paired/side/lineNumber semantics
+ * agree with `core/cursor-state.ts`'s anchor resolution.
  */
 export function flatRowFromLines(
   file: string,

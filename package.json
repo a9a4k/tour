@@ -53,10 +53,13 @@
     "tourdiff-linux-x64": "2.0.0",
     "tourdiff-windows-x64": "2.0.0"
   },
+  "dependencies": {
+    "@pierre/diffs": "^1.1.21",
+    "shiki": "^3.23.0"
+  },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.5.10",
     "@opentui/react": "^0.2.5",
-    "@pierre/diffs": "^1.1.21",
     "@primer/octicons-react": "^19.25.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",

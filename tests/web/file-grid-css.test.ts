@@ -3,13 +3,12 @@ import { FILE_GRID_CSS } from "../../src/web/client/file-grid-css.js";
 import { theme } from "../../src/core/theme.js";
 
 // `file-grid-css` is the layout + visual-cue CSS module the new web row
-// renderer injects as a <style> tag (PRD #212 slice 3). Same shape as
-// `cursor-css.ts` and `annotations.ts` — a string-emitting constant
-// referencing `core/theme.ts` tokens, with no hex literals duplicated.
+// renderer injects as a <style> tag (PRD #212 slice 3). A string-emitting
+// constant referencing `core/theme.ts` tokens, with no hex literals
+// duplicated.
 //
-// The new renderer's cursor decoration is a prop, NOT a DOM mutation
-// (ADR 0024). The CSS keys on a `.is-cursor` className, not on the
-// `data-tour-cursor` attribute used by the legacy Pierre overlay.
+// The renderer's cursor decoration is a prop, NOT a DOM mutation
+// (ADR 0024). The CSS keys on a `.is-cursor` className.
 
 describe("FILE_GRID_CSS — file-level grid", () => {
   it("declares a per-file grid container with split and unified column templates", () => {

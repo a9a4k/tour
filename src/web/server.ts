@@ -18,7 +18,6 @@ import { html } from "./spa.js";
 import {
   EMBEDDED_BUILD_MODE,
   EMBEDDED_CLIENT_JS,
-  EMBEDDED_PIERRE_WORKER_JS,
   resolveEmbedded,
 } from "./embedded-client.js";
 import {
@@ -75,33 +74,27 @@ function asInt(v: unknown): number | undefined {
   return v;
 }
 
-// Single-pass build of the client + any worker chunks Pierre emits via
-// `new Worker(new URL(..., import.meta.url))`. Each output is keyed by its
-// public URL path so the request handler can serve any auxiliary chunks
-// (worker, asset) the browser asks for. The entry-point output is also
-// aliased at `/client.js` so the HTML loader doesn't need to know its
-// bundler-assigned hash. Bun.build can't run inside /$bunfs/ — the
-// compiled binary takes the embedded fast-path in client-assets.ts.
+// Single-pass build of the webapp client + any chunks Bun emits. Each
+// output is keyed by its public URL path so the request handler can
+// serve any auxiliary chunks (asset) the browser asks for. The entry-
+// point output is also aliased at `/client.js` so the HTML loader doesn't
+// need to know its bundler-assigned hash. Bun.build can't run inside
+// /$bunfs/ — the compiled binary takes the embedded fast-path in
+// client-assets.ts.
+//
+// Post-PRD #212 cutover, the renderer is Tour-owned and synthesises
+// syntax highlighting on the main thread via Shiki — no worker entry-
+// point is bundled anymore.
 async function buildClientFromSource(): Promise<AssetsResult> {
   const here = dirname(fileURLToPath(import.meta.url));
   const clientEntry = resolve(here, "client/main.tsx");
-  // Bun.build doesn't rewrite `new Worker(new URL(..., import.meta.url))`
-  // across npm packages, so main.tsx references a stable "/pierre-worker.js"
-  // URL and we bundle the worker as a second entry. Resolve directly through
-  // the package exports map — @pierre/diffs marks only its web-components
-  // file as a side effect, so bundling via a bare-specifier shim file gets
-  // tree-shaken to 0 bytes.
-  const workerEntry = fileURLToPath(import.meta.resolve("@pierre/diffs/worker/worker.js"));
   try {
     const result = await Bun.build({
-      entrypoints: [clientEntry, workerEntry],
+      entrypoints: [clientEntry],
       target: "browser",
       minify: false,
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       sourcemap: "none",
-      // Stable, hash-free names so main.tsx can reference "/pierre-worker.js"
-      // and spa.ts can reference "/client.js" — the entry naming uses
-      // [name] which we pin per-entry below via output reconciliation.
       naming: {
         entry: "[name].js",
         chunk: "chunk-[hash].js",
@@ -113,7 +106,6 @@ async function buildClientFromSource(): Promise<AssetsResult> {
     }
     const assets = new Map<string, ClientAsset>();
     let clientArtifact: BunBuildOutput | null = null;
-    let workerArtifact: BunBuildOutput | null = null;
     for (const out of result.outputs) {
       const publicPath = "/" + out.path.replace(/^\.\//, "").replace(/^\//, "");
       const contentType = contentTypeFor(out.path);
@@ -122,21 +114,12 @@ async function buildClientFromSource(): Promise<AssetsResult> {
         : await out.arrayBuffer();
       assets.set(publicPath, { body, contentType });
       if (out.kind !== "entry-point") continue;
-      // Two entry-points (client + worker). Bun names them after their
-      // source file basenames — main.tsx → main.js, the @pierre/diffs
-      // worker module → worker.js. Match by basename so worktree shuffles
-      // don't break the assignment.
       const base = out.path.split("/").pop() ?? out.path;
       if (base === "main.js") clientArtifact = out;
-      else if (base === "worker.js") workerArtifact = out;
     }
     if (clientArtifact !== null) {
       const text = await clientArtifact.text();
       assets.set("/client.js", { body: text, contentType: "application/javascript; charset=utf-8" });
-    }
-    if (workerArtifact !== null) {
-      const text = await workerArtifact.text();
-      assets.set("/pierre-worker.js", { body: text, contentType: "application/javascript; charset=utf-8" });
     }
     return { assets, error: null };
   } catch (err) {
@@ -154,12 +137,7 @@ async function buildClientFromSource(): Promise<AssetsResult> {
 // binary build that left them populated but the marker "dev" still falls
 // through to the runtime Bun.build path (issue #204).
 const getClientAssets = createClientAssetsCache({
-  getEmbedded: () =>
-    resolveEmbedded(
-      EMBEDDED_BUILD_MODE,
-      EMBEDDED_CLIENT_JS,
-      EMBEDDED_PIERRE_WORKER_JS,
-    ),
+  getEmbedded: () => resolveEmbedded(EMBEDDED_BUILD_MODE, EMBEDDED_CLIENT_JS),
   buildFromSource: buildClientFromSource,
 });
 

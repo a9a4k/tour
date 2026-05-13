@@ -5,10 +5,7 @@ import { theme } from "../../core/theme.js";
  * slice 3, ADR 0024). Replaces the seven CSS-string blobs `App.tsx`
  * accumulated around Pierre's grid: sticky header, comment affordance,
  * column template, gap-row layout, cursor outline, plus-button placement,
- * range tint. Companion modules: `cursor-css.ts` (legacy attribute-driven
- * cursor + plus-button, still in use during the long-lived migration
- * branch), `annotations.ts` (Pierre-side range tint, retired at the
- * slice-6 cutover).
+ * range tint.
  *
  * Two structural ideas:
  *
@@ -27,9 +24,7 @@ import { theme } from "../../core/theme.js";
  *
  *   - `.is-cursor`: 2px accent outline around the cursored row. Driven
  *     by a React prop (PRD #212 "Cursor outline is a prop") — no
- *     `useEffect` mutates a data-attribute anymore. Replaces the legacy
- *     attribute-driven selector that lived on Pierre's shadow-DOM cell
- *     (see `cursor-css.ts` for the legacy form, retired at slice 6).
+ *     `useEffect` mutates a data-attribute anymore.
  *
  *   - `.in-range`: subtle blue tint + a 3px accent inset stripe at the
  *     row's left edge — the same two-cue treatment `annotations.ts`
@@ -43,10 +38,7 @@ import { theme } from "../../core/theme.js";
  *     pair in split layout (deletions cols 1-2, additions cols 3-4),
  *     full-width otherwise.
  *
- * Unused at this slice's merge time. The new `<FileBlock>` and
- * `row-components` (slices 4-5) import this module; `App.tsx`'s renderer
- * swap (slice 6) injects the constant as a `<style>` tag at the diff
- * pane root and deletes the Pierre-era blobs in the same merge.
+ * Injected as a `<style>` block at the diff pane root by `App.tsx`.
  */
 export const FILE_GRID_CSS = `
   /* File-level grid container. data-layout flips column count. */
