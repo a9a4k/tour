@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Hunk-header banner gains a visible expand affordance (issue #252).**
+  Pre-fix the webapp hunk-header banner was clickable (per ADR 0013 the
+  whole banner expands hidden context) but had no rest-state visual cue
+  — only `cursor: pointer` on mouseover. GitHub paints a 44px saturated-
+  blue leftmost cell with a `…` glyph on every hunk-header row as the
+  rest-state signal. New `.tour-hunk-header::before` rule in
+  `file-grid-css.ts` paints the analogous cue: width 44px, background
+  `theme.bg.accentEmphasis` (#1f6feb solid), glyph `theme.fg.onEmphasis`
+  (#ffffff), centered via flexbox, absolutely positioned to the banner's
+  left edge. `.tour-hunk-header` acquires `position: relative` (anchor
+  for the ::before) and `padding-left: 60px` (44 cue + 16 gap) so the
+  range/context text clears the cue. Path B (`::before` pseudo-element)
+  rather than Path A (inline span) so the cue cannot accidentally become
+  a separate click target — per ADR 0013 the whole banner stays one
+  click target. No JSX / prop / planner / theme change.
+
+  Issue: #252
+
 - **TUI unified layout no longer hides every diff code row (issue #250).**
   Pre-fix, toggling the TUI diff layout from split to unified
   (`Shift-L`) removed all `+`/`-`/context rows from the diff scrollbox;

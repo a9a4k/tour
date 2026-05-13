@@ -283,6 +283,91 @@ describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — hunk-header expand affordance (#252)", () => {
+  // GitHub paints a 44px saturated-blue leftmost cell on every hunk-
+  // header row with `…` (three dots) inside — the rest-state cue that
+  // the row expands hidden context. Tour pre-#252 had no such cue: the
+  // banner showed only `cursor: pointer` on mouseover. Per ADR 0013 the
+  // banner is a single click target (whole banner expands both sides),
+  // so the cue must be visual-only — implemented as a ::before pseudo-
+  // element so it cannot become a separate click target. The cue uses
+  // `theme.bg.accentEmphasis` (#1f6feb solid) as a high-contrast cue
+  // region against the banner's accentSubtle wash; the dots glyph uses
+  // `theme.fg.onEmphasis` (#ffffff) for legibility. Width 44px matches
+  // GitHub's `blob-num-hunk` td width; the banner's `padding-left` bumps
+  // from 16px to 60px so the range/context text clears the cue area.
+  // `position: relative` on the banner is the absolute-positioning
+  // anchor for the ::before.
+
+  const beforeRuleBody = FILE_GRID_CSS.match(
+    /\.tour-hunk-header::before\s*\{([^}]*)\}/,
+  )?.[1] ?? "";
+
+  it("declares a .tour-hunk-header::before rule (visual-only cue area)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-hunk-header::before");
+    expect(beforeRuleBody).not.toBe("");
+  });
+
+  it("paints the cue area with the saturated accent-emphasis token", () => {
+    expect(beforeRuleBody).toMatch(
+      new RegExp(`background-color:\\s*${theme.bg.accentEmphasis}`, "i"),
+    );
+  });
+
+  it("renders the `…` glyph in the cue area via `content`", () => {
+    // U+2026 HORIZONTAL ELLIPSIS — one typographic char rather than
+    // three literal full stops; matches GitHub's pseudo-element content.
+    expect(beforeRuleBody).toMatch(/content:\s*["']…["']/);
+  });
+
+  it("colors the glyph with theme.fg.onEmphasis (#ffffff) for contrast on the saturated bg", () => {
+    expect(beforeRuleBody).toMatch(
+      new RegExp(`color:\\s*${theme.fg.onEmphasis}`, "i"),
+    );
+  });
+
+  it("sizes the cue area to ~44px wide (matches GitHub's blob-num-hunk)", () => {
+    expect(beforeRuleBody).toMatch(/width:\s*44px/);
+  });
+
+  it("centers the glyph vertically and horizontally inside the cue area", () => {
+    // Flexbox centering — the cue area's height is bounded by the
+    // banner's natural height via `top: 0; bottom: 0`, so the glyph
+    // sits centered regardless of the banner's padding.
+    expect(beforeRuleBody).toMatch(/display:\s*flex/);
+    expect(beforeRuleBody).toMatch(/align-items:\s*center/);
+    expect(beforeRuleBody).toMatch(/justify-content:\s*center/);
+  });
+
+  it("anchors the cue area to the banner's left edge via absolute positioning", () => {
+    expect(beforeRuleBody).toMatch(/position:\s*absolute/);
+    expect(beforeRuleBody).toMatch(/left:\s*0/);
+    expect(beforeRuleBody).toMatch(/top:\s*0/);
+    expect(beforeRuleBody).toMatch(/bottom:\s*0/);
+  });
+
+  it("declares `position: relative` on .tour-hunk-header so the ::before anchors to the banner", () => {
+    const bannerRuleBody = FILE_GRID_CSS.match(
+      /\.tour-hunk-header\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+    expect(bannerRuleBody).toMatch(/position:\s*relative/);
+  });
+
+  it("bumps the banner's padding-left to clear the 44px cue area + 16px gap (60px total)", () => {
+    const bannerRuleBody = FILE_GRID_CSS.match(
+      /\.tour-hunk-header\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+    // The padding shorthand may be four-value (top right bottom left)
+    // or two-value + separate padding-left. Either is fine; the
+    // requirement is that the resolved padding-left is 60px so the
+    // banner text doesn't paint over the cue area.
+    const hasFourValue =
+      /padding:\s*\d+px\s+\d+px\s+\d+px\s+60px/.test(bannerRuleBody);
+    const hasSeparate = /padding-left:\s*60px/.test(bannerRuleBody);
+    expect(hasFourValue || hasSeparate).toBe(true);
+  });
+});
+
 describe("FILE_GRID_CSS — interactive row banner (#224)", () => {
   it("paints the banner background with the neutral-subtle token (distinct from hunk-header accent)", () => {
     expect(FILE_GRID_CSS).toContain(".tour-row-interactive");
