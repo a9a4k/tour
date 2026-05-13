@@ -984,9 +984,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               ? "up"
               : subKind === "boundary-bottom" || subKind === "expand-down"
                 ? "down"
-                : subKind === "expand-all"
-                  ? "both"
-                  : "both";
+                : "both";
           // `expand-all` reveals the entire remaining gap in one Enter;
           // every other directional / banner row uses the EXPANSION_STEP
           // ladder with Shift as the full-gap modifier.
