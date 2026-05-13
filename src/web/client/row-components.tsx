@@ -70,6 +70,15 @@ const ROW_STYLE: React.CSSProperties = {
   gridColumn: "1 / -1",
 };
 
+// Full-width banner: row spans 1 / -1 via grid-column but does NOT declare
+// subgrid. The row's CSS rule overrides .tour-row's display:grid + subgrid
+// template so child content flows as normal block content (centered glyph
+// for <InteractiveRow>, inline range + context spans for <HunkHeaderBanner>)
+// instead of slotting into the narrow leftmost auto track.
+const BANNER_STYLE: React.CSSProperties = {
+  gridColumn: "1 / -1",
+};
+
 function impliedSideFromKind(kind: DiffRowKind): Side | null {
   if (kind === "addition" || kind === "change-addition") return "additions";
   if (kind === "deletion" || kind === "change-deletion") return "deletions";
@@ -408,7 +417,7 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
       data-subkind={subKind}
       data-direction={direction}
       data-boundary-ref={String(boundaryRef)}
-      style={ROW_STYLE}
+      style={BANNER_STYLE}
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
@@ -461,13 +470,6 @@ function hunkHeaderSubKind(
 ): "boundary-top" | "hunk-separator" {
   return boundaryRef === "top" ? "boundary-top" : "hunk-separator";
 }
-
-// Banner is full-width but does not declare subgrid: the row-internal text
-// flows inline (range span + context span) instead of slotting into the
-// file-grid's auto/auto/1fr tracks.
-const BANNER_STYLE: React.CSSProperties = {
-  gridColumn: "1 / -1",
-};
 
 function HunkHeaderBannerImpl(
   props: HunkHeaderBannerProps,

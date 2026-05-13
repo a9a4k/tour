@@ -745,6 +745,46 @@ describe("<InteractiveRow>", () => {
     const row = c.querySelector(".tour-row") as HTMLElement;
     expect(row.classList.contains("is-cursor")).toBe(true);
   });
+
+  it("renders as a full-width banner without declaring subgrid inline (#224)", () => {
+    // The banner overrides .tour-row's `display: grid` + subgrid template
+    // via CSS so the glyph centers as a block, not slots into the narrow
+    // gutter track. The inline style should set gridColumn only — no
+    // display:grid, no grid-template-columns — mirroring <HunkHeaderBanner>.
+    const c = mount(
+      createElement(InteractiveRow, {
+        subKind: "gap-mid-top",
+        boundaryRef: 1,
+        direction: "up",
+        gapAbove: 12,
+        glyph: "↑ ··· 12 lines hidden ···",
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-row.tour-row-interactive") as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.style.gridColumn).toMatch(/1\s*\/\s*-1/);
+    expect(row.style.display).not.toBe("grid");
+    expect(row.style.gridTemplateColumns).toBe("");
+  });
+
+  it("carries role=button + tabindex=0 for keyboard activation (#224)", () => {
+    const c = mount(
+      createElement(InteractiveRow, {
+        subKind: "collapsed-file",
+        boundaryRef: "top",
+        direction: "down",
+        gapAbove: 0,
+        glyph: "··· 200 hidden ···",
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-row-interactive") as HTMLElement;
+    expect(row.getAttribute("role")).toBe("button");
+    expect(row.getAttribute("tabindex")).toBe("0");
+  });
 });
 
 // ---------------------------------------------------------------------------

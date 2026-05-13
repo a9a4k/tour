@@ -78,6 +78,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp interactive rows: banner treatment for gap / boundary /
+  collapsed-file expansion affordances (issue #224).** The
+  `<InteractiveRow>` primitive (gap-mid-top, boundary-top,
+  boundary-bottom, collapsed-file) now renders as a quiet full-width
+  section-divider banner instead of a small button-y blob anchored in
+  the leftmost subgrid column. Background uses
+  `theme.bg.neutralSubtle.web` — deliberately distinct from the hunk
+  header's `bg.accentSubtle` accent tint so the two banner families
+  differentiate at a glance (hunk header = navigation marker;
+  interactive row = expansion control). The glyph centers
+  horizontally in `theme.fg.muted` with 6px vertical padding.
+  Click + key semantics are unchanged — plain click expands
+  `EXPANSION_STEP`, shift-click expands `Math.max(gapAbove,
+  EXPANSION_STEP)`, Enter while cursored dispatches the same.
+  Cursor-outline scope stays row-wide (interactive rows have no
+  per-side meaning). Implementation mirrors the
+  `<HunkHeaderBanner>` pattern: drop the subgrid inline style so the
+  row spans 1 / -1 as a block, and let a `.tour-row-interactive` CSS
+  rule override `.tour-row`'s `display: grid` + subgrid template.
+
+  Issue: #224 · PRD: #212 · ADR: 0024
+
 - **Webapp hunk headers: GitHub-style banner with parsed range +
   context segments (issue #223).** Hunk-header rows now render as a
   full-width section-divider banner instead of the prior single-glyph

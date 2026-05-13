@@ -197,6 +197,52 @@ describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — interactive row banner (#224)", () => {
+  it("paints the banner background with the neutral-subtle token (distinct from hunk-header accent)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-row-interactive");
+    expect(FILE_GRID_CSS).toContain(theme.bg.neutralSubtle.web);
+    const rule = FILE_GRID_CSS.match(
+      /\.tour-row-interactive\s*\{[^}]*\}/,
+    )?.[0];
+    expect(rule).toBeTruthy();
+    expect(rule).toContain(`background-color: ${theme.bg.neutralSubtle.web}`);
+  });
+
+  it("adds vertical padding so banners read as section dividers", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-interactive[^{]*\{[^}]*padding:\s*\d+px\s+\d+px/,
+    );
+  });
+
+  it("overrides .tour-row's `display: grid` so banner glyph centers instead of slotting into the gutter track", () => {
+    // Without this override the .tour-row-glyph child auto-places into the
+    // narrow leftmost subgrid track (gutter-L) and reads as a small button-y
+    // blob, not as a centered section divider. Same defensive lesson as the
+    // hunk header fix in commit c13a598.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-interactive[^{]*\{[^}]*display:\s*block/,
+    );
+  });
+
+  it("keeps the banner clickable (cursor: pointer)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-interactive[^{]*\{[^}]*cursor:\s*pointer/,
+    );
+  });
+
+  it("centers the glyph horizontally", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-interactive[^{]*\{[^}]*text-align:\s*center/,
+    );
+  });
+
+  it("paints the glyph in the muted foreground color", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-interactive[^{]*\{[^}]*color:\s*#9198a1/i,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — sticky file header", () => {
   it("retargets the sticky-header rule onto the new file-block surface", () => {
     expect(FILE_GRID_CSS).toContain(".tour-file-header");

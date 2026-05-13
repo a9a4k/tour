@@ -158,6 +158,24 @@ export const FILE_GRID_CSS = `
     margin-left: 1ch;
   }
 
+  /* Interactive-row banner: gap / boundary / collapsed-file expansion
+     affordances render as a quiet full-width section divider with a
+     neutral subtle tint — visually distinct from the hunk-header's
+     accent tint so the two banner families differentiate at a glance
+     (hunk header = navigation marker; interactive row = expansion
+     control). The row spans 1 / -1 via grid-column; this rule overrides
+     .tour-row's display:grid + subgrid template so the glyph centers
+     as block content instead of auto-placing into the narrow leftmost
+     gutter track. */
+  .tour-row-interactive {
+    display: block;
+    background-color: ${theme.bg.neutralSubtle.web};
+    padding: 6px 16px;
+    cursor: pointer;
+    text-align: center;
+    color: ${theme.fg.muted};
+  }
+
   /* Cards: full-width by default; side-anchored in split layout
      (deletions cols 1-3, additions cols 4-end after the new symbol track). */
   .tour-card {
