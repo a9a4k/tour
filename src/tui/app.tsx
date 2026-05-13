@@ -772,7 +772,6 @@ function App(props: AppProps) {
           target,
           body,
           bundle: liveBundle,
-          annotations: liveBundle.kind === "ok" ? liveBundle.annotations : [],
         });
         if (built.kind === "parent-missing") {
           // Parent vanished mid-composition (rare — watcher reload deleted

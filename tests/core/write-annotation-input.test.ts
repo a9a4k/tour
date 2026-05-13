@@ -65,7 +65,6 @@ describe("buildWriteAnnotationInput", () => {
       target: tgt,
       body: "the draft",
       bundle: b,
-      annotations: [],
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") throw new Error("expected ok");
@@ -93,7 +92,6 @@ describe("buildWriteAnnotationInput", () => {
       target: tgt,
       body: "reply body",
       bundle: bundle({ annotations: [parent] }),
-      annotations: [parent],
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") throw new Error("expected ok");
@@ -110,7 +108,6 @@ describe("buildWriteAnnotationInput", () => {
       target: tgt,
       body: "x",
       bundle: bundle(),
-      annotations: [],
     });
     expect(result.kind).toBe("parent-missing");
   });

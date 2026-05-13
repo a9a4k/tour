@@ -54,12 +54,13 @@ export type BuildWriteAnnotationInputResult =
 // submit time. The App layer's intent listener calls this and routes the
 // result; the surface translates `parent-missing` into a
 // `composer.failed` dispatch rather than calling the writer with a stale
-// target.
+// target. The reply branch resolves the parent from `bundle.annotations`
+// (present on both `ok` and `snapshot-lost` variants) — the bundle is the
+// single source of truth for live state and the live annotation list.
 export function buildWriteAnnotationInput(args: {
   target: ComposerTarget;
   body: string;
   bundle: TourBundle;
-  annotations: ReadonlyArray<Annotation>;
 }): BuildWriteAnnotationInputResult {
   const target = args.target;
   if (target.kind === "top-level") {
@@ -76,7 +77,7 @@ export function buildWriteAnnotationInput(args: {
       },
     };
   }
-  const parent = args.annotations.find((a) => a.id === target.replies_to);
+  const parent = args.bundle.annotations.find((a) => a.id === target.replies_to);
   if (!parent) return { kind: "parent-missing" };
   return {
     kind: "ok",
