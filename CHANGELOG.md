@@ -78,6 +78,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI thins composer + folds + layout through the Tour-session store
+  (issue #237).** The TUI's local `useState`s for `composer`,
+  `collapsedOverrides`, `collapsedFolders`, `layout`, and the post-submit
+  `pendingScrollAnnotationId` are gone — all reads route through
+  `sessionState`, all mutations dispatch through the store. Keymap +
+  click rewiring: `a` / `r` dispatch `composer.open { target }` with a
+  `ComposerTarget` (top-level: file+side+line range; reply: parent id);
+  composer keystrokes dispatch `composer.setBody { body }` on every
+  change; Enter / submit dispatch `composer.submit`; Esc dispatches
+  `composer.close`. Folder Enter / `c`-on-folder dispatch
+  `folds.toggleFolder`; file-level `c` dispatches `folds.setOverride`;
+  `Shift-L` and the top-header Split/Unified buttons dispatch
+  `layout.set`. The intent listener gains two cases:
+  `submitAnnotation { tourId, target, body }` calls
+  `props.writeAnnotation` (mapping reply targets to their parent
+  Annotation looked up from the live bundle) then dispatches
+  `composer.submitted { annotation }` on success or
+  `composer.failed { error }` on failure;
+  `scrollToAnnotation { annotationId }` consumed via a ref +
+  `plannedRowsByFile`-keyed useEffect that retries until the
+  bundle-refresh re-render mounts the new card (matches the prior
+  pendingScroll flow's correctness without the useState). The `loadTour`
+  intent handler's hand-rolled composer / folds / overrides resets are
+  deleted — the reducer's `tour.switched` cascade is the single home for
+  every reset; only the sidebar `selectedRowIdx` reset remains in the
+  surface (sidebar selection is out-of-scope per PRD #234). The
+  watcher-reload-preserves-draft property — verifiable manually by
+  editing an annotation in `.tour/<id>/` while a TUI composer is open —
+  now passes as a tested property of the reducer (slice-3 foundation
+  fixture). `src/tui/composer-submit.ts` is deleted in favor of the
+  reducer's `composer.submit → submitting` no-op-on-resubmit guard plus
+  the intent-driven write path; `composer-state.ts` helpers refactored
+  to return `ComposerTarget` directly.
+
+  Issue: #237 · PRD: #234
+
 - **Tour-session slice 3 foundation: composer + folds + layout slices
   land in the reducer (issue #236).** `TourSessionState` gains three new
   slices: `composer: ComposerSlice` (tagged-union state machine —
