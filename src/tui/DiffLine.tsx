@@ -1,6 +1,28 @@
 import type { SyntaxStyle } from "@opentui/core";
 import { theme } from "../core/theme.js";
 
+// Annotation accent stripe — 128 repeats of ▌ (U+258C LEFT HALF BLOCK)
+// separated by newlines. The accent column's wrapper is `alignSelf="stretch"`
+// (height = row's wrapped height) and `overflow="hidden"` (clips painted
+// overflow). The glyph `<text>` is `position="absolute"` so its 128-row
+// intrinsic content height does NOT propagate up: without that, every row
+// would stretch to 128 cells tall (prototype 2026-05-14). The result is a
+// half-cell-wide vertical rule in `theme.fg.accent` that follows the
+// wrapped row height through any realistic wrap depth (128 visual rows
+// covers ~10× the worst real-world line wrap; bump if a 1024-char minified
+// line on a 20-col viewport ever shows up).
+//
+// DO NOT "improve" this back to a `backgroundColor` paint on the wrapper:
+// that delivered a full-cell-wide stripe and the read of the stripe as
+// thicker-than-necessary was the bug this fix addresses. Prototype A
+// (full-cell bg) lost to prototype C (this shape) on read at the same
+// width-1 layout footprint.
+//
+// DO NOT remove the `position="absolute"`: without it the 128-row glyph
+// stack drives the row's intrinsic height to 128 cells regardless of the
+// content's real wrap depth.
+const ACCENT_STRIPE_GLYPHS = Array.from({ length: 128 }, () => "▌").join("\n");
+
 export const TINT_BG = theme.bg.accentRange.tui;
 export const ACCENT_FG = theme.fg.accent;
 export const CURSOR_FG = theme.fg.cursor;
@@ -130,12 +152,13 @@ export function DiffLine({
     // wrapper so the anchor behavior holds. ADR 0008's continuous accent +
     // ADR 0009's wrapped-row anchor coexist this way.
     <box flexDirection="row" width={width} minHeight={1} alignItems="flex-start">
-      <box
-        width={1}
-        alignSelf="stretch"
-        flexShrink={0}
-        backgroundColor={gutterAccent ? ACCENT_FG : undefined}
-      />
+      <box width={1} alignSelf="stretch" flexShrink={0} overflow="hidden">
+        {gutterAccent && (
+          <text position="absolute" fg={ACCENT_FG}>
+            {ACCENT_STRIPE_GLYPHS}
+          </text>
+        )}
+      </box>
       <box
         alignSelf="stretch"
         flexShrink={0}
