@@ -1,11 +1,7 @@
 import { theme } from "../../core/theme.js";
 
 /**
- * Layout + visual-cue CSS for the Tour-owned web row renderer (PRD #212
- * slice 3, ADR 0024). Replaces the seven CSS-string blobs `App.tsx`
- * accumulated around Pierre's grid: sticky header, comment affordance,
- * column template, gap-row layout, cursor outline, plus-button placement,
- * range tint.
+ * Layout + visual-cue CSS for the Tour-owned web row renderer (ADR 0024).
  *
  * Two structural ideas:
  *
@@ -24,12 +20,10 @@ import { theme } from "../../core/theme.js";
  * Decorations:
  *
  *   - `.is-cursor`: 2px accent outline around the cursored row. Driven
- *     by a React prop (PRD #212 "Cursor outline is a prop") — no
- *     `useEffect` mutates a data-attribute anymore.
+ *     by a React prop on `<DiffRow>` / `<InteractiveRow>`.
  *
  *   - `.in-range`: subtle blue tint + a 3px accent inset stripe at the
- *     row's left edge — the same two-cue treatment `annotations.ts`
- *     paints on Pierre rows today (ADR 0008).
+ *     row's left edge (ADR 0008's two-cue range treatment).
  *
  *   - `[data-line-type]` two-tone tinting: the gutter + symbol cells
  *     carry a lighter range tint
@@ -56,7 +50,7 @@ export const FILE_GRID_CSS = `
     grid-template-columns: auto auto 1fr;
   }
 
-  /* Sticky file header — retargeted from Pierre's [data-diffs-header]. */
+  /* Sticky file header. */
   .tour-file-header {
     position: sticky;
     top: 0;
@@ -124,7 +118,7 @@ export const FILE_GRID_CSS = `
   }
 
   /* Range tint: subtle accent fill + 3px accent inset stripe at the
-     left edge — same two-cue treatment annotations.ts paints today. */
+     left edge (ADR 0008). */
   .tour-row.in-range {
     background-color: ${theme.bg.accentRange.web};
     box-shadow: inset 3px 0 0 ${theme.fg.accent};

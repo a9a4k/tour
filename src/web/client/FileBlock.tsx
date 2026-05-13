@@ -20,30 +20,16 @@ import {
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 
 /**
- * Per-file React component the Tour-owned web row renderer mounts (PRD
- * #212 slice 5, issue #218). Owns the file-level grid container, calls
- * `useLazyHighlight` for syntax highlighting, walks the file's
- * `PlannedRow[]` (from `core/diff-rows.ts`'s planner), and dispatches
- * each row to one of the three primitives from `row-components` (slice
- * 4): `<DiffRow>`, `<CardRow>`, `<InteractiveRow>`.
+ * Per-file React component for the web row renderer. Owns the file-level
+ * grid container, walks the file's `PlannedRow[]` (from
+ * `core/diff-rows.ts`'s planner), and dispatches each row to one of the
+ * three primitives in `row-components`: `<DiffRow>`, `<CardRow>`,
+ * `<InteractiveRow>`.
  *
- * Companion modules:
- *
- *   - `file-grid-css` (slice 3): provides the `<style>` block that
- *     interprets the className / data-attribute pairs this component +
- *     its children emit (`.tour-file-block[data-layout]`, `.tour-row`,
- *     `.tour-card[data-side]`, `.is-cursor`, `.in-range`,
- *     `[data-line-type]`).
- *
- *   - `useLazyHighlight` (slice 2): supplies the `tokensLeft` /
- *     `tokensRight` Maps `<DiffRow>` paints with `dangerouslySetInnerHTML`.
- *     Two calls per file (one per side) — the additions side uses
- *     `file.newContent`, the deletions side uses `file.oldContent`. Both
- *     observe the same block ref.
- *
- * Unused at this slice's merge time. `App.tsx` still routes the diff
- * body through Pierre's `<FileDiff>` / `<MultiFileDiff>`; slice 6 swaps
- * the App-level renderer reference and deletes the Pierre adapter pile.
+ * Two `useLazyHighlight` calls per file (one per side) supply the
+ * `tokensLeft` / `tokensRight` maps `<DiffRow>` paints — additions side
+ * reads `file.newContent`, deletions side reads `file.oldContent`. Both
+ * observe the same block ref.
  */
 
 type Side = "additions" | "deletions";
@@ -111,9 +97,8 @@ function cardGridColumn(layout: Layout, side: Side): string {
 
 // Maps `diff-row.type` (planner) → `DiffRow.kind` (component). The
 // "change" branch is split-only — the planner emits paired left/right
-// content; choose change-addition so the row's data-line-type matches the
-// success-tint CSS rule (file-grid-css). Per-cell change tinting is
-// reserved for a later slice.
+// content; choose change-addition so the row's data-line-type matches
+// the success-tint CSS rule.
 function diffRowKindFor(type: "context" | "addition" | "deletion" | "change"): DiffRowKind {
   if (type === "change") return "change-addition";
   return type;

@@ -1,10 +1,10 @@
 // Lazy IntersectionObserver-driven wrapper around `syntax-highlight`'s
-// `tokenize`. The caller — a future `<FileBlock>` — hands the hook a ref
-// to the file's outer block element; the hook returns `null` until the
-// observer reports the element near the viewport (rootMargin: 200px),
-// and the styled token map thereafter.
+// `tokenize`. The caller hands the hook a ref to the file's outer block
+// element; the hook returns `null` until the observer reports the
+// element near the viewport (rootMargin: 200px), and the styled token
+// map thereafter.
 //
-// Contract (PRD #212 slice 2):
+// Contract:
 //
 //   useLazyHighlight(ref, content, lang) → Map<lineNumber, html> | null
 //
@@ -14,10 +14,10 @@
 // - Same `(content, lang)` across consecutive renders returns the same
 //   Map reference (downstream React.memo siblings stay stable).
 // - Memoizes the unsupported-lang plain-text fallback per `(content, lang)`
-//   too — `syntax-highlight` no longer caches that path internally (#214),
-//   so the hook owns reference stability for non-bundled languages.
+//   too — `syntax-highlight` doesn't cache that path internally, so the
+//   hook owns reference stability for non-bundled languages.
 // - Disconnects the observer on unmount.
-// - Resilient to the pre→post-init transition (#214): when the highlighter
+// - Resilient to the pre→post-init transition: when the highlighter
 //   resolves, the hook re-tokenizes and returns the styled map.
 
 import {

@@ -1,6 +1,6 @@
 // Per-line syntax highlighting for the web row renderer.
 //
-// Contract (PRD #212):
+// Contract:
 //
 //   tokenize(content, lang) → Map<lineNumber, html>
 //

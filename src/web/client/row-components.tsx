@@ -6,26 +6,15 @@ import type { Annotation } from "./types.js";
 import type { TokenLines } from "./syntax-highlight.js";
 
 /**
- * Row primitives the Tour-owned web row renderer (PRD #212 slice 4)
- * mounts. Three `React.memo`'d, prop-driven components — no internal
- * state, no Pierre dependency, no DOM mutation. Companion modules:
+ * Row primitives mounted by `<FileBlock>`. Three `React.memo`'d,
+ * prop-driven components — no internal state, no DOM mutation.
  *
- *   - `file-grid-css` (slice 3): the `<style>` block that interprets the
- *     attributes / classNames these components emit (`.tour-row`,
- *     `.tour-card`, `.is-cursor`, `.in-range`, `[data-line-type]`,
- *     `[data-side]`).
+ * `file-grid-css` interprets the className / data-attribute vocabulary
+ * these components emit (`.tour-row`, `.tour-card`, `.is-cursor`,
+ * `.in-range`, `[data-line-type]`, `[data-side]`).
  *
- *   - `useLazyHighlight` (slice 2): supplies the `tokensLeft` /
- *     `tokensRight` Maps `<DiffRow>` paints with `dangerouslySetInnerHTML`.
- *
- *   - `<FileBlock>` (slice 5, not yet landed): the per-file React
- *     component that walks the planner's `PlannedRow[]` and dispatches
- *     each row to one of the three primitives below.
- *
- * These primitives are unused at this slice's merge time — `App.tsx` still
- * routes the diff body through Pierre's `<FileDiff>` / `<MultiFileDiff>`.
- * Slice 5's `<FileBlock>` consumes them; slice 6 swaps the App-level
- * renderer reference and deletes the Pierre adapter pile.
+ * `useLazyHighlight` supplies the `tokensLeft` / `tokensRight` maps
+ * `<DiffRow>` paints with `dangerouslySetInnerHTML`.
  */
 
 export const EXPANSION_STEP = 20;
