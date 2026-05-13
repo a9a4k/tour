@@ -13,6 +13,8 @@ import {
   resolvedReplyLock,
   pickerHighlighted,
   initialTourSessionState,
+  type ComposerTarget,
+  type Layout,
   type TourSummary as SessionTourSummary,
 } from "../../core/tour-session.js";
 import {
@@ -63,8 +65,6 @@ import { decideReanchor } from "./re-anchor-policy.js";
 import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
 import { recallCardIntoView } from "./auto-recall.js";
 
-type Layout = "split" | "unified";
-
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
 // `CSS.escape` when available; falls back to a minimal escaper for the
@@ -75,16 +75,6 @@ function cssEscapeFile(value: string): string {
   }
   return value.replace(/["\\]/g, (c) => `\\${c}`);
 }
-
-type ComposerTarget =
-  | {
-      kind: "top-level";
-      file: string;
-      side: "additions" | "deletions";
-      line_start: number;
-      line_end: number;
-    }
-  | { kind: "reply"; replies_to: string };
 
 interface PostBody {
   body: string;
@@ -163,11 +153,21 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // shadowed the slice on the webapp is gone.
   const replyLock = resolvedReplyLock(sessionState);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
-  const [layout, setLayout] = useState<Layout>("split");
-  const [composerTarget, setComposerTarget] = useState<ComposerTarget | null>(null);
-  const [composerError, setComposerError] = useState<string | null>(null);
+  // Folds (collapsedFolders + collapsedOverrides), layout, and composer
+  // (target / body / error as one tagged-union slice) all live in the Tour-
+  // session store (PRD #234 slice 3, issue #238). The webapp's three local
+  // composer useStates (composerTarget + composerError + textarea body) and
+  // the folds / layout useStates are gone; reads route through the store
+  // slices; the reducer's `tour.switched` cascade owns all resets.
+  const collapsedFolders = sessionState.collapsedFolders;
+  const collapsedOverrides = sessionState.collapsedOverrides;
+  const layout = sessionState.layout;
+  const composer = sessionState.composer;
+  const composerTarget: ComposerTarget | null =
+    composer.kind === "closed" ? null : composer.target;
+  const composerError: string | null =
+    composer.kind === "errored" ? composer.error : null;
+  const composerBody: string = composer.kind === "closed" ? "" : composer.body;
   // Unified cursor (ADR 0022 / PRD #192) lives in the Tour-session store
   // (PRD #229 slice 2, issue #232): the local `useState<Cursor | null>`
   // that previously shadowed the slice is gone. The reducer's cursor.*
@@ -193,9 +193,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // of the most recent commit," which is what we want — only the store
   // slice changed in this dispatch.
   const intentInputsRef = useRef<{
-    collapsedOverrides: Record<string, boolean>;
     setSelectedFile: (next: string | null) => void;
-    setCollapsedOverrides: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     revealFileAncestors: (file: string) => void;
     findFileBlock: (name: string) => HTMLElement | null;
   } | null>(null);
@@ -275,7 +273,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           );
           const modelFilesFresh = new Map<string, BundleFile>();
           for (const f of bundle.files) modelFilesFresh.set(f.name, f);
-          const overrides = inputs.collapsedOverrides;
+          const overrides = state.collapsedOverrides;
           const isClassifierCollapsedFresh = (name: string): boolean => {
             const override = overrides[name];
             if (override === false) return false;
@@ -349,9 +347,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           const inputs = intentInputsRef.current;
           if (!inputs) break;
           inputs.setSelectedFile(intent.file);
-          inputs.setCollapsedOverrides((prev) =>
-            prev[intent.file] === false ? prev : { ...prev, [intent.file]: false },
-          );
+          store.dispatch({
+            type: "folds.setOverride",
+            file: intent.file,
+            value: false,
+          });
           inputs.revealFileAncestors(intent.file);
           break;
         }
@@ -368,6 +368,70 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             window.location.pathname + window.location.search + window.location.hash;
           if (url === current) break;
           window.history.replaceState(window.history.state, "", url);
+          break;
+        }
+        case "submitAnnotation": {
+          // PRD #234 slice 3, issue #238. Composer submit / retry routes
+          // through the store: reducer transitions to `submitting` and
+          // emits this intent; surface POSTs to the existing
+          // `/api/tours/:id/annotations` endpoint with the same payload
+          // shape as before, then dispatches `composer.submitted`
+          // (success) or `composer.failed` (failure) to close the loop.
+          const { tourId: submitTourId, target, body } = intent;
+          const trimmed = body.trim();
+          const payload: PostBody =
+            target.kind === "reply"
+              ? { body: trimmed, replies_to: target.replies_to }
+              : {
+                  body: trimmed,
+                  file: target.file,
+                  side: target.side,
+                  line_start: target.line_start,
+                  line_end: target.line_end,
+                };
+          void (async () => {
+            try {
+              const res = await fetch(
+                `/api/tours/${submitTourId}/annotations`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                },
+              );
+              if (!res.ok) {
+                const data = (await res.json().catch(() => ({}))) as {
+                  error?: string;
+                };
+                store.dispatch({
+                  type: "composer.failed",
+                  error: data.error ?? `HTTP ${res.status}`,
+                });
+                return;
+              }
+              const ann = (await res.json()) as Annotation;
+              store.dispatch({ type: "composer.submitted", annotation: ann });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              store.dispatch({ type: "composer.failed", error: message });
+            }
+          })();
+          break;
+        }
+        case "scrollToAnnotation": {
+          // The freshly-created card may not yet be in the DOM — SSE
+          // delivers the new bundle asynchronously. Defer to RAF; if the
+          // ref still isn't present, the scroll is silently a no-op (the
+          // SSE refresh will land the card in view anyway, since reply
+          // / inline annotations render adjacent to the cursor's existing
+          // anchor).
+          if (typeof document === "undefined") break;
+          const id = intent.annotationId;
+          requestAnimationFrame(() => {
+            annotationRefs.current
+              .get(id)
+              ?.scrollIntoView({ behavior: "instant", block: "center" });
+          });
           break;
         }
       }
@@ -446,17 +510,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return () => window.removeEventListener("popstate", onPop);
   }, [store, loadBundle]);
 
-  // Slice 2+ Tour-switch resets (folds, composer, selected file). The
-  // reducer's tour.switched branch owns the resets for slices it owns
-  // (picker, replyLock, layout, cursor, expansion); slots not yet in
-  // the reducer stay here until later slices migrate them.
+  // Tour-switch reset for sidebar selection. After PRD #234 slice 3
+  // (issue #238) the reducer's `tour.switched` branch owns every reset
+  // rule CONTEXT.md pins (picker, replyLock, cursor, expansion,
+  // composer, folds; layout preserved). `selectedFile` is the last
+  // surface-side `useState` (sidebar position, derivable from cursor,
+  // explicitly out of scope per PRD #234 / issue #238).
   useEffect(() => {
     if (!tourId) return;
     setSelectedFile(null);
-    setCollapsedOverrides({});
-    setCollapsedFolders(new Set());
-    setComposerTarget(null);
-    setComposerError(null);
   }, [tourId]);
 
   useEffect(() => {
@@ -600,26 +662,28 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (filePath: string) => {
       const ancestors = revealAncestors(tree, filePath);
       if (ancestors.length === 0) return;
-      setCollapsedFolders((prev) => {
-        let changed = false;
-        const next = new Set(prev);
-        for (const a of ancestors) {
-          if (next.delete(a)) changed = true;
+      // Dispatch `folds.toggleFolder` for ancestors that ARE in the set.
+      // The reducer's toggleFolder branch is presence-aware (delete on
+      // present, add on absent); only-collapsed ancestors are toggled
+      // off so already-open folders stay open. Reads the live store
+      // snapshot at call time — safe to do per-iteration because the
+      // ancestor list is stable and the snapshot is captured up-front.
+      const current = store.getState().collapsedFolders;
+      for (const a of ancestors) {
+        if (current.has(a)) {
+          store.dispatch({ type: "folds.toggleFolder", path: a });
         }
-        return changed ? next : prev;
-      });
+      }
     },
-    [tree],
+    [tree, store],
   );
 
-  const toggleFolder = useCallback((folderPath: string) => {
-    setCollapsedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(folderPath)) next.delete(folderPath);
-      else next.add(folderPath);
-      return next;
-    });
-  }, []);
+  const toggleFolder = useCallback(
+    (folderPath: string) => {
+      store.dispatch({ type: "folds.toggleFolder", path: folderPath });
+    },
+    [store],
+  );
 
   // Initial-anchor scroll (URL `?ann=` restore / default first annotation).
   // Post-cutover the row renderer paints synchronously so a single
@@ -649,9 +713,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const ann = topLevel.find((a) => a.id === target.annotationId);
       if (!ann) return;
       setSelectedFile(ann.file);
-      setCollapsedOverrides((prev) =>
-        prev[ann.file] === false ? prev : { ...prev, [ann.file]: false },
-      );
+      store.dispatch({
+        type: "folds.setOverride",
+        file: ann.file,
+        value: false,
+      });
       revealFileAncestors(ann.file);
       store.dispatch({ type: "cursor.set", anchor: target });
     },
@@ -761,9 +827,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const toggleCollapsed = useCallback(
     (fileName: string) => {
-      setCollapsedOverrides((prev) => ({ ...prev, [fileName]: !isCollapsed(fileName) }));
+      store.dispatch({
+        type: "folds.setOverride",
+        file: fileName,
+        value: !isCollapsed(fileName),
+      });
     },
-    [isCollapsed],
+    [isCollapsed, store],
   );
 
   // Look up a file's outer wrapper by `data-file` attribute. Used for
@@ -780,9 +850,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // closure can't see post-dispatch state — but it can read the values
   // from the most recent commit via this ref.
   intentInputsRef.current = {
-    collapsedOverrides,
     setSelectedFile,
-    setCollapsedOverrides,
     revealFileAncestors,
     findFileBlock,
   };
@@ -1125,7 +1193,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           openPicker();
           return;
         case "toggle-layout":
-          setLayout((prev) => (prev === "split" ? "unified" : "split"));
+          store.dispatch({
+            type: "layout.set",
+            layout: store.getState().layout === "split" ? "unified" : "split",
+          });
           return;
         case "nav-next-annotation":
           navigateBy(1);
@@ -1176,13 +1247,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Interactive rows (gap-row family, collapsed-file) are not
           // annotatable — `a` is a silent no-op (issue #154, PRD #107 US 14).
           if (c.interactive) return;
-          setComposerError(null);
-          setComposerTarget({
-            kind: "top-level",
-            file: c.file,
-            side: c.side,
-            line_start: c.lineNumber,
-            line_end: c.lineNumber,
+          store.dispatch({
+            type: "composer.open",
+            target: {
+              kind: "top-level",
+              file: c.file,
+              side: c.side,
+              line_start: c.lineNumber,
+              line_end: c.lineNumber,
+            },
           });
           return;
         }
@@ -1198,8 +1271,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (!cardAnn) return;
           const latestId = latestAnnotationId(cardAnn, repliesByRoot.get(cardId) ?? []);
           recallCardThen(cardId, () => {
-            setComposerError(null);
-            setComposerTarget({ kind: "reply", replies_to: latestId });
+            store.dispatch({
+              type: "composer.open",
+              target: { kind: "reply", replies_to: latestId },
+            });
           });
           return;
         }
@@ -1264,9 +1339,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   ]);
 
   const closeComposer = useCallback(() => {
-    setComposerTarget(null);
-    setComposerError(null);
-  }, []);
+    store.dispatch({ type: "composer.close" });
+  }, [store]);
 
   // Row clicks seed the Line cursor only (issue #137 / PRD #136). The
   // composer is reached via the keyboard `a` shortcut.
@@ -1297,10 +1371,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [annotations, store],
   );
 
-  const openReplyComposer = useCallback((replies_to: string) => {
-    setComposerError(null);
-    setComposerTarget({ kind: "reply", replies_to });
-  }, []);
+  const openReplyComposer = useCallback(
+    (replies_to: string) => {
+      store.dispatch({
+        type: "composer.open",
+        target: { kind: "reply", replies_to },
+      });
+    },
+    [store],
+  );
 
   // Explicit reply-agent dispatch (issue #184, ADR 0021). Fired by the
   // `Send to {agent}` button below each human Annotation card. Hits the
@@ -1324,39 +1403,36 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [tourId],
   );
 
-  const submitComposer = useCallback(
-    async (body: string) => {
-      if (!tourId || !composerTarget) return;
-      const trimmed = body.trim();
-      if (trimmed.length === 0) return;
-      const payload: PostBody =
-        composerTarget.kind === "reply"
-          ? { body: trimmed, replies_to: composerTarget.replies_to }
-          : {
-              body: trimmed,
-              file: composerTarget.file,
-              side: composerTarget.side,
-              line_start: composerTarget.line_start,
-              line_end: composerTarget.line_end,
-            };
-      try {
-        const res = await fetch(`/api/tours/${tourId}/annotations`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const data = (await res.json().catch(() => ({}))) as { error?: string };
-          setComposerError(data.error ?? `HTTP ${res.status}`);
-          return;
-        }
-        closeComposer();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setComposerError(message);
-      }
+  // Submit-or-retry dispatcher (PRD #234 slice 3, issue #238). Reads the
+  // current composer kind and routes to `composer.submit` (open) or
+  // `composer.retry` (errored); both transitions land on `submitting` and
+  // emit the `submitAnnotation` intent which the intent listener realises
+  // as an HTTP POST. The body-trimming gate stays in the UI so we don't
+  // round-trip whitespace-only drafts; the reducer doesn't validate body
+  // shape.
+  const submitComposer = useCallback(() => {
+    const c = store.getState().composer;
+    if (c.kind !== "open" && c.kind !== "errored") return;
+    if (c.body.trim().length === 0) return;
+    store.dispatch(
+      c.kind === "open"
+        ? { type: "composer.submit" }
+        : { type: "composer.retry" },
+    );
+  }, [store]);
+
+  const onComposerBodyChange = useCallback(
+    (body: string) => {
+      store.dispatch({ type: "composer.setBody", body });
     },
-    [tourId, composerTarget, closeComposer],
+    [store],
+  );
+
+  const setLayoutChoice = useCallback(
+    (next: Layout) => {
+      store.dispatch({ type: "layout.set", layout: next });
+    },
+    [store],
   );
 
   if (!bundleLoaded && !tourList) {
@@ -1423,7 +1499,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             additions={tourStats.additions}
             deletions={tourStats.deletions}
           />
-          <LayoutToggle layout={layout} onChange={setLayout} />
+          <LayoutToggle layout={layout} onChange={setLayoutChoice} />
         </div>
         <TourHeaderPath path={selectedFile} />
       </div>
@@ -1459,7 +1535,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               cursorCardId={cursorCardId}
               registerAnnotationRef={registerAnnotationRef}
               composerTarget={composerTarget}
+              composerBody={composerBody}
               composerError={composerError}
+              onComposerBodyChange={onComposerBodyChange}
               onOpenReply={openReplyComposer}
               onSubmit={submitComposer}
               onCancel={closeComposer}
@@ -1488,7 +1566,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                   <Composer
                     placeholder="Leave a comment"
                     submitLabel="Comment"
+                    body={composerBody}
                     error={composerError}
+                    onBodyChange={onComposerBodyChange}
                     onSubmit={submitComposer}
                     onCancel={closeComposer}
                   />
@@ -1509,7 +1589,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                     onCardClick={setCursorFromCardClick}
                     annotationProps={{
                       registerRef: registerAnnotationRef,
+                      composerBody,
                       composerError,
+                      onComposerBodyChange,
                       replyTargetId,
                       onOpenReply: openReplyComposer,
                       onSubmitReply: submitComposer,
@@ -1691,7 +1773,9 @@ interface AnnotationCardProps {
   navIndex: number | null;
   navTotal: number;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
+  composerBody?: string;
   composerError?: string | null;
+  onComposerBodyChange?: (body: string) => void;
   // The annotation id (top-level or inline Reply) currently targeted by
   // the reply composer; null/undefined → composer not open in this card.
   // When set, the composer renders below the matching annotation's
@@ -1703,7 +1787,7 @@ interface AnnotationCardProps {
   // the function directly; the action row computes the right id at
   // click time.
   onOpenReply?: (annotationId: string) => void;
-  onSubmitReply?: (body: string) => void;
+  onSubmitReply?: () => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181).
@@ -1765,7 +1849,9 @@ export function AnnotationCard({
   navIndex,
   navTotal,
   registerRef,
+  composerBody = "",
   composerError,
+  onComposerBodyChange,
   replyTargetId,
   onOpenReply,
   onSubmitReply,
@@ -1860,8 +1946,10 @@ export function AnnotationCard({
                   <Composer
                     placeholder="Reply…"
                     submitLabel="Reply"
+                    body={composerBody}
                     error={composerError ?? null}
-                    onSubmit={(body) => onSubmitReply?.(body)}
+                    onBodyChange={(b) => onComposerBodyChange?.(b)}
+                    onSubmit={() => onSubmitReply?.()}
                     onCancel={() => onCancelReply?.()}
                   />
                 </div>
@@ -1876,8 +1964,10 @@ export function AnnotationCard({
           <Composer
             placeholder="Reply…"
             submitLabel="Reply"
+            body={composerBody}
             error={composerError ?? null}
-            onSubmit={(body) => onSubmitReply?.(body)}
+            onBodyChange={(b) => onComposerBodyChange?.(b)}
+            onSubmit={() => onSubmitReply?.()}
             onCancel={() => onCancelReply?.()}
           />
         </div>
@@ -1922,31 +2012,40 @@ export function AnnotationCard({
 interface ComposerProps {
   placeholder: string;
   submitLabel: string;
+  body: string;
   error: string | null;
-  onSubmit: (body: string) => void;
+  onBodyChange: (body: string) => void;
+  onSubmit: () => void;
   onCancel: () => void;
 }
 
+// Controlled textarea reading `body` from the Tour-session store's
+// composer slice (PRD #234 slice 3, issue #238). The local
+// `useState<string>("")` is gone: every keystroke dispatches
+// `composer.setBody` so the watcher-reload-doesn't-eat-the-draft
+// invariant is a property of the reducer, not a React-reconciliation
+// accident.
 function Composer({
   placeholder,
   submitLabel,
+  body,
   error,
+  onBodyChange,
   onSubmit,
   onCancel,
 }: ComposerProps): React.JSX.Element {
-  const [value, setValue] = useState<string>("");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     taRef.current?.focus();
   }, []);
 
-  const trimmed = value.trim();
+  const trimmed = body.trim();
   const canSubmit = trimmed.length > 0;
 
   const submit = () => {
     if (!canSubmit) return;
-    onSubmit(value);
+    onSubmit();
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1970,8 +2069,8 @@ function Composer({
       <textarea
         ref={taRef}
         className="composer-textarea"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        value={body}
+        onChange={(e) => onBodyChange(e.target.value)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         rows={3}
@@ -2006,9 +2105,11 @@ interface AnnotationListProps {
   cursorCardId: string | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
+  composerBody: string;
   composerError: string | null;
+  onComposerBodyChange: (body: string) => void;
   onOpenReply: (replies_to: string) => void;
-  onSubmit: (body: string) => void;
+  onSubmit: () => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
   replyAgent?: string | null;
@@ -2024,7 +2125,9 @@ function AnnotationList({
   cursorCardId,
   registerAnnotationRef,
   composerTarget,
+  composerBody,
   composerError,
+  onComposerBodyChange,
   onOpenReply,
   onSubmit,
   onCancel,
@@ -2054,7 +2157,9 @@ function AnnotationList({
             navTotal={navTotal}
             registerRef={registerAnnotationRef}
             replyTargetId={replyTargetId}
+            composerBody={replyTargetId !== null ? composerBody : ""}
             composerError={replyTargetId !== null ? composerError : null}
+            onComposerBodyChange={onComposerBodyChange}
             onOpenReply={onOpenReply}
             onSubmitReply={onSubmit}
             onCancelReply={onCancel}
