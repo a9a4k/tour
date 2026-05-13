@@ -128,7 +128,7 @@ function plannerToRecords(
         row.type === "change" ? "change-addition" : row.type;
       if (layout === "unified") {
         const usesLeft =
-          row.type === "deletion" || row.type === "change-deletion" ||
+          row.type === "deletion" ||
           (row.type === "change" && row.rightLineNumber === null);
         out.push({
           kind: "diff",
@@ -376,7 +376,7 @@ function extractPierreSplit(
       out.push({
         kind: "diff",
         file,
-        type: r.type === "context" ? "context" : r.type,
+        type: r.type,
         leftLine: l.line,
         rightLine: r.line,
         leftText: l.text,
@@ -677,7 +677,6 @@ describe("parity-render harness — Pierre vs Tour-owned <FileBlock>", () => {
             fixture.expansion !== undefined ||
             hasFullContents
           ) {
-            void pierreHtml;
             continue;
           }
           const projectedNew = projectToPierreVisible(actualNew, layout);
