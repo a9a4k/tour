@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   countDiffStats,
   proportionSegments,
+  tourDiffStats,
 } from "../../src/web/client/diff-stats.js";
 import type { PlannedRow } from "../../src/core/diff-rows.js";
 
@@ -192,5 +193,88 @@ describe("proportionSegments (#228)", () => {
       expect(seg.neutrals).toBeGreaterThanOrEqual(0);
       expect(seg.greens + seg.reds + seg.neutrals).toBe(5);
     }
+  });
+});
+
+describe("tourDiffStats (#233)", () => {
+  it("returns 0/0 for an empty bundle (no files)", () => {
+    expect(tourDiffStats([])).toEqual({ additions: 0, deletions: 0 });
+  });
+
+  it("returns 0/0 when every file has no diff rows", () => {
+    const files = [{ rows: [] as PlannedRow[] }, { rows: [] as PlannedRow[] }];
+    expect(tourDiffStats(files)).toEqual({ additions: 0, deletions: 0 });
+  });
+
+  it("sums the additions and deletions of a single file", () => {
+    const files = [
+      {
+        rows: [
+          diffRow("addition"),
+          diffRow("addition"),
+          diffRow("deletion"),
+        ],
+      },
+    ];
+    expect(tourDiffStats(files)).toEqual({ additions: 2, deletions: 1 });
+  });
+
+  it("sums across multiple files", () => {
+    const files = [
+      { rows: [diffRow("addition"), diffRow("addition")] },
+      { rows: [diffRow("deletion")] },
+      { rows: [diffRow("addition"), diffRow("deletion"), diffRow("deletion")] },
+    ];
+    expect(tourDiffStats(files)).toEqual({ additions: 3, deletions: 3 });
+  });
+
+  it("inherits the per-file change-row shape inspection (new-file / deleted-file / paired)", () => {
+    const newFileRows: PlannedRow[] = [
+      { kind: "diff-row", type: "change", leftLineNumber: null, rightLineNumber: 1, leftText: "", rightText: "x" },
+      { kind: "diff-row", type: "change", leftLineNumber: null, rightLineNumber: 2, leftText: "", rightText: "y" },
+    ];
+    const deletedFileRows: PlannedRow[] = [
+      { kind: "diff-row", type: "change", leftLineNumber: 1, rightLineNumber: null, leftText: "a", rightText: "" },
+    ];
+    const modifiedFileRows: PlannedRow[] = [
+      { kind: "diff-row", type: "change", leftLineNumber: 1, rightLineNumber: 1, leftText: "a", rightText: "b" },
+      diffRow("addition"),
+    ];
+    const files = [
+      { rows: newFileRows },
+      { rows: deletedFileRows },
+      { rows: modifiedFileRows },
+    ];
+    // new-file: +2 / -0; deleted-file: +0 / -1; modified-file: +1 (paired) + +1 (addition) / -1 (paired)
+    expect(tourDiffStats(files)).toEqual({ additions: 4, deletions: 2 });
+  });
+
+  it("excludes non-diff-row kinds (hunk-header, interactive, annotation) from both totals", () => {
+    const files = [
+      {
+        rows: [
+          { kind: "hunk-header", header: "@@ -1 +1 @@", hunkIndex: 0, gapAbove: 0 } as PlannedRow,
+          { kind: "interactive", subKind: "boundary-bottom", boundaryRef: "bottom" } as PlannedRow,
+          diffRow("addition"),
+        ],
+      },
+    ];
+    expect(tourDiffStats(files)).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("counts a pure-addition bundle (e.g. new-feature PR) toward additions only", () => {
+    const files = [
+      { rows: [diffRow("addition"), diffRow("addition"), diffRow("addition")] },
+      { rows: [diffRow("addition")] },
+    ];
+    expect(tourDiffStats(files)).toEqual({ additions: 4, deletions: 0 });
+  });
+
+  it("counts a pure-deletion bundle (e.g. cleanup PR) toward deletions only", () => {
+    const files = [
+      { rows: [diffRow("deletion"), diffRow("deletion")] },
+      { rows: [diffRow("deletion"), diffRow("deletion"), diffRow("deletion")] },
+    ];
+    expect(tourDiffStats(files)).toEqual({ additions: 0, deletions: 5 });
   });
 });

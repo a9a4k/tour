@@ -55,6 +55,7 @@ import {
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
+import { tourDiffStats } from "./diff-stats.js";
 import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
 import { decideReanchor } from "./re-anchor-policy.js";
@@ -853,6 +854,28 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     );
   }, [parsedFiles, plannedRowsByFile, isCollapsed]);
 
+  // Tour-level (PR-equivalent) `+N -M` totals for the title-bar indicator
+  // (issue #233 / PRD #212). Computed once per bundle by planning each
+  // file's rows with stable args (split layout, empty expansion, no
+  // annotations, no classifier-collapse) so the count reflects the FULL
+  // diff regardless of which files are currently collapsed in the UI or
+  // classifier-flagged for collapse. Cursor moves, layout toggles,
+  // expansion changes, and annotation navigation do NOT re-walk — none of
+  // them touch `parsedFiles` / `modelFilesByName`.
+  const tourStats = useMemo(() => {
+    const files = parsedFiles.map((f) => {
+      const bf = modelFilesByName.get(f.name);
+      const rows = planRows(f, [], "split", {
+        oldContent: bf?.oldContent,
+        newContent: bf?.newContent,
+        expansion: emptyExpansion(),
+        classifierCollapsed: false,
+      });
+      return { rows };
+    });
+    return tourDiffStats(files);
+  }, [parsedFiles, modelFilesByName]);
+
   // Validate-in-place when the row sequence shifts under the cursor's
   // feet on local-state changes the reducer can't see (fold toggle,
   // layout switch). Bundle.refreshed is handled separately via the
@@ -1395,6 +1418,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
           />
+          <TourStatsIndicator
+            additions={tourStats.additions}
+            deletions={tourStats.deletions}
+          />
           <LayoutToggle layout={layout} onChange={setLayout} />
         </div>
         <TourHeaderPath path={selectedFile} />
@@ -1527,6 +1554,33 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 export function TourHeaderPath({ path }: { path: string | null }): React.JSX.Element | null {
   if (!path) return null;
   return <span className="tour-header-path">{`· ${path}`}</span>;
+}
+
+// Tour-level (PR-equivalent) `+N -M` diff-stats indicator for the title bar
+// (issue #233 / PRD #212). Display-only — no click handler, no nav role.
+// Sides are independently omitted when their count is zero, so pure-addition
+// / pure-deletion tours render cleanly (`+12` only, not `+12 -0`). The
+// indicator renders nothing when both counts are zero — a tour with no diff
+// content is degenerate, and a 0/0 placeholder would be visual noise.
+// Exported so unit tests can mount the slot in isolation.
+export function TourStatsIndicator({
+  additions,
+  deletions,
+}: {
+  additions: number;
+  deletions: number;
+}): React.JSX.Element | null {
+  if (additions <= 0 && deletions <= 0) return null;
+  return (
+    <span className="tour-stats" aria-label="Tour diff stats">
+      {additions > 0 ? (
+        <span className="tour-stats-count added">{`+${additions}`}</span>
+      ) : null}
+      {deletions > 0 ? (
+        <span className="tour-stats-count deleted">{`-${deletions}`}</span>
+      ) : null}
+    </span>
+  );
 }
 
 interface LayoutToggleProps {

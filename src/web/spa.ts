@@ -163,6 +163,17 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     margin-left: auto;
     flex-shrink: 0;
   }
+  .tour-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .tour-stats-count.added { color: var(--fg-success); }
+  .tour-stats-count.deleted { color: var(--fg-danger); }
   .picker-button {
     display: flex;
     align-items: center;
