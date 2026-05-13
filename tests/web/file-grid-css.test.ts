@@ -275,10 +275,14 @@ describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
     );
   });
 
-  it("paints the context segment in the default foreground color", () => {
+  it("paints the context segment in the muted foreground color (matches range; GitHub continuous-grey treatment)", () => {
+    // GitHub renders the entire hunk-header line (range + function context)
+    // in fg.muted as one continuous grey color. Tour #223 originally painted
+    // the context in fg.default (brighter); empirical DOM inspection of a
+    // live PR cell shows that's wrong — both halves should be muted.
     expect(FILE_GRID_CSS).toContain(".tour-hunk-header-context");
     expect(FILE_GRID_CSS).toMatch(
-      /\.tour-hunk-header-context[^{]*\{[^}]*color:\s*#f0f6fc/i,
+      /\.tour-hunk-header-context[^{]*\{[^}]*color:\s*#9198a1/i,
     );
   });
 });

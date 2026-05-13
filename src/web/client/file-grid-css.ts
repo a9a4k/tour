@@ -433,7 +433,11 @@ export const FILE_GRID_CSS = `
   }
 
   .tour-hunk-header-context {
-    color: ${theme.fg.default};
+    /* Both range and context render in fg.muted to match GitHub's continuous-
+       grey treatment. The hunk header is metadata, not code — muting the
+       whole banner signals "you can skip reading this carefully" and keeps
+       reviewer attention on the diff rows below. */
+    color: ${theme.fg.muted};
     margin-left: 1ch;
   }
 
