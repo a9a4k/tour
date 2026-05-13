@@ -13,11 +13,10 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { GAP_TWO_ROW_THRESHOLD, planRows } from "../core/diff-rows.js";
+import { planRows } from "../core/diff-rows.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
-  getBoundary,
   seedFromOrphans,
   type OrphanWindow,
 } from "../core/expansion-state.js";
@@ -244,7 +243,15 @@ function App(props: AppProps) {
   // rendered shape. Eight previously-duplicated `useMemo` derivations +
   // seven previously-inline cursor/nav predicates all flow from these
   // five namespaces. The `live*` projection prefix is gone.
-  const view = useTourSessionView(store, bundle);
+  //
+  // PRD #270 / issue #273: the TUI's hunk-header banner is display-only;
+  // the cursor walks past it via the directional `expand-up` /
+  // `expand-down` / `expand-all` rows the planner emits adjacent to the
+  // banner. `hunkHeaderCursorStop: false` suppresses the flat-rows
+  // promotion that would otherwise make `j`/`k` land on the banner.
+  const view = useTourSessionView(store, bundle, {
+    hunkHeaderCursorStop: false,
+  });
   // NavBase lives on both branches (issue #246); ok-only slices keep
   // their nullable destructure so hooks below preserve optional-chaining
   // fallbacks. Cursor / nav predicates ride on the view (PRD #242).
@@ -1028,37 +1035,15 @@ function App(props: AppProps) {
   // delegate to the same pure helpers in `core/expansion-state.ts` the
   // surface used to call directly.
   //
-  // PRD #151: mid-file hunk-header Enter is direction-aware — large gaps
-  // (remaining > 2N = 40) expand the bottom of the gap (lines appear
-  // above the @@); small gaps (≤ 40) expand symmetrically. PRD #270 /
-  // issue #271 introduces directional `expand-up` / `expand-down` /
-  // `expand-all` rows that route to the same boundary key with their
-  // labelled direction; this helper still handles the legacy
-  // hunk-header banner click (Slice 1 keeps HunkHeaderBanner
-  // interactive as a fallback).
-  const expandHunkBoundary = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
-    if (typeof boundaryRef !== "number") return;
-    const gapSize = hunkSeparatorGapSize(file, boundaryRef);
-    if (gapSize === 0) return;
-    const cur = getBoundary(expansion, { file, ref: boundaryRef });
-    const remaining = gapSize - cur.up - cur.down;
-    if (remaining <= 0) return;
-    const direction = remaining > GAP_TWO_ROW_THRESHOLD ? "down" : "both";
-    store.dispatch({
-      type: "expansion.expand",
-      file,
-      ref: boundaryRef,
-      direction,
-      mode: all ? "all" : "symmetric-20",
-      gapSize,
-    });
-  };
-  // PRD #270 / issue #271: each directional row dispatches the
-  // direction named by its subkind. `expand-all` uses `direction:
-  // "both"` with `mode: "all"` so the entire remaining gap reveals
-  // in one Enter; `expand-up` / `expand-down` use the symmetric-20
-  // ladder (or `all` when Shift modifier is held — `all` arg from
-  // the keymap router).
+  // PRD #270 / issue #273 (TUI Slice 3): the hunk-header banner is
+  // display-only on the TUI surface; the cursor never lands on it.
+  // The directional `expand-up` / `expand-down` / `expand-all` rows
+  // the planner emits adjacent to the banner carry the affordance +
+  // Enter dispatch. Each directional row routes to the boundary key
+  // its `boundaryRef` names (`"top"` / number / `"bottom"`) with the
+  // direction labelled by its subkind. `expand-all` reveals the
+  // entire remaining gap in one Enter; `expand-up` / `expand-down`
+  // use the symmetric-20 ladder (or `"all"` when Shift is held).
   const expandDirectional = (
     file: string,
     boundaryRef: BoundaryRef,
@@ -1088,26 +1073,6 @@ function App(props: AppProps) {
       gapSize,
     });
   };
-  const expandTopBoundary = (file: string, all: boolean) => {
-    const gapSize = boundaryTopGapSize(file);
-    if (gapSize === 0) return;
-    store.dispatch({
-      type: "expansion.expandTop",
-      file,
-      mode: all ? "all" : "symmetric-20",
-      gapSize,
-    });
-  };
-  const expandBottomBoundary = (file: string, all: boolean) => {
-    const gapSize = boundaryBottomGapSize(file);
-    if (gapSize === 0) return;
-    store.dispatch({
-      type: "expansion.expandBottom",
-      file,
-      mode: all ? "all" : "symmetric-20",
-      gapSize,
-    });
-  };
   // Enter on a synthetic CollapsedFileRow flips fileExpanded → planner
   // emits the file's normal diff body next render (PRD #108 issue #113).
   // One-way; re-collapse goes through the parallel `c` toggle.
@@ -1123,9 +1088,6 @@ function App(props: AppProps) {
     const { subKind, boundaryRef } = cursor.interactive;
     const mode: "all" | "symmetric-20" = all ? "all" : "symmetric-20";
     switch (subKind) {
-      case "hunk-separator":
-        expandHunkBoundary(cursor.file, boundaryRef, all);
-        return;
       case "expand-up":
         expandDirectional(cursor.file, boundaryRef, "up", mode);
         return;
@@ -1138,15 +1100,14 @@ function App(props: AppProps) {
         // Shift-modifier `all` arg.
         expandDirectional(cursor.file, boundaryRef, "both", "all");
         return;
-      case "boundary-top":
-        expandTopBoundary(cursor.file, all);
-        return;
-      case "boundary-bottom":
-        expandBottomBoundary(cursor.file, all);
-        return;
       case "collapsed-file":
         expandCollapsedFile(cursor.file);
         return;
+      // `hunk-separator` / `boundary-top` / `boundary-bottom` are no
+      // longer reachable on the TUI: with `hunkHeaderCursorStop: false`
+      // the cursor never lands on a banner, and the planner emits
+      // file-bottom gaps via `expand-all` / `expand-down` instead of a
+      // lone `boundary-bottom` row (PRD #270, issue #271 + #273).
     }
   };
 

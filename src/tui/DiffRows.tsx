@@ -4,7 +4,6 @@ import type {
   InteractiveSubKind,
   BoundaryRef,
 } from "../core/diff-rows.js";
-import { GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
 import { AnnotationCard } from "./AnnotationCard.js";
 import { annotationCardSlot } from "./annotation-placement.js";
@@ -184,77 +183,19 @@ export function DiffRows({
       {rows.map((row, idx) => {
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
-          const interactive = row.gapAbove > 0;
-          if (!interactive) {
-            // Issue #264 — leading `…` in fg.accent at column 0,
-            // followed by the muted header text. Two text elements in
-            // a flex-row box so the glyph keeps its accent color while
-            // the header text stays muted (GitHub-equivalent grey).
-            return (
-              <box key={key} flexDirection="row" width="100%">
-                <text fg={theme.fg.accent}>{HUNK_HEADER_GLYPH}</text>
-                <text fg={theme.fg.muted}>{` ${row.header}`}</text>
-              </box>
-            );
-          }
-          // Promoted to first-class interactive row (PRD #151, ADR 0018).
-          // Direction glyph per D1 (row position == end of gap):
-          //   hunkIndex===0 → `↑` (file-top, lines reveal toward line 1)
-          //   gapAbove > 2N → `↓` (mid-file large, paired with the directional
-          //                       `expand-up` / `expand-down` rows above —
-          //                       PRD #270 / issue #271)
-          //   else          → `↕` (mid-file small, symmetric)
-          const isFirstHunk = row.hunkIndex === 0;
-          let glyph: "↑" | "↓" | "↕";
-          if (isFirstHunk) glyph = "↑";
-          else if (row.gapAbove > GAP_TWO_ROW_THRESHOLD) glyph = "↓";
-          else glyph = "↕";
-          const text = `${row.header} ${glyph} ··· ${row.gapAbove} hidden ···`;
-          const subKind: InteractiveSubKind = isFirstHunk
-            ? "boundary-top"
-            : "hunk-separator";
-          const boundaryRef: BoundaryRef = isFirstHunk ? "top" : row.hunkIndex;
-          const cursorActive =
-            rowCursor != null &&
-            rowCursor.file === fileName &&
-            rowCursor.interactive != null &&
-            rowCursor.interactive.subKind === subKind &&
-            rowCursor.interactive.boundaryRef === boundaryRef;
-          const id = interactiveRowId(fileName, subKind, boundaryRef);
-          const onMouseDown = onInteractiveClick
-            ? () => onInteractiveClick(fileName, subKind, boundaryRef)
-            : undefined;
-          // Issue #264 — leading `…` in fg.accent at column 0, then the
-          // existing DiffLine pipeline. The glyph is a sibling of the
-          // DiffLine so it keeps the accent color while the row body
-          // stays muted; the DiffLine retains its full composition
-          // (cursor row-fill, mutedText, etc.) inside its flex-grown
-          // wrapper. INTERACTIVE_PAD_GUTTER stays as the gutter pad so
-          // the header text aligns with the line-number column on the
-          // rows below.
+          // PRD #270 / issue #273 — the hunk-header banner is a display-
+          // only metadata row. The cursor walks past it (flat-rows
+          // suppresses the cursor-stop promotion when the TUI requests
+          // `hunkHeaderCursorStop: false`); the directional `expand-up`
+          // / `expand-down` / `expand-all` rows the planner emits
+          // adjacent to the banner carry the affordance + Enter
+          // dispatch. The leading `…` glyph in `theme.fg.accent` stays
+          // (issue #264) as a low-key visual marker; the header text
+          // renders muted (GitHub-equivalent grey).
           return (
-            <box
-              key={key}
-              id={id}
-              width="100%"
-              flexDirection="row"
-              onMouseDown={onMouseDown}
-            >
+            <box key={key} flexDirection="row" width="100%">
               <text fg={theme.fg.accent}>{HUNK_HEADER_GLYPH}</text>
-              <box flexGrow={1}>
-                <DiffLine
-                  gutter={INTERACTIVE_PAD_GUTTER}
-                  text={text}
-                  gutterTinted={false}
-                  contentTinted={false}
-                  gutterAccent={false}
-                  cursorActive={cursorActive}
-                  filetype={filetype}
-                  syntaxStyle={syntaxStyle}
-                  mutedText
-                  width="100%"
-                />
-              </box>
+              <text fg={theme.fg.muted}>{` ${row.header}`}</text>
             </box>
           );
         }

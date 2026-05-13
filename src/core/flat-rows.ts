@@ -69,6 +69,16 @@ export interface CardFlatRow {
 
 export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 
+/** Options for `flatRows`. */
+export interface FlatRowsOptions {
+  /** Vestigial. PRD #270 Slices 2 & 3 (issues #272, #273) collapsed both
+   *  surfaces onto unconditional skip of `hunk-header` rows from the cursor
+   *  stream — the banner is display-only everywhere. The option is kept
+   *  for caller-side compatibility (TUI passes `false`); the value is now
+   *  ignored. */
+  hunkHeaderCursorStop?: boolean;
+}
+
 /**
  * Build a DiffFlatRow from `(file, leftLineNumber, rightLineNumber)`. Used
  * by `flatRows` to project the planner's `PlannedRow[]` into the cursor's
@@ -102,7 +112,11 @@ export function flatRows(
   files: DiffFile[],
   plannedRowsByFile: Map<string, PlannedRow[]>,
   isFileFolded: (name: string) => boolean,
+  options: FlatRowsOptions = {},
 ): FlatRow[] {
+  // `options.hunkHeaderCursorStop` is accepted but unused — PRD #270
+  // Slices 2 & 3 collapsed both surfaces onto unconditional skip.
+  void options;
   const out: FlatRow[] = [];
   for (const file of files) {
     if (isFileFolded(file.name)) continue;
@@ -123,12 +137,14 @@ export function flatRows(
         continue;
       }
       if (row.kind === "hunk-header") {
-        // PRD #270 Slice 2 / issue #272: hunk-header rows are
-        // display-only — the cursor no longer walks them. The
-        // directional expand affordance lives in the
+        // PRD #270 Slices 2 & 3 (issues #272, #273): hunk-header rows are
+        // display-only on both surfaces — the cursor no longer walks them.
+        // The directional expand affordance lives in the
         // `expand-up` / `expand-down` / `expand-all` interactive rows
         // emitted by `expandRowsForGap` (Slice 1). Skip the banner
-        // entirely from the cursor stream.
+        // entirely from the cursor stream regardless of the (now
+        // vestigial) `hunkHeaderCursorStop` option, which remains for
+        // caller-side compatibility.
         continue;
       }
       if (row.kind === "annotation") {

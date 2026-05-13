@@ -33,6 +33,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI: hunk-header banner adopts the directional `expand-up` /
+  `expand-down` / `expand-all` model (issue #273, PRD #270 Slice 3).**
+  Sibling change to #271 on the TUI surface. The TUI's hunk-header
+  banner becomes a display-only metadata row — no DiffLine pipeline,
+  no cursor-on-banner visual, no click handler — at every `gapAbove`.
+  The cursor walks past it via `j` / `k`; the directional rows the
+  planner emits adjacent to the banner are the only cursor-walkable
+  affordances. A new `hunkHeaderCursorStop?: boolean` option on
+  `flatRows()` (default `true`, preserves the web's Slice 1/2
+  transition shape) is threaded through `deriveTourSessionView` /
+  `useTourSessionView` so the TUI's view call passes
+  `hunkHeaderCursorStop: false`. With the option set, the flat-rows
+  builder skips the `hunk-header → boundary-top / hunk-separator`
+  promotion entirely. The TUI's `dispatchPrimaryAction` switch sheds
+  the now-unreachable `hunk-separator` / `boundary-top` /
+  `boundary-bottom` cases (and their orphan helpers
+  `expandHunkBoundary` / `expandTopBoundary` / `expandBottomBoundary`);
+  the `expand-up` / `expand-down` / `expand-all` cases route through
+  the existing `expandDirectional` helper. Directional row text
+  (`↑ Expand Up` / `↓ Expand Down` / `↕ Expand All N lines`) is
+  painted from the planner's `expandRowText`, so cross-surface glyph
+  consistency holds.
+
+  Issue: #273
+
 - **Web: GitHub-style directional + Expand-All buttons replace the
   legacy `gap-mid-top` row family (issue #271, PRD #270 Slice 1).**
   The planner's `InteractiveSubKind` vocabulary gains three variants —

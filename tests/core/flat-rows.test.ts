@@ -427,6 +427,74 @@ describe("flatRows hunk-header skip (PRD #270 Slice 2 / issue #272)", () => {
   });
 });
 
+// PRD #270 / issue #273 (TUI Slice 3). The TUI surface treats the
+// hunk-header banner as display-only; the directional `expand-up` /
+// `expand-down` / `expand-all` rows the planner emits adjacent to the
+// banner are the only cursor-walkable affordances around it. With
+// Slice 2 (issue #272) already landed, the web surface skips
+// hunk-headers unconditionally too; the `hunkHeaderCursorStop` option
+// is vestigial and ignored.
+describe("flatRows hunkHeaderCursorStop option (PRD #270 / issue #273)", () => {
+  it("default: skips a gapAbove > 0 hunk-header (PRD #270 Slices 2 & 3)", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "hunk-header", header: "@@ -10,3 +10,3 @@", hunkIndex: 3, gapAbove: 12 },
+    ];
+    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
+    expect(flat.length).toBe(0);
+  });
+
+  it("hunkHeaderCursorStop: false suppresses the gapAbove > 0 hunk-header promotion", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "hunk-header", header: "@@ -10,3 +10,3 @@", hunkIndex: 3, gapAbove: 12 },
+    ];
+    const flat = flatRows(
+      [f],
+      new Map([["x.txt", rows]]),
+      () => false,
+      { hunkHeaderCursorStop: false },
+    );
+    expect(flat.length).toBe(0);
+  });
+
+  it("hunkHeaderCursorStop: false also suppresses first-hunk boundary-top promotion", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "hunk-header", header: "@@ -5,3 +5,3 @@", hunkIndex: 0, gapAbove: 4 },
+    ];
+    const flat = flatRows(
+      [f],
+      new Map([["x.txt", rows]]),
+      () => false,
+      { hunkHeaderCursorStop: false },
+    );
+    expect(flat.length).toBe(0);
+  });
+
+  it("hunkHeaderCursorStop: false leaves directional expand rows untouched", () => {
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const rows: PlannedRow[] = [
+      { kind: "interactive", subKind: "expand-down", boundaryRef: 2 },
+      { kind: "hunk-header", header: "@@ -10,3 +10,3 @@", hunkIndex: 2, gapAbove: 80 },
+      { kind: "interactive", subKind: "expand-up", boundaryRef: 2 },
+    ];
+    const flat = flatRows(
+      [f],
+      new Map([["x.txt", rows]]),
+      () => false,
+      { hunkHeaderCursorStop: false },
+    );
+    // The hunk-header in the middle drops out; the two directional rows
+    // remain as cursor stops.
+    expect(flat.length).toBe(2);
+    if (flat[0].kind !== "interactive") throw new Error("narrow");
+    expect(flat[0].subKind).toBe("expand-down");
+    if (flat[1].kind !== "interactive") throw new Error("narrow");
+    expect(flat[1].subKind).toBe("expand-up");
+  });
+});
+
 // PRD #192 / ADR 0022: annotation cards are first-class cursor stops.
 // The flat-rows builder emits a CardFlatRow directly after the diff row
 // the annotation anchors to (matching the planner's interleave order).

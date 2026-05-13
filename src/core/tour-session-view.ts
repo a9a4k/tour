@@ -185,6 +185,7 @@ function deriveRowsSlice(
   bundle: OkBundle,
   state: TourSessionState,
   parsedFiles: ReadonlyArray<FileDiffMetadata>,
+  options: TourSessionViewOptions = {},
 ): RowsSlice {
   const filesByName = new Map<string, BundleFile>();
   for (const f of bundle.files) filesByName.set(f.name, f);
@@ -230,11 +231,14 @@ function deriveRowsSlice(
   // flatRows iterates the (sorted) parsed-file list and skips folded files;
   // it only needs `{name}` from each DiffFile-shaped entry. Mirror the
   // webapp's `parsedFiles.map(...)` adapter so both surfaces' slice-2/3
-  // migrations land on the same iteration order.
+  // migrations land on the same iteration order. The `hunkHeaderCursorStop`
+  // surface option (PRD #270, issue #273) is forwarded so the TUI walks
+  // past hunk-header rows while the web (Slice 1/2) still promotes them.
   const flatRowsList = flatRows(
     parsedFiles.map((f) => ({ name: f.name, type: "change", hunks: [] })),
     plannedRowsByFile,
     isFileFolded,
+    { hunkHeaderCursorStop: options.hunkHeaderCursorStop },
   );
 
   return {
@@ -263,6 +267,15 @@ function deriveCursorSlice(
   return { anchor, onCard, onInteractive, cardId, cardAnnotation, rowIdx };
 }
 
+/** Surface-specific knobs the view exposes to keep the projection pure
+ *  while letting each surface opt into its own row-stream / cursor
+ *  convention. The TUI Slice 3 (PRD #270, issue #273) uses
+ *  `hunkHeaderCursorStop: false` so the cursor walks past hunk-header
+ *  banners; the web keeps the default until Slice 2 (issue #272) lands. */
+export interface TourSessionViewOptions {
+  hunkHeaderCursorStop?: boolean;
+}
+
 /**
  * Pure projection from `(TourBundle, TourSessionState)` to the rendered
  * shape both surfaces consume (PRD #242, issue #243). Discriminated by
@@ -272,6 +285,7 @@ function deriveCursorSlice(
 export function deriveTourSessionView(
   bundle: TourBundle,
   state: TourSessionState,
+  options: TourSessionViewOptions = {},
 ): TourSessionView {
   const navBase = deriveNavBase(bundle.annotations);
   if (bundle.kind === "snapshot-lost") {
@@ -290,7 +304,7 @@ export function deriveTourSessionView(
     bundle.annotations,
   );
   const parsedFiles = sortFilesForStream(parseFileDiffMetadata(bundle.diff));
-  const rowsSlice = deriveRowsSlice(bundle, state, parsedFiles);
+  const rowsSlice = deriveRowsSlice(bundle, state, parsedFiles, options);
   const cursorSlice = deriveCursorSlice(
     state.cursor,
     rowsSlice.flatRowsList,
@@ -320,6 +334,7 @@ export function deriveTourSessionView(
 export function useTourSessionView(
   store: TourSessionStore,
   bundle: TourBundle,
+  options: TourSessionViewOptions = {},
 ): TourSessionView {
   const state = useTourSession(store);
   const annotations: ReadonlyArray<Annotation> = bundle.annotations;
@@ -359,9 +374,15 @@ export function useTourSessionView(
     [isOk, bundle],
   );
 
+  const hunkHeaderCursorStop = options.hunkHeaderCursorStop;
   const rowsSlice = useMemo<RowsSlice | null>(
-    () => (isOk ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles) : null),
-    // Only the three fields `deriveRowsSlice` reads — listing `state` here
+    () =>
+      isOk
+        ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles, {
+            hunkHeaderCursorStop,
+          })
+        : null,
+    // Only the four fields `deriveRowsSlice` reads — listing `state` here
     // would defeat granular invalidation (cursor moves would bust the
     // planner cache).
     [
@@ -371,6 +392,7 @@ export function useTourSessionView(
       state.collapsedOverrides,
       state.layout,
       parsedFiles,
+      hunkHeaderCursorStop,
     ],
   );
 
