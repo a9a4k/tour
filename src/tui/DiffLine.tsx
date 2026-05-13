@@ -179,7 +179,15 @@ export function DiffLine({
         // bg lives on the wrapper, not <code>: <code> only paints behind
         // characters, so a bg passed to it leaves the trailing whitespace
         // unhighlighted. Painting on the flex-grown box fills the full row.
-        <box flexGrow={1} minHeight={1} backgroundColor={contentBg}>
+        // alignSelf="stretch" escapes the parent's `alignItems="flex-start"`
+        // so the content cell extends to the row's full wrapped height when
+        // the SIBLING half drives the wrap — without it, the empty-side
+        // / context-paired / annotation-tinted content cell stayed 1 row
+        // tall, leaving the wrap-continuation rows unpainted and showing
+        // the terminal canvas as visible stripes through the empty-side
+        // inset fill, the annotation tint, and the diff +/- bg. Sibling
+        // fix to #267 (which stretched the wrapper one level up).
+        <box flexGrow={1} minHeight={1} alignSelf="stretch" backgroundColor={contentBg}>
           <code
             content={text}
             filetype={filetype}
@@ -191,8 +199,10 @@ export function DiffLine({
         </box>
       ) : (
         // Same reason as above: wrap so the bg fills the row, not just the
-        // glyph cells. Matters for the empty side of pure +/- rows in split.
-        <box flexGrow={1} minHeight={1} backgroundColor={contentBg}>
+        // glyph cells. `alignSelf="stretch"` for the same wrap-coverage
+        // reason; without it the empty side of pure +/- rows (#260 inset
+        // fill) showed a canvas-default stripe on wrap continuations.
+        <box flexGrow={1} minHeight={1} alignSelf="stretch" backgroundColor={contentBg}>
           <text wrapMode="word" fg={mutedText ? theme.fg.muted : undefined}>{text}</text>
         </box>
       )}
