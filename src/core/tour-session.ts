@@ -406,21 +406,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       return { state: { ...state, composer: { ...c, body: action.body } }, intents: NO_INTENTS };
     }
 
-    case "composer.submit": {
-      // Open → submitting; emit `submitAnnotation { tourId, target, body }`
-      // for the surface to realise via its `writeAnnotation` plumbing
-      // (in-process TUI / HTTP webapp). Same-state no-op on other kinds.
-      // Guard on currentTourId: composer is opened only while a tour is
-      // loaded (surface invariant), but a missing tourId would be a bug we
-      // surface as a no-op rather than emit an empty-string intent.
-      if (state.composer.kind !== "open") return { state, intents: NO_INTENTS };
-      if (state.currentTourId === null) return { state, intents: NO_INTENTS };
-      const { target, body } = state.composer;
-      return {
-        state: { ...state, composer: { kind: "submitting", target, body } },
-        intents: [{ type: "submitAnnotation", tourId: state.currentTourId, target, body }],
-      };
-    }
+    case "composer.submit":
+      return enterSubmitting(state, "open");
 
     case "composer.submitted": {
       // Submitting → closed; emit `scrollToAnnotation` so the freshly-
@@ -444,16 +431,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
     }
 
-    case "composer.retry": {
-      // Errored → submitting; re-emit the submit intent.
-      if (state.composer.kind !== "errored") return { state, intents: NO_INTENTS };
-      if (state.currentTourId === null) return { state, intents: NO_INTENTS };
-      const { target, body } = state.composer;
-      return {
-        state: { ...state, composer: { kind: "submitting", target, body } },
-        intents: [{ type: "submitAnnotation", tourId: state.currentTourId, target, body }],
-      };
-    }
+    case "composer.retry":
+      return enterSubmitting(state, "errored");
 
     case "composer.dismissError": {
       // Errored → open with body preserved (target stays put; the
@@ -494,9 +473,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     }
 
     case "folds.clearAll": {
-      // Used internally by `tour.switched`; exposed as an action so the
-      // reset can be unit-tested in isolation. Same-ref short-circuit when
-      // both slices are already empty.
+      // Mirrors the inline fold reset inside `tour.switched`; exposed as an
+      // action so surfaces (or tests) can clear both fold slices in one
+      // dispatch. Same-ref short-circuit when both slices are already empty.
       if (state.collapsedFolders.size === 0 && Object.keys(state.collapsedOverrides).length === 0) {
         return { state, intents: NO_INTENTS };
       }
@@ -522,6 +501,25 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 function withExpansion(state: TourSessionState, next: ExpansionState): ReduceResult {
   if (next === state.expansion) return { state, intents: NO_INTENTS };
   return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+}
+
+// Open → submitting and errored → submitting share their entire transition:
+// preserve target + body, move to submitting, emit `submitAnnotation` for the
+// surface to realise via its `writeAnnotation` plumbing (in-process TUI / HTTP
+// webapp). Guard on currentTourId: composer opens only while a tour is loaded
+// (surface invariant), but a missing tourId would be a bug we surface as a
+// no-op rather than emit an empty-string intent.
+function enterSubmitting(
+  state: TourSessionState,
+  from: "open" | "errored",
+): ReduceResult {
+  if (state.composer.kind !== from) return { state, intents: NO_INTENTS };
+  if (state.currentTourId === null) return { state, intents: NO_INTENTS };
+  const { target, body } = state.composer;
+  return {
+    state: { ...state, composer: { kind: "submitting", target, body } },
+    intents: [{ type: "submitAnnotation", tourId: state.currentTourId, target, body }],
+  };
 }
 
 // Shared `cursor.set` / `cursor.materialize` transition: writes the slice
