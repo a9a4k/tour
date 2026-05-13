@@ -183,11 +183,20 @@ export function setCursorSide(
  * Snap a cursor to the nearest still-valid anchor after the row sequence
  * changes (fold/unfold, layout toggle, bundle reload). For a RowAnchor:
  * preserved when its anchor still resolves; snapped to the file's first
- * row when only the specific row vanished; snapped to the next file in
- * stream order when the file is gone (with `files` provided); returns
- * null otherwise. For a CardAnchor: preserved when its annotationId is
- * still in the flat-row stream; returns null otherwise — cards have no
- * "snap to file's first row" fallback (PRD #192).
+ * row when the file still has any row but the specific row vanished;
+ * preserved when `files` is provided and the cursor's file is in `files`
+ * but has no rows in flatRows (the file is folded — uncollapsing restores
+ * the anchor); returns null otherwise. For a CardAnchor: preserved when
+ * its annotationId is still in the flat-row stream; returns null otherwise
+ * — cards have no "snap to file's first row" fallback (PRD #192).
+ *
+ * Reconciled with the webapp's prior `validateWebappCursor` (issue #232):
+ * the "preserve cursor when file is in the bundle but has no visible rows"
+ * branch was webapp-specific because the webapp's flatRows stream excludes
+ * collapsed files, conflating "file collapsed" with "file removed from
+ * bundle". Folding a file with the cursor on it no longer walks the cursor
+ * to the next file in stream order — it preserves the anchor invisibly so
+ * unfolding lands the cursor back in the same place.
  */
 export function validateCursor(
   cursor: Cursor | null,
@@ -195,22 +204,11 @@ export function validateCursor(
   files?: ReadonlyArray<{ name: string }>,
 ): Cursor | null {
   if (!cursor) return null;
-  if (flatRows.length === 0) return null;
   if (resolveCursorRowIdx(cursor, flatRows) !== -1) return cursor;
   if (cursor.kind === "card") return null;
   const fileRow = flatRows.find((r) => r.file === cursor.file);
   if (fileRow) return cursorFromRow(fileRow, cursor.preferredSide);
-  if (!files) return null;
-  const cursorFileIdx = files.findIndex((f) => f.name === cursor.file);
-  if (cursorFileIdx === -1) return null;
-  for (let i = cursorFileIdx + 1; i < files.length; i++) {
-    const r = flatRows.find((row) => row.file === files[i].name);
-    if (r) return cursorFromRow(r, cursor.preferredSide);
-  }
-  for (let i = cursorFileIdx - 1; i >= 0; i--) {
-    const r = flatRows.find((row) => row.file === files[i].name);
-    if (r) return cursorFromRow(r, cursor.preferredSide);
-  }
+  if (files && files.some((f) => f.name === cursor.file)) return cursor;
   return null;
 }
 

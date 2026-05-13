@@ -78,6 +78,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp thins cursor + expansion through the Tour-session store
+  (issue #232).** The webapp's local `useState<Cursor | null>` and
+  `useState<ExpansionState>` are gone; the store is authoritative for
+  both slices. Keymap (j/k/h/l/arrows/n/p), click handlers, popstate's
+  URL-`?ann=` mirror, and the SSE-driven bundle refresh all dispatch
+  `cursor.*` / `expansion.*` actions; the intent listener realizes
+  `revalidateCursor` (via `validateCursor` against the freshly-recomputed
+  flat-rows from the new bundle), `scrollCursorTarget` (RAF-deferred
+  scrollIntoView on the matching row cell or annotation card),
+  `revealSidebarFile` (sidebar selection + folder reveal + collapsed
+  override), and `mirrorAnnUrl` (`history.replaceState` so back/forward
+  steps over Tour switches, not over every keystroke). The cursor's
+  Tour-switch reset cascade moves into the reducer's `tour.switched`
+  branch; the surface no longer hand-rolls the reset. `core/cursor-
+  state.ts`'s `validateCursor` is the single home for snap-policy
+  truth — the prior `validateWebappCursor` helper in
+  `src/web/client/cursor-validation.ts` is deleted, and its
+  collapse-preservation discriminator is reconciled into the core
+  helper. Behavioural change: folding the cursor's file now preserves
+  the anchor instead of walking it to the next file in stream order;
+  uncollapsing restores the cursor in place. CONTEXT.md's Tour-session
+  entry drops the obsolete `expansion`-as-shadow-slice example.
+
+  Issue: #232 · PRD: #229
+
 - **Tour-session slice 2 foundation: cursor + expansion slices land in
   the reducer (issue #230).** `TourSessionState` gains `cursor: Cursor |
   null` and `expansion: ExpansionState` slices, alongside four new
