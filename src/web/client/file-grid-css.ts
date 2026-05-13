@@ -31,8 +31,8 @@ import { theme } from "../../core/theme.js";
  *     row's left edge — the same two-cue treatment `annotations.ts`
  *     paints on Pierre rows today (ADR 0008).
  *
- *   - `[data-line-type]` two-tone tinting (issue issue 221): the gutter +
- *     symbol cells carry a lighter range tint
+ *   - `[data-line-type]` two-tone tinting: the gutter + symbol cells
+ *     carry a lighter range tint
  *     (`bg.successRange.web` / `bg.dangerRange.web`); the code cell
  *     carries a darker fill (`bg.successCell.web` / `bg.dangerCell.web`).
  *     Context rows inherit the canvas background (no rule).
@@ -88,9 +88,9 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.muted};
   }
 
-  /* Two-tone line-type backgrounds (issue issue 221): the gutter + symbol cells
-     carry the lighter range tint; the code cell carries the darker fill.
-     Context rows inherit canvas (no rule). */
+  /* Two-tone line-type backgrounds: the gutter + symbol cells carry the
+     lighter range tint; the code cell carries the darker fill. Context
+     rows inherit canvas (no rule). */
   .tour-row[data-line-type="addition"] .tour-row-gutter,
   .tour-row[data-line-type="addition"] .tour-row-symbol,
   .tour-row[data-line-type="change-addition"] .tour-row-gutter,

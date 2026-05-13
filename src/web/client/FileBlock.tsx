@@ -104,7 +104,8 @@ export interface FileBlockProps {
 function cardGridColumn(layout: Layout, side: Side): string {
   if (layout === "unified") return "1 / -1";
   // Split layout has 6 tracks (gutter-L, symbol-L, code-L, gutter-R,
-  // symbol-R, code-R after #221's symbol-column addition).
+  // symbol-R, code-R), so deletion cards span cols 1-3 and addition
+  // cards span cols 4-end.
   return side === "deletions" ? "1 / 4" : "4 / -1";
 }
 
