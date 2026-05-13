@@ -66,7 +66,7 @@ export interface AnnotationProps {
   onSendToAgent?: (annotationId: string) => void;
   /** 1-based position in the top-level nav order, per annotation id.
    *  Pre-built by App so the lookup stays O(1). */
-  navIndexById?: Map<string, number>;
+  navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
 }
 
@@ -78,7 +78,7 @@ export interface RowClickAnchor {
 
 export interface FileBlockProps {
   file: BundleFile;
-  rows: PlannedRow[];
+  rows: ReadonlyArray<PlannedRow>;
   layout: Layout;
   cursor: Cursor | null;
   onDispatchExpand: (action: ExpandAction) => void;
@@ -507,7 +507,7 @@ function renderAnnotation(
   cursorCardId: string | null,
   onCardClick: (annotationId: string) => void,
   annotationProps: AnnotationProps | undefined,
-  navIndexById: Map<string, number> | undefined,
+  navIndexById: ReadonlyMap<string, number> | undefined,
   navTotal: number,
 ): React.ReactNode {
   const ann = row.annotation;

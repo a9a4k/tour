@@ -78,6 +78,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp migration to Tour-session view (issue #245, PRD #242).**
+  `web/client/App.tsx` now reads `const view = useTourSessionView(store,
+  bundle)` at root and consumes namespace slices (`view.bundle.*`,
+  `view.nav.*`, `view.rows.*`, `view.tree.*`, `view.cursor.*`) instead
+  of the parallel `useMemo` chain it used to maintain. The eight
+  derivation `useMemo`s (`topLevel`, `navIndexById`, `repliesByRoot`,
+  `tree`, `annotationCounts`, `visibleRows`, `plannedRowsByFile`,
+  `flatRowsList`), the inline cursor predicates (`currentIdx`,
+  `cursorCardId`, `cursorCardFile`), and the parallel projections
+  (`liveFiles`, `modelFilesByName`, `parsedFilesByName`) are gone.
+  `CursorKeymapContext` now consumes `view.cursor.onCard`; the
+  webapp's `s`-dispatch consumes `view.nav.sendTarget`, sharing the
+  latest-human-leaf rule with the TUI through `core/send-target.ts`.
+  The webapp adopts the view's `isFileFolded` rule (binary-only auto-
+  fold; classifier-collapsed non-binary files emit a synthetic
+  CollapsedFileRow via the planner), reconciling the prior
+  `defaultCollapsedFor` divergence. Behaviour is observationally
+  identical: keymaps fire the same actions, the planner emits rows
+  in the same order, snapshot-lost still renders the banner, and the
+  watcher-reload `revalidateCursor` intent re-derives the view inline
+  to validate the cursor against the fresh bundle before React
+  re-renders.
+
+  Issue: #245 · PRD: #242
+
 - **Tour-session view foundation: pure projection from `(bundle, state)`
   to the rendered shape both surfaces consume (issue #243, PRD #242).**
   New `core/tour-session-view.ts` exports a `TourSessionView`
