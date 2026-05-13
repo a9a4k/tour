@@ -78,6 +78,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp file header: GitHub-style per-file diff stats (5-segment
+  proportion bar + count, issue #228).** The per-file sticky header
+  gains a per-file stats indicator in the right region, sitting
+  between the (existing) classification reason tag and the (existing)
+  copy-path button. The indicator has two parts rendered left-to-
+  right: a 5-segment proportion bar (greens for additions, reds for
+  deletions, the muted border token for unfilled), then colored
+  `+N -M` count text (omitted per side when the count is zero).
+  Counts are derived from the planner's `PlannedRow[]` via two pure
+  helpers in a new `diff-stats` module — `countDiffStats` (addition /
+  deletion / paired-change tallying, non-diff-row kinds excluded) and
+  `proportionSegments` (rounding-corner-safe 5-segment mapping, floor
+  of 1 on a minority side that's non-zero, ceiling of 5 when the
+  other side is zero). Both wrapped in `useMemo` against `rows`.
+  Non-interactive — no click handler on the indicator, the only DOM-
+  level handler is on the surrounding header which routes to
+  `onToggleCollapse` exactly as before. Collapsed files still render
+  the stats (counts come from `rows`, not the rendered DOM). Bar
+  segments are 8px squares with a 2px gap; count text uses a
+  monospace stack with `font-variant-numeric: tabular-nums` so widths
+  don't jitter across files. Reuses pre-existing `fg.success`,
+  `fg.danger`, and `border.muted` tokens — no `theme.ts` change.
+
+  Issue: #228 · PRD: #212 · ADR: 0024
+
 - **Webapp split layout: neutral fill on the empty side of single-side
   diff rows (issue #227).** In split layout, pure-addition and
   pure-deletion rows now paint a subtle `theme.canvas.inset` fill on the

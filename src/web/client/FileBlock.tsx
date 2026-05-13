@@ -1,4 +1,4 @@
-import React, { memo, useRef } from "react";
+import React, { memo, useMemo, useRef } from "react";
 import type { BundleFile } from "../../core/tour-bundle.js";
 import type {
   PlannedRow,
@@ -21,6 +21,7 @@ import {
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { ChevronDownIcon, ChevronRightIcon, CopyIcon } from "./icons.js";
 import { fileIcon } from "./file-icon.js";
+import { countDiffStats, proportionSegments } from "./diff-stats.js";
 
 /**
  * Per-file React component for the web row renderer. Owns the file-level
@@ -193,6 +194,12 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
   const Chevron = isCollapsed ? ChevronRightIcon : ChevronDownIcon;
   const { Icon: StatusIcon, statusClass } = fileIcon(file.type);
 
+  const stats = useMemo(() => countDiffStats(rows), [rows]);
+  const segments = useMemo(
+    () => proportionSegments(stats.additions, stats.deletions),
+    [stats.additions, stats.deletions],
+  );
+
   const handleCopyPath = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     void navigator.clipboard?.writeText?.(file.name).catch(() => {});
@@ -209,6 +216,11 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
         </div>
         <div className="tour-file-header-right">
           {reason ? <span className="reason-tag">{reason}</span> : null}
+          <DiffStatsIndicator
+            additions={stats.additions}
+            deletions={stats.deletions}
+            segments={segments}
+          />
           <button
             type="button"
             className="tour-file-copy-button"
@@ -270,6 +282,53 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
         </div>
       )}
     </div>
+  );
+}
+
+function DiffStatsIndicator(props: {
+  additions: number;
+  deletions: number;
+  segments: { greens: number; reds: number; neutrals: number };
+}): React.JSX.Element {
+  const { additions, deletions, segments } = props;
+  const segmentNodes: React.ReactNode[] = [];
+  for (let i = 0; i < segments.greens; i += 1) {
+    segmentNodes.push(
+      <span
+        key={`g-${i}`}
+        className="tour-file-stats-segment added"
+        aria-hidden="true"
+      />,
+    );
+  }
+  for (let i = 0; i < segments.reds; i += 1) {
+    segmentNodes.push(
+      <span
+        key={`r-${i}`}
+        className="tour-file-stats-segment deleted"
+        aria-hidden="true"
+      />,
+    );
+  }
+  for (let i = 0; i < segments.neutrals; i += 1) {
+    segmentNodes.push(
+      <span
+        key={`n-${i}`}
+        className="tour-file-stats-segment neutral"
+        aria-hidden="true"
+      />,
+    );
+  }
+  return (
+    <span className="tour-file-stats">
+      <span className="tour-file-stats-bar">{segmentNodes}</span>
+      {additions > 0 ? (
+        <span className="tour-file-stats-count added">{`+${additions}`}</span>
+      ) : null}
+      {deletions > 0 ? (
+        <span className="tour-file-stats-count deleted">{`-${deletions}`}</span>
+      ) : null}
+    </span>
   );
 }
 

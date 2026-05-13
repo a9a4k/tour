@@ -313,6 +313,60 @@ describe("FILE_GRID_CSS — GitHub-style header chrome (#225)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — file diff-stats indicator (#228)", () => {
+  it("declares the stats container as an inline-flex row with tabular numerals", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats[^{}]*\{[^}]*display:\s*inline-flex/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats[^{}]*\{[^}]*font-variant-numeric:\s*tabular-nums/,
+    );
+  });
+
+  it("declares the bar container so the 5 segments share a flex row", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats-bar");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats-bar[^{}]*\{[^}]*display:\s*inline-flex/,
+    );
+  });
+
+  it("defaults each segment to the muted border token (neutral fill)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats-segment");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats-segment[^{.]*\{[^}]*background-color:\s*#2f3742/i,
+    );
+  });
+
+  it("paints additions segments with the success token", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats-segment.added");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats-segment\.added[^{]*\{[^}]*background-color:\s*#3fb950/i,
+    );
+  });
+
+  it("paints deletions segments with the danger token", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats-segment.deleted");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats-segment\.deleted[^{]*\{[^}]*background-color:\s*#f85149/i,
+    );
+  });
+
+  it("colors the +N count text with the success token", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats-count.added");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats-count\.added[^{]*\{[^}]*color:\s*#3fb950/i,
+    );
+  });
+
+  it("colors the -M count text with the danger token", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-stats-count.deleted");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-stats-count\.deleted[^{]*\{[^}]*color:\s*#f85149/i,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — comment-affordance pointer", () => {
   it("paints the click affordance on annotatable diff lines", () => {
     expect(FILE_GRID_CSS).toContain("cursor: pointer");

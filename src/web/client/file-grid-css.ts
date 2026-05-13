@@ -105,6 +105,48 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.danger};
   }
 
+  /* Per-file diff-stats indicator: a 5-segment proportion bar followed by
+     +N -M count text. Sits in the header's right region between the
+     classification reason tag and the copy-path button (issue 228).
+     Non-interactive — purely a display surface. */
+  .tour-file-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .tour-file-stats-bar {
+    display: inline-flex;
+    gap: 2px;
+  }
+
+  .tour-file-stats-segment {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: ${theme.border.muted};
+  }
+
+  .tour-file-stats-segment.added {
+    background-color: ${theme.fg.success};
+  }
+
+  .tour-file-stats-segment.deleted {
+    background-color: ${theme.fg.danger};
+  }
+
+  .tour-file-stats-count.added {
+    color: ${theme.fg.success};
+  }
+
+  .tour-file-stats-count.deleted {
+    color: ${theme.fg.danger};
+  }
+
   .tour-file-copy-button {
     background: transparent;
     border: none;
