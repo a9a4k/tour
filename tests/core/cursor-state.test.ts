@@ -550,30 +550,33 @@ describe("validateCursor", () => {
     expect(validateCursor(null, [pairedFlat("x.txt", 1, 1)])).toBeNull();
   });
 
-  describe("stream-order snap when cursor's file is gone", () => {
-    it("snaps to the first row of the next file in stream order", () => {
+  // Reconciled snap policy (issue #232): when the cursor's file is in
+  // `files` (the bundle) but has no rows in the flat-row stream, the
+  // anchor is preserved unchanged. This replaces the prior walk-to-next-
+  // file fallback so that folding the cursor's file no longer jumps the
+  // anchor away — uncollapsing restores it in place. When the file isn't
+  // in `files` at all, the anchor still clears to null (file genuinely
+  // removed from the bundle).
+  describe("file in bundle but currently no rows (folded)", () => {
+    it("preserves the anchor when cursor's file is in `files` but has no rows", () => {
       const rows = [pairedFlat("a.txt", 5, 5), pairedFlat("c.txt", 7, 7)];
       const files = [{ name: "a.txt" }, { name: "b.txt" }, { name: "c.txt" }];
       const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
-      const v = validateCursor(c, rows, files);
-      if (!isRowAnchor(v)) throw new Error("narrow");
-      expect(v.file).toBe("c.txt");
-      expect(v.lineNumber).toBe(7);
+      expect(validateCursor(c, rows, files)).toEqual(c);
     });
 
-    it("falls back to the previous file when cursor was at the tail of stream order", () => {
+    it("preserves the anchor when only the cursor's file is in `files` but every file is folded", () => {
+      const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      expect(
+        validateCursor(c, [], [{ name: "a.txt" }, { name: "b.txt" }]),
+      ).toEqual(c);
+    });
+
+    it("clears the anchor when cursor's file is not in `files` (file removed from bundle)", () => {
       const rows = [pairedFlat("a.txt", 5, 5)];
-      const files = [{ name: "a.txt" }, { name: "b.txt" }];
-      const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
-      const v = validateCursor(c, rows, files);
-      if (!isRowAnchor(v)) throw new Error("narrow");
-      expect(v.file).toBe("a.txt");
-      expect(v.lineNumber).toBe(5);
-    });
-
-    it("returns null when no other file has rows (every other file folded too)", () => {
-      const c = row({ file: "b.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
-      expect(validateCursor(c, [], [{ name: "a.txt" }, { name: "b.txt" }])).toBeNull();
+      const files = [{ name: "a.txt" }];
+      const c = row({ file: "gone.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
+      expect(validateCursor(c, rows, files)).toBeNull();
     });
 
     it("preserves anchor when a sibling (non-cursor) file folds", () => {
@@ -583,13 +586,14 @@ describe("validateCursor", () => {
       expect(validateCursor(c, rows, files)).toEqual(c);
     });
 
-    it("preserves preferredSide on the snapped row", () => {
+    it("preserves preferredSide on a preserved anchor", () => {
       const rows = [pairedFlat("c.txt", 1, 1)];
       const files = [{ name: "b.txt" }, { name: "c.txt" }];
       const c = row({ file: "b.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" });
       const v = validateCursor(c, rows, files);
       if (!isRowAnchor(v)) throw new Error("narrow");
       expect(v.preferredSide).toBe("deletions");
+      expect(v.file).toBe("b.txt");
     });
   });
 

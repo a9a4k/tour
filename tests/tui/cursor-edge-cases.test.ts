@@ -38,7 +38,12 @@ function plannedFor(layout: "split" | "unified"): PlannedRow[] {
  * so the contract sits at the helper layer.
  */
 describe("fold invalidation: cursor's file becomes folded", () => {
-  it("snaps cursor to the next file's first row in stream order", () => {
+  // Reconciled snap policy (issue #232): folding the cursor's file no
+  // longer walks the cursor to the next file's first row — the anchor is
+  // preserved unchanged so unfolding restores it in place. The webapp
+  // already had this behavior via the prior `validateWebappCursor` helper
+  // (now deleted); the TUI's was the divergent walk-to-next policy.
+  it("preserves the anchor when the cursor's file folds (file still in `files`)", () => {
     const fa = fileFromName("a.txt");
     const fb = fileFromName("b.txt");
     const planned = new Map<string, PlannedRow[]>([
@@ -55,13 +60,14 @@ describe("fold invalidation: cursor's file becomes folded", () => {
       preferredSide: aRow.side,
     };
 
-    // Now fold a.txt. flatRows recomputes without a.txt's rows.
+    // Now fold a.txt. flatRows recomputes without a.txt's rows. Anchor
+    // preserved because a.txt is still in `files`.
     const aFolded = flatRows([fa, fb], planned, (n) => n === "a.txt");
     const validated = validateCursor(cursor, aFolded, [fa, fb]);
-    expect(validated?.file).toBe("b.txt");
+    expect(validated).toEqual(cursor);
   });
 
-  it("returns null when no other file has annotatable rows", () => {
+  it("preserves the anchor even when every file in `files` is folded", () => {
     const fa = fileFromName("a.txt");
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("split")]]);
     const cursor: Cursor = {
@@ -71,7 +77,7 @@ describe("fold invalidation: cursor's file becomes folded", () => {
       preferredSide: "additions",
     };
     const allFolded = flatRows([fa], planned, () => true);
-    expect(validateCursor(cursor, allFolded, [fa])).toBeNull();
+    expect(validateCursor(cursor, allFolded, [fa])).toEqual(cursor);
   });
 
   it("non-cursor file folding leaves the cursor anchor untouched", () => {
@@ -222,7 +228,7 @@ describe("bundle reload preserves cursor", () => {
     expect(validateCursor(cursor, after, [f])).toEqual(cursor);
   });
 
-  it("snaps cursor when a file is removed from the new bundle", () => {
+  it("clears cursor when a file is removed from the new bundle", () => {
     const fa = fileFromName("a.txt");
     const fb = fileFromName("b.txt");
     const planned = new Map<string, PlannedRow[]>([
@@ -243,8 +249,10 @@ describe("bundle reload preserves cursor", () => {
     const afterPlanned = new Map<string, PlannedRow[]>([["b.txt", plannedFor("split")]]);
     const after = flatRows([fb], afterPlanned, () => false);
     const validated = validateCursor(cursor, after, [fb]);
-    // a.txt isn't in the new files list, so the snap can't anchor the
-    // pre-fold file and the cursor goes null per the contract.
+    // a.txt isn't in the new files list, so the cursor clears to null —
+    // the reconciled policy (issue #232) preserves the anchor when the
+    // file is in `files` but has no rows (folded), and clears it when
+    // the file is genuinely gone from the bundle.
     expect(validated).toBeNull();
   });
 });

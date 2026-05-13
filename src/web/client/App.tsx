@@ -39,15 +39,7 @@ import { flatRows as buildFlatRows } from "../../core/flat-rows.js";
 import { planRows, GAP_TWO_ROW_THRESHOLD, type PlannedRow } from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
 import {
-  emptyExpansion,
-  seedFromOrphans,
-  expand,
-  expandTop,
-  expandBottom,
-  expandFile,
   getBoundary,
-  type BoundaryRef,
-  type ExpansionState,
   type OrphanWindow,
 } from "../../core/expansion-state.js";
 import {
@@ -58,15 +50,14 @@ import {
   prevCard,
   preferredSideOf,
   setCursorSide,
+  validateCursor,
   type Cursor,
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
 import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
-import { validateWebappCursor } from "./cursor-validation.js";
 import { decideReanchor } from "./re-anchor-policy.js";
-import { decideMirrorUrl } from "./mirror-policy.js";
 import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
 import { recallCardIntoView } from "./auto-recall.js";
 
@@ -175,24 +166,37 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const [layout, setLayout] = useState<Layout>("split");
   const [composerTarget, setComposerTarget] = useState<ComposerTarget | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
-  // Unified cursor (ADR 0022 / PRD #192). Tagged union: RowAnchor walks
-  // diff/interactive rows; CardAnchor walks Annotation cards. Null on
-  // tour switch; mount-time URL `?ann=<id>` materializes a CardAnchor.
-  // Click on a card writes CardAnchor; click on a row writes RowAnchor;
-  // n/p walks the card lane via nextCard/prevCard; j/k/h/l walks the
-  // row lane via moveCursor.
-  const [cursor, setCursor] = useState<Cursor | null>(null);
+  // Unified cursor (ADR 0022 / PRD #192) lives in the Tour-session store
+  // (PRD #229 slice 2, issue #232): the local `useState<Cursor | null>`
+  // that previously shadowed the slice is gone. The reducer's cursor.*
+  // branches own the lazy-materialization rule, the tour-switch reset,
+  // and the cross-async revalidation pipeline; the surface translates
+  // input events into cursor.* actions and realizes the emitted
+  // visual-side-effect intents (scrollCursorTarget, revealSidebarFile,
+  // mirrorAnnUrl) into DOM / history substrate.
+  const cursor = sessionState.cursor;
+  // Hidden-context expansion (PRD #212 / ADR 0024) lives in the Tour-
+  // session store too (PRD #229 slice 2, issue #232). The store's
+  // tour.switched branch resets to empty; mount-time / SSE-refresh
+  // orphan-window seeding dispatches `expansion.seedFromOrphans`.
+  const expansion = sessionState.expansion;
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-  // Hidden-context expansion state (PRD #212 / ADR 0024). Per-tour, in-
-  // memory only; reset on tour switch. Seeded at first render from the
-  // bundle's orphan windows so Annotations in Hidden context render
-  // inline with ±10 lines of context on tour-open. Mirror of the TUI's
-  // useState pattern (src/tui/app.tsx) now that both surfaces share
-  // `core/expansion-state.ts`.
-  const [expansion, setExpansion] = useState<ExpansionState>(emptyExpansion);
+  // Refs holding the latest React-state inputs the intent handlers need.
+  // The intent listener fires synchronously inside `store.dispatch`, BEFORE
+  // React re-renders, so the listener's closure captures stale values. The
+  // refs are written on every render so the listener reads "the values as
+  // of the most recent commit," which is what we want — only the store
+  // slice changed in this dispatch.
+  const intentInputsRef = useRef<{
+    collapsedOverrides: Record<string, boolean>;
+    setSelectedFile: (next: string | null) => void;
+    setCollapsedOverrides: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+    revealFileAncestors: (file: string) => void;
+    findFileBlock: (name: string) => HTMLElement | null;
+  } | null>(null);
 
   // Fetches /api/tours/<id> and dispatches `tour.switched` (or
   // `bundle.failed`) into the store (issue #211: the store's bundle slice
@@ -224,7 +228,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   // Intent listener — realizes the store's intent emissions in DOM /
-  // network / history substrate (PRD #207 / issue #210).
+  // network / history substrate (PRD #207 / issue #210; slice 2 / issue
+  // #232 grows the cursor + expansion intent set).
   useEffect(() => {
     return store.onIntent((intent) => {
       switch (intent.type) {
@@ -248,6 +253,121 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             );
           }
           break;
+        case "revalidateCursor": {
+          // Bundle just landed (watcher SSE refresh). Recompute flat-rows
+          // from the fresh bundle + current layout / folds / expansion;
+          // call `validateCursor` to decide preserve / snap / clear. The
+          // recompute is inline because React hasn't re-rendered yet —
+          // useMemo's flatRowsList still reflects the old bundle.
+          const state = store.getState();
+          const cursor = state.cursor;
+          if (cursor === null) break;
+          const bundle =
+            state.bundle.kind === "ok" ? state.bundle.value : null;
+          if (!bundle || bundle.kind !== "ok") break;
+          const inputs = intentInputsRef.current;
+          if (!inputs) break;
+          const bundleAnnotations = bundle.annotations;
+          const parsedFilesFresh = sortFilesForStream(
+            parseFileDiffMetadata(bundle.diff),
+          );
+          const modelFilesFresh = new Map<string, BundleFile>();
+          for (const f of bundle.files) modelFilesFresh.set(f.name, f);
+          const overrides = inputs.collapsedOverrides;
+          const isClassifierCollapsedFresh = (name: string): boolean => {
+            const override = overrides[name];
+            if (override === false) return false;
+            const f = modelFilesFresh.get(name);
+            if (!f) return false;
+            if (!f.classification.collapsed) return false;
+            if (f.classification.reason === "binary") return false;
+            return true;
+          };
+          const isCollapsedFresh = (name: string): boolean => {
+            if (name in overrides) return overrides[name];
+            const f = modelFilesFresh.get(name);
+            return f ? defaultCollapsedFor(f, bundleAnnotations) : false;
+          };
+          const plannedFresh = new Map<string, PlannedRow[]>();
+          for (const f of parsedFilesFresh) {
+            const bf = modelFilesFresh.get(f.name);
+            plannedFresh.set(
+              f.name,
+              planRows(f, bundleAnnotations, state.layout, {
+                oldContent: bf?.oldContent,
+                newContent: bf?.newContent,
+                expansion: state.expansion,
+                classifierCollapsed: isClassifierCollapsedFresh(f.name),
+              }),
+            );
+          }
+          const flatFresh = buildFlatRows(
+            parsedFilesFresh.map((f) => ({
+              name: f.name,
+              type: "change",
+              hunks: [],
+            })),
+            plannedFresh,
+            isCollapsedFresh,
+          );
+          const validated = validateCursor(cursor, flatFresh, parsedFilesFresh);
+          if (validated === cursor) break;
+          if (validated === null) {
+            store.dispatch({ type: "cursor.clear" });
+          } else {
+            store.dispatch({ type: "cursor.set", anchor: validated });
+          }
+          break;
+        }
+        case "scrollCursorTarget": {
+          // Defer to RAF so cursor.set landing under a fresh bundle waits
+          // for React's commit before querying DOM — matches the existing
+          // scrollAnnotationIntoView pattern.
+          if (typeof document === "undefined") break;
+          const target = intent.target;
+          requestAnimationFrame(() => {
+            if (target.kind === "card") {
+              annotationRefs.current
+                .get(target.annotationId)
+                ?.scrollIntoView({ behavior: "instant", block: "center" });
+              return;
+            }
+            const inputs = intentInputsRef.current;
+            if (!inputs) return;
+            const block = inputs.findFileBlock(target.file);
+            if (!block) return;
+            const cell = block.querySelector<HTMLElement>(
+              `.tour-row-gutter[data-side="${target.side}"][data-line-number="${target.lineNumber}"]`,
+            );
+            cell?.scrollIntoView({ block: "nearest" });
+          });
+          break;
+        }
+        case "revealSidebarFile": {
+          const inputs = intentInputsRef.current;
+          if (!inputs) break;
+          inputs.setSelectedFile(intent.file);
+          inputs.setCollapsedOverrides((prev) =>
+            prev[intent.file] === false ? prev : { ...prev, [intent.file]: false },
+          );
+          inputs.revealFileAncestors(intent.file);
+          break;
+        }
+        case "mirrorAnnUrl": {
+          // `replaceState` (not `pushState`) so back/forward steps over Tour
+          // switches, not over every cursor move. The URL composer uses the
+          // store's current tourId so an in-flight tour-switch can't write
+          // the wrong tour's URL.
+          if (typeof window === "undefined" || !window.history) break;
+          const tid = store.getState().currentTourId;
+          if (tid === null) break;
+          const url = composeUrl(tid, intent.annotationId);
+          const current =
+            window.location.pathname + window.location.search + window.location.hash;
+          if (url === current) break;
+          window.history.replaceState(window.history.state, "", url);
+          break;
+        }
       }
     });
   }, [store, loadBundle]);
@@ -309,21 +429,25 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // since cursorCardId won't change otherwise.
       const annFromUrl = readAnnFromUrl();
       if (annFromUrl !== null) {
-        setCursor((prev) => ({
-          kind: "card",
-          annotationId: annFromUrl,
-          preferredSide: preferredSideOf(prev),
-        }));
+        const prev = store.getState().cursor;
+        store.dispatch({
+          type: "cursor.set",
+          anchor: {
+            kind: "card",
+            annotationId: annFromUrl,
+            preferredSide: preferredSideOf(prev),
+          },
+        });
       }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [store, loadBundle]);
 
-  // Slice 2+ Tour-switch resets (cursor, folds, composer, selected file,
-  // expansion). The reducer's tour.switched branch owns the reset rules for
-  // slice-1 slots (picker, replyLock, layout); slots not yet in the reducer
-  // stay here until later slices migrate them.
+  // Slice 2+ Tour-switch resets (folds, composer, selected file). The
+  // reducer's tour.switched branch owns the resets for slices it owns
+  // (picker, replyLock, layout, cursor, expansion); slots not yet in
+  // the reducer stay here until later slices migrate them.
   useEffect(() => {
     if (!tourId) return;
     setSelectedFile(null);
@@ -331,8 +455,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     setCollapsedFolders(new Set());
     setComposerTarget(null);
     setComposerError(null);
-    setCursor(null);
-    setExpansion(emptyExpansion());
   }, [tourId]);
 
   useEffect(() => {
@@ -401,8 +523,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [annotations]);
   // The cursor's card target (PRD #192 / ADR 0022) when the cursor is on
   // an Annotation card; null on row / null cursor. Drives the active-card
-  // visual treatment and the SequencePill counter. (The URL mirror reads
-  // the full `cursor` directly — see `decideMirrorUrl`.)
+  // visual treatment and the SequencePill counter. (URL mirroring lives
+  // in the store's `mirrorAnnUrl` intent — see the intent listener.)
   const cursorCardId: string | null =
     cursor?.kind === "card" ? cursor.annotationId : null;
   const currentIdx = useMemo(() => {
@@ -456,8 +578,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       }
     }
     if (windows.length === 0) return;
-    setExpansion((prev) => seedFromOrphans(prev, windows));
-  }, [liveFiles]);
+    store.dispatch({ type: "expansion.seedFromOrphans", windows });
+  }, [liveFiles, store]);
 
   const tree = useMemo(() => compress(buildTree(liveFiles)), [liveFiles]);
   const annotationCounts = useMemo<Record<string, number>>(() => {
@@ -497,15 +619,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     });
   }, []);
 
-  // `behavior: "instant"` — same reason as `anchorInitial` below. `navigateBy`
-  // also runs `setCursor(nextCursor)`; instant scroll commits `scrollTop`
-  // synchronously so any subsequent placement is against a settled viewport.
-  const scrollAnnotationIntoView = useCallback((id: string) => {
-    requestAnimationFrame(() => {
-      annotationRefs.current.get(id)?.scrollIntoView({ behavior: "instant", block: "center" });
-    });
-  }, []);
-
   // Initial-anchor scroll (URL `?ann=` restore / default first annotation).
   // Post-cutover the row renderer paints synchronously so a single
   // scrollIntoView lands the target without R1/R2 race mitigation. The
@@ -523,7 +636,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // as the SequencePill counter), independent of cursor position
       // (issue #206 revert of #203). From a RowAnchor or null cursor, the
       // walk enters the track at the topLevel edge (first for `n`, last
-      // for `p`).
+      // for `p`). The cursor.set dispatch fires scrollCursorTarget +
+      // mirrorAnnUrl intents which the listener realizes; the
+      // revealSidebarFile intent doesn't fire on Card→Card (the cursor's
+      // resolved file is null on either end), so we still call
+      // revealFileAncestors / setSelectedFile / collapsedOverrides
+      // inline here.
       const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.annotationId);
@@ -533,23 +651,24 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         prev[ann.file] === false ? prev : { ...prev, [ann.file]: false },
       );
       revealFileAncestors(ann.file);
-      scrollAnnotationIntoView(ann.id);
-      setCursor(target);
+      store.dispatch({ type: "cursor.set", anchor: target });
     },
-    [cursor, topLevel, revealFileAncestors, scrollAnnotationIntoView],
+    [cursor, topLevel, revealFileAncestors, store],
   );
 
   // Re-anchor cursor to a top-level Annotation card on bundle load (PRD #192
   // / ADR 0022; issue #197 Bug B). When the URL carries `?ann=<id>` (or its
   // `#<ann-id>` fragment shape from Issue #179), resolve it to a top-level
   // Annotation; a stale id (deleted, hand-edited, or pointing at a Reply)
-  // falls back to the first top-level Annotation and the URL is rewritten
-  // by the mirror effect below. Gated on the loaded Tour matching the
-  // routing Tour id so the in-flight Tour-switch window doesn't anchor the
-  // new URL's `ann=` against the previous Tour's annotations. The policy
-  // discriminator is `cursor === null` (not `cursorCardId === null`) —
-  // a RowAnchor cursor from a `j`/`k` press is a noop, so row motion
-  // survives the same render.
+  // falls back to the first top-level Annotation. Gated on the loaded
+  // Tour matching the routing Tour id so the in-flight Tour-switch window
+  // doesn't anchor the new URL's `ann=` against the previous Tour's
+  // annotations. The policy discriminator is `cursor === null` (not
+  // `cursorCardId === null`) — a RowAnchor cursor from a `j`/`k` press
+  // is a noop, so row motion survives the same render. The cursor.set
+  // dispatch fires the mirrorAnnUrl intent which keeps `?ann=` in sync;
+  // url-restore anchors only fire the URL write as a no-op since the URL
+  // already matches.
   useEffect(() => {
     if (!tourMeta || tourMeta.id !== tourId) return;
     if (topLevel.length === 0) {
@@ -558,36 +677,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
     const action = decideReanchor(cursor, readAnnFromUrl(), topLevel);
     if (action.kind === "noop") return;
-    setCursor(cursorFromAnnotation(action.target, preferredSideOf(cursor)));
+    store.dispatch({
+      type: "cursor.set",
+      anchor: cursorFromAnnotation(action.target, preferredSideOf(cursor)),
+    });
     setSelectedFile(action.target.file);
     revealFileAncestors(action.target.file);
     if (action.kind === "url-restore") anchorInitial(action.target.id);
-  }, [tourMeta, tourId, topLevel, cursor, revealFileAncestors, anchorInitial]);
-
-  // Mirror the cursor's card target into the URL via replaceState —
-  // chosen over pushState so the browser back button steps over Tour
-  // switches, not over every n/p keystroke. URL shape `/<tour-id>#<ann-id>`
-  // (Issue #179) when the cursor is on a card; `/<tour-id>` when the
-  // cursor is on a row or null. Gate: skip when the URL asserts a
-  // *different* tour-id than state (the in-flight Tour-switch window —
-  // Issue #180). A bare URL has no assertion at all; passing `tourId` as
-  // the fallback makes the resolver report agreement, so the writer runs
-  // and migrates `/` to `/<tour-id>#<ann-id>`. The cursor-shape gate
-  // lives in `decideMirrorUrl` and discriminates `cursor === null`
-  // (defer — the restorer is about to anchor; issue #180) from
-  // `cursor.kind === "row"` (write a bare `/<tour-id>` — drop the stale
-  // hash so a `j`/`k` press doesn't leave a hash for the user's next
-  // reload to restore them onto; issue #198).
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!tourMeta || tourMeta.id !== tourId) return;
-    if (readTourFromLocation(window.location, tourId) !== tourId) return;
-    const action = decideMirrorUrl(cursor, topLevel, tourId);
-    if (action.kind === "skip") return;
-    const current = window.location.pathname + window.location.search + window.location.hash;
-    if (action.url === current) return;
-    window.history.replaceState(window.history.state, "", action.url);
-  }, [cursor, tourMeta, tourId, topLevel]);
+  }, [tourMeta, tourId, topLevel, cursor, revealFileAncestors, anchorInitial, store]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
@@ -676,6 +773,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return document.querySelector<HTMLElement>(`[data-file="${cssEscapeFile(name)}"]`);
   }, []);
 
+  // Keep the intent-handler input ref fresh. The listener fires
+  // synchronously inside store.dispatch, BEFORE React re-renders, so its
+  // closure can't see post-dispatch state — but it can read the values
+  // from the most recent commit via this ref.
+  intentInputsRef.current = {
+    collapsedOverrides,
+    setSelectedFile,
+    setCollapsedOverrides,
+    revealFileAncestors,
+    findFileBlock,
+  };
+
   // Sidebar counterparts so memoized FileRow / FolderRow don't re-render
   // on every App state change. Path flows as an argument, so a single
   // stable function reference serves every sidebar row.
@@ -745,28 +854,32 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [parsedFiles, plannedRowsByFile, isCollapsed]);
 
   // Validate-in-place when the row sequence shifts under the cursor's
-  // feet (collapse toggle, bundle reload, layout switch). The webapp
-  // policy differentiates "file collapsed" (anchor preserved — file is
-  // still in the bundle, only hidden) from "file removed from bundle"
-  // (anchor null — re-materializes on next interaction). Lazy-
-  // materialization rule: we never seed here — first interaction does.
+  // feet on local-state changes the reducer can't see (fold toggle,
+  // layout switch). Bundle.refreshed is handled separately via the
+  // store's `revalidateCursor` intent — see the intent listener below.
+  // The reconciled `validateCursor` (issue #232) preserves the anchor
+  // when the cursor's file is in `files` but has no rows (collapsed
+  // file), so no surface-side discriminator is needed.
   useEffect(() => {
     if (cursor === null) return;
-    const validated = validateWebappCursor(cursor, flatRowsList, parsedFiles, isCollapsed);
-    if (validated !== cursor) setCursor(validated);
+    const validated = validateCursor(cursor, flatRowsList, parsedFiles);
+    if (validated === cursor) return;
+    if (validated === null) store.dispatch({ type: "cursor.clear" });
+    else store.dispatch({ type: "cursor.set", anchor: validated });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRowsList, parsedFiles, isCollapsed]);
+  }, [flatRowsList, parsedFiles]);
 
-  // Lazy materialization (ADR 0012). Returns the seeded cursor (or
-  // existing one if already materialized) so the caller can chain into
-  // composer-open / move actions in one step. setCursor is queued; the
-  // returned value is what the caller should act on this tick.
+  // Lazy materialization (ADR 0012). Dispatches `cursor.materialize` so
+  // the reducer's strict no-op on a non-null cursor protects against
+  // races; returns the seeded cursor so the caller can chain into
+  // composer-open / move actions in one step.
   const materializeCursor = useCallback((): Cursor | null => {
-    if (cursor) return cursor;
+    const c = store.getState().cursor;
+    if (c) return c;
     const seeded = initialCursor({ topLevelAnnotations: topLevel, flatRows: flatRowsList });
-    if (seeded) setCursor(seeded);
+    if (seeded) store.dispatch({ type: "cursor.materialize", anchor: seeded });
     return seeded;
-  }, [cursor, topLevel, flatRowsList]);
+  }, [store, topLevel, flatRowsList]);
 
   // Auto-recall (PRD #192 / ADR 0022). When `r` or `s` fires and the cursor's
   // card is not in the viewport, smooth-scroll it to centre BEFORE mounting
@@ -829,19 +942,20 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [parsedFilesByName, modelFilesByName],
   );
 
-  // Translates the FileBlock-emitted ExpandAction into a setExpansion call.
-  // PRD #212 / #151: mid-file hunk-header is direction-aware — large gaps
-  // (remaining > 2N = 40) expand the bottom (lines appear above the @@);
-  // small gaps (≤ 40) expand symmetrically. gap-mid-top expands the top
-  // (adjacent to the previous hunk). FileBlock packages this as
-  // `{ kind, file, boundaryRef, direction, count }`; the count is the
-  // modifier-aware step (shift → full gap, otherwise EXPANSION_STEP=20).
-  // Map count → mode here: count ≥ remaining gap → "all"; otherwise
-  // "symmetric-20" so each press lands one increment per side.
+  // Translates the FileBlock-emitted ExpandAction into the matching
+  // `expansion.*` action on the Tour-session store (PRD #229 slice 2,
+  // issue #232). PRD #212 / #151: mid-file hunk-header is direction-
+  // aware — large gaps (remaining > 2N = 40) expand the bottom (lines
+  // appear above the @@); small gaps (≤ 40) expand symmetrically. gap-
+  // mid-top expands the top (adjacent to the previous hunk). FileBlock
+  // packages this as `{ kind, file, boundaryRef, direction, count }`;
+  // the count is the modifier-aware step (shift → full gap, otherwise
+  // EXPANSION_STEP=20). Map count → mode here: count ≥ remaining gap
+  // → "all"; otherwise "symmetric-20".
   const dispatchExpand = useCallback(
     (action: ExpandAction) => {
       if (action.kind === "expand-file") {
-        setExpansion((s) => expandFile(s, action.file));
+        store.dispatch({ type: "expansion.expandFile", file: action.file });
         return;
       }
       const { file, boundaryRef, direction, count } = action;
@@ -863,40 +977,29 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         if (remaining > GAP_TWO_ROW_THRESHOLD) effectiveDirection = "down";
       }
       const mode = count >= gapSize ? "all" : "symmetric-20";
-      setExpansion((s) => {
-        if (boundaryRef === "top") return expandTop(s, file, mode, gapSize);
-        if (boundaryRef === "bottom") return expandBottom(s, file, mode, gapSize);
-        return expand(s, { file, ref: boundaryRef }, mode, gapSize, effectiveDirection);
-      });
+      if (boundaryRef === "top") {
+        store.dispatch({ type: "expansion.expandTop", file, mode, gapSize });
+      } else if (boundaryRef === "bottom") {
+        store.dispatch({ type: "expansion.expandBottom", file, mode, gapSize });
+      } else {
+        store.dispatch({
+          type: "expansion.expand",
+          file,
+          ref: boundaryRef,
+          direction: effectiveDirection,
+          mode,
+          gapSize,
+        });
+      }
     },
     [
       hunkSeparatorGapSize,
       boundaryTopGapSize,
       boundaryBottomGapSize,
       expansion,
+      store,
     ],
   );
-
-  // Scroll the cursor's anchor row into view. Post-cutover the row lives in
-  // a real React-rendered DOM element with `data-file` + `data-line-number`
-  // on its gutter cells (row-components.tsx). Picks the cell on the
-  // cursor's active side so split-layout column scoping is preserved.
-  const scrollCursorIntoView = useCallback((c: Cursor | null) => {
-    if (!c || c.kind !== "row") return;
-    const block = findFileBlock(c.file);
-    if (!block) return;
-    let cell: HTMLElement | null = null;
-    if (c.interactive) {
-      cell = block.querySelector<HTMLElement>(
-        `[data-subkind="${c.interactive.subKind}"][data-boundary-ref="${String(c.interactive.boundaryRef)}"]`,
-      );
-    } else {
-      cell = block.querySelector<HTMLElement>(
-        `.tour-row-gutter[data-side="${c.side}"][data-line-number="${c.lineNumber}"]`,
-      );
-    }
-    cell?.scrollIntoView({ block: "nearest" });
-  }, []);
 
   // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
   // side selection, annotate-at-cursor (a), annotation nav (n/p, with
@@ -982,17 +1085,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // Lazy materialization rule (ADR 0012): the first j/k/h/l just
       // SHOWS the cursor at the default target, no move past it. `a`
       // materializes AND opens the composer (handled inline below).
+      // `cursor.materialize` dispatch fires scrollCursorTarget via the
+      // reducer's setCursor helper, so no explicit scroll call here.
       const motion =
         action.type === "move-down" ||
         action.type === "move-up" ||
         action.type === "set-side-additions" ||
         action.type === "set-side-deletions";
       if (motion && !cursor) {
-        const seeded = materializeCursor();
-        // Keyboard motion needs scroll-into-view; the mouse path
-        // (setCursorFromRowClick) deliberately omits it because the
-        // clicked cell is already where the user is looking.
-        if (seeded) scrollCursorIntoView(seeded);
+        materializeCursor();
         return;
       }
       switch (action.type) {
@@ -1009,31 +1110,38 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           navigateBy(-1);
           return;
         case "move-down": {
-          // Compute next synchronously so we can scroll the destination
-          // cell into view. setCursor(fn) would keep us inside React's
-          // updater (no side-effects allowed); since the handler closure
-          // already captures the latest `cursor` via the deps array,
-          // computing eagerly is safe.
+          // Compute next pure via moveCursor against the latest
+          // flat-rows; cursor.set dispatch fires scrollCursorTarget
+          // which the intent listener realizes as scrollIntoView.
           const next = moveCursor(cursor, "down", flatRowsList);
-          setCursor(next);
-          if (next) scrollCursorIntoView(next);
+          if (next === null || next === cursor) return;
+          store.dispatch({ type: "cursor.set", anchor: next });
           return;
         }
         case "move-up": {
           const next = moveCursor(cursor, "up", flatRowsList);
-          setCursor(next);
-          if (next) scrollCursorIntoView(next);
+          if (next === null || next === cursor) return;
+          store.dispatch({ type: "cursor.set", anchor: next });
           return;
         }
-        case "set-side-additions":
+        case "set-side-additions": {
           // Horizontal side toggle stays on the same row, so the cell is
-          // already on screen — no scroll. Skipping the layout flush is
-          // the whole reason we hoisted scroll out of syncCursorOverlay.
-          setCursor((c) => setCursorSide(c, "additions", flatRowsList));
+          // already on screen — scrollCursorTarget's scrollIntoView call
+          // is a no-op on a visible cell. cursor.setSide is the pure-
+          // preference path for cards / interactive rows; row anchors
+          // route through `setCursorSide` + cursor.set so the lineNumber
+          // recomputes for paired rows.
+          const next = setCursorSide(cursor, "additions", flatRowsList);
+          if (next === null || next === cursor) return;
+          store.dispatch({ type: "cursor.set", anchor: next });
           return;
-        case "set-side-deletions":
-          setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
+        }
+        case "set-side-deletions": {
+          const next = setCursorSide(cursor, "deletions", flatRowsList);
+          if (next === null || next === cursor) return;
+          store.dispatch({ type: "cursor.set", anchor: next });
           return;
+        }
         case "annotate-at-cursor": {
           const c = cursor ?? materializeCursor();
           if (!c) return;
@@ -1128,7 +1236,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     boundaryTopGapSize,
     boundaryBottomGapSize,
     hunkSeparatorGapSize,
-    scrollCursorIntoView,
+    store,
   ]);
 
   const closeComposer = useCallback(() => {
@@ -1140,9 +1248,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // composer is reached via the keyboard `a` shortcut.
   const setCursorFromRowClick = useCallback(
     (file: string, side: "additions" | "deletions", line: number) => {
-      setCursor({ kind: "row", file, lineNumber: line, side, preferredSide: side });
+      store.dispatch({
+        type: "cursor.set",
+        anchor: { kind: "row", file, lineNumber: line, side, preferredSide: side },
+      });
     },
-    [],
+    [store],
   );
 
   // Click anywhere on an Annotation card → lands the cursor on that card
@@ -1153,10 +1264,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (annotationId: string) => {
       const a = annotations.find((x) => x.id === annotationId);
       if (!a) return;
-      setCursor((prev) => cursorFromAnnotation(a, preferredSideOf(prev)));
+      store.dispatch({
+        type: "cursor.set",
+        anchor: cursorFromAnnotation(a, preferredSideOf(store.getState().cursor)),
+      });
       setSelectedFile(a.file);
     },
-    [annotations],
+    [annotations, store],
   );
 
   const openReplyComposer = useCallback((replies_to: string) => {
