@@ -59,12 +59,21 @@ describe("theme tokens", () => {
     // ADR 0011's composition rule).
     expect(theme.bg.cursorRow.web).toBe("rgba(31, 111, 235, 0.30)");
     expect(theme.bg.cursorRow.tui).toBe("#1a3566");
-    // Diff addition row bg (alpha .15 of fg.success)
-    expect(theme.bg.successRange.web).toBe("rgba(63, 185, 80, 0.15)");
-    expect(theme.bg.successRange.tui).toBe("#142a20");
-    // Diff deletion row bg (alpha .15 of fg.danger)
-    expect(theme.bg.dangerRange.web).toBe("rgba(248, 81, 73, 0.15)");
-    expect(theme.bg.dangerRange.tui).toBe("#301b1e");
+    // Two-tone diff-row tints (issue #247). The gutter + symbol cells
+    // wear the brighter rail (alpha .30 of fg.success / fg.danger); the
+    // code cell wears the softer wash (alpha .15 of fg.success, .10 of
+    // fg.danger — red is more visually intrusive at equal alpha, so it
+    // sits one step softer than green). Empirically matches GitHub's
+    // live PR-diff direction (bright gutter + soft code, not the
+    // inverse). TUI hexes pre-resolved over canvas.default.
+    expect(theme.bg.successRange.web).toBe("rgba(63, 185, 80, 0.30)");
+    expect(theme.bg.successRange.tui).toBe("#1c4328");
+    expect(theme.bg.successCell.web).toBe("rgba(63, 185, 80, 0.15)");
+    expect(theme.bg.successCell.tui).toBe("#142a20");
+    expect(theme.bg.dangerRange.web).toBe("rgba(248, 81, 73, 0.30)");
+    expect(theme.bg.dangerRange.tui).toBe("#542426");
+    expect(theme.bg.dangerCell.web).toBe("rgba(248, 81, 73, 0.10)");
+    expect(theme.bg.dangerCell.tui).toBe("#24171c");
     // Inline <code> chip (alpha .20 of neutral)
     expect(theme.bg.neutralSubtle.web).toBe("rgba(110, 118, 129, 0.20)");
     expect(theme.bg.neutralSubtle.tui).toBe("#22262d");
@@ -100,8 +109,10 @@ describe("themeCSSVars()", () => {
     expect(css).toContain("--bg-accent-current: rgba(31, 111, 235, 0.13)");
     expect(css).toContain("--bg-accent-range: rgba(56, 139, 253, 0.15)");
     expect(css).toContain("--bg-cursor-row: rgba(31, 111, 235, 0.30)");
-    expect(css).toContain("--bg-success-range: rgba(63, 185, 80, 0.15)");
-    expect(css).toContain("--bg-danger-range: rgba(248, 81, 73, 0.15)");
+    expect(css).toContain("--bg-success-range: rgba(63, 185, 80, 0.30)");
+    expect(css).toContain("--bg-success-cell: rgba(63, 185, 80, 0.15)");
+    expect(css).toContain("--bg-danger-range: rgba(248, 81, 73, 0.30)");
+    expect(css).toContain("--bg-danger-cell: rgba(248, 81, 73, 0.10)");
     expect(css).toContain("--bg-neutral-subtle: rgba(110, 118, 129, 0.20)");
   });
 });

@@ -41,10 +41,14 @@ const MONO_STACK =
  *     inset stripe (ADR 0008's two-cue range treatment).
  *
  *   - `[data-line-type]` two-tone tinting: the gutter + symbol cells
- *     carry a lighter range tint
- *     (`bg.successRange.web` / `bg.dangerRange.web`); the code cell
- *     carries a darker fill (`bg.successCell.web` / `bg.dangerCell.web`).
- *     Context rows inherit the canvas background (no rule).
+ *     carry the brighter range tint
+ *     (`bg.successRange.web` / `bg.dangerRange.web`, alpha .30); the
+ *     code cell carries a softer wash (`bg.successCell.web` /
+ *     `bg.dangerCell.web`, alpha .15 / .10). Empirically matches
+ *     GitHub's direction (bright gutter rail, soft code, issue #247);
+ *     the rail anchors the vertical scan and the softer code cell
+ *     keeps syntax-highlighted tokens readable. Context rows inherit
+ *     the canvas background (no rule).
  *
  *   - `.tour-card[data-side]`: side-anchored under the matching column
  *     triple in split layout (deletions cols 1-3, additions cols 4-6),
@@ -250,9 +254,11 @@ export const FILE_GRID_CSS = `
     min-width: 0;
   }
 
-  /* Two-tone line-type backgrounds: the gutter + symbol cells carry the
-     lighter range tint; the code cell carries the darker fill. Context
-     rows inherit canvas (no rule). */
+  /* Two-tone line-type backgrounds (issue 247): the gutter + symbol
+     cells carry the brighter range tint (alpha .30); the code cell
+     carries a softer wash (alpha .15 / .10). Bright rail anchors the
+     vertical scan; the soft wash behind code keeps syntax-highlighted
+     tokens readable. Context rows inherit canvas (no rule). */
   .tour-row[data-line-type="addition"] .tour-row-gutter,
   .tour-row[data-line-type="addition"] .tour-row-symbol,
   .tour-row[data-line-type="change-addition"] .tour-row-gutter,

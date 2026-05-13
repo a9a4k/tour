@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.0.0] — 2026-05-12
 
+### Fixed
+
+- **Diff-row two-tone tint flipped to GitHub's empirical direction
+  (issue #247).** The line-number gutter + `+`/`-` symbol cells now wear
+  the brighter range tint (alpha .30 of fg.success / fg.danger); the
+  code cell wears a softer wash (alpha .15 for additions, .10 for
+  deletions — red sits one step softer than green at equal alpha to
+  preserve visual balance, matching live PR-diff inspection). Pre-fix
+  the direction was inverted (soft gutter, bright code) — the
+  syntax-highlighted Shiki tokens sat over the more-saturated cell
+  background, reducing legibility, and the gutter rail was muted
+  enough that the eye lost the vertical-scan anchor in long
+  addition / deletion runs. Token names are unchanged
+  (`bg.successRange` / `bg.successCell` / `bg.dangerRange` /
+  `bg.dangerCell`); only the alpha values flip and the corresponding
+  TUI hex equivalents recalibrate (`#1c4328` / `#142a20` / `#542426`
+  / `#24171c`). CSS rule wiring and the planner / row primitives are
+  unchanged.
+
+  Issue: #247
+
 ### Breaking changes
 
 - **Reply-agent dispatch is now explicit, not implicit.** Previously, the

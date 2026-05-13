@@ -72,20 +72,20 @@ export const theme = {
       tui: "#1a3566",
     } satisfies AlphaPair,
     successRange: {
+      web: "rgba(63, 185, 80, 0.30)",
+      tui: "#1c4328",
+    } satisfies AlphaPair,
+    successCell: {
       web: "rgba(63, 185, 80, 0.15)",
       tui: "#142a20",
     } satisfies AlphaPair,
-    successCell: {
-      web: "rgba(63, 185, 80, 0.25)",
-      tui: "#1a3b25",
-    } satisfies AlphaPair,
     dangerRange: {
-      web: "rgba(248, 81, 73, 0.15)",
-      tui: "#301b1e",
+      web: "rgba(248, 81, 73, 0.30)",
+      tui: "#542426",
     } satisfies AlphaPair,
     dangerCell: {
-      web: "rgba(248, 81, 73, 0.25)",
-      tui: "#482124",
+      web: "rgba(248, 81, 73, 0.10)",
+      tui: "#24171c",
     } satisfies AlphaPair,
     attentionSubtle: {
       web: "rgba(210, 153, 34, 0.10)",

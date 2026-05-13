@@ -860,6 +860,6 @@ index 1..2 100644
     expect(["addition", "deletion", undefined]).toContain(bg);
     // Independently verify the theme exposes the expected value DiffLine
     // will resolve "addition" to.
-    expect(theme.bg.successRange.tui).toBe("#142a20");
+    expect(theme.bg.successRange.tui).toBe("#1c4328");
   });
 });
