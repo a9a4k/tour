@@ -8,6 +8,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Hunk-header banner adopts monospace 12px / line-height 20px
+  typography (issue #253).** Pre-fix `.tour-hunk-header` set no
+  `font-family`, `font-size`, or `line-height`, so the banner and its
+  child spans inherited the document body's system sans-serif at 16px
+  with the browser-computed `line-height: normal` (≈19.2px). The diff-
+  row code cells below (gutter, +/- symbol, code text) render in
+  monospace 12px / line-height 20px per issue #241, so banner text was
+  visually mismatched — larger, sans-serif, off-rhythm with the rows
+  below. GitHub renders hunk-header text in the same monospace stack /
+  size / line-height as the code cells. `.tour-hunk-header` acquires
+  the three font declarations reusing the existing module-private
+  `MONO_STACK` constant; the two child spans
+  (`.tour-hunk-header-range`, `.tour-hunk-header-context`) and the
+  `::before` cue area's `…` glyph all inherit from the parent. Banner
+  height becomes ≈ 32px (20px line-height + 6px top/bottom padding),
+  aligned to a 20px multiple matching the row rhythm. No JSX / prop /
+  planner / theme change.
+
+  Issue: #253
+
 - **Hunk-header banner gains a visible expand affordance (issue #252).**
   Pre-fix the webapp hunk-header banner was clickable (per ADR 0013 the
   whole banner expands hidden context) but had no rest-state visual cue

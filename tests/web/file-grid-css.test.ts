@@ -369,6 +369,46 @@ describe("FILE_GRID_CSS — hunk-header expand affordance (#252)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — hunk-header typography (#253)", () => {
+  // Pre-#253 the hunk-header banner inherited the document body's font:
+  // system sans-serif at 16px with the browser-computed `line-height:
+  // normal` (≈19.2px). The diff-row code cells below the banner render in
+  // monospace 12px / line-height 20px (typography pass #241), so the
+  // banner visually mismatched the diff stream — wrong family, larger
+  // size, off-rhythm. GitHub renders the hunk-header text in the same
+  // monospace 12px / 20px line-height as the code cells. New rule reuses
+  // the module-private MONO_STACK constant already shared with
+  // .tour-row-gutter / .tour-row-symbol / .tour-row-code, so the four
+  // call sites stay aligned. Child spans (.tour-hunk-header-range /
+  // .tour-hunk-header-context) inherit the parent's font properties —
+  // no per-child declaration. The ::before cue area's `…` glyph also
+  // inherits, so the dots render at the same monospace 12px / 20px.
+
+  const bannerRuleBody = FILE_GRID_CSS.match(
+    /\.tour-hunk-header\s*\{([^}]*)\}/,
+  )?.[1] ?? "";
+
+  it("renders the banner in a monospace font (matches the diff body)", () => {
+    expect(bannerRuleBody).toMatch(/font-family:[^;]*monospace/);
+  });
+
+  it("sets banner font-size to 12px (matches .tour-row-code / .tour-row-gutter / .tour-row-symbol)", () => {
+    expect(bannerRuleBody).toMatch(/font-size:\s*12px/);
+  });
+
+  it("sets banner line-height to 20px (matches the diff-row vertical rhythm)", () => {
+    expect(bannerRuleBody).toMatch(/line-height:\s*20px/);
+  });
+
+  it("uses the same font-family stack as .tour-row-code (single MONO_STACK constant)", () => {
+    const bannerFamily = bannerRuleBody.match(/font-family:\s*([^;]+);/)?.[1].trim();
+    const codeBody = FILE_GRID_CSS.match(/\.tour-row-code\s*\{([^}]*)\}/)?.[1] ?? "";
+    const codeFamily = codeBody.match(/font-family:\s*([^;]+);/)?.[1].trim();
+    expect(bannerFamily).toBeTruthy();
+    expect(bannerFamily).toBe(codeFamily);
+  });
+});
+
 describe("FILE_GRID_CSS — interactive row banner (#224)", () => {
   it("paints the banner background with the neutral-subtle token (distinct from hunk-header accent)", () => {
     expect(FILE_GRID_CSS).toContain(".tour-row-interactive");

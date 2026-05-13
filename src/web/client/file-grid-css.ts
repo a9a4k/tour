@@ -402,7 +402,15 @@ export const FILE_GRID_CSS = `
      'position: relative' is the absolute-positioning anchor for the
      ::before. The cue paints even when gapAbove === 0 (file-top hunk
      with no expandable context) — decorative-only; click short-circuits
-     inside FileBlock.renderHunkHeader. */
+     inside FileBlock.renderHunkHeader.
+
+     Typography (issue 253): banner inherits MONO_STACK / 12px / 20px so
+     the text reads as part of the diff stream rather than as UI chrome.
+     Pre-253 the banner inherited the document body's sans-serif 16px /
+     normal-line-height — visually mismatched against the monospace 12px
+     20px-line-height code rows below. Child spans (.tour-hunk-header-
+     range, .tour-hunk-header-context) and the ::before cue's '…' glyph
+     all inherit these declarations naturally. */
   .tour-hunk-header {
     /* Override .tour-row's display:grid + subgrid template so the two
        text segments flow inline as block content instead of slotting
@@ -412,6 +420,9 @@ export const FILE_GRID_CSS = `
     padding: 6px 16px 6px 60px;
     cursor: pointer;
     position: relative;
+    font-family: ${MONO_STACK};
+    font-size: 12px;
+    line-height: 20px;
   }
 
   .tour-hunk-header::before {
