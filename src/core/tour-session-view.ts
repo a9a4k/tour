@@ -36,12 +36,18 @@ export interface BundleSlice {
   fileContents: ReadonlyMap<string, FileContentPair>;
 }
 
-export interface NavSlice {
+/** Nav fields that don't depend on the planner / cursor — exposed on both
+ *  branches so snapshot-lost rendering can read top-level / replies / nav
+ *  index without re-deriving them inline. */
+export interface NavBase {
   topLevel: ReadonlyArray<Annotation>;
   repliesByRoot: ReadonlyMap<string, ReadonlyArray<Annotation>>;
   /** 1-based, top-level only — replies are absent from the map. */
   navIndexById: ReadonlyMap<string, number>;
   navTotal: number;
+}
+
+export interface NavSlice extends NavBase {
   /** 1-based index of the cursor's top-level Annotation when the cursor is
    *  on a card; 0 otherwise (null cursor, row cursor, card to deleted
    *  annotation). */
@@ -91,6 +97,11 @@ export type TourSessionView =
       kind: "snapshot-lost";
       tour: Tour;
       annotations: ReadonlyArray<Annotation>;
+      /** NavBase populates on both branches (issue #246): snapshot-lost
+       *  rendering reads top-level / replies / nav index from one place
+       *  rather than re-deriving them inline. `currentIdx` / `sendTarget`
+       *  stay ok-only (they depend on planner + cursor). */
+      nav: NavBase;
     };
 
 // --- Pure derivation --------------------------------------------------------
@@ -121,10 +132,7 @@ function deriveBundleSlice(bundle: OkBundle): BundleSlice {
   };
 }
 
-function deriveNavSlice(
-  annotations: ReadonlyArray<Annotation>,
-  cursor: Cursor | null,
-): NavSlice {
+function deriveNavBase(annotations: ReadonlyArray<Annotation>): NavBase {
   const annArr = [...annotations];
   const topLevel = topLevelAnnotations(annArr);
   const navIndexById = new Map<string, number>();
@@ -133,17 +141,26 @@ function deriveNavSlice(
   for (const t of buildThreads(annArr)) {
     repliesByRoot.set(t.root.id, t.replies);
   }
-  let currentIdx = 0;
-  if (cursor && cursor.kind === "card") {
-    const idx = topLevel.findIndex((a) => a.id === cursor.annotationId);
-    if (idx !== -1) currentIdx = idx + 1;
-  }
-  const target = sendTarget(cursor, topLevel, repliesByRoot);
   return {
     topLevel,
     repliesByRoot,
     navIndexById,
     navTotal: topLevel.length,
+  };
+}
+
+function deriveNavSlice(
+  base: NavBase,
+  cursor: Cursor | null,
+): NavSlice {
+  let currentIdx = 0;
+  if (cursor && cursor.kind === "card") {
+    const idx = base.topLevel.findIndex((a) => a.id === cursor.annotationId);
+    if (idx !== -1) currentIdx = idx + 1;
+  }
+  const target = sendTarget(cursor, base.topLevel, base.repliesByRoot);
+  return {
+    ...base,
     currentIdx,
     sendTarget: target,
   };
@@ -256,15 +273,17 @@ export function deriveTourSessionView(
   bundle: TourBundle,
   state: TourSessionState,
 ): TourSessionView {
+  const navBase = deriveNavBase(bundle.annotations);
   if (bundle.kind === "snapshot-lost") {
     return {
       kind: "snapshot-lost",
       tour: bundle.tour,
       annotations: bundle.annotations,
+      nav: navBase,
     };
   }
   const bundleSlice = deriveBundleSlice(bundle);
-  const navSlice = deriveNavSlice(bundle.annotations, state.cursor);
+  const navSlice = deriveNavSlice(navBase, state.cursor);
   const treeSlice = deriveTreeSlice(
     bundle.files,
     state.collapsedFolders,
@@ -307,14 +326,19 @@ export function useTourSessionView(
   const cursor = state.cursor;
   const isOk = bundle.kind === "ok";
 
+  const navBase = useMemo<NavBase>(
+    () => deriveNavBase(annotations),
+    [annotations],
+  );
+
   const bundleSlice = useMemo<BundleSlice | null>(
     () => (isOk ? deriveBundleSlice(bundle) : null),
     [bundle, isOk],
   );
 
   const navSlice = useMemo<NavSlice | null>(
-    () => (isOk ? deriveNavSlice(annotations, cursor) : null),
-    [isOk, annotations, cursor],
+    () => (isOk ? deriveNavSlice(navBase, cursor) : null),
+    [isOk, navBase, cursor],
   );
 
   const treeSlice = useMemo<TreeSlice | null>(
@@ -368,6 +392,7 @@ export function useTourSessionView(
       kind: "snapshot-lost",
       tour: bundle.tour,
       annotations: bundle.annotations,
+      nav: navBase,
     };
   }
   return {

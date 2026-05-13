@@ -17,12 +17,7 @@ import {
   type Layout,
   type TourSummary as SessionTourSummary,
 } from "../../core/tour-session.js";
-import {
-  topLevelAnnotations,
-  buildThreads,
-  latestAnnotationId,
-  latestHumanLeafId,
-} from "../../core/threads.js";
+import { latestAnnotationId, latestHumanLeafId } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
   canSendToAgent,
@@ -45,6 +40,7 @@ import {
 import {
   deriveTourSessionView,
   useTourSessionView,
+  type NavBase,
   type TourSessionView,
 } from "../../core/tour-session-view.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
@@ -598,15 +594,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (delta: -1 | 1) => {
       // n/p is the jump gesture: walks top-level order (issue #197 — same
       // as the SequencePill counter), independent of cursor position
-      // (issue #206 revert of #203). From a RowAnchor or null cursor, the
-      // walk enters the track at the topLevel edge (first for `n`, last
-      // for `p`). The cursor.set dispatch fires scrollCursorTarget +
-      // mirrorAnnUrl intents which the listener realizes; the
-      // revealSidebarFile intent doesn't fire on Card→Card (the cursor's
-      // resolved file is null on either end), so we still call
-      // revealFileAncestors / setSelectedFile / collapsedOverrides
-      // inline here.
-      if (view.kind !== "ok") return;
+      // (issue #206 revert of #203). NavBase is universal across branches
+      // (issue #246), so this works in snapshot-lost mode too (though
+      // revealSidebarFile is then a no-op since the tree slice isn't
+      // available).
       const topLevel = view.nav.topLevel;
       const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
       if (!target) return;
@@ -639,13 +630,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // already matches.
   useEffect(() => {
     if (!tourMeta || tourMeta.id !== tourId) return;
-    // Re-anchor reads top-level annotations from whichever view branch
-    // carries them. Snapshot-lost bundles still need the initial-selection
-    // / sidebar-reveal effects to fire when annotations are present.
-    const topLevel =
-      view.kind === "ok"
-        ? view.nav.topLevel
-        : topLevelAnnotations([...view.annotations]);
+    // Re-anchor reads top-level annotations from `view.nav` — NavBase lives
+    // on both branches (issue #246), so snapshot-lost bundles still get
+    // initial-selection / sidebar-reveal effects when annotations are present.
+    const topLevel = view.nav.topLevel;
     if (topLevel.length === 0) {
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
@@ -792,8 +780,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // annotations, no classifier-collapse) so the count reflects the FULL
   // diff regardless of which files are currently collapsed in the UI or
   // classifier-flagged for collapse. Cursor moves, layout toggles,
-  // expansion changes, and annotation navigation do NOT re-walk — none of
-  // them touch `parsedFiles` / `view.bundle.filesByName`.
+  // expansion changes, and annotation navigation do NOT re-walk.
   const filesByName =
     view.kind === "ok" ? view.bundle.filesByName : null;
   const tourStats = useMemo(() => {
@@ -844,11 +831,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   // Gap-size lookups for the expansion dispatcher. Mirror of the TUI's
   // hunkSeparatorGapSize / boundaryTopGapSize / boundaryBottomGapSize
-  // (src/tui/app.tsx) — sourced from each file's parsed hunks (now read
-  // from `view.bundle.filesByName`; the previous `parsedFilesByName`
-  // projection is gone) plus the bundle's `newContent` for the trailing
-  // gap. The dispatcher needs gap size to drive `expand`'s saturation
-  // logic and the symmetric vs unilateral direction choice.
+  // (src/tui/app.tsx) — sourced from each file's parsed hunks plus the
+  // bundle's `newContent` for the trailing gap. The dispatcher needs gap
+  // size to drive `expand`'s saturation logic and the symmetric vs
+  // unilateral direction choice.
   const hunkSeparatorGapSize = useCallback(
     (file: string, hunkIndex: number): number => {
       const meta = filesByName?.get(file);
@@ -1304,12 +1290,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const titleIsEmpty = !tourMeta.title;
 
-  // SequencePill keeps the legacy `-1 = off-card / 0-based when on-card`
-  // contract; the view's `nav.currentIdx` is 1-based with 0 meaning
-  // off-card. Convert at the call site rather than churning the pill API.
-  const navTotal = view.kind === "ok" ? view.nav.navTotal : 0;
+  // Header chrome reads `view.nav.navTotal` directly (NavBase is universal
+  // across branches — issue #246). `currentIdx` is ok-only, so the pill
+  // index discriminates via a property check on the nav slice rather than
+  // on `view.kind`. SequencePill keeps the legacy `-1 = off-card / 0-based
+  // when on-card` contract; the view's `nav.currentIdx` is 1-based with 0
+  // meaning off-card.
   const pillIdx =
-    view.kind === "ok" && view.nav.currentIdx > 0
+    "currentIdx" in view.nav && view.nav.currentIdx > 0
       ? view.nav.currentIdx - 1
       : -1;
 
@@ -1351,7 +1339,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         <div className="tour-header-right">
           <SequencePill
             idx={pillIdx}
-            total={navTotal}
+            total={view.nav.navTotal}
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
           />
@@ -1364,32 +1352,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         <TourHeaderPath path={selectedFile} />
       </div>
       <div className="app-body">
-        <aside className="app-sidebar">
-          <h2>Files</h2>
-          {view.kind === "ok"
-            ? view.tree.visibleRows.map((row) =>
-                row.kind === "folder" ? (
-                  <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
-                ) : (
-                  <FileRow
-                    key={`f:${row.path}`}
-                    row={row}
-                    selected={selectedFile === row.path}
-                    registerRef={registerSidebarRef}
-                    onSelect={selectFile}
-                  />
-                ),
-              )
-            : null}
-        </aside>
-        <main className="app-main">
-          {view.kind === "snapshot-lost" ? (
-            <>
+        {view.kind === "snapshot-lost" ? (
+          <>
+            <aside className="app-sidebar">
+              <h2>Files</h2>
+            </aside>
+            <main className="app-main">
               <div className="banner">
                 Snapshot lost — annotations preserved but diff cannot be displayed
               </div>
               <AnnotationListSnapshotLost
-                annotations={view.annotations}
+                nav={view.nav}
                 cursor={cursor}
                 registerAnnotationRef={registerAnnotationRef}
                 composerTarget={composerTarget}
@@ -1404,9 +1377,27 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 onSendToAgent={sendToAgent}
                 onCardClick={setCursorFromCardClick}
               />
-            </>
-          ) : (
-            <>
+            </main>
+          </>
+        ) : (
+          <>
+            <aside className="app-sidebar">
+              <h2>Files</h2>
+              {view.tree.visibleRows.map((row) =>
+                row.kind === "folder" ? (
+                  <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
+                ) : (
+                  <FileRow
+                    key={`f:${row.path}`}
+                    row={row}
+                    selected={selectedFile === row.path}
+                    registerRef={registerSidebarRef}
+                    onSelect={selectFile}
+                  />
+                ),
+              )}
+            </aside>
+            <main className="app-main">
               <style>{FILE_GRID_CSS}</style>
               {Array.from(view.rows.plannedRowsByFile, ([fileName, rows]) => {
                 const bf = view.bundle.filesByName.get(fileName);
@@ -1467,9 +1458,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                   />
                 );
               })}
-            </>
-          )}
-        </main>
+            </main>
+          </>
+        )}
       </div>
       {sessionState.picker.kind === "open" ? (
         <TourPicker
@@ -1956,7 +1947,7 @@ function Composer({
 }
 
 interface AnnotationListSnapshotLostProps {
-  annotations: ReadonlyArray<Annotation>;
+  nav: NavBase;
   cursor: Cursor | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
@@ -1972,12 +1963,11 @@ interface AnnotationListSnapshotLostProps {
   onCardClick: (annotationId: string) => void;
 }
 
-// Renders annotations when the bundle is `snapshot-lost`. The Tour-session
-// view's `nav` namespace isn't available in that branch (no diff to plan
-// rows against), so we re-derive top-level / replies / nav index inline
-// here — the snapshot-lost branch is degenerate and rare.
+// Renders annotations when the bundle is `snapshot-lost`. Reads `view.nav`
+// directly (issue #246 lifts NavBase to both branches), so the inline
+// `topLevelAnnotations` / `buildThreads` re-derivation is gone.
 function AnnotationListSnapshotLost({
-  annotations,
+  nav,
   cursor,
   registerAnnotationRef,
   composerTarget,
@@ -1992,15 +1982,8 @@ function AnnotationListSnapshotLost({
   onSendToAgent,
   onCardClick,
 }: AnnotationListSnapshotLostProps): React.JSX.Element {
-  const annArr = [...annotations];
-  const topLevel = topLevelAnnotations(annArr);
+  const { topLevel, repliesByRoot, navIndexById, navTotal } = nav;
   if (topLevel.length === 0) return <div className="empty">No annotations</div>;
-  const navIndexById = new Map<string, number>();
-  topLevel.forEach((a, i) => navIndexById.set(a.id, i + 1));
-  const repliesByRoot = new Map<string, ReadonlyArray<Annotation>>();
-  for (const t of buildThreads(annArr)) {
-    repliesByRoot.set(t.root.id, t.replies);
-  }
   const cursorCardId =
     cursor && cursor.kind === "card" ? cursor.annotationId : null;
   return (
@@ -2020,7 +2003,7 @@ function AnnotationListSnapshotLost({
             replies={replies}
             isCurrent={a.id === cursorCardId}
             navIndex={navIndexById.get(a.id) ?? null}
-            navTotal={topLevel.length}
+            navTotal={navTotal}
             registerRef={registerAnnotationRef}
             replyTargetId={replyTargetId}
             composerBody={replyTargetId !== null ? composerBody : ""}

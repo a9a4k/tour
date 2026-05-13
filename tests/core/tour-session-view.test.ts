@@ -159,6 +159,36 @@ describe("deriveTourSessionView — snapshot-lost", () => {
     expect(view.annotations).toHaveLength(1);
     expect(view.annotations[0].id).toBe("a1");
   });
+
+  it("exposes nav.topLevel / navIndexById / navTotal / repliesByRoot on the snapshot-lost branch (issue #246)", () => {
+    const top = ann({ id: "a1", created_at: "2026-05-12T00:00:00Z" });
+    const reply = ann({
+      id: "r1",
+      replies_to: "a1",
+      created_at: "2026-05-12T00:00:01Z",
+    });
+    const orphan = ann({
+      id: "o1",
+      replies_to: "missing-id",
+      created_at: "2026-05-12T00:00:02Z",
+    });
+    const view = deriveTourSessionView(
+      {
+        kind: "snapshot-lost",
+        tour: tour({ id: "t1" }),
+        annotations: [top, reply, orphan],
+      },
+      initialTourSessionState(),
+    );
+    if (view.kind !== "snapshot-lost") throw new Error("unreachable");
+    expect(view.nav.topLevel.map((a) => a.id)).toEqual(["a1"]);
+    expect(view.nav.navIndexById.get("a1")).toBe(1);
+    expect(view.nav.navIndexById.has("r1")).toBe(false);
+    expect(view.nav.navTotal).toBe(1);
+    const replies = view.nav.repliesByRoot.get("a1");
+    expect(replies?.map((r) => r.id)).toEqual(["r1"]);
+    expect(view.nav.repliesByRoot.has("missing-id")).toBe(false);
+  });
 });
 
 describe("deriveTourSessionView — bundle slice", () => {

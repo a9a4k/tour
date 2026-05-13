@@ -104,7 +104,6 @@ const EMPTY_FLAT_ROWS: ReadonlyArray<FlatRow> = [];
 const EMPTY_PLANNED_ROWS: ReadonlyMap<string, ReadonlyArray<PlannedRow>> = new Map();
 const EMPTY_ANNOTATION_COUNTS: Readonly<Record<string, number>> = {};
 const EMPTY_CLASSIFICATIONS: Readonly<Record<string, FileClassification>> = {};
-const EMPTY_NAV_INDEX: ReadonlyMap<string, number> = new Map();
 const EMPTY_TREE = compress(buildTree<BundleFile>([]));
 
 export type WriteAnnotationInput =
@@ -247,18 +246,17 @@ function App(props: AppProps) {
   // seven previously-inline cursor/nav predicates all flow from these
   // five namespaces. The `live*` projection prefix is gone.
   const view = useTourSessionView(store, bundle);
+  // NavBase lives on both branches (issue #246); ok-only slices keep
+  // their nullable destructure so hooks below preserve optional-chaining
+  // fallbacks. Cursor / nav predicates ride on the view (PRD #242).
+  const nav = view.nav;
   const bundleSlice = view.kind === "ok" ? view.bundle : null;
-  const navSlice = view.kind === "ok" ? view.nav : null;
   const rowsSlice = view.kind === "ok" ? view.rows : null;
   const treeSlice = view.kind === "ok" ? view.tree : null;
   const cursorSlice = view.kind === "ok" ? view.cursor : null;
-  // Cursor / nav predicates ride on the view (PRD #242). The validated
-  // anchor — a CardAnchor to a deleted annotation resolves to null — is
-  // what drives `r` / `s` enablement, the sidebar follow effect, and the
-  // `[N/M]` pill.
   const cursorCardId = cursorSlice?.cardId ?? null;
   const cursorCardAnnotation = cursorSlice?.cardAnnotation ?? null;
-  const sendTargetVal = navSlice?.sendTarget ?? null;
+  const sendTargetVal = "sendTarget" in nav ? nav.sendTarget : null;
   // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
   // shape — the action union has no combined "set-or-clear" variant.
   // Callers that need a same-ref short-circuit (motion helpers, intent
@@ -436,7 +434,7 @@ function App(props: AppProps) {
   // annotation's file in the tree so the next j/k or n/p lands on
   // visible material. Empty tours keep the default sidebar focus
   // (nothing to read; tree is the right anchor).
-  const topLevel = navSlice?.topLevel ?? [];
+  const topLevel = nav.topLevel;
   useEffect(() => {
     if (seededTourIdRef.current !== bundle.tour.id) {
       seededTourIdRef.current = bundle.tour.id;
@@ -1434,10 +1432,10 @@ function App(props: AppProps) {
       <TopHeaderTui
         tour={bundle.tour}
         layout={layout}
-        // SequencePill expects 0-based / -1 sentinel; the view's
-        // `navSlice.currentIdx` is 1-based / 0 sentinel. The translation
-        // is symmetric: `currentIdx === 0` → -1, otherwise idx - 1.
-        currentAnnotationIdx={(navSlice?.currentIdx ?? 0) - 1}
+        // SequencePill expects 0-based / -1 sentinel; `nav.currentIdx` is
+        // 1-based / 0 sentinel (ok-only). Property check narrows on
+        // snapshot-lost to the -1 sentinel.
+        currentAnnotationIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
@@ -1569,8 +1567,8 @@ function App(props: AppProps) {
                       repliesCollapsed,
                       replyLock,
                       now,
-                      navSlice?.navIndexById ?? EMPTY_NAV_INDEX,
-                      navSlice?.navTotal ?? 0,
+                      nav.navIndexById,
+                      nav.navTotal,
                     )}
                   </box>
                 );
