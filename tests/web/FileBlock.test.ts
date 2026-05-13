@@ -341,7 +341,7 @@ describe("<FileBlock> — interactive row activation", () => {
   it("forwards hunk-separator activation with direction 'both' and the hunk index", () => {
     const actions: ExpandAction[] = [];
     const rows: PlannedRow[] = [
-      { kind: "hunk-header", header: "@@", hunkIndex: 2, gapAbove: 8 },
+      { kind: "hunk-header", header: "@@ -33,7 +33,7 @@", hunkIndex: 2, gapAbove: 8 },
     ];
     const c = mount(
       createElement(
@@ -349,7 +349,8 @@ describe("<FileBlock> — interactive row activation", () => {
         defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
       ),
     );
-    const row = c.querySelector(".tour-row") as HTMLElement;
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    expect(row).not.toBeNull();
     act(() => {
       row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -359,6 +360,29 @@ describe("<FileBlock> — interactive row activation", () => {
       boundaryRef: 2,
       direction: "both",
     });
+  });
+
+  it("renders hunk-header rows through <HunkHeaderBanner> with parsed range + context (#223)", () => {
+    const rows: PlannedRow[] = [
+      {
+        kind: "hunk-header",
+        header: "@@ -33,7 +33,7 @@ function foo() {",
+        hunkIndex: 1,
+        gapAbove: 10,
+      },
+    ];
+    const c = mount(createElement(FileBlock, defaultProps({ rows })));
+    const banner = c.querySelector(".tour-hunk-header") as HTMLElement;
+    expect(banner).not.toBeNull();
+    // Class list carries both .tour-row and .tour-hunk-header.
+    expect(banner.classList.contains("tour-row")).toBe(true);
+    // Range and context segments are rendered as two separate spans.
+    const range = banner.querySelector(".tour-hunk-header-range") as HTMLElement;
+    const context = banner.querySelector(".tour-hunk-header-context") as HTMLElement;
+    expect(range.textContent).toBe("@@ -33,7 +33,7 @@");
+    expect(context.textContent).toBe("function foo() {");
+    // data-subkind preserved so App-level scrollCursorIntoView still finds it.
+    expect(banner.dataset.subkind).toBe("hunk-separator");
   });
 
   it("collapsed-file activation dispatches a separate `expand-file` action", () => {

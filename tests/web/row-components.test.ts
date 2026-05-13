@@ -6,7 +6,9 @@ import {
   DiffRow,
   CardRow,
   InteractiveRow,
+  HunkHeaderBanner,
   EXPANSION_STEP,
+  parseHunkHeader,
 } from "../../src/web/client/row-components.js";
 import type { Annotation } from "../../src/web/client/types.js";
 
@@ -741,6 +743,245 @@ describe("<InteractiveRow>", () => {
       }),
     );
     const row = c.querySelector(".tour-row") as HTMLElement;
+    expect(row.classList.contains("is-cursor")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseHunkHeader
+// ---------------------------------------------------------------------------
+
+describe("parseHunkHeader (#223)", () => {
+  it("splits a header with function-context into range + context", () => {
+    expect(parseHunkHeader("@@ -33,7 +33,7 @@ import {")).toEqual({
+      range: "@@ -33,7 +33,7 @@",
+      context: "import {",
+    });
+  });
+
+  it("returns an empty context when the header has no function-context tail", () => {
+    expect(parseHunkHeader("@@ -1,4 +1,4 @@")).toEqual({
+      range: "@@ -1,4 +1,4 @@",
+      context: "",
+    });
+  });
+
+  it("handles single-line hunks (no `,b` count after the start lines)", () => {
+    expect(parseHunkHeader("@@ -7 +7 @@ fn foo()")).toEqual({
+      range: "@@ -7 +7 @@",
+      context: "fn foo()",
+    });
+  });
+
+  it("falls through with the full string in `range` when the regex doesn't match", () => {
+    expect(parseHunkHeader("definitely not a hunk header")).toEqual({
+      range: "definitely not a hunk header",
+      context: "",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HunkHeaderBanner (#223)
+// ---------------------------------------------------------------------------
+
+describe("<HunkHeaderBanner> (#223)", () => {
+  it("renders a full-width tour-row with the tour-hunk-header class", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -33,7 +33,7 @@ import {",
+        boundaryRef: 1,
+        direction: "both",
+        gapAbove: 5,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-row.tour-hunk-header") as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.style.gridColumn).toMatch(/1\s*\/\s*-1/);
+  });
+
+  it("renders two text segments: muted range + default-color context", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -33,7 +33,7 @@ import {",
+        boundaryRef: 1,
+        direction: "both",
+        gapAbove: 5,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const range = c.querySelector(".tour-hunk-header-range") as HTMLElement;
+    const context = c.querySelector(".tour-hunk-header-context") as HTMLElement;
+    expect(range).not.toBeNull();
+    expect(context).not.toBeNull();
+    expect(range.textContent).toBe("@@ -33,7 +33,7 @@");
+    expect(context.textContent).toBe("import {");
+  });
+
+  it("omits the context span when the header carries no function-context tail", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        gapAbove: 0,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const range = c.querySelector(".tour-hunk-header-range") as HTMLElement;
+    const context = c.querySelector(".tour-hunk-header-context");
+    expect(range.textContent).toBe("@@ -1,4 +1,4 @@");
+    expect(context).toBeNull();
+  });
+
+  it("falls through to a single muted range span when the header is malformed", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "garbled header",
+        boundaryRef: 1,
+        direction: "both",
+        gapAbove: 5,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const range = c.querySelector(".tour-hunk-header-range") as HTMLElement;
+    const context = c.querySelector(".tour-hunk-header-context");
+    expect(range.textContent).toBe("garbled header");
+    expect(context).toBeNull();
+  });
+
+  it("emits data attributes (subkind, direction, boundary-ref) for App-level lookup", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        gapAbove: 8,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    expect(row.dataset.subkind).toBe("boundary-top");
+    expect(row.dataset.direction).toBe("up");
+    expect(row.dataset.boundaryRef).toBe("top");
+    expect(row.getAttribute("role")).toBe("button");
+    expect(row.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("emits subkind=hunk-separator for numeric boundaryRef", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -33,7 +33,7 @@",
+        boundaryRef: 2,
+        direction: "both",
+        gapAbove: 8,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    expect(row.dataset.subkind).toBe("hunk-separator");
+    expect(row.dataset.boundaryRef).toBe("2");
+  });
+
+  it("calls onActivate(EXPANSION_STEP) on a plain click", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        gapAbove: 8,
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([EXPANSION_STEP]);
+  });
+
+  it("expands the full gap on shift-click (max(gapAbove, EXPANSION_STEP))", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -33,7 +33,7 @@",
+        boundaryRef: 1,
+        direction: "both",
+        gapAbove: 60,
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    });
+    expect(calls).toEqual([Math.max(60, EXPANSION_STEP)]);
+  });
+
+  it("calls onActivate on Enter while isCursor is true", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        gapAbove: 6,
+        isCursor: true,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([EXPANSION_STEP]);
+  });
+
+  it("does NOT call onActivate on Enter when isCursor is false", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        gapAbove: 6,
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("applies .is-cursor on the row when isCursor is true (full-banner outline)", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        gapAbove: 6,
+        isCursor: true,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
     expect(row.classList.contains("is-cursor")).toBe(true);
   });
 });

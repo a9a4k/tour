@@ -135,6 +135,25 @@ export const FILE_GRID_CSS = `
     border-radius: 4px;
   }
 
+  /* Hunk-header banner: GitHub-style full-width section divider with a
+     subtle accent tint. The row spans 1 / -1 via grid-column (no subgrid
+     here — the two text segments flow inline). Range segment renders
+     muted; context segment renders in the default fg. */
+  .tour-hunk-header {
+    background-color: ${theme.bg.accentSubtle.web};
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+
+  .tour-hunk-header-range {
+    color: ${theme.fg.muted};
+  }
+
+  .tour-hunk-header-context {
+    color: ${theme.fg.default};
+    margin-left: 1ch;
+  }
+
   /* Cards: full-width by default; side-anchored in split layout
      (deletions cols 1-3, additions cols 4-end after the new symbol track). */
   .tour-card {

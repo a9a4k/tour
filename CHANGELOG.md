@@ -78,6 +78,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp hunk headers: GitHub-style banner with parsed range +
+  context segments (issue #223).** Hunk-header rows now render as a
+  full-width section-divider banner instead of the prior single-glyph
+  interactive row. The header string is parsed via the canonical
+  `^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)\s*(.*)$` regex into a range
+  segment (`@@ -a,b +c,d @@`, muted `fg.muted` color) and a context
+  segment (everything after the second `@@`, `fg.default` color); a
+  malformed header falls through to a single muted span of the raw
+  string. The banner spans the full file-grid width (`grid-column:
+  1 / -1`) with a subtle `bg.accentSubtle` tint, 6px vertical padding
+  for section weight, and `cursor: pointer`. Expansion semantics are
+  unchanged — plain click expands `EXPANSION_STEP`, shift-click
+  expands `Math.max(gapAbove, EXPANSION_STEP)`, Enter while cursored
+  dispatches the same. A new `<HunkHeaderBanner>` primitive sits
+  alongside `<DiffRow>` / `<CardRow>` / `<InteractiveRow>` in
+  `row-components`; `<FileBlock>`'s `renderHunkHeader` switches from
+  `<InteractiveRow>` to the new primitive while preserving the
+  `data-subkind` / `data-boundary-ref` attributes the App-level
+  `scrollCursorIntoView` queries. The cursor-outline + range-tint
+  decorations remain row-keyed (`.tour-row.is-cursor` selector list
+  unchanged).
+
+  Issue: #223 · PRD: #212 · ADR: 0024
+
 - **Webapp diff rows: two-tone tinting + `+`/`-` symbol column (GitHub
   parity, issue #221).** Diff rows now match GitHub's visual signature:
   the line-number gutter + a new symbol cell carry a lighter green/red

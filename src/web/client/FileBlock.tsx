@@ -15,6 +15,7 @@ import {
   DiffRow,
   CardRow,
   InteractiveRow,
+  HunkHeaderBanner,
   type DiffRowKind,
 } from "./row-components.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
@@ -342,7 +343,6 @@ function renderHunkHeader(
   cursor: Cursor | null,
   onDispatchExpand: (action: ExpandAction) => void,
 ): React.ReactNode {
-  // hunk-header maps to an interactive row for expansion dispatch.
   // hunkIndex === 0 → boundary-top (file-top), boundaryRef "top".
   // hunkIndex  >  0 → hunk-separator, boundaryRef = hunkIndex.
   const subKind: InteractiveRowKind["subKind"] =
@@ -361,13 +361,12 @@ function renderHunkHeader(
     });
   };
   return (
-    <InteractiveRow
+    <HunkHeaderBanner
       key={`hh-${idx}`}
-      subKind={subKind}
+      header={row.header}
       boundaryRef={boundaryRef}
       direction={direction}
       gapAbove={row.gapAbove}
-      glyph={row.header}
       isCursor={isCursor}
       onActivate={onActivate}
     />

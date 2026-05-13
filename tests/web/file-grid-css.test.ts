@@ -150,6 +150,45 @@ describe("FILE_GRID_CSS — range tint", () => {
   });
 });
 
+describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
+  it("paints the banner background with the accent-subtle token", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-hunk-header");
+    expect(FILE_GRID_CSS).toContain(theme.bg.accentSubtle.web);
+    // The rule itself must apply the accent-subtle background.
+    const rule = FILE_GRID_CSS.match(
+      /\.tour-hunk-header\s*\{[^}]*\}/,
+    )?.[0];
+    expect(rule).toBeTruthy();
+    expect(rule).toContain(`background-color: ${theme.bg.accentSubtle.web}`);
+  });
+
+  it("adds vertical padding so banners read as section dividers", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header[^{]*\{[^}]*padding:\s*\d+px\s+\d+px/,
+    );
+  });
+
+  it("keeps the banner clickable (cursor: pointer)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header[^{]*\{[^}]*cursor:\s*pointer/,
+    );
+  });
+
+  it("paints the range segment in the muted foreground color", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-hunk-header-range");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header-range[^{]*\{[^}]*color:\s*#9198a1/i,
+    );
+  });
+
+  it("paints the context segment in the default foreground color", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-hunk-header-context");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header-context[^{]*\{[^}]*color:\s*#f0f6fc/i,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — sticky file header", () => {
   it("retargets the sticky-header rule onto the new file-block surface", () => {
     expect(FILE_GRID_CSS).toContain(".tour-file-header");

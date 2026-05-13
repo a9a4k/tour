@@ -418,3 +418,90 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
 }
 
 export const InteractiveRow = memo(InteractiveRowImpl);
+
+// ---------------------------------------------------------------------------
+// <HunkHeaderBanner>
+// ---------------------------------------------------------------------------
+
+// Canonical hunk-header form: `@@ -a,b +c,d @@` followed optionally by a
+// function-context tail (e.g. ` function foo() {`). The `,b` / `,d` count
+// is optional (single-line hunks omit it).
+const HUNK_HEADER_REGEX =
+  /^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)\s*(.*)$/;
+
+export function parseHunkHeader(header: string): {
+  range: string;
+  context: string;
+} {
+  const m = HUNK_HEADER_REGEX.exec(header);
+  if (!m) return { range: header, context: "" };
+  return { range: m[1], context: m[2] };
+}
+
+export interface HunkHeaderBannerProps {
+  header: string;
+  boundaryRef: BoundaryRef;
+  direction: "up" | "both";
+  gapAbove: number;
+  isCursor: boolean;
+  /** Dispatches the expand action. Component computes `count` from the
+   *  click/key modifier (shift → `Math.max(gapAbove, EXPANSION_STEP)`,
+   *  otherwise `EXPANSION_STEP`). */
+  onActivate: (count: number) => void;
+}
+
+// `data-subkind` mirrors the value `<FileBlock>` would compute (and that
+// `App.tsx`'s `scrollCursorIntoView` queries) — `"boundary-top"` at the
+// file top, `"hunk-separator"` mid-file.
+function hunkHeaderSubKind(
+  boundaryRef: BoundaryRef,
+): "boundary-top" | "hunk-separator" {
+  return boundaryRef === "top" ? "boundary-top" : "hunk-separator";
+}
+
+// Banner is full-width but does not declare subgrid: the row-internal text
+// flows inline (range span + context span) instead of slotting into the
+// file-grid's auto/auto/1fr tracks.
+const BANNER_STYLE: React.CSSProperties = {
+  gridColumn: "1 / -1",
+};
+
+function HunkHeaderBannerImpl(
+  props: HunkHeaderBannerProps,
+): React.JSX.Element {
+  const { header, boundaryRef, direction, gapAbove, isCursor, onActivate } =
+    props;
+  const classes = ["tour-row", "tour-hunk-header"];
+  if (isCursor) classes.push("is-cursor");
+  const onClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onActivate(expansionCount(gapAbove, e.shiftKey));
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!isCursor) return;
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    onActivate(expansionCount(gapAbove, e.shiftKey));
+  };
+  const { range, context } = parseHunkHeader(header);
+  return (
+    <div
+      className={classes.join(" ")}
+      role="button"
+      tabIndex={0}
+      data-subkind={hunkHeaderSubKind(boundaryRef)}
+      data-direction={direction}
+      data-boundary-ref={String(boundaryRef)}
+      style={BANNER_STYLE}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+    >
+      <span className="tour-hunk-header-range">{range}</span>
+      {context ? (
+        <span className="tour-hunk-header-context">{context}</span>
+      ) : null}
+    </div>
+  );
+}
+
+export const HunkHeaderBanner = memo(HunkHeaderBannerImpl);
