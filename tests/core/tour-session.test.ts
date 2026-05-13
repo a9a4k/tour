@@ -18,6 +18,9 @@ import {
 import type { PickerRow } from "../../src/core/tour-list.js";
 import type { TourBundle } from "../../src/core/tour-bundle.js";
 import type { Tour, Annotation } from "../../src/core/types.js";
+import type { Cursor, RowAnchor, CardAnchor } from "../../src/core/cursor-state.js";
+import { validateCursor, cursorAtFirstFileRow } from "../../src/core/cursor-state.js";
+import type { FlatRow } from "../../src/core/flat-rows.js";
 
 function pickerRow(id: string, over: Partial<PickerRow> = {}): PickerRow {
   return {
@@ -80,7 +83,7 @@ describe("RemoteData<T> helpers", () => {
 });
 
 describe("initialTourSessionState", () => {
-  it("starts idle for every RemoteData slot, closed picker, split layout", () => {
+  it("starts idle for every RemoteData slot, closed picker, split layout, null cursor, empty expansion", () => {
     const s = initialTourSessionState();
     expect(s).toEqual({
       currentTourId: null,
@@ -89,6 +92,8 @@ describe("initialTourSessionState", () => {
       replyLock: { kind: "idle" },
       picker: { kind: "closed" },
       layout: "split",
+      cursor: null,
+      expansion: new Map(),
     });
   });
 });
@@ -206,10 +211,24 @@ describe("reduce — bundle slice", () => {
     expect(r.intents).toEqual([]);
   });
 
-  it("tour.switched applies CONTEXT-pinned reset rules: layout preserved, picker closed, replyLock reset", () => {
+  it("tour.switched applies CONTEXT-pinned reset rules: layout preserved, picker closed, replyLock reset, cursor null, expansion empty", () => {
     let s = initialTourSessionState();
     s = { ...s, layout: "unified", replyLock: { kind: "ok", value: null } };
     s = reduce(s, { type: "picker.open", rows: [pickerRow("a")] }).state;
+    s = reduce(s, {
+      type: "cursor.set",
+      anchor: {
+        kind: "row",
+        file: "f.ts",
+        side: "additions",
+        lineNumber: 1,
+        preferredSide: "additions",
+      },
+    }).state;
+    s = reduce(s, {
+      type: "expansion.expandFile",
+      file: "f.ts",
+    }).state;
     const b = mkBundle("a");
     const r = reduce(s, { type: "tour.switched", tourId: "a", bundle: b });
     expect(r.state.bundle).toEqual({ kind: "ok", value: b });
@@ -217,6 +236,8 @@ describe("reduce — bundle slice", () => {
     expect(r.state.layout).toBe("unified");
     expect(r.state.picker).toEqual({ kind: "closed" });
     expect(r.state.replyLock).toEqual({ kind: "idle" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.state.expansion).toEqual(new Map());
     expect(r.intents).toEqual([]);
   });
 
@@ -430,5 +451,506 @@ describe("TourSessionStore", () => {
     store.dispatch({ type: "picker.open", rows: [pickerRow("a"), pickerRow("b")] });
     store.dispatch({ type: "picker.move", delta: 1 });
     expect(captured).toEqual([]);
+  });
+});
+
+// --- Slice 2 (PRD #229 / issue #230) ----------------------------------------
+
+function rowAnchor(over: Partial<RowAnchor> = {}): RowAnchor {
+  return {
+    kind: "row",
+    file: over.file ?? "foo.ts",
+    side: over.side ?? "additions",
+    lineNumber: over.lineNumber ?? 42,
+    preferredSide: over.preferredSide ?? "additions",
+    ...(over.interactive ? { interactive: over.interactive } : {}),
+  };
+}
+
+function cardAnchor(over: Partial<CardAnchor> = {}): CardAnchor {
+  return {
+    kind: "card",
+    annotationId: over.annotationId ?? "ann-1",
+    preferredSide: over.preferredSide ?? "additions",
+  };
+}
+
+describe("reduce — cursor slice (slice 2 foundation)", () => {
+  it("cursor.set on a null cursor writes the slice and emits scrollCursorTarget + revealSidebarFile (RowAnchor)", () => {
+    const anchor = rowAnchor({ file: "foo.ts", lineNumber: 7, side: "additions" });
+    const r = reduce(initialTourSessionState(), { type: "cursor.set", anchor });
+    expect(r.state.cursor).toBe(anchor);
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 7 },
+      },
+      { type: "revealSidebarFile", file: "foo.ts" },
+    ]);
+  });
+
+  it("cursor.set to a RowAnchor in the same file does NOT emit revealSidebarFile", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 1 }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 5 }),
+    });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 5 },
+      },
+    ]);
+  });
+
+  it("cursor.set to a RowAnchor in a different file emits revealSidebarFile", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "bar.ts", lineNumber: 3 }),
+    });
+    expect(r.intents).toContainEqual({ type: "revealSidebarFile", file: "bar.ts" });
+  });
+
+  it("cursor.set from RowAnchor to CardAnchor emits mirrorAnnUrl { annotationId }", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-7" }),
+    });
+    expect(r.state.cursor).toEqual(cardAnchor({ annotationId: "ann-7" }));
+    expect(r.intents).toEqual([
+      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-7" } },
+      { type: "mirrorAnnUrl", annotationId: "ann-7" },
+    ]);
+  });
+
+  it("cursor.set from CardAnchor to RowAnchor emits mirrorAnnUrl { annotationId: null }", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-1" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 4 }),
+    });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 4 },
+      },
+      { type: "revealSidebarFile", file: "foo.ts" },
+      { type: "mirrorAnnUrl", annotationId: null },
+    ]);
+  });
+
+  it("cursor.set from CardAnchor to a different CardAnchor emits mirrorAnnUrl { newId } (no revealSidebarFile)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-1" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-2" }),
+    });
+    expect(r.intents).toEqual([
+      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-2" } },
+      { type: "mirrorAnnUrl", annotationId: "ann-2" },
+    ]);
+  });
+
+  it("cursor.set within the same Card (same annotationId) emits scrollCursorTarget but no mirrorAnnUrl", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-1" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-1", preferredSide: "deletions" }),
+    });
+    expect(r.intents).toEqual([
+      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-1" } },
+    ]);
+  });
+
+  it("cursor.clear sets the slice to null and emits no intents when prior was a RowAnchor", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, { type: "cursor.clear" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor.clear after a CardAnchor emits mirrorAnnUrl { annotationId: null }", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-1" }),
+    }).state;
+    const r = reduce(s, { type: "cursor.clear" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", annotationId: null }]);
+  });
+
+  it("cursor.clear on a null cursor is a no-op (same state ref, no intents)", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "cursor.clear" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor.materialize on a null cursor sets the cursor and emits the same intents as cursor.set", () => {
+    const anchor = cardAnchor({ annotationId: "ann-5" });
+    const r = reduce(initialTourSessionState(), { type: "cursor.materialize", anchor });
+    expect(r.state.cursor).toBe(anchor);
+    expect(r.intents).toEqual([
+      { type: "scrollCursorTarget", target: { kind: "card", annotationId: "ann-5" } },
+      { type: "mirrorAnnUrl", annotationId: "ann-5" },
+    ]);
+  });
+
+  it("cursor.materialize on a non-null cursor is a strict no-op (same state ref, no intents)", () => {
+    const before = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(before, {
+      type: "cursor.materialize",
+      anchor: rowAnchor({ file: "bar.ts", lineNumber: 99 }),
+    });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor.setSide on a null cursor is a no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "cursor.setSide", side: "deletions" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor.setSide on a RowAnchor updates preferredSide and side (no intents)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ side: "additions", preferredSide: "additions" }),
+    }).state;
+    const r = reduce(s, { type: "cursor.setSide", side: "deletions" });
+    expect(r.state.cursor).toMatchObject({
+      kind: "row",
+      side: "deletions",
+      preferredSide: "deletions",
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor.setSide on a CardAnchor updates only preferredSide (no intents)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ annotationId: "ann-1", preferredSide: "additions" }),
+    }).state;
+    const r = reduce(s, { type: "cursor.setSide", side: "deletions" });
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      annotationId: "ann-1",
+      preferredSide: "deletions",
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor.setSide is a no-op when the side is unchanged", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ side: "additions", preferredSide: "additions" }),
+    }).state;
+    const r = reduce(s, { type: "cursor.setSide", side: "additions" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("cursor slice survives slices it shouldn't touch (picker.move, replyLock.loaded)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 1 }),
+    }).state;
+    const before = s.cursor;
+    s = reduce(s, { type: "picker.open", rows: [pickerRow("a"), pickerRow("b")] }).state;
+    s = reduce(s, { type: "picker.move", delta: 1 }).state;
+    s = reduce(s, {
+      type: "replyLock.loaded",
+      replyLock: { agent: "claude", started_at: "2026-05-13T00:00:00Z" },
+    }).state;
+    expect(s.cursor).toBe(before);
+  });
+});
+
+describe("reduce — expansion slice (slice 2 foundation)", () => {
+  it("expansion.expandFile sets fileExpanded for the file (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "expansion.expandFile",
+      file: "foo.ts",
+    });
+    expect(r.state.expansion.get("foo.ts")?.fileExpanded).toBe(true);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expandFile is a no-op when the file is already expanded (same state ref)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "expansion.expandFile",
+      file: "foo.ts",
+    }).state;
+    const r = reduce(s, { type: "expansion.expandFile", file: "foo.ts" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expandTop appends `up` lines to the file-top boundary (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "expansion.expandTop",
+      file: "foo.ts",
+      mode: "all",
+      gapSize: 30,
+    });
+    const boundary = r.state.expansion.get("foo.ts")?.boundaries.get("top");
+    expect(boundary).toEqual({ up: 30, down: 0 });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expandBottom appends `down` lines to the file-bottom boundary (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "expansion.expandBottom",
+      file: "foo.ts",
+      mode: "all",
+      gapSize: 30,
+    });
+    const boundary = r.state.expansion.get("foo.ts")?.boundaries.get("bottom");
+    expect(boundary).toEqual({ up: 0, down: 30 });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expand on a numeric hunk separator updates both sides symmetrically (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "expansion.expand",
+      file: "foo.ts",
+      ref: 2,
+      direction: "both",
+      mode: "symmetric-20",
+      gapSize: 100,
+    });
+    const boundary = r.state.expansion.get("foo.ts")?.boundaries.get(2);
+    expect(boundary).toEqual({ up: 10, down: 10 });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expand returns the same state ref when gap is fully expanded (no-op)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "expansion.expand",
+      file: "foo.ts",
+      ref: 1,
+      direction: "both",
+      mode: "all",
+      gapSize: 10,
+    }).state;
+    const r = reduce(s, {
+      type: "expansion.expand",
+      file: "foo.ts",
+      ref: 1,
+      direction: "both",
+      mode: "symmetric-20",
+      gapSize: 10,
+    });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.seedFromOrphans merges orphan windows into the slice (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "expansion.seedFromOrphans",
+      windows: [
+        { file: "foo.ts", ref: "top", fromStart: 3, fromEnd: 0 },
+        { file: "bar.ts", ref: 1, fromStart: 0, fromEnd: 5 },
+      ],
+    });
+    expect(r.state.expansion.get("foo.ts")?.boundaries.get("top")).toEqual({ up: 3, down: 0 });
+    expect(r.state.expansion.get("bar.ts")?.boundaries.get(1)).toEqual({ up: 0, down: 5 });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.seedFromOrphans on an empty window list is a same-ref no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "expansion.seedFromOrphans", windows: [] });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("unchanged slices keep reference stability across an expansion action", () => {
+    const lock = { agent: "claude", started_at: "2026-05-13T00:00:00Z" };
+    let s = reduce(initialTourSessionState(), {
+      type: "replyLock.loaded",
+      replyLock: lock,
+    }).state;
+    s = reduce(s, {
+      type: "picker.open",
+      rows: [pickerRow("a")],
+    }).state;
+    const r = reduce(s, { type: "expansion.expandFile", file: "foo.ts" });
+    expect(r.state.replyLock).toBe(s.replyLock);
+    expect(r.state.picker).toBe(s.picker);
+    expect(r.state.tourList).toBe(s.tourList);
+    expect(r.state.bundle).toBe(s.bundle);
+  });
+});
+
+describe("reduce — bundle.refreshed → revalidateCursor wiring", () => {
+  it("bundle.refreshed with cursor === null emits no revalidateCursor intent", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "bundle.refreshed",
+      bundle: mkBundle("a"),
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("bundle.refreshed with cursor !== null emits a revalidateCursor intent", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 42 }),
+    }).state;
+    const r = reduce(s, { type: "bundle.refreshed", bundle: mkBundle("a") });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("tour.switched does not emit revalidateCursor (cursor was reset to null)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: mkBundle("a"),
+    });
+    expect(r.intents).toEqual([]);
+    expect(r.state.cursor).toBeNull();
+  });
+});
+
+describe("cross-async killer fixture — watcher reload snaps cursor to file's first row", () => {
+  // The slice-2 architecture earns its keep here: a watcher reload arrives,
+  // the cursor's row vanishes from the new bundle, the surface drains the
+  // revalidateCursor intent by calling validateCursor against fresh flat-
+  // rows + files, and the resulting snap is reproducible as a synchronous
+  // fixture — no React / OpenTUI / JSDOM rendering required.
+  function diffRow(file: string, line: number): FlatRow {
+    return {
+      kind: "diff",
+      file,
+      lineNumber: line,
+      side: "additions",
+      leftLineNumber: line,
+      rightLineNumber: line,
+      paired: true,
+    };
+  }
+
+  it("cursor on file foo line 42 → bundle.refreshed → surface snaps via validateCursor → cursor.set lands on file's first row, with deterministic action + intent stream", () => {
+    const store = new TourSessionStore();
+    const intents: Intent[] = [];
+    store.onIntent((i) => intents.push(i));
+
+    // Seed: cursor pinned to (foo, line 42, additions).
+    const initialAnchor: Cursor = rowAnchor({
+      file: "foo.ts",
+      lineNumber: 42,
+      side: "additions",
+    });
+    store.dispatch({ type: "cursor.set", anchor: initialAnchor });
+
+    // Intent stream so far: cursor.set's three intents (scroll + reveal +
+    // mirror-null since prev was null and new is row).
+    expect(intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 42 },
+      },
+      { type: "revealSidebarFile", file: "foo.ts" },
+    ]);
+    intents.length = 0;
+
+    // Bundle.refreshed arrives (watcher reload). The new bundle's flat-rows
+    // for foo.ts no longer contain line 42 — the row vanished.
+    const refreshedBundle = mkBundle("a");
+    store.dispatch({ type: "bundle.refreshed", bundle: refreshedBundle });
+
+    // Intent stream: just the revalidateCursor signal — the reducer doesn't
+    // know what flat-rows look like, so the surface owns the resolution.
+    expect(intents).toEqual([{ type: "revalidateCursor" }]);
+    intents.length = 0;
+
+    // Simulate the surface drain: rebuild flat-rows from the new bundle
+    // (line 1 still present, line 42 gone), call validateCursor with files
+    // also containing foo.ts. The pure helper picks the file's first
+    // surviving row.
+    const newFlatRows: FlatRow[] = [diffRow("foo.ts", 1), diffRow("foo.ts", 2)];
+    const files: ReadonlyArray<{ name: string }> = [{ name: "foo.ts" }];
+    const snapped = validateCursor(store.getState().cursor, newFlatRows, files);
+    expect(snapped).toEqual(rowAnchor({ file: "foo.ts", lineNumber: 1 }));
+    // Sanity check against the dedicated first-row helper.
+    expect(cursorAtFirstFileRow("foo.ts", newFlatRows)).toEqual(snapped);
+
+    // Surface dispatches the snap.
+    if (snapped !== null) store.dispatch({ type: "cursor.set", anchor: snapped });
+
+    // Final state + intent stream is fully deterministic.
+    expect(store.getState().cursor).toEqual(snapped);
+    expect(intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 1 },
+      },
+    ]);
+  });
+
+  it("when the cursor's file vanishes entirely, validateCursor returns null and the surface dispatches cursor.clear (Card-leaving null mirror not emitted for a Row→null path)", () => {
+    const store = new TourSessionStore();
+    const intents: Intent[] = [];
+    store.onIntent((i) => intents.push(i));
+    store.dispatch({
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 1 }),
+    });
+    intents.length = 0;
+    store.dispatch({ type: "bundle.refreshed", bundle: mkBundle("a") });
+    expect(intents).toEqual([{ type: "revalidateCursor" }]);
+    intents.length = 0;
+
+    // foo.ts removed from the new bundle.
+    const newFlatRows: FlatRow[] = [diffRow("bar.ts", 1)];
+    const files: ReadonlyArray<{ name: string }> = [{ name: "bar.ts" }];
+    const snapped = validateCursor(store.getState().cursor, newFlatRows, files);
+    // No "snap to next file" because the cursor's file isn't in `files`.
+    expect(snapped).toBeNull();
+    store.dispatch({ type: "cursor.clear" });
+    expect(store.getState().cursor).toBeNull();
+    // Prior was a RowAnchor → no mirrorAnnUrl emitted.
+    expect(intents).toEqual([]);
+  });
+
+  it("when the cursor's row survives the reload, validateCursor returns the same anchor ref and the surface emits no dispatch", () => {
+    const store = new TourSessionStore();
+    const initial = rowAnchor({ file: "foo.ts", lineNumber: 1 });
+    store.dispatch({ type: "cursor.set", anchor: initial });
+    const newFlatRows: FlatRow[] = [diffRow("foo.ts", 1), diffRow("foo.ts", 2)];
+    const files: ReadonlyArray<{ name: string }> = [{ name: "foo.ts" }];
+    const validated = validateCursor(store.getState().cursor, newFlatRows, files);
+    expect(validated).toBe(store.getState().cursor); // Same ref — no dispatch.
   });
 });
