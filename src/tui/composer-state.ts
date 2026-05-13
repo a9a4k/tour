@@ -1,12 +1,9 @@
 import type { Annotation } from "../core/types.js";
 import type { Cursor } from "../core/cursor-state.js";
-
-export type ComposerState =
-  | { kind: "top-level"; file: string; side: "additions" | "deletions"; line_start: number; line_end: number }
-  | { kind: "reply"; parent: Annotation };
+import type { ComposerTarget } from "../core/tour-session.js";
 
 /**
- * Seed the top-level composer from a row cursor (PRD #192 / ADR 0022).
+ * Seed a top-level ComposerTarget from a row cursor (PRD #192 / ADR 0022).
  * `a` annotates exactly the cursor's line. The unified-cursor keymap
  * already gates `a` to a row cursor (cards reject `a` as a no-op with a
  * footer hint), so by the time this helper runs the cursor is either a
@@ -16,7 +13,7 @@ export type ComposerState =
 export function buildTopLevelComposer(args: {
   cursor: Cursor | null;
   currentAnnotation: Annotation | null;
-}): ComposerState | null {
+}): ComposerTarget | null {
   // Interactive rows are not annotatable (PRD #107 US 9).
   if (args.cursor && args.cursor.kind === "row" && args.cursor.interactive) return null;
   if (args.cursor && args.cursor.kind === "row") {
@@ -45,9 +42,15 @@ export function buildTopLevelComposer(args: {
   return null;
 }
 
+/**
+ * Seed a reply ComposerTarget from the cursor-focused parent Annotation.
+ * The target carries the parent's id (not the full Annotation) so the
+ * slice doesn't go stale when the bundle refreshes mid-composition —
+ * surfaces resolve the live parent at submit time (PRD #234).
+ */
 export function buildReplyComposer(args: {
   currentAnnotation: Annotation | null;
-}): ComposerState | null {
+}): ComposerTarget | null {
   if (!args.currentAnnotation) return null;
-  return { kind: "reply", parent: args.currentAnnotation };
+  return { kind: "reply", replies_to: args.currentAnnotation.id };
 }

@@ -40,6 +40,7 @@ import {
   pickerHighlighted,
   isBundleResolved,
   initialTourSessionState,
+  type ComposerTarget,
   type TourSummary,
 } from "../core/tour-session.js";
 import { theme } from "../core/theme.js";
@@ -50,9 +51,7 @@ import { Composer } from "./Composer.js";
 import {
   buildReplyComposer,
   buildTopLevelComposer,
-  type ComposerState,
 } from "./composer-state.js";
-import { createComposerSubmitter } from "./composer-submit.js";
 import { buildThreads, topLevelAnnotations } from "../core/threads.js";
 import { tuiSendTarget } from "./send-target.js";
 import {
@@ -190,9 +189,6 @@ const SIDEBAR_CONTENT_WIDTH = SIDEBAR_WIDTH - SIDEBAR_BORDER;
 function App(props: AppProps) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
-  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
-  const [layout, setLayout] = useState<"split" | "unified">("split");
   const [repliesCollapsed, setRepliesCollapsed] = useState(false);
   // Tour-session store (PRD #207 slice 1, issue #209; bundle / replyLock
   // moved to the store in issue #211). The store is the single source of
@@ -227,14 +223,18 @@ function App(props: AppProps) {
   const bundle = lastBundleRef.current;
   const replyLock =
     sessionState.replyLock.kind === "ok" ? sessionState.replyLock.value : null;
-  const [composer, setComposer] = useState<ComposerState | null>(null);
-  // Cursor + expansion are authoritative in the Tour-session store (issue
-  // #231 / PRD #229). Reads route through `sessionState`; mutations go via
-  // `store.dispatch(...)`. The CONTEXT-pinned Tour-switch reset cascade is
-  // driven by the reducer's `tour.switched` branch (cursor → null,
-  // expansion → empty).
+  // Cursor + expansion + composer + folds + layout are authoritative in the
+  // Tour-session store (issue #231 / PRD #229; issue #237 / PRD #234 added
+  // composer + folds + layout). Reads route through `sessionState`; mutations
+  // go via `store.dispatch(...)`. The CONTEXT-pinned Tour-switch reset cascade
+  // is driven entirely by the reducer's `tour.switched` branch (cursor → null,
+  // expansion → empty, composer → closed, folds → empty).
   const cursor = sessionState.cursor;
   const expansion = sessionState.expansion;
+  const composer = sessionState.composer;
+  const collapsedFolders = sessionState.collapsedFolders;
+  const collapsedOverrides = sessionState.collapsedOverrides;
+  const layout = sessionState.layout;
   // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
   // shape — the action union has no combined "set-or-clear" variant.
   // Callers that need a same-ref short-circuit (motion helpers, intent
@@ -243,15 +243,42 @@ function App(props: AppProps) {
     if (next === null) store.dispatch({ type: "cursor.clear" });
     else store.dispatch({ type: "cursor.set", anchor: next });
   };
+  // Reveal a file's collapsed ancestors (via `folds.toggleFolder`
+  // dispatches against the snapshot) and return the file's post-reveal
+  // row index — null if the file isn't in the tree. The snapshot —
+  // `collapsedFolders` from this render or the intent listener's
+  // `collapsedFoldersRef` — is the consistent "which ancestors need
+  // expanding" view; each per-path toggle is idempotent so a racing
+  // dispatch can only fold-then-unfold, never lose a user-requested
+  // reveal. The rowIdx is computed against the same snapshot —
+  // `revealAndLocate` re-derives the post-reveal flatten internally.
+  const revealAndLocateFile = (
+    file: string,
+    tree: Parameters<typeof revealAncestors>[0],
+    snapshot: ReadonlySet<string>,
+    counts: Record<string, number>,
+  ): number | null => {
+    const ancestors = revealAncestors(tree, file);
+    for (const path of ancestors) {
+      if (snapshot.has(path)) {
+        store.dispatch({ type: "folds.toggleFolder", path });
+      }
+    }
+    const located = revealAndLocate(tree, snapshot, counts, file);
+    return located ? located.rowIdx : null;
+  };
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
-  // After a top-level annotate-submit, holds the id of the freshly-created
-  // Annotation until the post-submit effect scrolls its card into view.
-  // The cursor is intentionally NOT advanced onto the new card (PRD UX 26
-  // r-after-a foot-gun protection); this is viewport-only.
-  const [pendingScrollAnnotationId, setPendingScrollAnnotationId] =
-    useState<string | null>(null);
+  // The post-submit scroll-the-new-card-into-view flow is driven by the
+  // reducer's `scrollToAnnotation` intent (emitted by `composer.submitted`,
+  // PRD #234 / issue #237). The TUI's prior `pendingScrollAnnotationId`
+  // useState is gone; the intent listener stashes the id in this ref and a
+  // useEffect on `plannedRowsByFile` consumes it once the bundle-refresh
+  // re-render mounts the new card. The retry useEffect mirrors the prior
+  // flow's correctness without requiring assumptions about React commit
+  // timing relative to the `composer.submitted` dispatch.
+  const pendingScrollIdRef = useRef<string | null>(null);
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -494,12 +521,9 @@ function App(props: AppProps) {
       if (liveTopLevel.length === 0) return;
       const first = liveTopLevel[0];
       setSidebarFocused(false);
-      const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
-      if (!located) return;
-      if (located.collapsedFolders !== collapsedFolders) {
-        setCollapsedFolders(located.collapsedFolders as Set<string>);
-      }
-      setSelectedRowIdx(located.rowIdx);
+      const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, annotationCounts);
+      if (rowIdx === null) return;
+      setSelectedRowIdx(rowIdx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTopLevel, liveTour.id]);
@@ -558,13 +582,9 @@ function App(props: AppProps) {
   }, [cursor, liveAnnotations]);
   useEffect(() => {
     if (!cursorFile) return;
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursorFile);
-    if (!located) return;
-    if (located.collapsedFolders !== collapsedFolders) {
-      setCollapsedFolders(located.collapsedFolders as Set<string>);
-    }
-    if (located.rowIdx !== safeRowIdx) {
-      setSelectedRowIdx(located.rowIdx);
+    const rowIdx = revealAndLocateFile(cursorFile, tree, collapsedFolders, annotationCounts);
+    if (rowIdx !== null && rowIdx !== safeRowIdx) {
+      setSelectedRowIdx(rowIdx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursorFile]);
@@ -578,22 +598,22 @@ function App(props: AppProps) {
     sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
   }, [safeRowIdx, visibleRows]);
 
-  // Scroll a freshly-created top-level Annotation into view (issue #150,
-  // PRD #148). Fires once per successful create — the cursor is
-  // intentionally untouched (PRD UX 26 r-after-a foot-gun protection).
-  // `nearest` semantics from scrollChildIntoView mean already-visible
-  // cards do not move. The effect waits for the card's box to mount;
-  // the bundle-reload re-render brings it into the scrollbox content
-  // tree, after which the pending id is cleared.
+  // Consume a pending post-submit scroll once the bundle-refresh re-render
+  // mounts the new annotation card (PRD #234 / issue #237). The ref is set
+  // by the `scrollToAnnotation` intent handler; this effect retries each
+  // time `plannedRowsByFile` re-derives until the card appears in the DOM.
+  // The cursor is intentionally NOT advanced onto the new card (PRD UX 26
+  // r-after-a foot-gun protection); this is viewport-only.
   useEffect(() => {
-    if (!pendingScrollAnnotationId) return;
+    const id = pendingScrollIdRef.current;
+    if (id === null) return;
     const sb = diffScrollRef.current;
     if (!sb) return;
-    const targetId = `annotation-${pendingScrollAnnotationId}`;
+    const targetId = `annotation-${id}`;
     if (!sb.content.findDescendantById(targetId)) return;
     scrollChildIntoView(sb, targetId);
-    setPendingScrollAnnotationId(null);
-  }, [pendingScrollAnnotationId, liveAnnotations, plannedRowsByFile]);
+    pendingScrollIdRef.current = null;
+  }, [liveAnnotations, plannedRowsByFile]);
 
   // Derived: the cursor's card target (PRD #192 / ADR 0022). When the
   // cursor is on a card, the target is that card's id; when on a row
@@ -746,19 +766,18 @@ function App(props: AppProps) {
           try {
             const next = await props.loadTour!(tourId);
             if (unmounted) return;
-            // CONTEXT-pinned Tour-switch resets that don't yet live in
-            // the reducer: folds + overrides + sidebar row index. Cursor
-            // and expansion are reset by the reducer's `tour.switched`
-            // branch (slice 2, issue #230); the surface dispatches
-            // `expansion.seedFromOrphans` post-switch to re-seed orphan
-            // windows from the new tour's files.
+            // Sidebar row index is the only CONTEXT-pinned Tour-switch
+            // reset still hand-rolled — sidebar selection is surface-
+            // specific (derivable from cursor) and out of scope for the
+            // store per PRD #234. Every other reset (cursor, expansion,
+            // composer, folds + overrides, replyLock, picker, bundle)
+            // lands in the reducer's `tour.switched` branch.
             setSelectedRowIdx(0);
-            setCollapsedOverrides({});
-            setCollapsedFolders(new Set());
             // Drive the reducer's `tour.switched` cascade — bundle is
             // replaced; picker closes (defensively; commit already closed
             // it); replyLock resets to idle; cursor resets to null;
-            // expansion resets to empty.
+            // expansion resets to empty; composer → closed; folds →
+            // empty.
             store.dispatch({ type: "tour.switched", tourId, bundle: next });
             // Re-seed orphan windows from the new tour's files post-switch
             // so Annotations whose anchor lives in Hidden context render
@@ -819,19 +838,99 @@ function App(props: AppProps) {
         return;
       }
       if (intent.type === "revealSidebarFile") {
-        const located = revealAndLocate(
+        const rowIdx = revealAndLocateFile(
+          intent.file,
           treeRef.current,
           collapsedFoldersRef.current,
           annotationCountsRef.current,
-          intent.file,
         );
-        if (!located) return;
-        if (located.collapsedFolders !== collapsedFoldersRef.current) {
-          setCollapsedFolders(located.collapsedFolders as Set<string>);
+        if (rowIdx !== null && rowIdx !== safeRowIdxRef.current) {
+          setSelectedRowIdx(rowIdx);
         }
-        if (located.rowIdx !== safeRowIdxRef.current) {
-          setSelectedRowIdx(located.rowIdx);
+        return;
+      }
+      if (intent.type === "submitAnnotation") {
+        if (!props.writeAnnotation) return;
+        const { tourId, target, body } = intent;
+        // Empty bodies (or whitespace-only) are treated as cancel — same as
+        // the prior surface-side trim check. The reducer transitioned us to
+        // `submitting` already; flip back to `closed` rather than burning a
+        // disk write. PRD #234 issue #237.
+        if (body.trim().length === 0) {
+          store.dispatch({ type: "composer.close" });
+          return;
         }
+        // Resolve the reply target's parent from the live bundle. Captured
+        // here, not in the reducer, so the (id → Annotation) lookup tracks
+        // the latest bundle even after a mid-composition watcher reload.
+        let input: WriteAnnotationInput;
+        if (target.kind === "top-level") {
+          input = {
+            kind: "top-level",
+            file: target.file,
+            side: target.side,
+            line_start: target.line_start,
+            line_end: target.line_end,
+            body,
+          };
+        } else {
+          const live = store.getState();
+          const liveBundle = isBundleResolved(live);
+          const parent = liveBundle?.annotations.find(
+            (a) => a.id === target.replies_to,
+          );
+          if (!parent) {
+            // Parent vanished mid-composition (rare — watcher reload deleted
+            // the annotation between open and submit). Surface as a failure
+            // and bail out before calling the writer.
+            store.dispatch({ type: "composer.failed", error: "Parent annotation no longer exists" });
+            return;
+          }
+          input = { kind: "reply", parent, body };
+        }
+        (async () => {
+          try {
+            const created = await props.writeAnnotation!(tourId, input);
+            if (unmounted) return;
+            store.dispatch({ type: "composer.submitted", annotation: created });
+            // The CLI's `tour annotate` would let the watcher re-render. The
+            // TUI path skips the watcher loop and reloads the bundle directly
+            // so the new entry shows up immediately on submit. Same-tour
+            // refresh — dispatch `bundle.refreshed` (issue #211), NOT
+            // `tour.switched`, so the picker / replyLock survive a composer
+            // submit. Re-seed orphan windows BEFORE `bundle.refreshed` so the
+            // reducer's `revalidateCursor` intent fires against the freshly-
+            // seeded expansion slice.
+            if (!props.loadTour) return;
+            try {
+              const refreshed = await props.loadTour(tourId);
+              if (unmounted) return;
+              if (refreshed.kind === "ok") {
+                store.dispatch({
+                  type: "expansion.seedFromOrphans",
+                  windows: flattenOrphanWindows(refreshed.files),
+                });
+              }
+              store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
+            } catch {
+              // transient — keep current bundle
+            }
+          } catch (e) {
+            if (unmounted) return;
+            const error = e instanceof Error ? e.message : String(e);
+            store.dispatch({ type: "composer.failed", error });
+          }
+        })();
+        return;
+      }
+      if (intent.type === "scrollToAnnotation") {
+        // Post-submit scroll: the intent fires synchronously inside the
+        // `composer.submitted` dispatch, which precedes the
+        // `bundle.refreshed` dispatch in this listener's submitAnnotation
+        // flow — so the freshly-created card may not be in the DOM yet.
+        // Stash the id; the retry useEffect on plannedRowsByFile picks it
+        // up once the bundle-refresh re-render lands the card.
+        pendingScrollIdRef.current = intent.annotationId;
         return;
       }
       // mirrorUrl + mirrorAnnUrl: TUI has no URL — ignored.
@@ -849,16 +948,11 @@ function App(props: AppProps) {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
     // subsequent j/k move the diff cursor, not the file row.
     setSidebarFocused(false);
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, ann.file);
-    if (located) {
-      if (located.collapsedFolders !== collapsedFolders) {
-        setCollapsedFolders(located.collapsedFolders as Set<string>);
-      }
-      if (located.rowIdx !== safeRowIdx) {
-        setSelectedRowIdx(located.rowIdx);
-      }
+    const rowIdx = revealAndLocateFile(ann.file, tree, collapsedFolders, annotationCounts);
+    if (rowIdx !== null && rowIdx !== safeRowIdx) {
+      setSelectedRowIdx(rowIdx);
     }
-    setCollapsedOverrides((prev) => ({ ...prev, [ann.file]: false }));
+    store.dispatch({ type: "folds.setOverride", file: ann.file, value: false });
     // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
     // annotation's card directly — no synthesized row anchor. Thread
     // preferredSide so an `h`/`l` choice survives the jump (issue #200).
@@ -1087,12 +1181,12 @@ function App(props: AppProps) {
     // here defends in depth so the user can't reach a mis-anchored
     // composer through state churn.
     if (activeCursor && activeCursor.kind === "card") return;
-    const state = buildTopLevelComposer({
+    const target = buildTopLevelComposer({
       cursor: activeCursor,
       currentAnnotation: cursorCardAnnotation,
     });
-    if (!state) return;
-    setComposer(state);
+    if (!target) return;
+    store.dispatch({ type: "composer.open", target });
   };
 
   const openReplyComposer = () => {
@@ -1103,9 +1197,9 @@ function App(props: AppProps) {
     if (!cursorCardAnnotation) return;
     const sb = diffScrollRef.current;
     if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
-    const state = buildReplyComposer({ currentAnnotation: cursorCardAnnotation });
-    if (!state) return;
-    setComposer(state);
+    const target = buildReplyComposer({ currentAnnotation: cursorCardAnnotation });
+    if (!target) return;
+    store.dispatch({ type: "composer.open", target });
   };
 
   // Send the latest human leaf in the focused Thread to the configured
@@ -1159,46 +1253,6 @@ function App(props: AppProps) {
     });
   };
 
-  const cancelComposer = () => {
-    setComposer(null);
-  };
-
-  // Stable across renders — the in-flight flag inside lives in the closure,
-  // so a second Enter fired while the first submit is awaiting the write +
-  // bundle reload is silently dropped (issue #159). The submitter also
-  // dismisses the composer synchronously before the first await, which
-  // unmounts the focused <input> on the next React render so most second-
-  // Enter events never even reach this code path.
-  const composerSubmitterRef = useRef(createComposerSubmitter());
-  const submitComposer = (body: string) =>
-    composerSubmitterRef.current({
-      composer,
-      body,
-      tourId: liveTour.id,
-      bundle,
-      writeAnnotation: props.writeAnnotation,
-      loadTour: props.loadTour,
-      dismiss: () => setComposer(null),
-      applyBundleReload: (refreshed) => {
-        // The CLI's `tour annotate` would let the watcher re-render. The
-        // TUI path skips the watcher loop and reloads the bundle directly
-        // so the new entry shows up immediately on submit. Same-tour
-        // refresh — dispatch `bundle.refreshed` (issue #211), NOT
-        // `tour.switched`, so the picker / replyLock survive a composer
-        // submit. Re-seed orphan windows BEFORE `bundle.refreshed` so the
-        // reducer's `revalidateCursor` intent fires against the freshly-
-        // seeded expansion slice.
-        if (refreshed.kind === "ok") {
-          store.dispatch({
-            type: "expansion.seedFromOrphans",
-            windows: flattenOrphanWindows(refreshed.files),
-          });
-        }
-        store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
-      },
-      applyTopLevelCreated: setPendingScrollAnnotationId,
-    });
-
   useKeyboard((key) => {
     // Ctrl+D — opentui's built-in debug overlay. Shows FPS, frame time,
     // memory. Handle before composer/picker so it works even mid-edit.
@@ -1206,10 +1260,10 @@ function App(props: AppProps) {
       renderer.toggleDebugOverlay();
       return;
     }
-    if (composer) {
+    if (composer.kind === "open") {
       // Esc cancels; Return / typing flows through to the focused <input>.
       if (key.name === "escape") {
-        cancelComposer();
+        store.dispatch({ type: "composer.close" });
       }
       return;
     }
@@ -1302,43 +1356,30 @@ function App(props: AppProps) {
         const f = selectedRow.file;
         const cls = fileClassification(liveClassifications, f.name);
         if (cls.reason === "binary") return;
-        setCollapsedOverrides((prev) => ({
-          ...prev,
-          [f.name]: !isFileCollapsed(f.name),
-        }));
+        store.dispatch({
+          type: "folds.setOverride",
+          file: f.name,
+          value: !isFileCollapsed(f.name),
+        });
         return;
       }
       case "toggle-folder": {
         if (selectedRow?.kind !== "folder") return;
-        const path = selectedRow.path;
-        setCollapsedFolders((prev) => {
-          const next = new Set(prev);
-          if (next.has(path)) next.delete(path);
-          else next.add(path);
-          return next;
-        });
+        store.dispatch({ type: "folds.toggleFolder", path: selectedRow.path });
         return;
       }
       case "expand-folder": {
         if (selectedRow?.kind !== "folder") return;
         const path = selectedRow.path;
-        setCollapsedFolders((prev) => {
-          if (!prev.has(path)) return prev;
-          const next = new Set(prev);
-          next.delete(path);
-          return next;
-        });
+        if (!collapsedFolders.has(path)) return;
+        store.dispatch({ type: "folds.toggleFolder", path });
         return;
       }
       case "collapse-folder": {
         if (selectedRow?.kind !== "folder") return;
         const path = selectedRow.path;
-        setCollapsedFolders((prev) => {
-          if (prev.has(path)) return prev;
-          const next = new Set(prev);
-          next.add(path);
-          return next;
-        });
+        if (collapsedFolders.has(path)) return;
+        store.dispatch({ type: "folds.toggleFolder", path });
         return;
       }
       case "collapse-parent": {
@@ -1346,11 +1387,16 @@ function App(props: AppProps) {
         const ancestors = revealAncestors(tree, selectedRow.path);
         if (ancestors.length === 0) return;
         const parentPath = ancestors[ancestors.length - 1];
+        if (!collapsedFolders.has(parentPath)) {
+          store.dispatch({ type: "folds.toggleFolder", path: parentPath });
+        }
+        // Selected row index follows the parent into its new position after
+        // collapse — derive against the post-collapse flatten so the cursor
+        // doesn't strand inside the now-hidden subtree.
         const nextCollapsed = new Set(collapsedFolders);
         nextCollapsed.add(parentPath);
         const nextRows = flatten(tree, nextCollapsed, annotationCounts);
         const newIdx = nextRows.findIndex((r) => r.path === parentPath);
-        setCollapsedFolders(nextCollapsed);
         if (newIdx >= 0) setSelectedRowIdx(newIdx);
         return;
       }
@@ -1364,7 +1410,10 @@ function App(props: AppProps) {
         setRepliesCollapsed((v) => !v);
         return;
       case "toggle-layout":
-        setLayout((v) => (v === "split" ? "unified" : "split"));
+        store.dispatch({
+          type: "layout.set",
+          layout: layout === "split" ? "unified" : "split",
+        });
         return;
       case "open-picker":
         void openPicker();
@@ -1510,8 +1559,8 @@ function App(props: AppProps) {
         onOpenPicker={() => void openPicker()}
         onPrevAnnotation={gotoPrevAnnotation}
         onNextAnnotation={gotoNextAnnotation}
-        onSplit={() => setLayout("split")}
-        onUnified={() => setLayout("unified")}
+        onSplit={() => store.dispatch({ type: "layout.set", layout: "split" })}
+        onUnified={() => store.dispatch({ type: "layout.set", layout: "unified" })}
       />
 
       {liveSnapshotLost && (
@@ -1661,7 +1710,19 @@ function App(props: AppProps) {
         />
       )}
 
-      {composer && <Composer state={composer} onSubmit={(body) => void submitComposer(body)} />}
+      {composer.kind === "open" && (
+        <Composer
+          target={composer.target}
+          body={composer.body}
+          parent={
+            composer.target.kind === "reply"
+              ? liveAnnotations.find((a) => a.id === composer.target.replies_to) ?? null
+              : null
+          }
+          onInput={(body) => store.dispatch({ type: "composer.setBody", body })}
+          onSubmit={() => store.dispatch({ type: "composer.submit" })}
+        />
+      )}
     </box>
   );
 }

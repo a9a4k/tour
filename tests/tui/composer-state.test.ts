@@ -142,7 +142,7 @@ describe("buildTopLevelComposer", () => {
 });
 
 describe("buildReplyComposer", () => {
-  it("captures the parent annotation to inherit its anchor at write time", () => {
+  it("captures the parent annotation id to inherit its anchor at write time", () => {
     const parent = ann({
       id: "a1",
       file: "src/foo.ts",
@@ -151,7 +151,7 @@ describe("buildReplyComposer", () => {
       line_end: 7,
     });
     const state = buildReplyComposer({ currentAnnotation: parent });
-    expect(state).toEqual({ kind: "reply", parent });
+    expect(state).toEqual({ kind: "reply", replies_to: "a1" });
   });
 
   it("returns null when there's no current annotation to reply to", () => {
