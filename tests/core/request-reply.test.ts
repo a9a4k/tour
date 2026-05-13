@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, appendFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, appendFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { stringify as stringifyTOML } from "smol-toml";
@@ -11,6 +11,7 @@ import { readAnnotations } from "../../src/core/annotations-store.js";
 import {
   writeReplyLock,
   readReplyLock,
+  replyLockPath,
 } from "../../src/core/reply-lock.js";
 import type {
   ShippedAdapter,
@@ -110,6 +111,54 @@ function fixtureAdapter(
   };
 }
 
+function blockingFixtureAdapter(
+  result: SpawnResult & { stderr?: string },
+): FixtureAdapter & { release: () => void } {
+  const invocations: SpawnOpts[] = [];
+  let release!: () => void;
+  const releaseP = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    invocations,
+    release,
+    spawn(opts: SpawnOpts): SpawnedAdapter {
+      invocations.push(opts);
+      const stdoutListeners: Array<(s: string) => void> = [];
+      const stderrListeners: Array<(s: string) => void> = [];
+      let stdoutAttached!: () => void;
+      let stderrAttached!: () => void;
+      const stdoutAttachedP = new Promise<void>((r) => {
+        stdoutAttached = r;
+      });
+      const stderrAttachedP = new Promise<void>((r) => {
+        stderrAttached = r;
+      });
+      const exit = (async (): Promise<SpawnResult> => {
+        await Promise.all([stdoutAttachedP, stderrAttachedP]);
+        await releaseP;
+        if (result.stdout)
+          for (const cb of stdoutListeners) cb(result.stdout);
+        if (result.stderr)
+          for (const cb of stderrListeners) cb(result.stderr);
+        return result;
+      })();
+      return {
+        pid: process.pid,
+        onStdout: (cb) => {
+          stdoutListeners.push(cb);
+          stdoutAttached();
+        },
+        onStderr: (cb) => {
+          stderrListeners.push(cb);
+          stderrAttached();
+        },
+        exit,
+      };
+    },
+  };
+}
+
 async function makeRepo(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "tour-request-reply-"));
   await mkdir(join(dir, ".tour", tourId), { recursive: true });
@@ -119,6 +168,24 @@ async function makeRepo(): Promise<string> {
   );
   await writeFile(join(dir, ".tour", tourId, "annotations.jsonl"), "");
   return dir;
+}
+
+async function waitForReplyLockFile(
+  cwd: string,
+  tour: string,
+  timeoutMs = 500,
+): Promise<void> {
+  const path = replyLockPath(cwd, tour);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await access(path);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  throw new Error(`Timed out waiting for reply lock at ${path}`);
 }
 
 describe("requestReply", () => {
@@ -296,7 +363,7 @@ describe("requestReply", () => {
     // lock and return busy without invoking its adapter.
     await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     await seedAnnotation(dir, tourId, mkAnn({ id: "ann-2", author_kind: "human" }));
-    const slowAdapter = fixtureAdapter({
+    const slowAdapter = blockingFixtureAdapter({
       code: 0,
       signal: null,
       stdout: "first reply",
@@ -314,11 +381,10 @@ describe("requestReply", () => {
       agent: "fixture",
       adapter: slowAdapter,
     });
-    // Yield a microtask so `first` has a chance to write its placeholder
-    // lock before `second` reads it. (Both calls share the same loop —
-    // the placeholder write inside `first` happens before its await on
-    // spawn.exit hands control back here.)
-    await Promise.resolve();
+    // Wait until the first call has actually written its lock. A single
+    // microtask yield was flaky because requestReply does async validation
+    // before the lock write.
+    await waitForReplyLockFile(dir, tourId);
     const second = await requestReply({
       cwd: dir,
       tourId,
@@ -331,6 +397,7 @@ describe("requestReply", () => {
     expect(fastAdapter.invocations).toHaveLength(0);
 
     // Wait for the first to finish so we leave a clean filesystem.
+    slowAdapter.release();
     expect(await first).toEqual({ kind: "dispatched" });
     expect(slowAdapter.invocations).toHaveLength(1);
   });
