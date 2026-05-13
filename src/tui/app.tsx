@@ -465,19 +465,34 @@ function App(props: AppProps) {
   // — cards always get context above and below). `layout` is in deps so a
   // Shift-L flip — which preserves the anchor but moves the visual
   // position — re-fires the scroll.
+  //
+  // Issue #250: defer the scroll call to the next macrotask via
+  // `setTimeout(0)`. React's commit runs synchronously, but OpenTUI's
+  // Yoga relayout for the newly-rendered rows runs on a later render tick.
+  // Reading positions inside this effect synchronously sees a stale layout
+  // (most visible when Shift-L flips layout while the cursor is on a card:
+  // `centerChildInView` computed against the previous layout's content
+  // frame parks the viewport on a strip where only annotation cards live,
+  // hiding every diff row). `setTimeout(0)` is what reliably lands the
+  // callback after OpenTUI's render tick — verified empirically.
+  // `requestAnimationFrame` does NOT work here: in bun/node it shims to
+  // `setImmediate` (or similar) and fires BEFORE OpenTUI's render tick,
+  // which keeps the bug. Do not "improve" this back to rAF.
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
-    if (cursor.kind === "card") {
-      centerChildInView(diffScrollRef.current, `annotation-${cursor.annotationId}`);
-      return;
-    }
-    // Culling-safe helper: under `viewportCulling={true}` opentui leaves
-    // stale positions inside off-screen file subtrees, and a cross-file
-    // `n`/`p` jump lands on the previous file otherwise.
-    scrollChildIntoView(
-      diffScrollRef.current,
-      `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`,
-    );
+    const sb = diffScrollRef.current;
+    // RowAnchor uses the culling-safe `scrollChildIntoView`: under
+    // `viewportCulling={true}` opentui leaves stale positions inside
+    // off-screen file subtrees, and a cross-file `n`/`p` jump lands on the
+    // previous file otherwise. CardAnchor uses `centerChildInView` so
+    // cards get context above and below.
+    const targetId =
+      cursor.kind === "card"
+        ? `annotation-${cursor.annotationId}`
+        : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
+    const scroll = cursor.kind === "card" ? centerChildInView : scrollChildIntoView;
+    const handle = setTimeout(() => scroll(sb, targetId), 0);
+    return (): void => clearTimeout(handle);
   }, [cursor, layout]);
 
   // Sidebar follows the cursor's file. RowAnchor → cursor.file directly;
