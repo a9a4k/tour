@@ -302,26 +302,35 @@ index 1..2 100644
 
   // Issue #258 — TUI split layout previously sat the two halves flush
   // against each other with no visible separator. Mirror the webapp's
-  // #251: render a `│` (BOX DRAWINGS LIGHT VERTICAL, U+2502) in
-  // theme.border.muted at the column boundary on every diff row. The
-  // divider lives only in split layout; banner rows (hunk-header /
-  // interactive) skip the per-half composition entirely so the rule
-  // naturally breaks at each banner.
-  describe("split-layout vertical divider between halves (#258)", () => {
+  // #251: paint a 1-cell-wide vertical column in theme.border.muted
+  // between the two halves on every diff row. The divider lives only
+  // in split layout; banner rows (hunk-header / interactive) skip the
+  // per-half composition entirely so the rule naturally breaks at each
+  // banner.
+  //
+  // Issue #269 updated the paint mechanism: the divider was originally
+  // a 1-cell box containing a single `│` glyph, which broke on wrapped
+  // rows (glyph rendered only on visual row 1, N − 1 rows of black
+  // gap below). The fix replaces the glyph with a `backgroundColor`
+  // paint on the same stretched box — no child glyph, so the bg fills
+  // the box's full height for free. Same approach as DiffLine's
+  // annotation accent stripe.
+  describe("split-layout vertical divider between halves (#258 / #269)", () => {
     const isDivider = (el: AnyElement): boolean =>
-      typeof el.props.children === "string" && (el.props.children as string) === "│";
+      el.props["width"] === 1 &&
+      el.props["backgroundColor"] === theme.border.muted;
 
-    it("renders a `│` divider in theme.border.muted on a context row", () => {
+    it("renders the divider as a 1-cell-wide box painted in theme.border.muted on a context row", () => {
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
       const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
       const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
       const divider = flatten(tree).find(isDivider);
       expect(divider).toBeDefined();
-      expect(divider!.props.fg).toBe(theme.border.muted);
+      expect(divider!.props["backgroundColor"]).toBe(theme.border.muted);
     });
 
-    it("renders a `│` divider on paired change, pure-addition, and pure-deletion rows", () => {
+    it("renders the divider on paired change, pure-addition, and pure-deletion rows", () => {
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
       const pairedIdx = rows.findIndex(
@@ -418,12 +427,106 @@ index 1..2 100644
       expect(children[0].props["width"]).toBe("50%");
       expect(children[1].props["width"]).toBe(1);
       expect(children[2].props["width"]).toBe("50%");
-      // divider carries the `│` text inside its 1-cell box
-      const dividerText = flatten(children[1]).find(
+      // Issue #269 — divider paints via backgroundColor on the
+      // stretched 1-cell box (no glyph child), so its painted height
+      // follows the row height through wraps.
+      expect(children[1].props["backgroundColor"]).toBe(theme.border.muted);
+    });
+  });
+
+  // Issue #269 — pre-fix, the divider was a 1-cell-wide stretched
+  // <box> containing a single `│` text glyph. The box stretched to
+  // the row's full visual height via alignSelf="stretch", but the
+  // glyph is a leaf (renders one cell), so on wrapped rows where the
+  // populated half spans N visual rows, the divider showed the glyph
+  // on visual row 1 and unpainted terminal background (black) for
+  // visual rows 2..N. Issue #267 fixed the side halves via flex-
+  // direction trickery, but the divider column couldn't take that
+  // route — its content is a leaf glyph. The fix: replace the glyph
+  // with a `backgroundColor={theme.border.muted}` paint on the same
+  // stretched box. The bg fills the box's full height regardless of
+  // wrap depth — same pattern as DiffLine's annotation accent
+  // stripe (a 1-cell-wide alignSelf="stretch" box with bg, no glyph
+  // child).
+  describe("split-layout vertical divider extends through wrapped rows (issue #269)", () => {
+    const isDivider = (el: AnyElement): boolean =>
+      el.props["width"] === 1 &&
+      el.props["backgroundColor"] === theme.border.muted;
+
+    it("paints the divider via backgroundColor on a stretched 1-cell box (no glyph child) on a context paired row", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const divider = flatten(tree).find(isDivider);
+      expect(divider).toBeDefined();
+      expect(divider!.props["alignSelf"]).toBe("stretch");
+      expect(divider!.props["flexShrink"]).toBe(0);
+      expect(divider!.props["backgroundColor"]).toBe(theme.border.muted);
+      // No `│` glyph (or any text child) under the divider box; the bg
+      // paint replaces the glyph so the column fills wrapped row
+      // heights.
+      const glyph = flatten(divider).find(
         (el) => typeof el.props.children === "string" && el.props.children === "│",
       );
-      expect(dividerText).toBeDefined();
-      expect(dividerText!.props.fg).toBe(theme.border.muted);
+      expect(glyph).toBeUndefined();
+    });
+
+    it("paints the divider via backgroundColor on a pure-addition row", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pureAddIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber === null &&
+          r.rightLineNumber !== null,
+      );
+      const tree = callDiffRows({ rows: rows.slice(pureAddIdx, pureAddIdx + 1), layout: "split" });
+      const divider = flatten(tree).find(isDivider);
+      expect(divider).toBeDefined();
+      expect(divider!.props["alignSelf"]).toBe("stretch");
+      expect(divider!.props["backgroundColor"]).toBe(theme.border.muted);
+      const glyph = flatten(divider).find(
+        (el) => typeof el.props.children === "string" && el.props.children === "│",
+      );
+      expect(glyph).toBeUndefined();
+    });
+
+    it("paints the divider via backgroundColor on a pure-deletion row", () => {
+      const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,1 @@
+ ctx
+-only-del
+`;
+      const file = parseFile(diff);
+      const rows = planRows(file, [], "split");
+      const pureDelIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber === null,
+      );
+      const tree = callDiffRows({ rows: rows.slice(pureDelIdx, pureDelIdx + 1), layout: "split" });
+      const divider = flatten(tree).find(isDivider);
+      expect(divider).toBeDefined();
+      expect(divider!.props["alignSelf"]).toBe("stretch");
+      expect(divider!.props["backgroundColor"]).toBe(theme.border.muted);
+      const glyph = flatten(divider).find(
+        (el) => typeof el.props.children === "string" && el.props.children === "│",
+      );
+      expect(glyph).toBeUndefined();
+    });
+
+    it("unified layout: no element matches the divider shape (no column boundary)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const tree = callDiffRows({ rows, layout: "unified" });
+      expect(flatten(tree).some(isDivider)).toBe(false);
     });
   });
 
