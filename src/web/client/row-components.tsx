@@ -72,9 +72,8 @@ const ROW_STYLE: React.CSSProperties = {
 
 // Full-width banner: row spans 1 / -1 via grid-column but does NOT declare
 // subgrid. The row's CSS rule overrides .tour-row's display:grid + subgrid
-// template so child content flows as normal block content (centered glyph
-// for <InteractiveRow>, inline range + context spans for <HunkHeaderBanner>)
-// instead of slotting into the narrow leftmost auto track.
+// template so child content flows as normal block content instead of
+// slotting into the narrow leftmost auto track.
 const BANNER_STYLE: React.CSSProperties = {
   gridColumn: "1 / -1",
 };
