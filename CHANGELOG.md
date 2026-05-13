@@ -8,6 +8,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: top-level annotation submit no longer silently fails — diverged
+  `WriteAnnotationInput` types and unrendered `errored` composer state fixed
+  (issue #254).** Pre-fix `WriteAnnotationInput` was declared twice: once in
+  `src/tui/app.tsx` (no `bundle` field) and once in `src/cli/tui.ts` (with
+  `bundle: TourBundle`). The intent listener in `app.tsx` built a top-level
+  input without `bundle`; the CLI's writer callback passed `input.bundle ===
+  undefined` into `createAnnotation`'s anchor validator, which dereferenced
+  `undefined.kind` and threw `TypeError`. The exception was caught and
+  dispatched as `composer.failed`. The App rendered the composer only when
+  `composer.kind === "open"` so the user saw the composer vanish on Enter
+  with no error message. The type-system blind spot was hidden by an
+  `as string` cast on the dynamic-import path in `src/cli/tui.ts` (the TUI
+  source is excluded from tsc for opentui JSX intrinsics, so the duplicate
+  types couldn't be cross-checked). Fix consolidates `WriteAnnotationInput`
+  and the App's prop shape (`StartTuiProps`) into a new shared module
+  `src/core/write-annotation-input.ts`. A pure builder
+  `buildWriteAnnotationInput` constructs the payload from the live bundle —
+  removing the bundle field from the type OR from the builder is now a tsc
+  error rather than a runtime crash. The Composer renders all three visible
+  slice kinds: `open` (editable input + submit hint), `submitting` (plain
+  body + "Submitting…" hint, no input focus), and `errored` (plain body +
+  the error message + "Enter: retry · Esc: dismiss" hint, muted border).
+  The App's `useKeyboard` routes Enter / Esc to `composer.retry` /
+  `composer.dismissError` on the errored state. Reply submit path
+  unchanged — it never passed a bundle.
+
+  Issue: #254
+
 - **Hunk-header banner adopts monospace 12px / line-height 20px
   typography (issue #253).** Pre-fix `.tour-hunk-header` set no
   `font-family`, `font-size`, or `line-height`, so the banner and its

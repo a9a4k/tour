@@ -1,4 +1,3 @@
-import type { Tour, Annotation } from "../core/types.js";
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
   createAnnotation,
@@ -6,8 +5,12 @@ import {
   readAnnotations,
 } from "../core/annotations-store.js";
 import { assertShippedAgent } from "../agents/index.js";
-import { readReplyLock, type ReplyLock } from "../core/reply-lock.js";
-import { loadTourBundle, type TourBundle } from "../core/tour-bundle.js";
+import { readReplyLock } from "../core/reply-lock.js";
+import { loadTourBundle } from "../core/tour-bundle.js";
+import type {
+  StartTuiProps,
+  WriteAnnotationInput,
+} from "../core/write-annotation-input.js";
 
 interface TuiArgs {
   tourId?: string;
@@ -15,17 +18,9 @@ interface TuiArgs {
   replyAgent?: string;
 }
 
-export type WriteAnnotationInput =
-  | {
-      kind: "top-level";
-      file: string;
-      side: "additions" | "deletions";
-      line_start: number;
-      line_end: number;
-      body: string;
-      bundle: TourBundle;
-    }
-  | { kind: "reply"; parent: Annotation; body: string };
+// Re-export so the single source-of-truth import path stays `src/cli/tui.js`
+// for downstream callers that don't reach across into `src/core/*` directly.
+export type { WriteAnnotationInput };
 
 export async function tui(args: TuiArgs): Promise<void> {
   // Hard-fail at startup if the requested reply-agent isn't shipped, with
@@ -52,18 +47,14 @@ export async function tui(args: TuiArgs): Promise<void> {
   const initialReplyLock = await readReplyLock(args.cwd, tourId);
 
   // Static-string specifier so Bun --compile embeds the TUI module; cast hides
-  // the path from tsc since src/tui is excluded (JSX).
+  // the path from tsc since src/tui is excluded (JSX). The cast's TYPES are
+  // sourced from `core/write-annotation-input.ts` so the cast can't lie about
+  // the props shape — pre-fix the cast inlined an `input: WriteAnnotationInput`
+  // signature that diverged from the App's local copy (top-level missing
+  // `bundle`), and the writer crashed at runtime when `input.bundle` came
+  // through `undefined`. Issue #254.
   const { startTui } = (await import("../tui/app.js" as string)) as {
-    startTui: (props: {
-      bundle: TourBundle;
-      replyLock: ReplyLock | null;
-      loadTour: (id: string) => Promise<TourBundle>;
-      loadReplyLock: (id: string) => Promise<ReplyLock | null>;
-      loadTours: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
-      writeAnnotation: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
-      cwd: string;
-      replyAgent?: string;
-    }) => Promise<void>;
+    startTui: (props: StartTuiProps) => Promise<void>;
   };
   await startTui({
     bundle: initialBundle,

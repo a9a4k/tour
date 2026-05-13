@@ -40,6 +40,11 @@ import {
   initialTourSessionState,
   type TourSummary,
 } from "../core/tour-session.js";
+import {
+  buildWriteAnnotationInput,
+  type StartTuiProps,
+  type WriteAnnotationInput,
+} from "../core/write-annotation-input.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { TourPicker } from "./TourPicker.js";
@@ -106,27 +111,16 @@ const EMPTY_ANNOTATION_COUNTS: Readonly<Record<string, number>> = {};
 const EMPTY_CLASSIFICATIONS: Readonly<Record<string, FileClassification>> = {};
 const EMPTY_TREE = compress(buildTree<BundleFile>([]));
 
-export type WriteAnnotationInput =
-  | {
-      kind: "top-level";
-      file: string;
-      side: "additions" | "deletions";
-      line_start: number;
-      line_end: number;
-      body: string;
-    }
-  | { kind: "reply"; parent: Annotation; body: string };
+// `WriteAnnotationInput` lives in `core/write-annotation-input.ts` — single
+// source of truth shared with `src/cli/tui.ts` (the writer side). Pre-fix it
+// was declared twice; the App's copy was missing `bundle` and the CLI's
+// writer crashed when `input.bundle === undefined`. Issue #254.
+export type { WriteAnnotationInput };
 
-interface AppProps {
-  bundle: TourBundle;
-  replyLock?: ReplyLock | null;
-  loadTour?: (id: string) => Promise<TourBundle>;
-  loadReplyLock?: (id: string) => Promise<ReplyLock | null>;
-  loadTours?: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
-  writeAnnotation?: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
-  cwd?: string;
-  replyAgent?: string;
-}
+// AppProps is a permissive view onto `StartTuiProps`: the CLI hands every
+// field, but tests / degraded callers may omit the optional ones. The
+// non-optional `bundle` matches the CLI's contract.
+type AppProps = Partial<StartTuiProps> & { bundle: TourBundle };
 
 // Stitch BundleFile.orphanWindows (file-grouped, no `file` field) into the
 // flat OrphanWindow[] shape `seedFromOrphans` consumes.
@@ -754,34 +748,43 @@ function App(props: AppProps) {
           store.dispatch({ type: "composer.close" });
           return;
         }
-        // Resolve the reply target's parent from the live bundle. Captured
-        // here, not in the reducer, so the (id → Annotation) lookup tracks
-        // the latest bundle even after a mid-composition watcher reload.
-        let input: WriteAnnotationInput;
-        if (target.kind === "top-level") {
-          input = {
-            kind: "top-level",
-            file: target.file,
-            side: target.side,
-            line_start: target.line_start,
-            line_end: target.line_end,
-            body,
-          };
-        } else {
-          const live = store.getState();
-          const liveBundle = isBundleResolved(live);
-          const parent = liveBundle?.annotations.find(
-            (a) => a.id === target.replies_to,
-          );
-          if (!parent) {
-            // Parent vanished mid-composition (rare — watcher reload deleted
-            // the annotation between open and submit). Surface as a failure
-            // and bail out before calling the writer.
-            store.dispatch({ type: "composer.failed", error: "Parent annotation no longer exists" });
-            return;
-          }
-          input = { kind: "reply", parent, body };
+        // Resolve the reply parent + attach the live bundle from the store,
+        // not from a React closure, so a mid-composition watcher reload is
+        // reflected. The shared `buildWriteAnnotationInput` enforces the
+        // bundle field on the top-level payload at compile time — pre-fix
+        // this construction silently dropped `bundle`, the writer crashed
+        // on `undefined.kind` in `validateAnchor`, and the user saw the
+        // composer vanish with no error. Issue #254.
+        const live = store.getState();
+        const liveBundle = isBundleResolved(live);
+        if (!liveBundle) {
+          // Bundle slice is idle / loading / failed — the composer must
+          // have opened against a resolved tour, so this is a watcher race
+          // with a `bundle.failed` between open and submit. Surface as a
+          // failure rather than calling the writer with no bundle.
+          store.dispatch({
+            type: "composer.failed",
+            error: "Tour bundle is no longer loaded",
+          });
+          return;
         }
+        const built = buildWriteAnnotationInput({
+          target,
+          body,
+          bundle: liveBundle,
+          annotations: liveBundle.kind === "ok" ? liveBundle.annotations : [],
+        });
+        if (built.kind === "parent-missing") {
+          // Parent vanished mid-composition (rare — watcher reload deleted
+          // the annotation between open and submit). Surface as a failure
+          // and bail out before calling the writer.
+          store.dispatch({
+            type: "composer.failed",
+            error: "Parent annotation no longer exists",
+          });
+          return;
+        }
+        const input = built.input;
         (async () => {
           try {
             const created = await props.writeAnnotation!(tourId, input);
@@ -1158,6 +1161,30 @@ function App(props: AppProps) {
       // Esc cancels; Return / typing flows through to the focused <input>.
       if (key.name === "escape") {
         store.dispatch({ type: "composer.close" });
+      }
+      return;
+    }
+    if (composer.kind === "submitting") {
+      // Esc abandons the in-flight write (the writer's promise resolves
+      // into a closed slice — the reducer's `composer.submitted` /
+      // `composer.failed` branches no-op on non-submitting). All other
+      // keys are swallowed so the user can't fire actions on stale state.
+      if (key.name === "escape") {
+        store.dispatch({ type: "composer.close" });
+      }
+      return;
+    }
+    if (composer.kind === "errored") {
+      // Enter retries the write (reducer transitions errored → submitting
+      // and re-emits `submitAnnotation`). Esc drops back to `open` so the
+      // user can edit the draft and re-submit. Issue #254.
+      if (key.name === "escape") {
+        store.dispatch({ type: "composer.dismissError" });
+        return;
+      }
+      if (key.name === "return") {
+        store.dispatch({ type: "composer.retry" });
+        return;
       }
       return;
     }
@@ -1607,10 +1634,9 @@ function App(props: AppProps) {
         />
       )}
 
-      {composer.kind === "open" && (
+      {composer.kind !== "closed" && (
         <Composer
-          target={composer.target}
-          body={composer.body}
+          state={composer}
           parent={
             composer.target.kind === "reply"
               ? annotations.find((a) => a.id === composer.target.replies_to) ?? null
