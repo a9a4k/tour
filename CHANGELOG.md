@@ -78,6 +78,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session view foundation: pure projection from `(bundle, state)`
+  to the rendered shape both surfaces consume (issue #243, PRD #242).**
+  New `core/tour-session-view.ts` exports a `TourSessionView`
+  discriminated union mirroring `TourBundle`'s `ok` / `snapshot-lost`
+  split, layered into `bundle` / `nav` / `rows` / `tree` / `cursor`
+  namespaces, plus `deriveTourSessionView(bundle, state)` (pure, no
+  React) and a `useTourSessionView(store, bundle)` hook that runs one
+  `useMemo` per namespace so granular invalidation survives the move
+  in slices 2 + 3. The view's `cursor.anchor` is the **validated**
+  cursor — `state.cursor` pruned against the live `flatRowsList` (a
+  CardAnchor to a deleted annotation resolves to null) — so the
+  `validateCursor` call that lives inline in both Apps' useEffects
+  is now derivable from one source. `core/send-target.ts` is the new
+  canonical home for the `SendTarget` type + latest-human-leaf rule;
+  `tui/send-target.ts` becomes a thin re-export so existing callers
+  keep working until slice 2 migrates them through
+  `view.nav.sendTarget`. No surface wiring — both `tui/app.tsx` and
+  `web/client/App.tsx` are unchanged at the end of this slice; the
+  verifiability story is the pure-data test battery (snapshot-lost
+  short-circuit, killer cursor-validation fixture for a stale
+  CardAnchor, namespace shape assertions, watcher-reload
+  preservation). `CONTEXT.md` Language section gains a `Tour-session
+  view` entry paired with `Tour-session` and `Tour bundle`.
+
+  Issue: #243 · PRD: #242
+
 - **TUI thins composer + folds + layout through the Tour-session store
   (issue #237).** The TUI's local `useState`s for `composer`,
   `collapsedOverrides`, `collapsedFolders`, `layout`, and the post-submit
@@ -731,6 +757,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are all unchanged. (#183)
 
 ### Fixed
+
+- **Webapp diff-row line-number gutter and `+`/`-` symbol render in
+  monospace at 12px / 20px line-height (issue #241).** The gutter and
+  symbol cells were inheriting the body's sans-serif font at 16px with
+  browser-computed `line-height: normal`; line numbers rendered with
+  proportional-width digits while the code cell rendered in monospace
+  at 12px. Because the gutter's content-dependent line-height didn't
+  match the code's, the gutter's number drifted out of vertical
+  alignment with the first physical row of a wrapped code line. Empirical
+  DOM inspection of a live GitHub PR diff shows monospace 12px with a
+  fixed `line-height: 20px` on both `.blob-num` and `.blob-code-inner`.
+  `.tour-row-gutter`, `.tour-row-symbol`, and `.tour-row-code` now all
+  declare the same monospace stack (`ui-monospace, SFMono-Regular,
+  "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`),
+  `font-size: 12px`, and `line-height: 20px`. The pre-existing chrome
+  (text-align, color, padding, user-select on the gutter; text-align,
+  padding, color on the symbol; white-space, word-break, tab-size on the
+  code) is preserved — the new declarations are additive. Compose
+  correctly with the existing cursor outline, range tint, two-tone
+  line-type backgrounds, and empty-side neutral fill (orthogonal —
+  backgrounds + outline are unrelated to font / line-height).
+
+  Issue: #241
 
 - **Webapp diff-row long lines soft-wrap instead of producing per-cell
   horizontal scrollbars (issue #240).** The #239 monospace + preserved-

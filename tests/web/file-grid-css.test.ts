@@ -421,6 +421,85 @@ describe("FILE_GRID_CSS — empty-side neutral fill (#227)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — gutter + symbol + code typography unified (#241)", () => {
+  // Pre-#241 only `.tour-row-code` carried font / size declarations. The
+  // gutter + symbol cells inherited the body's sans-serif font and the
+  // browser-computed `line-height: normal` (≈1.2× font-size). Result:
+  // line numbers rendered in proportional-width sans-serif at 16px while
+  // code rendered in monospace at 12px, and the gutter's content-dependent
+  // line-height drifted out of vertical rhythm with the code cell on
+  // wrapped rows. Issue #241 unifies font-family / font-size / line-height
+  // across `.tour-row-gutter`, `.tour-row-symbol`, and `.tour-row-code` to
+  // match GitHub's empirical default (monospace 12px / line-height 20px on
+  // both gutter and code).
+
+  // Helper: extract the body of a CSS rule by selector. The rule body is
+  // the text between the matched selector's `{` and the matching `}`.
+  const ruleBody = (selector: string): string => {
+    // Escape the selector for use in a regex literal (only chars that
+    // appear in the selectors we test for).
+    const escaped = selector.replace(/[-.]/g, (c) => `\\${c}`);
+    const match = FILE_GRID_CSS.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+    return match?.[1] ?? "";
+  };
+
+  it("renders the line-number gutter in a monospace font", () => {
+    expect(ruleBody(".tour-row-gutter")).toMatch(
+      /font-family:[^;]*monospace/,
+    );
+  });
+
+  it("sets the gutter font-size to 12px so the gutter scale matches the code", () => {
+    expect(ruleBody(".tour-row-gutter")).toMatch(/font-size:\s*12px/);
+  });
+
+  it("sets a fixed gutter line-height of 20px (not `normal`) for consistent vertical rhythm", () => {
+    expect(ruleBody(".tour-row-gutter")).toMatch(/line-height:\s*20px/);
+  });
+
+  it("renders the symbol column in the same monospace font as the gutter + code", () => {
+    expect(ruleBody(".tour-row-symbol")).toMatch(
+      /font-family:[^;]*monospace/,
+    );
+  });
+
+  it("sets the symbol font-size to 12px", () => {
+    expect(ruleBody(".tour-row-symbol")).toMatch(/font-size:\s*12px/);
+  });
+
+  it("sets a fixed symbol line-height of 20px", () => {
+    expect(ruleBody(".tour-row-symbol")).toMatch(/line-height:\s*20px/);
+  });
+
+  it("sets a fixed code line-height of 20px so wrapped rows share the gutter's vertical rhythm", () => {
+    expect(ruleBody(".tour-row-code")).toMatch(/line-height:\s*20px/);
+  });
+
+  it("uses the identical font-family stack on .tour-row-gutter, .tour-row-symbol, and .tour-row-code", () => {
+    const family = (selector: string): string | undefined => {
+      const m = ruleBody(selector).match(/font-family:\s*([^;]+);/);
+      return m?.[1].trim();
+    };
+    const gutter = family(".tour-row-gutter");
+    const symbol = family(".tour-row-symbol");
+    const code = family(".tour-row-code");
+    expect(gutter).toBeTruthy();
+    expect(symbol).toBe(gutter);
+    expect(code).toBe(gutter);
+  });
+
+  it("preserves the existing gutter chrome (text-align: right, color, padding, user-select)", () => {
+    // Regression sentinel: the new font / size / line-height declarations
+    // are additive — the pre-#241 layout / color / interaction rules on
+    // the gutter must remain.
+    const body = ruleBody(".tour-row-gutter");
+    expect(body).toMatch(/text-align:\s*right/);
+    expect(body).toMatch(/color:\s*#9198a1/i);
+    expect(body).toMatch(/padding:\s*0\s+\d+px/);
+    expect(body).toMatch(/user-select:\s*none/);
+  });
+});
+
 describe("FILE_GRID_CSS — code cell typography (#240, was #239)", () => {
   // The pre-Pierre-cutover renderer relied on Pierre's <pre> wrapper to give
   // diff-row code cells `font-family: monospace` + `white-space: pre`. After
