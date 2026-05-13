@@ -481,20 +481,17 @@ function App(props: AppProps) {
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
     const sb = diffScrollRef.current;
+    // RowAnchor uses the culling-safe `scrollChildIntoView`: under
+    // `viewportCulling={true}` opentui leaves stale positions inside
+    // off-screen file subtrees, and a cross-file `n`/`p` jump lands on the
+    // previous file otherwise. CardAnchor uses `centerChildInView` so
+    // cards get context above and below.
     const targetId =
       cursor.kind === "card"
         ? `annotation-${cursor.annotationId}`
         : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
-    const handle = setTimeout(() => {
-      if (cursor.kind === "card") {
-        centerChildInView(sb, targetId);
-        return;
-      }
-      // Culling-safe helper: under `viewportCulling={true}` opentui leaves
-      // stale positions inside off-screen file subtrees, and a cross-file
-      // `n`/`p` jump lands on the previous file otherwise.
-      scrollChildIntoView(sb, targetId);
-    }, 0);
+    const scroll = cursor.kind === "card" ? centerChildInView : scrollChildIntoView;
+    const handle = setTimeout(() => scroll(sb, targetId), 0);
     return (): void => clearTimeout(handle);
   }, [cursor, layout]);
 
