@@ -26,24 +26,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #252
 
-- **TUI unified layout no longer hides every diff code row (issue #250).**
-  Pre-fix, toggling the TUI diff layout from split to unified
-  (`Shift-L`) removed all `+`/`-`/context rows from the diff scrollbox;
-  only inline annotation cards remained visible. Root cause: the
-  unified diff-row wrapper (and the two interactive-row wrappers) were
-  emitted with only `width="100%"` — no `flexDirection`, no
-  `minHeight`. Under OpenTUI's viewport-culling pass the wrapper's
-  measured height resolved to zero before the inner `DiffLine`
-  established its own `minHeight={1}`, so every unified row got culled.
-  The split-row wrapper escaped the bug because it already declared
-  `flexDirection="row" minHeight={1}`. Fix: align all four row
-  wrappers (split, unified, hunk-header interactive, generic
-  interactive) on the same shape — `flexDirection="row"` +
-  `minHeight={1}` + `width="100%"`. Surgical to `DiffRows.tsx`;
-  no planner / reducer / theme changes.
-
-  Issue: #250
-
 - **Split-layout diff rows render a 1px vertical rule between the
   deletions and additions halves (issue #251).** Pre-fix the two halves
   sat flush against each other with no visible separator — on context

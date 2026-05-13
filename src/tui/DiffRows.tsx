@@ -184,7 +184,7 @@ export function DiffRows({
             ? () => onInteractiveClick(fileName, subKind, boundaryRef)
             : undefined;
           return (
-            <box key={key} id={id} flexDirection="row" width="100%" minHeight={1} onMouseDown={onMouseDown}>
+            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
               <DiffLine
                 gutter={INTERACTIVE_PAD_GUTTER}
                 text={text}
@@ -215,7 +215,7 @@ export function DiffRows({
             ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
             : undefined;
           return (
-            <box key={key} id={id} flexDirection="row" width="100%" minHeight={1} onMouseDown={onMouseDown}>
+            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
               <DiffLine
                 gutter={INTERACTIVE_PAD_GUTTER}
                 text={row.text ?? ""}
@@ -345,12 +345,8 @@ export function DiffRows({
           onCursorClick && unifiedTarget
             ? () => onCursorClick(fileName, unifiedTarget.side, unifiedTarget.lineNumber)
             : undefined;
-        // flexDirection="row" + minHeight={1} mirror the split wrapper above.
-        // Without them OpenTUI's viewport-culling pass can measure the wrapper
-        // as zero rows before the inner DiffLine resolves its own minHeight,
-        // and cull every unified diff-row from the diff scrollbox. Issue #250.
         return (
-          <box key={key} id={unifiedRowId} flexDirection="row" width="100%" minHeight={1} onMouseDown={onUnifiedMouseDown}>
+          <box key={key} id={unifiedRowId} width="100%" onMouseDown={onUnifiedMouseDown}>
             <DiffLine
               gutter={unifiedGutter(row)}
               text={text}
