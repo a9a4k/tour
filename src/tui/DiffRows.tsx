@@ -125,6 +125,18 @@ const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 3);
 // banner — matches GitHub.
 const DIVIDER_GLYPH = "│";
 
+// Issue #264 — hunk-header expand-affordance cue. `…` (U+2026 HORIZONTAL
+// ELLIPSIS) painted in `theme.fg.accent` at the leftmost edge of every
+// hunk-header row tells the reviewer "this row is interactive — cursor +
+// Enter expands hidden context" (parity with webapp #252's 44px
+// accentEmphasis block with `…` dots in white). Applies to both the
+// inert (`gapAbove === 0`) and the interactive (`gapAbove > 0`) paths;
+// the cursor + Enter behavior is unchanged (the glyph is decorative).
+// Path B from the brief: render the glyph as a separate <text> element
+// so it keeps the accent color while the header text stays muted —
+// the contrast IS the affordance signal.
+const HUNK_HEADER_GLYPH = "…";
+
 function splitClickTarget(
   row: DiffRow,
   column: "left" | "right",
@@ -184,10 +196,15 @@ export function DiffRows({
         if (row.kind === "hunk-header") {
           const interactive = row.gapAbove > 0;
           if (!interactive) {
+            // Issue #264 — leading `…` in fg.accent at column 0,
+            // followed by the muted header text. Two text elements in
+            // a flex-row box so the glyph keeps its accent color while
+            // the header text stays muted (GitHub-equivalent grey).
             return (
-              <text key={key} fg={theme.fg.muted}>
-                {row.header}
-              </text>
+              <box key={key} flexDirection="row" width="100%">
+                <text fg={theme.fg.accent}>{HUNK_HEADER_GLYPH}</text>
+                <text fg={theme.fg.muted}>{` ${row.header}`}</text>
+              </box>
             );
           }
           // Promoted to first-class interactive row (PRD #151, ADR 0018).
@@ -215,20 +232,37 @@ export function DiffRows({
           const onMouseDown = onInteractiveClick
             ? () => onInteractiveClick(fileName, subKind, boundaryRef)
             : undefined;
+          // Issue #264 — leading `…` in fg.accent at column 0, then the
+          // existing DiffLine pipeline. The glyph is a sibling of the
+          // DiffLine so it keeps the accent color while the row body
+          // stays muted; the DiffLine retains its full composition
+          // (cursor row-fill, mutedText, etc.) inside its flex-grown
+          // wrapper. INTERACTIVE_PAD_GUTTER stays as the gutter pad so
+          // the header text aligns with the line-number column on the
+          // rows below.
           return (
-            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
-              <DiffLine
-                gutter={INTERACTIVE_PAD_GUTTER}
-                text={text}
-                gutterTinted={false}
-                contentTinted={false}
-                gutterAccent={false}
-                cursorActive={cursorActive}
-                filetype={filetype}
-                syntaxStyle={syntaxStyle}
-                mutedText
-                width="100%"
-              />
+            <box
+              key={key}
+              id={id}
+              width="100%"
+              flexDirection="row"
+              onMouseDown={onMouseDown}
+            >
+              <text fg={theme.fg.accent}>{HUNK_HEADER_GLYPH}</text>
+              <box flexGrow={1}>
+                <DiffLine
+                  gutter={INTERACTIVE_PAD_GUTTER}
+                  text={text}
+                  gutterTinted={false}
+                  contentTinted={false}
+                  gutterAccent={false}
+                  cursorActive={cursorActive}
+                  filetype={filetype}
+                  syntaxStyle={syntaxStyle}
+                  mutedText
+                  width="100%"
+                />
+              </box>
             </box>
           );
         }
