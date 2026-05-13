@@ -78,6 +78,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp `<App>` integration smoke test (issue #235).** A new
+  `tests/web/App.integration.test.ts` mounts the top-level `<App>`
+  React component once in `happy-dom` against a small two-file bundle
+  fixture (paired-change + pure-addition diff, one annotation,
+  non-empty `oldContent` / `newContent` so the `tourStats` useMemo
+  exercises the `planRows(... { expansion: emptyExpansion(), ... })`
+  path) and asserts the rendered DOM contains the tour title, a
+  `.tour-file-header` for each file, the `.tour-stats` indicator, and
+  at least one `.tour-row`. Closes the silent-merge-regression hole
+  exposed by the #232↔#233 merge: pre-existing unit / component /
+  helper / CSS tests all passed while the live page rendered blank
+  because nothing exercised the App-level integration path. Verified
+  by temporarily removing `emptyExpansion` from the App's import block
+  — the smoke test fails with `ReferenceError: emptyExpansion is not
+  defined` at the exact site the merge regression broke.
+
+  Issue: #235
+
 - **TUI cursor + expansion routed through the Tour-session store
   (issue #231).** The TUI no longer owns `useState<Cursor | null>` or
   `useState<ExpansionState>` — both slices are read from `sessionState`
