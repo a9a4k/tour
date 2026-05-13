@@ -78,6 +78,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session slice 2 foundation: cursor + expansion slices land in
+  the reducer (issue #230).** `TourSessionState` gains `cursor: Cursor |
+  null` and `expansion: ExpansionState` slices, alongside four new
+  cursor actions (`cursor.set`, `cursor.clear`, `cursor.setSide`,
+  `cursor.materialize` for the lazy first-interaction landing) and five
+  new expansion actions (`expansion.expand`, `expansion.expandTop`,
+  `expansion.expandBottom`, `expansion.expandFile`,
+  `expansion.seedFromOrphans`). Four new intents on the union —
+  `revalidateCursor`, `scrollCursorTarget`, `revealSidebarFile`,
+  `mirrorAnnUrl` — encode the cross-async side-effect contract.
+  `bundle.refreshed` now emits `revalidateCursor` when the cursor slice
+  is non-null so the surface (which owns the substrate-derived flat-
+  rows) drains via the pure `validateCursor` helper from
+  `core/cursor-state.ts`. `tour.switched`'s reset cascade now also
+  clears cursor + expansion. No surface wiring yet — both Apps continue
+  to own their local `cursor` / `expansion` `useState`s; the store is
+  exercised only by tests. Cross-async killer fixture covers the
+  watcher-reload-snaps-to-first-row case end-to-end as a synchronous
+  fixture sequence.
+
+  Issue: #230 · PRD: #229
+
 - **Webapp file header: GitHub-style per-file diff stats (5-segment
   proportion bar + count, issue #228).** The per-file sticky header
   gains a per-file stats indicator in the right region, sitting

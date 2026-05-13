@@ -3,6 +3,22 @@ import type { PickerRow } from "./tour-list.js";
 import type { TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
 import type { Tour } from "./types.js";
+import type { Cursor } from "./cursor-state.js";
+import { isCardAnchor, isRowAnchor } from "./cursor-state.js";
+import type {
+  BoundaryRef,
+  ExpandMode,
+  ExpansionState,
+  OrphanWindow,
+} from "./expansion-state.js";
+import {
+  emptyExpansion,
+  expand as expandBoundary,
+  expandBottom as expansionExpandBottom,
+  expandFile as expansionExpandFile,
+  expandTop as expansionExpandTop,
+  seedFromOrphans as expansionSeedFromOrphans,
+} from "./expansion-state.js";
 
 // RemoteData<T> — one uniform shape for asynchronously-loaded values.
 // Replaces the three encodings used today across the surfaces:
@@ -45,8 +61,8 @@ export type Layout = "split" | "unified";
 
 // The state aggregate a single surface drives for one opened Tour. Per
 // the CONTEXT.md Tour-session entry: layout is preserved across Tour-switch;
-// cursor/folds/composer slices land in later slices and are intentionally
-// absent from slice 1.
+// cursor + expansion slices arrive in slice 2 (PRD #229 / issue #230);
+// folds / composer slices land later still.
 export interface TourSessionState {
   currentTourId: string | null;
   tourList: RemoteData<TourSummary[]>;
@@ -54,6 +70,8 @@ export interface TourSessionState {
   replyLock: RemoteData<ReplyLock | null>;
   picker: PickerState;
   layout: Layout;
+  cursor: Cursor | null;
+  expansion: ExpansionState;
 }
 
 export type Action =
@@ -68,12 +86,36 @@ export type Action =
   | { type: "replyLock.loaded"; replyLock: ReplyLock | null }
   | { type: "tourList.loading" }
   | { type: "tourList.loaded"; tours: TourSummary[] }
-  | { type: "tourList.failed"; error: string };
+  | { type: "tourList.failed"; error: string }
+  | { type: "cursor.set"; anchor: Cursor }
+  | { type: "cursor.clear" }
+  | { type: "cursor.setSide"; side: "additions" | "deletions" }
+  | { type: "cursor.materialize"; anchor: Cursor }
+  | {
+      type: "expansion.expand";
+      file: string;
+      ref: BoundaryRef;
+      direction: "up" | "down" | "both";
+      mode: ExpandMode;
+      gapSize: number;
+    }
+  | { type: "expansion.expandTop"; file: string; mode: ExpandMode; gapSize: number }
+  | { type: "expansion.expandBottom"; file: string; mode: ExpandMode; gapSize: number }
+  | { type: "expansion.expandFile"; file: string }
+  | { type: "expansion.seedFromOrphans"; windows: OrphanWindow[] };
+
+export type ScrollCursorTarget =
+  | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
+  | { kind: "card"; annotationId: string };
 
 export type Intent =
   | { type: "loadTour"; tourId: string }
   | { type: "scrollPickerRow"; idx: number }
-  | { type: "mirrorUrl"; tourId: string };
+  | { type: "mirrorUrl"; tourId: string }
+  | { type: "revalidateCursor" }
+  | { type: "scrollCursorTarget"; target: ScrollCursorTarget }
+  | { type: "revealSidebarFile"; file: string }
+  | { type: "mirrorAnnUrl"; annotationId: string | null };
 
 export interface ReduceResult {
   state: TourSessionState;
@@ -88,6 +130,8 @@ export function initialTourSessionState(): TourSessionState {
     replyLock: { kind: "idle" },
     picker: { kind: "closed" },
     layout: "split",
+    cursor: null,
+    expansion: emptyExpansion(),
   };
 }
 
@@ -150,10 +194,16 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // Same-tour bundle update (watcher reload / SSE annotation-changed).
       // Replaces the bundle slice in place; intentionally does NOT touch
       // picker / replyLock / currentTourId — the user is still on the same
-      // tour, so the Tour-switch reset cascade must not fire.
+      // tour, so the Tour-switch reset cascade must not fire. Emits
+      // `revalidateCursor` iff the cursor slice is non-null so the surface
+      // can recompute its substrate-derived flat-rows and snap/clear the
+      // anchor against the new bundle.
       return {
         state: { ...state, bundle: { kind: "ok", value: action.bundle } },
-        intents: NO_INTENTS,
+        intents:
+          state.cursor === null
+            ? NO_INTENTS
+            : [{ type: "revalidateCursor" }],
       };
 
     case "bundle.failed":
@@ -164,10 +214,11 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "tour.switched":
       // CONTEXT-pinned Tour-switch reset rules: layout preserved; picker
-      // closed; reply-lock reset; cursor/folds/composer reset when those
-      // slices land in later slices (no-op for slice 1). Distinct from
-      // `bundle.refreshed` so a same-tour watcher reload doesn't dump
-      // picker / replyLock state.
+      // closed; reply-lock reset; cursor → null and expansion → empty
+      // (slice 2 additions per PRD #229 / issue #230); folds / composer
+      // reset when those slices land. Distinct from `bundle.refreshed` so
+      // a same-tour watcher reload doesn't dump picker / replyLock /
+      // cursor / expansion state.
       return {
         state: {
           ...state,
@@ -175,6 +226,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           currentTourId: action.tourId,
           picker: { kind: "closed" },
           replyLock: { kind: "idle" },
+          cursor: null,
+          expansion: emptyExpansion(),
         },
         intents: NO_INTENTS,
       };
@@ -199,7 +252,122 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         state: { ...state, tourList: { kind: "err", error: action.error } },
         intents: NO_INTENTS,
       };
+
+    case "cursor.set":
+      return setCursor(state, action.anchor);
+
+    case "cursor.clear": {
+      if (state.cursor === null) return { state, intents: NO_INTENTS };
+      const intents: Intent[] = [];
+      if (isCardAnchor(state.cursor)) {
+        intents.push({ type: "mirrorAnnUrl", annotationId: null });
+      }
+      return { state: { ...state, cursor: null }, intents };
+    }
+
+    case "cursor.setSide": {
+      if (state.cursor === null) return { state, intents: NO_INTENTS };
+      const c = state.cursor;
+      // RowAnchor on a paired diff row: surfaces dispatch `cursor.set` with
+      // the lineNumber recomputed by `setCursorSide(...)` so the action
+      // payload stays small. This action is the pure-preference update path
+      // — used by `h`/`l` on cards and interactive rows where the visible
+      // anchor doesn't move but the next diff-row landing should honour the
+      // new preferredSide. Updating `side` on a RowAnchor in addition to
+      // preferredSide keeps the slice consistent if a surface dispatches
+      // setSide directly on a row anchor (no lineNumber recomputation —
+      // that's the surface's job via the helper).
+      if (c.kind === "row") {
+        if (c.side === action.side && c.preferredSide === action.side) {
+          return { state, intents: NO_INTENTS };
+        }
+        return {
+          state: { ...state, cursor: { ...c, side: action.side, preferredSide: action.side } },
+          intents: NO_INTENTS,
+        };
+      }
+      if (c.preferredSide === action.side) return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, cursor: { ...c, preferredSide: action.side } },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "cursor.materialize":
+      // Lazy first-interaction landing (ADR 0012 / PRD #192 / issue #125):
+      // only initialises when the cursor is null. A non-null cursor is a
+      // strict no-op — same state ref, no intents — so subsequent
+      // keystrokes use `cursor.set` to update an already-materialised
+      // anchor.
+      if (state.cursor !== null) return { state, intents: NO_INTENTS };
+      return setCursor(state, action.anchor);
+
+    case "expansion.expand": {
+      const next = expandBoundary(
+        state.expansion,
+        { file: action.file, ref: action.ref },
+        action.mode,
+        action.gapSize,
+        action.direction,
+      );
+      if (next === state.expansion) return { state, intents: NO_INTENTS };
+      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+    }
+
+    case "expansion.expandTop": {
+      const next = expansionExpandTop(state.expansion, action.file, action.mode, action.gapSize);
+      if (next === state.expansion) return { state, intents: NO_INTENTS };
+      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+    }
+
+    case "expansion.expandBottom": {
+      const next = expansionExpandBottom(state.expansion, action.file, action.mode, action.gapSize);
+      if (next === state.expansion) return { state, intents: NO_INTENTS };
+      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+    }
+
+    case "expansion.expandFile": {
+      const next = expansionExpandFile(state.expansion, action.file);
+      if (next === state.expansion) return { state, intents: NO_INTENTS };
+      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+    }
+
+    case "expansion.seedFromOrphans": {
+      const next = expansionSeedFromOrphans(state.expansion, action.windows);
+      if (next === state.expansion) return { state, intents: NO_INTENTS };
+      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+    }
   }
+}
+
+// Shared `cursor.set` / `cursor.materialize` transition: writes the slice
+// and derives the visual-side-effect intent stream from the (prev, next)
+// pair. `scrollCursorTarget` always fires (the cursor moved, so the
+// surface re-centers it). `revealSidebarFile` fires when the resolved
+// file changed — only RowAnchors have a resolvable file, so a Card→Card
+// or Row→Card move doesn't reveal anything. `mirrorAnnUrl` fires when
+// the annotation-id under the cursor changed (entering, leaving, or
+// switching cards) so the webapp `?ann=` URL stays in sync.
+function setCursor(state: TourSessionState, next: Cursor): ReduceResult {
+  const intents: Intent[] = [
+    { type: "scrollCursorTarget", target: scrollTargetOf(next) },
+  ];
+  const prevFile = isRowAnchor(state.cursor) ? state.cursor.file : null;
+  const nextFile = isRowAnchor(next) ? next.file : null;
+  if (nextFile !== null && nextFile !== prevFile) {
+    intents.push({ type: "revealSidebarFile", file: nextFile });
+  }
+  const prevAnnId = isCardAnchor(state.cursor) ? state.cursor.annotationId : null;
+  const nextAnnId = isCardAnchor(next) ? next.annotationId : null;
+  if (prevAnnId !== nextAnnId) {
+    intents.push({ type: "mirrorAnnUrl", annotationId: nextAnnId });
+  }
+  return { state: { ...state, cursor: next }, intents };
+}
+
+function scrollTargetOf(c: Cursor): ScrollCursorTarget {
+  if (c.kind === "card") return { kind: "card", annotationId: c.annotationId };
+  return { kind: "row", file: c.file, side: c.side, lineNumber: c.lineNumber };
 }
 
 // --- Selectors --------------------------------------------------------------
