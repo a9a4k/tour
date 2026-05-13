@@ -16,13 +16,8 @@ import type { PlannedRow } from "../core/diff-rows.js";
 import { planRows, GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
 import {
   emptyExpansion,
-  expand,
-  expandTop,
-  expandBottom,
-  expandFile,
   getBoundary,
   seedFromOrphans,
-  type ExpansionState,
   type OrphanWindow,
 } from "../core/expansion-state.js";
 import type { FileContentPair } from "../core/file-content-provider.js";
@@ -212,6 +207,10 @@ function App(props: AppProps) {
         currentTourId: props.bundle.tour.id,
         bundle: { kind: "ok", value: props.bundle },
         replyLock: { kind: "ok", value: props.replyLock ?? null },
+        expansion: seedFromOrphans(
+          emptyExpansion(),
+          props.bundle.kind === "ok" ? flattenOrphanWindows(props.bundle.files) : [],
+        ),
       }),
   );
   const sessionState = useTourSession(store);
@@ -229,7 +228,13 @@ function App(props: AppProps) {
   const replyLock =
     sessionState.replyLock.kind === "ok" ? sessionState.replyLock.value : null;
   const [composer, setComposer] = useState<ComposerState | null>(null);
-  const [cursor, setCursor] = useState<Cursor | null>(null);
+  // Cursor + expansion are authoritative in the Tour-session store (issue
+  // #231 / PRD #229). Reads route through `sessionState`; mutations go via
+  // `store.dispatch(...)`. The CONTEXT-pinned Tour-switch reset cascade is
+  // driven by the reducer's `tour.switched` branch (cursor → null,
+  // expansion → empty).
+  const cursor = sessionState.cursor;
+  const expansion = sessionState.expansion;
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
@@ -239,18 +244,6 @@ function App(props: AppProps) {
   // r-after-a foot-gun protection); this is viewport-only.
   const [pendingScrollAnnotationId, setPendingScrollAnnotationId] =
     useState<string | null>(null);
-  // Hidden-context expansion state (PRD #108, ADR 0013). Per-tour, in-memory
-  // only. Reset on tour switch (sibling to collapsedOverrides), preserved on
-  // watcher reload (the diff is SHA-pinned; gaps are unchanged).
-  // Seeded at planner-init with orphan-annotation auto-windows (issue #114) so
-  // Annotations whose anchor lives in Hidden context render inline with `±10`
-  // lines of surrounding context the moment a tour opens.
-  const [expansion, setExpansion] = useState<ExpansionState>(() =>
-    seedFromOrphans(
-      emptyExpansion(),
-      props.bundle.kind === "ok" ? flattenOrphanWindows(props.bundle.files) : [],
-    ),
-  );
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -333,13 +326,18 @@ function App(props: AppProps) {
         // (NOT `tour.switched`) so the watcher reload doesn't trigger
         // the CONTEXT-pinned Tour-switch reset cascade (picker close +
         // replyLock idle).
-        store.dispatch({ type: "bundle.refreshed", bundle: next });
         // Re-seed orphan windows on watcher reload (annotations may have
         // changed; orphan windows recompute). seedFromOrphans unions per-side
         // by max so manually expanded user state is preserved (issue #114).
+        // Dispatch BEFORE `bundle.refreshed` so the reducer's `revalidateCursor`
+        // intent fires against the freshly-seeded expansion slice.
         if (next.kind === "ok") {
-          setExpansion((prev) => seedFromOrphans(prev, flattenOrphanWindows(next.files)));
+          store.dispatch({
+            type: "expansion.seedFromOrphans",
+            windows: flattenOrphanWindows(next.files),
+          });
         }
+        store.dispatch({ type: "bundle.refreshed", bundle: next });
       } catch {
         // transient — keep current bundle
       }
@@ -499,16 +497,24 @@ function App(props: AppProps) {
   }, [liveTopLevel, liveTour.id]);
 
   // Validate the cursor in place when the row sequence shifts under it
-  // (fold toggle, bundle reload, layout change). For a RowAnchor: anchor
+  // (fold toggle, layout change, expansion). For a RowAnchor: anchor
   // preserved when it still resolves; snapped to file's first row when
   // the specific row vanishes; snapped to next file in stream order when
-  // the file is gone; null when no row remains. For a CardAnchor:
+  // the file is gone; cleared when no row remains. For a CardAnchor:
   // preserved when its annotationId is still in the flat-row stream;
-  // null otherwise (cards have no fallback row, PRD #192).
+  // cleared otherwise (cards have no fallback row, PRD #192).
+  //
+  // Bundle-driven revalidation also runs through the reducer's
+  // `bundle.refreshed` → `revalidateCursor` intent (issue #231 / PRD #229).
+  // Both paths dispatch the same `cursor.set` / `cursor.clear` actions and
+  // are idempotent — the useEffect is the catch-all for non-bundle row-
+  // sequence shifts (folds aren't yet in the store).
   useEffect(() => {
     if (cursor === null) return;
     const validated = validateCursor(cursor, flatRowsList, files);
-    if (validated !== cursor) setCursor(validated);
+    if (validated === cursor) return;
+    if (validated === null) store.dispatch({ type: "cursor.clear" });
+    else store.dispatch({ type: "cursor.set", anchor: validated });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatRowsList, liveTopLevel]);
 
@@ -688,13 +694,36 @@ function App(props: AppProps) {
     }
   };
 
+  // Refs used by the intent listener to read the latest substrate-derived
+  // state without re-registering the listener on every render. Updated
+  // inline below as each value is computed.
+  const cursorRef = useRef<Cursor | null>(cursor);
+  cursorRef.current = cursor;
+  const flatRowsRef = useRef<FlatRow[]>(flatRowsList);
+  flatRowsRef.current = flatRowsList;
+  const filesRef = useRef<DiffFile[]>(files);
+  filesRef.current = files;
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
+  const collapsedFoldersRef = useRef<Set<string>>(collapsedFolders);
+  collapsedFoldersRef.current = collapsedFolders;
+  const annotationCountsRef = useRef<Record<string, number>>(annotationCounts);
+  annotationCountsRef.current = annotationCounts;
+  const safeRowIdxRef = useRef<number>(safeRowIdx);
+  safeRowIdxRef.current = safeRowIdx;
+
   // Intent listener — realizes the reducer's emitted intents in the TUI
-  // substrate (PRD #207 slice 1 contract). `loadTour` performs the
-  // in-process bundle reload, then dispatches `tour.switched` (which
-  // drives the reducer's bundle/picker/replyLock cascade) plus the
-  // TUI-local resets that aren't yet in the reducer (cursor / folds /
-  // overrides / expansion). `scrollPickerRow` scrolls the picker modal
-  // scrollbox. `mirrorUrl` is ignored — the TUI has no URL.
+  // substrate (PRD #207 slice 1 + slice 2 contract). `loadTour` performs
+  // the in-process bundle reload then dispatches `tour.switched` (which
+  // drives the reducer's bundle/picker/replyLock/cursor/expansion reset
+  // cascade — cursor + expansion landed in the reducer with slice 2,
+  // issue #230). `scrollPickerRow` scrolls the picker modal scrollbox.
+  // `revalidateCursor` runs `validateCursor` against the substrate-derived
+  // flat-rows and dispatches `cursor.set` / `cursor.clear`.
+  // `scrollCursorTarget` scrolls the diff pane via `scrollChildIntoView` /
+  // `centerChildInView`. `revealSidebarFile` reveals the file's ancestors
+  // and selects its row in the sidebar tree. `mirrorUrl` and `mirrorAnnUrl`
+  // are ignored — the TUI has no URL.
   useEffect(() => {
     let unmounted = false;
     const unsubscribe = store.onIntent((intent) => {
@@ -712,24 +741,28 @@ function App(props: AppProps) {
             const next = await props.loadTour!(tourId);
             if (unmounted) return;
             // CONTEXT-pinned Tour-switch resets that don't yet live in
-            // the reducer (slice 1: only picker + replyLock + bundle
-            // are reset by `tour.switched`). Cursor / folds / overrides /
-            // expansion are reset here; they migrate into the reducer
-            // in subsequent slices.
+            // the reducer: folds + overrides + sidebar row index. Cursor
+            // and expansion are reset by the reducer's `tour.switched`
+            // branch (slice 2, issue #230); the surface dispatches
+            // `expansion.seedFromOrphans` post-switch to re-seed orphan
+            // windows from the new tour's files.
             setSelectedRowIdx(0);
-            setCursor(null);
             setCollapsedOverrides({});
             setCollapsedFolders(new Set());
-            setExpansion(
-              seedFromOrphans(
-                emptyExpansion(),
-                next.kind === "ok" ? flattenOrphanWindows(next.files) : [],
-              ),
-            );
             // Drive the reducer's `tour.switched` cascade — bundle is
-            // replaced, picker closes (defensively; commit already closed
-            // it), and replyLock resets to idle.
+            // replaced; picker closes (defensively; commit already closed
+            // it); replyLock resets to idle; cursor resets to null;
+            // expansion resets to empty.
             store.dispatch({ type: "tour.switched", tourId, bundle: next });
+            // Re-seed orphan windows from the new tour's files post-switch
+            // so Annotations whose anchor lives in Hidden context render
+            // inline on first paint of the new tour.
+            if (next.kind === "ok") {
+              store.dispatch({
+                type: "expansion.seedFromOrphans",
+                windows: flattenOrphanWindows(next.files),
+              });
+            }
             // Reply-lock fetch for the new tour. Must dispatch AFTER
             // `tour.switched` (which resets replyLock to idle) so the
             // freshly-loaded lock isn't clobbered.
@@ -761,7 +794,43 @@ function App(props: AppProps) {
         scrollChildIntoView(sb, `picker-row-${intent.idx}`);
         return;
       }
-      // mirrorUrl: TUI has no URL — ignored per the slice-1 contract.
+      if (intent.type === "revalidateCursor") {
+        const c = cursorRef.current;
+        if (c === null) return;
+        const validated = validateCursor(c, flatRowsRef.current, filesRef.current);
+        if (validated === c) return;
+        if (validated === null) store.dispatch({ type: "cursor.clear" });
+        else store.dispatch({ type: "cursor.set", anchor: validated });
+        return;
+      }
+      if (intent.type === "scrollCursorTarget") {
+        const sb = diffScrollRef.current;
+        if (!sb) return;
+        if (intent.target.kind === "card") {
+          centerChildInView(sb, `annotation-${intent.target.annotationId}`);
+        } else {
+          const { file, side, lineNumber } = intent.target;
+          scrollChildIntoView(sb, `diff-row-${file}-${side}-${lineNumber}`);
+        }
+        return;
+      }
+      if (intent.type === "revealSidebarFile") {
+        const located = revealAndLocate(
+          treeRef.current,
+          collapsedFoldersRef.current,
+          annotationCountsRef.current,
+          intent.file,
+        );
+        if (!located) return;
+        if (located.collapsedFolders !== collapsedFoldersRef.current) {
+          setCollapsedFolders(located.collapsedFolders as Set<string>);
+        }
+        if (located.rowIdx !== safeRowIdxRef.current) {
+          setSelectedRowIdx(located.rowIdx);
+        }
+        return;
+      }
+      // mirrorUrl + mirrorAnnUrl: TUI has no URL — ignored.
     });
     return () => {
       unmounted = true;
@@ -789,7 +858,10 @@ function App(props: AppProps) {
     // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
     // annotation's card directly — no synthesized row anchor. Thread
     // preferredSide so an `h`/`l` choice survives the jump (issue #200).
-    setCursor((prev) => cursorFromAnnotation(ann, preferredSideOf(prev)));
+    store.dispatch({
+      type: "cursor.set",
+      anchor: cursorFromAnnotation(ann, preferredSideOf(cursor)),
+    });
   };
 
   // gotoPrev/NextAnnotation walk via `nextCard` / `prevCard` (PRD #192).
@@ -826,16 +898,12 @@ function App(props: AppProps) {
     lineNumber: number,
   ) => {
     setSidebarFocused(false);
-    setCursor({ kind: "row", file, lineNumber, side, preferredSide: side });
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
-    if (located) {
-      if (located.collapsedFolders !== collapsedFolders) {
-        setCollapsedFolders(located.collapsedFolders as Set<string>);
-      }
-      if (located.rowIdx !== safeRowIdx) {
-        setSelectedRowIdx(located.rowIdx);
-      }
-    }
+    store.dispatch({
+      type: "cursor.set",
+      anchor: { kind: "row", file, lineNumber, side, preferredSide: side },
+    });
+    // Sidebar reveal flows through the reducer's `revealSidebarFile`
+    // intent (emitted on cross-file `cursor.set` for RowAnchors).
   };
 
   // Mouse click on an interactive row (PRD #107 US 16): set cursor with
@@ -848,23 +916,17 @@ function App(props: AppProps) {
     boundaryRef: BoundaryRef,
   ) => {
     setSidebarFocused(false);
-    setCursor((prev) =>
-      cursorOnInteractive({
+    store.dispatch({
+      type: "cursor.set",
+      anchor: cursorOnInteractive({
         file,
         subKind,
         boundaryRef,
-        preferredSide: preferredSideOf(prev),
+        preferredSide: preferredSideOf(cursor),
       }),
-    );
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
-    if (located) {
-      if (located.collapsedFolders !== collapsedFolders) {
-        setCollapsedFolders(located.collapsedFolders as Set<string>);
-      }
-      if (located.rowIdx !== safeRowIdx) {
-        setSelectedRowIdx(located.rowIdx);
-      }
-    }
+    });
+    // Sidebar reveal flows through the reducer's `revealSidebarFile`
+    // intent (emitted on cross-file `cursor.set` for RowAnchors).
   };
 
   // Hunk-separator gap size = lines between previous hunk's additions end
@@ -897,8 +959,10 @@ function App(props: AppProps) {
     return Math.max(0, lineCount - lastEnd);
   };
 
-  // Real expansion handlers (PRD #108). Replace the slice-#107 stubs with
-  // reducer calls against the per-tour expansion state.
+  // Real expansion handlers (PRD #108). Dispatch through the Tour-session
+  // store (issue #231 / PRD #229) — the reducer's `expansion.*` actions
+  // delegate to the same pure helpers in `core/expansion-state.ts` the
+  // surface used to call directly.
   //
   // PRD #151: mid-file hunk-header Enter is direction-aware — large gaps
   // (remaining > 2N = 40) expand the bottom of the gap (lines appear
@@ -914,33 +978,53 @@ function App(props: AppProps) {
     const remaining = gapSize - cur.up - cur.down;
     if (remaining <= 0) return;
     const direction = remaining > GAP_TWO_ROW_THRESHOLD ? "down" : "both";
-    setExpansion((s) =>
-      expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize, direction),
-    );
+    store.dispatch({
+      type: "expansion.expand",
+      file,
+      ref: boundaryRef,
+      direction,
+      mode: all ? "all" : "symmetric-20",
+      gapSize,
+    });
   };
   const expandGapMidTop = (file: string, boundaryRef: BoundaryRef, all: boolean) => {
     if (typeof boundaryRef !== "number") return;
     const gapSize = hunkSeparatorGapSize(file, boundaryRef);
     if (gapSize === 0) return;
-    setExpansion((s) =>
-      expand(s, { file, ref: boundaryRef }, all ? "all" : "symmetric-20", gapSize, "up"),
-    );
+    store.dispatch({
+      type: "expansion.expand",
+      file,
+      ref: boundaryRef,
+      direction: "up",
+      mode: all ? "all" : "symmetric-20",
+      gapSize,
+    });
   };
   const expandTopBoundary = (file: string, all: boolean) => {
     const gapSize = boundaryTopGapSize(file);
     if (gapSize === 0) return;
-    setExpansion((s) => expandTop(s, file, all ? "all" : "symmetric-20", gapSize));
+    store.dispatch({
+      type: "expansion.expandTop",
+      file,
+      mode: all ? "all" : "symmetric-20",
+      gapSize,
+    });
   };
   const expandBottomBoundary = (file: string, all: boolean) => {
     const gapSize = boundaryBottomGapSize(file);
     if (gapSize === 0) return;
-    setExpansion((s) => expandBottom(s, file, all ? "all" : "symmetric-20", gapSize));
+    store.dispatch({
+      type: "expansion.expandBottom",
+      file,
+      mode: all ? "all" : "symmetric-20",
+      gapSize,
+    });
   };
   // Enter on a synthetic CollapsedFileRow flips fileExpanded → planner
   // emits the file's normal diff body next render (PRD #108 issue #113).
   // One-way; re-collapse goes through the parallel `c` toggle.
   const expandCollapsedFile = (file: string) => {
-    setExpansion((s) => expandFile(s, file));
+    store.dispatch({ type: "expansion.expandFile", file });
   };
 
   // Routes a primary-action / primary-action-all keystroke to the row-kind-
@@ -968,18 +1052,29 @@ function App(props: AppProps) {
     }
   };
 
+  // Bridge for surface-side cursor mutations: the pure motion helpers in
+  // `core/cursor-state.ts` return `Cursor | null`; the store accepts only
+  // `cursor.set { anchor: Cursor }` or `cursor.clear`. Same-ref short-
+  // circuit avoids a no-op dispatch (the reducer's `setCursor` would
+  // still emit `scrollCursorTarget`, which we don't want on a noop motion).
+  const dispatchCursor = (next: Cursor | null) => {
+    if (next === cursor) return;
+    if (next === null) store.dispatch({ type: "cursor.clear" });
+    else store.dispatch({ type: "cursor.set", anchor: next });
+  };
+
   // Lazy materialization (ADR 0011 Revisions). Returns the seeded
   // cursor (or the existing one if already materialized) so the caller
-  // can chain into composer-open / motion in one step. setCursor is
-  // queued, so the returned value is what the caller should act on
-  // this tick. Surface parity with src/web/client/App.tsx.
+  // can chain into composer-open / motion in one step. The dispatch is
+  // queued, so the returned value is what the caller should act on this
+  // tick. Surface parity with src/web/client/App.tsx.
   const materializeCursor = (): Cursor | null => {
     if (cursor) return cursor;
     const seeded = initialCursor({
       topLevelAnnotations: liveTopLevel,
       flatRows: flatRowsList,
     });
-    if (seeded) setCursor(seeded);
+    if (seeded) store.dispatch({ type: "cursor.materialize", anchor: seeded });
     return seeded;
   };
 
@@ -1088,13 +1183,16 @@ function App(props: AppProps) {
         // so the new entry shows up immediately on submit. Same-tour
         // refresh — dispatch `bundle.refreshed` (issue #211), NOT
         // `tour.switched`, so the picker / replyLock survive a composer
-        // submit.
-        store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
+        // submit. Re-seed orphan windows BEFORE `bundle.refreshed` so the
+        // reducer's `revalidateCursor` intent fires against the freshly-
+        // seeded expansion slice.
         if (refreshed.kind === "ok") {
-          setExpansion((prev) =>
-            seedFromOrphans(prev, flattenOrphanWindows(refreshed.files)),
-          );
+          store.dispatch({
+            type: "expansion.seedFromOrphans",
+            windows: flattenOrphanWindows(refreshed.files),
+          });
         }
+        store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
       },
       applyTopLevelCreated: setPendingScrollAnnotationId,
     });
@@ -1191,10 +1289,12 @@ function App(props: AppProps) {
         }
         // PRD US 20: explicit sidebar-driven file selection moves the
         // cursor to that file's first annotatable row. Folded files
-        // contribute no rows so cursor goes null. currentAnnotationId is
+        // contribute no rows so cursor clears. currentAnnotationId is
         // unchanged — annotation focus is independent of code-reading
         // position.
-        setCursor(cursorAtFirstFileRow(selectedRow.path, flatRowsList));
+        const target = cursorAtFirstFileRow(selectedRow.path, flatRowsList);
+        if (target === null) store.dispatch({ type: "cursor.clear" });
+        else store.dispatch({ type: "cursor.set", anchor: target });
         return;
       }
       case "toggle-collapse": {
@@ -1310,7 +1410,7 @@ function App(props: AppProps) {
           dir,
           step,
         );
-        setCursor(result.cursor);
+        dispatchCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {
           sb.scrollTo(result.scrollTop);
         }
@@ -1337,7 +1437,7 @@ function App(props: AppProps) {
           },
           target,
         );
-        setCursor(result.cursor);
+        dispatchCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {
           sb.scrollTo(result.scrollTop);
         }
@@ -1348,15 +1448,15 @@ function App(props: AppProps) {
         const dir = action.type === "cursor-down" ? "down" : "up";
         const sb = diffScrollRef.current;
         if (!sb) {
-          setCursor((c) => moveCursor(c, dir, flatRowsList));
+          dispatchCursor(moveCursor(cursor, dir, flatRowsList));
           return;
         }
         // Diff-pane motion contract (ADR 0011 — Diff-pane motion contract).
         // Cursor floats; pane scrolls one row only when crossing the 3-row
-        // edge margin. The fallback `[cursor, layout]` useEffect runs after
-        // setCursor and applies block:nearest, which dominates for off-
-        // viewport cursors (post-wheel-scroll) and is a no-op when the
-        // cursor is already visible.
+        // edge margin. The cursor-scroll useEffect on `[cursor, layout]`
+        // runs after the dispatch-driven re-render and applies block:
+        // nearest, which dominates for off-viewport cursors (post-wheel-
+        // scroll) and is a no-op when the cursor is already visible.
         const result = stepDiffPane(
           {
             cursor,
@@ -1369,17 +1469,17 @@ function App(props: AppProps) {
           dir,
           3,
         );
-        setCursor(result.cursor);
+        dispatchCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {
           sb.scrollTo(result.scrollTop);
         }
         return;
       }
       case "cursor-side-left":
-        setCursor((c) => setCursorSide(c, "deletions", flatRowsList));
+        dispatchCursor(setCursorSide(cursor, "deletions", flatRowsList));
         return;
       case "cursor-side-right":
-        setCursor((c) => setCursorSide(c, "additions", flatRowsList));
+        dispatchCursor(setCursorSide(cursor, "additions", flatRowsList));
         return;
       case "primary-action":
         dispatchPrimaryAction(false);
@@ -1448,7 +1548,7 @@ function App(props: AppProps) {
                   // US 20): clicking a file in the sidebar expresses "show
                   // me from the top." A folded click yields null since
                   // the file contributes no flat rows.
-                  setCursor(cursorAtFirstFileRow(row.path, flatRowsList));
+                  dispatchCursor(cursorAtFirstFileRow(row.path, flatRowsList));
                 }
               };
               if (row.kind === "folder") {

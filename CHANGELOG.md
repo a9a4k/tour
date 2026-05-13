@@ -78,6 +78,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI cursor + expansion routed through the Tour-session store
+  (issue #231).** The TUI no longer owns `useState<Cursor | null>` or
+  `useState<ExpansionState>` — both slices are read from `sessionState`
+  and mutated via `store.dispatch(...)`. Keymap dispatchers (`j` / `k`
+  / `n` / `p` / `h` / `l` / `Enter` / `Shift-Enter` / arrows / Home /
+  End / Space / PageUp/Down / mouse click on diff row / mouse click on
+  interactive row / mouse click on annotation card / mouse click on
+  sidebar file) compute the new anchor via the existing pure helpers in
+  `core/cursor-state.ts` and dispatch `cursor.set` (or `cursor.clear`
+  when the target is null). Expansion handlers dispatch
+  `expansion.expand` / `expansion.expandTop` / `expansion.expandBottom`
+  / `expansion.expandFile` / `expansion.seedFromOrphans` in place of
+  their direct `setExpansion(...)` callsites. The watcher-reload and
+  composer-submit refresh paths dispatch `expansion.seedFromOrphans`
+  before `bundle.refreshed` so the reducer's `revalidateCursor` intent
+  fires against the freshly-seeded expansion slice. Tour-switch resets
+  for cursor + expansion now come from the reducer's `tour.switched`
+  branch; the surface only resets folds / overrides / sidebar row
+  index. The intent listener realizes `revalidateCursor` (running
+  `validateCursor` against the surface-derived flat-rows + files),
+  `scrollCursorTarget` (via `scrollChildIntoView` / `centerChildInView`
+  on the diff scrollbox), and `revealSidebarFile` (via `revealAndLocate`
+  on the file tree); `mirrorAnnUrl` is ignored — the TUI has no URL.
+  Observable behavior is unchanged. The webapp remains untouched and
+  continues to use local `useState`s for cursor + expansion until
+  issue #232 lands.
+
+  Issue: #231 · PRD: #229
+
 - **Tour-session slice 2 foundation: cursor + expansion slices land in
   the reducer (issue #230).** `TourSessionState` gains `cursor: Cursor |
   null` and `expansion: ExpansionState` slices, alongside four new
