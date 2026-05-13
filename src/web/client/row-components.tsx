@@ -441,28 +441,25 @@ export interface InteractiveRowProps {
   gapAbove: number;
   isCursor: boolean;
   /** Dispatches the expand action into `core/expansion-state.ts`'s
-   *  reducer. The component computes `count` from the click/key modifier:
-   *  shift → `Math.max(gapAbove, EXPANSION_STEP)`, otherwise
-   *  `EXPANSION_STEP`. */
+   *  reducer. The component computes `count`: `expand-all` reveals the
+   *  entire remaining gap in one click; every other directional /
+   *  banner row uses `EXPANSION_STEP`. The Shift modifier carries no
+   *  special meaning (PRD #270 Slice 5 / issue #275). */
   onActivate: (count: number) => void;
-}
-
-function expansionCount(gapAbove: number, shift: boolean): number {
-  return shift ? Math.max(gapAbove, EXPANSION_STEP) : EXPANSION_STEP;
 }
 
 // PRD #270 / issue #271: `expand-all` always reveals the entire remaining
 // gap in one Enter — the button's label IS the contract ("Expand All
-// ${gapAbove} lines"), so the count is `gapAbove` regardless of Shift.
-// Every other directional / banner row uses the EXPANSION_STEP ladder
-// with Shift as the full-gap modifier.
+// ${gapAbove} lines"). Every other directional / banner row dispatches
+// `EXPANSION_STEP` lines regardless of the Shift modifier (PRD #270
+// Slice 5 / issue #275 — the per-file Expand-all chrome button is the
+// whole-file escape hatch).
 function interactiveRowCount(
   subKind: InteractiveSubKind,
   gapAbove: number,
-  shift: boolean,
 ): number {
   if (subKind === "expand-all") return gapAbove;
-  return expansionCount(gapAbove, shift);
+  return EXPANSION_STEP;
 }
 
 function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
@@ -479,13 +476,13 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
   if (isCursor) classes.push("is-cursor");
   const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onActivate(interactiveRowCount(subKind, gapAbove, e.shiftKey));
+    onActivate(interactiveRowCount(subKind, gapAbove));
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isCursor) return;
     if (e.key !== "Enter") return;
     e.preventDefault();
-    onActivate(interactiveRowCount(subKind, gapAbove, e.shiftKey));
+    onActivate(interactiveRowCount(subKind, gapAbove));
   };
   return (
     <div

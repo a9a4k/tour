@@ -426,19 +426,21 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
   });
 });
 
-// ADR 0013 / PRD #107: Enter dispatches primary-action when the cursor
-// sits on an interactive row in the diff pane; Shift+Enter dispatches
-// primary-action-all. Diff-row Enter is a noop (Enter is reserved for
-// interactive-row actions, not an alias for `a`). Sidebar Enter retains
-// select-file.
+// ADR 0013 / PRD #107 / ADR 0025: Enter dispatches primary-action when
+// the cursor sits on an interactive row in the diff pane. The Shift
+// modifier carries no special meaning (PRD #270 Slice 5 / issue #275 —
+// the per-file Expand-all chrome button is the whole-file escape
+// hatch); Shift+Enter behaves identically to plain Enter. Diff-row
+// Enter is a noop (Enter is reserved for interactive-row actions, not
+// an alias for `a`). Sidebar Enter retains select-file.
 describe("dispatchKey — primary-action (PRD #107)", () => {
   it("Enter on a cursor-on-interactive row dispatches primary-action", () => {
     expect(dispatchKey(k("return"), diffPaneInteractive).type).toBe("primary-action");
   });
 
-  it("Shift+Enter on a cursor-on-interactive row dispatches primary-action-all", () => {
+  it("Shift+Enter on a cursor-on-interactive row dispatches primary-action (Shift carries no special meaning per issue #275)", () => {
     expect(dispatchKey(k("return", { shift: true }), diffPaneInteractive).type).toBe(
-      "primary-action-all",
+      "primary-action",
     );
   });
 

@@ -1109,24 +1109,24 @@ function App(props: AppProps) {
     store.dispatch({ type: "expansion.expandFileAll", file, boundaries });
   };
 
-  // Routes a primary-action / primary-action-all keystroke to the row-kind-
-  // specific handler. Pure dispatch table — the actual expansion behaviour
-  // lives in the stubs above.
-  const dispatchPrimaryAction = (all: boolean) => {
+  // Routes a primary-action keystroke to the row-kind-specific handler.
+  // Pure dispatch table — the actual expansion behaviour lives in the
+  // stubs above. The Shift modifier is no longer special (PRD #270
+  // Slice 5 / issue #275); the per-file Expand-all row is the whole-
+  // file escape hatch.
+  const dispatchPrimaryAction = () => {
     if (!cursor || cursor.kind !== "row" || !cursor.interactive) return;
     const { subKind, boundaryRef } = cursor.interactive;
-    const mode: "all" | "symmetric-20" = all ? "all" : "symmetric-20";
     switch (subKind) {
       case "expand-up":
-        expandDirectional(cursor.file, boundaryRef, "up", mode);
+        expandDirectional(cursor.file, boundaryRef, "up", "symmetric-20");
         return;
       case "expand-down":
-        expandDirectional(cursor.file, boundaryRef, "down", mode);
+        expandDirectional(cursor.file, boundaryRef, "down", "symmetric-20");
         return;
       case "expand-all":
         // Single Enter reveals the entire remaining gap (PRD #270 /
-        // issue #271). Force `mode: "all"` regardless of the
-        // Shift-modifier `all` arg.
+        // issue #271).
         expandDirectional(cursor.file, boundaryRef, "both", "all");
         return;
       case "collapsed-file":
@@ -1548,10 +1548,7 @@ function App(props: AppProps) {
         dispatchCursor(setCursorSide(cursor, "additions", flatRowsList));
         return;
       case "primary-action":
-        dispatchPrimaryAction(false);
-        return;
-      case "primary-action-all":
-        dispatchPrimaryAction(true);
+        dispatchPrimaryAction();
         return;
       case "noop-reply-on-row":
         setFooterStatus("r: no annotation under cursor — n/p to navigate");

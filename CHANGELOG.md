@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.0.0] — 2026-05-12
 
+### Removed
+
+- **Shift+Enter / Shift+Click whole-gap modifier removed from both
+  surfaces (issue #275, PRD #270 Slice 5).** With the per-file
+  `Expand all hidden` button (issue #274 / Slice 4) shipped as the
+  whole-file escape hatch, the `Shift`-modifier short-circuit on
+  interactive expand rows is no longer carrying its weight. The TUI
+  keymap's `primary-action-all` action type is gone; `dispatchKey`
+  returns `primary-action` on `Enter` regardless of `Shift`. The web's
+  `<InteractiveRow>` strips the `e.shiftKey` branch from its `onClick`
+  / `onKeyDown` handlers — `interactiveRowCount` reduces to
+  `expand-all → gapAbove, everything else → EXPANSION_STEP`. The
+  `expansionCount` helper is removed. The web `App.tsx` Enter handler
+  drops the `Math.max(gapSize, EXPANSION_STEP)` Shift escalation.
+  Net effect: maximally simple mental model — Enter / click does what
+  the cursor is on; reviewers who want whole-file expansion use the
+  per-file Expand-all button; reviewers who want directional 20-line
+  expansion use Enter on Up / Down / All rows.
+
+  Issue: #275
+
 ### Changed
 
 - **Web: hunk-header banner is now display-only; the `#252` `::before`

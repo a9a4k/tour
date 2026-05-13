@@ -976,11 +976,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const focusInEditable = !!(
         t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
       );
-      // Enter / Shift+Enter on a gap-row interactive cursor → dispatch the
-      // same expansion action as clicking the row's chevron (PRD #212 user-
+      // Enter on a gap-row interactive cursor → dispatch the same
+      // expansion action as clicking the row's chevron (PRD #212 user-
       // stories 7-8). collapsed-file routes to `expand-file`. Other
-      // interactive subkinds compute count via the EXPANSION_STEP /
-      // shift-key contract and dispatch through the FileBlock reducer.
+      // interactive subkinds compute count via `expand-all` →
+      // full-gap, everything else → EXPANSION_STEP. The Shift modifier
+      // carries no special meaning (PRD #270 Slice 5 / issue #275).
       if (
         e.key === "Enter" &&
         !focusInEditable &&
@@ -1018,14 +1019,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 ? "down"
                 : "both";
           // `expand-all` reveals the entire remaining gap in one Enter;
-          // every other directional / banner row uses the EXPANSION_STEP
-          // ladder with Shift as the full-gap modifier.
-          const count =
-            subKind === "expand-all"
-              ? gapSize
-              : e.shiftKey
-                ? Math.max(gapSize, EXPANSION_STEP)
-                : EXPANSION_STEP;
+          // every other directional / banner row dispatches
+          // EXPANSION_STEP lines. Shift carries no special meaning
+          // (PRD #270 Slice 5 / issue #275).
+          const count = subKind === "expand-all" ? gapSize : EXPANSION_STEP;
           dispatchExpand({
             kind: "expand",
             file: cursor.file,

@@ -912,7 +912,11 @@ describe("<InteractiveRow>", () => {
     expect(calls).toEqual([EXPANSION_STEP]);
   });
 
-  it("expands the entire gap on shift-click (count = max(gapAbove, EXPANSION_STEP))", () => {
+  // PRD #270 Slice 5 / issue #275: Shift+click no longer carries the
+  // whole-gap modifier — Shift is ignored on every interactive-row
+  // subkind. The per-file Expand-all chrome button is the whole-file
+  // escape hatch. Plain click + Shift-click dispatch the same count.
+  it("Shift+click dispatches the same count as a plain click (Shift ignored per issue #275)", () => {
     const calls: number[] = [];
     const c = mount(
       createElement(InteractiveRow, {
@@ -928,7 +932,7 @@ describe("<InteractiveRow>", () => {
     act(() => {
       row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
     });
-    expect(calls).toEqual([Math.max(73, EXPANSION_STEP)]);
+    expect(calls).toEqual([EXPANSION_STEP]);
   });
 
   it("calls onActivate on Enter while isCursor is true", () => {
@@ -973,7 +977,9 @@ describe("<InteractiveRow>", () => {
     expect(calls).toEqual([]);
   });
 
-  it("Shift+Enter while isCursor expands the entire gap", () => {
+  // PRD #270 Slice 5 / issue #275: Shift+Enter is no longer a whole-gap
+  // modifier — Shift is ignored on every interactive-row subkind.
+  it("Shift+Enter while isCursor dispatches the same count as plain Enter (Shift ignored per issue #275)", () => {
     const calls: number[] = [];
     const c = mount(
       createElement(InteractiveRow, {
@@ -995,7 +1001,7 @@ describe("<InteractiveRow>", () => {
         }),
       );
     });
-    expect(calls).toEqual([Math.max(99, EXPANSION_STEP)]);
+    expect(calls).toEqual([EXPANSION_STEP]);
   });
 
   it("applies .is-cursor when isCursor is true", () => {
@@ -1105,7 +1111,10 @@ describe("<InteractiveRow>", () => {
     expect(calls).toEqual([EXPANSION_STEP]);
   });
 
-  it("`expand-down` Shift+click dispatches the full gap (max(gapAbove, EXPANSION_STEP)) (PRD #270)", () => {
+  // PRD #270 Slice 5 / issue #275: Shift no longer escalates an
+  // `expand-down` (or any directional row) to the full gap; the
+  // per-file Expand-all chrome button is the whole-file escape hatch.
+  it("`expand-down` Shift+click still dispatches count = EXPANSION_STEP (Shift ignored per issue #275)", () => {
     const calls: number[] = [];
     const c = mount(
       createElement(InteractiveRow, {
@@ -1122,7 +1131,7 @@ describe("<InteractiveRow>", () => {
     act(() => {
       row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
     });
-    expect(calls).toEqual([100]);
+    expect(calls).toEqual([EXPANSION_STEP]);
   });
 
   it("carries role=button + tabindex=0 for keyboard activation (#224)", () => {

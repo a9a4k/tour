@@ -9,9 +9,9 @@ export interface KeymapContext {
   rowCount: number;
   selectedRowKind: "folder" | "file" | null;
   /** Whether the cursor sits on an interactive row (hunk-separator, file
-   *  boundary, collapsed-file). Only when this is true do Enter /
-   *  Shift+Enter dispatch primary-action / primary-action-all in the
-   *  diff pane (PRD #107). On a regular diff row Enter is a noop. */
+   *  boundary, collapsed-file). Only when this is true does Enter
+   *  dispatch primary-action in the diff pane (PRD #107). On a regular
+   *  diff row Enter is a noop. */
   cursorOnInteractive: boolean;
   /** Whether the cursor sits on an Annotation card (PRD #192 / ADR 0022).
    *  Routes the row-kind-aware dispatch: `r` and `s` fire only when this
@@ -52,7 +52,6 @@ export type KeyAction =
   | { type: "cursor-side-left" }
   | { type: "cursor-side-right" }
   | { type: "primary-action" }
-  | { type: "primary-action-all" }
   | { type: "noop" }
   | { type: "noop-reply-on-row" }
   | { type: "noop-send-on-row" }
@@ -118,15 +117,18 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     }
   }
 
-  // Diff-pane Enter / Shift+Enter (ADR 0013): only fires when the cursor
-  // sits on an interactive row.
+  // Diff-pane Enter (ADR 0013 / ADR 0025): only fires when the cursor
+  // sits on an interactive row. The Shift modifier carries no special
+  // meaning — per PRD #270 Slice 5 the per-file Expand-all button is
+  // the whole-file escape hatch; Shift+Enter behaves identically to
+  // plain Enter.
   if (
     !ctx.sidebarFocused &&
     !key.ctrl &&
     ctx.cursorOnInteractive &&
     key.name === "return"
   ) {
-    return key.shift ? { type: "primary-action-all" } : { type: "primary-action" };
+    return { type: "primary-action" };
   }
 
   if (ctx.sidebarFocused && ctx.rowCount > 0) {
