@@ -62,6 +62,7 @@ import {
 } from "../../core/cursor-state.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
+import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
 import { validateWebappCursor } from "./cursor-validation.js";
 import { decideReanchor } from "./re-anchor-policy.js";
@@ -919,7 +920,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // stories 7-8). collapsed-file routes to `expand-file`. Other
       // interactive subkinds compute count via the EXPANSION_STEP /
       // shift-key contract and dispatch through the FileBlock reducer.
-      const EXPANSION_STEP = 20;
       if (
         e.key === "Enter" &&
         !focusInEditable &&
