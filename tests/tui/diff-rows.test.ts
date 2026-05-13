@@ -1302,9 +1302,12 @@ index 1..2 100644
         },
       ];
       const tree = callDiffRows({ rows, layout: "split" });
-      const node = findText(tree, (s) => s.startsWith("@@"));
+      // Post-#264 the inert path emits two text siblings: a leading
+      // `…` glyph in theme.fg.accent + the header text in theme.fg.muted
+      // (one space between them). No DiffLine wrapper — match the
+      // header-text element directly.
+      const node = findText(tree, (s) => s.includes("@@ -1,3 +1,3 @@"));
       expect(node).toBeDefined();
-      expect(node!.props.children).toBe("@@ -1,3 +1,3 @@");
       // GitHub paints the whole hunk-header line in continuous fg.muted
       // grey — the inert TUI path follows the same treatment.
       expect(node!.props.fg).toBe(theme.fg.muted);
@@ -1330,6 +1333,110 @@ index 1..2 100644
       const cells = diffLineCellsOf(tree);
       expect(cells.length).toBe(1);
       expect(cells[0].props["mutedText"]).toBe(true);
+    });
+  });
+
+  // Issue #264 — TUI hunk-header expand affordance. The webapp #252
+  // paints a 44px accentEmphasis block with `…` dots in white at the
+  // leftmost edge of the hunk-header banner as the rest-state cue
+  // "this row is interactive — cursor + Enter expands hidden context."
+  // The TUI's terminal-native equivalent: prepend a `…` glyph painted
+  // in theme.fg.accent at the leftmost edge of every hunk-header row
+  // (both expandable `gapAbove > 0` and inert `gapAbove === 0` paths).
+  // The cursor + Enter interaction itself is unchanged; the glyph is
+  // purely a decorative affordance hint.
+  describe("hunk-header expand affordance glyph (issue #264)", () => {
+    const HUNK_HEADER_GLYPH = "…";
+
+    function findAccentGlyph(tree: unknown): AnyElement | undefined {
+      return flatten(tree).find(
+        (el) =>
+          typeof el.props.children === "string" &&
+          (el.props.children as string) === HUNK_HEADER_GLYPH &&
+          el.props.fg === theme.fg.accent,
+      );
+    }
+
+    it("renders a `…` glyph in theme.fg.accent at the leftmost edge of an inert hunk-header (gapAbove === 0)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -1,3 +1,3 @@",
+          hunkIndex: 0,
+          gapAbove: 0,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const glyph = findAccentGlyph(tree);
+      expect(glyph).toBeDefined();
+    });
+
+    it("renders a `…` glyph in theme.fg.accent at the leftmost edge of an interactive hunk-header (gapAbove > 0)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const glyph = findAccentGlyph(tree);
+      expect(glyph).toBeDefined();
+    });
+
+    it("the inert hunk-header still preserves the header text in theme.fg.muted next to the glyph", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -1,3 +1,3 @@",
+          hunkIndex: 0,
+          gapAbove: 0,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const headerText = flatten(tree).find(
+        (el) =>
+          typeof el.props.children === "string" &&
+          (el.props.children as string).includes("@@ -1,3 +1,3 @@") &&
+          el.props.fg === theme.fg.muted,
+      );
+      expect(headerText).toBeDefined();
+    });
+
+    it("the interactive hunk-header still routes through DiffLine with mutedText (composition unchanged)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["mutedText"]).toBe(true);
+      // Body text still carries the `↑/↓/↕` direction glyph + count;
+      // the new leftmost `…` glyph is a separate sibling element.
+      const text = cells[0].props["text"] as string;
+      expect(text).toContain("12 hidden");
+      expect(text).toContain("@@ -10,3 +10,3 @@");
+    });
+
+    it("glyph appears on both unified and split layouts (banner row, layout-agnostic)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+        },
+      ];
+      const splitTree = callDiffRows({ rows, layout: "split" });
+      const unifiedTree = callDiffRows({ rows, layout: "unified" });
+      expect(findAccentGlyph(splitTree)).toBeDefined();
+      expect(findAccentGlyph(unifiedTree)).toBeDefined();
     });
   });
 

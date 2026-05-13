@@ -8,6 +8,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: hunk-header rows now carry a `…` expand-affordance glyph at
+  the leftmost edge (issue #264, mirrors webapp #252).** Pre-fix, the
+  TUI hunk-header row gave no rest-state visual cue that it was
+  interactive — a reviewer couldn't tell from looking at it that
+  navigating the cursor onto it and pressing Enter would expand
+  hidden context (per ADR 0013). The webapp shipped #252 with a
+  saturated 44px `bg.accentEmphasis` block + `…` dots in white at
+  the leftmost edge of the banner. The TUI's terminal-native
+  equivalent: prepend a `…` (U+2026 HORIZONTAL ELLIPSIS) glyph
+  painted in `theme.fg.accent` at column 0 of every hunk-header row
+  (both the inert `gapAbove === 0` and the interactive `gapAbove > 0`
+  paths). The accent-coloured glyph contrasts with the muted header
+  text and reads as a "this row is interactive" cue. Path B from the
+  brief: the glyph is rendered as a separate `<text>` element so it
+  keeps the accent color while the header text stays muted (Path A's
+  bake-into-text would have painted the glyph in muted grey, losing
+  the contrast that IS the affordance signal). Cursor + Enter
+  expansion behavior is unchanged — the glyph is purely decorative.
+  Decorative-misdirection on `gapAbove === 0` headers (where Enter
+  is a no-op) is accepted, matching the webapp's same trade-off.
+  No planner / cursor / expansion / annotation model change.
+
+  Issue: #264
+
 - **TUI: horizontal `─` rule renders between consecutive files in the
   diff pane (issue #263, mirrors webapp #249).** Pre-fix, the TUI
   stacked every file in a tour's diff stream vertically inside a single
