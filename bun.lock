@@ -4,10 +4,13 @@
   "workspaces": {
     "": {
       "name": "tourdiff",
+      "dependencies": {
+        "@pierre/diffs": "^1.1.21",
+        "shiki": "^3.23.0",
+      },
       "devDependencies": {
         "@ai-hero/sandcastle": "^0.5.10",
         "@opentui/react": "^0.2.5",
-        "@pierre/diffs": "^1.1.21",
         "@primer/octicons-react": "^19.25.0",
         "@types/node": "^22.0.0",
         "@types/react": "^19.2.0",
@@ -27,11 +30,11 @@
         "vitest": "^3.2.1",
       },
       "optionalDependencies": {
-        "tourdiff-darwin-arm64": "2.0.0",
-        "tourdiff-darwin-x64": "2.0.0",
-        "tourdiff-linux-arm64": "2.0.0",
-        "tourdiff-linux-x64": "2.0.0",
-        "tourdiff-windows-x64": "2.0.0",
+        "tourdiff-darwin-arm64": "2.1.0",
+        "tourdiff-darwin-x64": "2.1.0",
+        "tourdiff-linux-arm64": "2.1.0",
+        "tourdiff-linux-x64": "2.1.0",
+        "tourdiff-windows-x64": "2.1.0",
       },
     },
   },
