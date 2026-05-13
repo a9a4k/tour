@@ -25,6 +25,15 @@ import type { Layout, TourSessionState, TourSessionStore } from "./tour-session.
 import { useTourSession } from "./tour-session.js";
 import { sendTarget, type SendTarget } from "./send-target.js";
 
+/** Surface-controlled view options. PRD #270 / issue #274 (Slice 4):
+ *  the TUI sets `emitExpandFileAllAffordance: true` so the planner emits
+ *  a cursor-walkable per-file Expand-all banner row at the top of each
+ *  file with hidden gaps; the web leaves it off and uses its header-chrome
+ *  button instead. */
+export interface ViewOptions {
+  emitExpandFileAllAffordance?: boolean;
+}
+
 // --- Slice shapes -----------------------------------------------------------
 
 export interface BundleSlice {
@@ -185,6 +194,7 @@ function deriveRowsSlice(
   bundle: OkBundle,
   state: TourSessionState,
   parsedFiles: ReadonlyArray<FileDiffMetadata>,
+  options: ViewOptions = {},
 ): RowsSlice {
   const filesByName = new Map<string, BundleFile>();
   for (const f of bundle.files) filesByName.set(f.name, f);
@@ -223,6 +233,7 @@ function deriveRowsSlice(
         newContent: bf?.newContent,
         expansion,
         classifierCollapsed: isClassifierCollapsed(f.name),
+        emitExpandFileAllAffordance: options.emitExpandFileAllAffordance ?? false,
       }),
     );
   }
@@ -272,6 +283,7 @@ function deriveCursorSlice(
 export function deriveTourSessionView(
   bundle: TourBundle,
   state: TourSessionState,
+  options: ViewOptions = {},
 ): TourSessionView {
   const navBase = deriveNavBase(bundle.annotations);
   if (bundle.kind === "snapshot-lost") {
@@ -290,7 +302,7 @@ export function deriveTourSessionView(
     bundle.annotations,
   );
   const parsedFiles = sortFilesForStream(parseFileDiffMetadata(bundle.diff));
-  const rowsSlice = deriveRowsSlice(bundle, state, parsedFiles);
+  const rowsSlice = deriveRowsSlice(bundle, state, parsedFiles, options);
   const cursorSlice = deriveCursorSlice(
     state.cursor,
     rowsSlice.flatRowsList,
@@ -320,6 +332,7 @@ export function deriveTourSessionView(
 export function useTourSessionView(
   store: TourSessionStore,
   bundle: TourBundle,
+  options: ViewOptions = {},
 ): TourSessionView {
   const state = useTourSession(store);
   const annotations: ReadonlyArray<Annotation> = bundle.annotations;
@@ -359,9 +372,15 @@ export function useTourSessionView(
     [isOk, bundle],
   );
 
+  const emitExpandFileAllAffordance = options.emitExpandFileAllAffordance ?? false;
   const rowsSlice = useMemo<RowsSlice | null>(
-    () => (isOk ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles) : null),
-    // Only the three fields `deriveRowsSlice` reads — listing `state` here
+    () =>
+      isOk
+        ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles, {
+            emitExpandFileAllAffordance,
+          })
+        : null,
+    // Only the four fields `deriveRowsSlice` reads — listing `state` here
     // would defeat granular invalidation (cursor moves would bust the
     // planner cache).
     [
@@ -371,6 +390,7 @@ export function useTourSessionView(
       state.collapsedOverrides,
       state.layout,
       parsedFiles,
+      emitExpandFileAllAffordance,
     ],
   );
 

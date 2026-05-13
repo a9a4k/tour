@@ -8,6 +8,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Per-file Expand-all-hidden affordance + `expand-file-all`
+  reducer action (web + TUI) (issue #274, PRD #270 Slice 4).**
+  A new pure helper `expandFileAll(state, file, boundaries)` in
+  `core/expansion-state.ts` saturates every hidden gap in a single
+  file in one pass (top / mid-file separators / bottom), reusing the
+  existing per-boundary direction convention. A matching
+  `expansion.expandFileAll` reducer action wraps it. The web file-
+  header chrome gains a new icon-only button between the diff-stats
+  indicator and the copy-path button — `aria-label="Expand all
+  hidden context in this file"`, ASCII `↕` glyph (no Octicons per
+  PRD scope), `event.stopPropagation()` mirrors the copy-path
+  pattern from #225 so click does NOT toggle file collapse. The TUI
+  surface opts in to a new planner option
+  `emitExpandFileAllAffordance` (threaded through
+  `useTourSessionView` / `deriveTourSessionView`) that emits a
+  single `expand-file-all` interactive row at the very top of each
+  file with hidden gaps; the cursor walks it like any other
+  interactive row and `Enter` dispatches the same `expand-file-all`
+  action. The row stops emitting once every gap is saturated (same
+  "row gone when nothing to do" rule as the directional family).
+  The web leaves the option off — its row stream is unchanged and
+  the chrome button is the affordance.
+
+  Issue: #274
+
 - **Web: GitHub-style directional + Expand-All buttons replace the
   legacy `gap-mid-top` row family (issue #271, PRD #270 Slice 1).**
   The planner's `InteractiveSubKind` vocabulary gains three variants —

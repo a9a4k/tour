@@ -598,6 +598,29 @@ describe("FILE_GRID_CSS — GitHub-style header chrome (#225)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — per-file Expand-all-hidden button (#274)", () => {
+  it("declares the expand-all button selector with pointer cursor", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-expand-all-button");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-expand-all-button[^{]*\{[^}]*cursor:\s*pointer/,
+    );
+  });
+
+  it("declares a hover rule on the expand-all button (matches copy-button chrome family)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-expand-all-button:hover");
+  });
+
+  it("declares a focus-visible outline on the expand-all button (keyboard accessibility)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-expand-all-button:focus-visible");
+  });
+
+  it("renders the button as an inline-flex chrome element so it sits flush with the copy-path button", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-expand-all-button[^{]*\{[^}]*display:\s*inline-flex/,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — file diff-stats indicator (#228)", () => {
   it("declares the stats container as an inline-flex row with tabular numerals", () => {
     expect(FILE_GRID_CSS).toContain(".tour-file-stats");

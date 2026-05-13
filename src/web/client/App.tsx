@@ -878,10 +878,41 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // the count is the modifier-aware step (shift → full gap, otherwise
   // EXPANSION_STEP=20). Map count → mode here: count ≥ remaining gap
   // → "all"; otherwise "symmetric-20".
+  // PRD #270 / issue #274 (Slice 4): enumerate every addressable boundary
+  // of a file with its current gap size, so the per-file Expand-all
+  // dispatch saturates each gap in one reducer hop. File-top gap fires
+  // iff additionStart > 1; mid-file gaps fire iff prev-end -> next-start
+  // > 0; file-bottom fires iff lastEnd < lineCount.
+  const fileBoundaryGaps = useCallback(
+    (file: string): { ref: BoundaryRef; gapSize: number }[] => {
+      const meta = filesByName?.get(file);
+      if (!meta || meta.hunks.length === 0) return [];
+      const out: { ref: BoundaryRef; gapSize: number }[] = [];
+      const topGap = boundaryTopGapSize(file);
+      if (topGap > 0) out.push({ ref: "top", gapSize: topGap });
+      for (let i = 1; i < meta.hunks.length; i++) {
+        const gap = hunkSeparatorGapSize(file, i);
+        if (gap > 0) out.push({ ref: i, gapSize: gap });
+      }
+      const botGap = boundaryBottomGapSize(file);
+      if (botGap > 0) out.push({ ref: "bottom", gapSize: botGap });
+      return out;
+    },
+    [filesByName, boundaryTopGapSize, hunkSeparatorGapSize, boundaryBottomGapSize],
+  );
+
   const dispatchExpand = useCallback(
     (action: ExpandAction) => {
       if (action.kind === "expand-file") {
         store.dispatch({ type: "expansion.expandFile", file: action.file });
+        return;
+      }
+      if (action.kind === "expand-file-all") {
+        store.dispatch({
+          type: "expansion.expandFileAll",
+          file: action.file,
+          boundaries: fileBoundaryGaps(action.file),
+        });
         return;
       }
       const { file, boundaryRef, direction, count } = action;
@@ -922,6 +953,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       hunkSeparatorGapSize,
       boundaryTopGapSize,
       boundaryBottomGapSize,
+      fileBoundaryGaps,
       expansion,
       store,
     ],

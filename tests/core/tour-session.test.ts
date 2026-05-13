@@ -776,6 +776,54 @@ describe("reduce — expansion slice (slice 2 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
+  it("expansion.expandFileAll saturates every boundary in the named file in one dispatch (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "expansion.expandFileAll",
+      file: "foo.ts",
+      boundaries: [
+        { ref: "top", gapSize: 12 },
+        { ref: 1, gapSize: 30 },
+        { ref: "bottom", gapSize: 8 },
+      ],
+    });
+    const file = r.state.expansion.get("foo.ts");
+    expect(file?.boundaries.get("top")).toEqual({ up: 12, down: 0 });
+    const sep = file?.boundaries.get(1);
+    expect((sep?.up ?? 0) + (sep?.down ?? 0)).toBe(30);
+    expect(file?.boundaries.get("bottom")).toEqual({ up: 0, down: 8 });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expandFileAll on an empty boundary list is a same-ref no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, {
+      type: "expansion.expandFileAll",
+      file: "foo.ts",
+      boundaries: [],
+    });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expandFileAll leaves other files unchanged", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "expansion.expand",
+      file: "bar.ts",
+      ref: 1,
+      direction: "both",
+      mode: "symmetric-20",
+      gapSize: 100,
+    }).state;
+    s = reduce(s, {
+      type: "expansion.expandFileAll",
+      file: "foo.ts",
+      boundaries: [{ ref: 1, gapSize: 30 }],
+    }).state;
+    expect(s.expansion.get("bar.ts")?.boundaries.get(1)).toEqual({ up: 10, down: 10 });
+    const foo = s.expansion.get("foo.ts")?.boundaries.get(1);
+    expect((foo?.up ?? 0) + (foo?.down ?? 0)).toBe(30);
+  });
+
   it("expansion.seedFromOrphans merges orphan windows into the slice (no intents)", () => {
     const r = reduce(initialTourSessionState(), {
       type: "expansion.seedFromOrphans",

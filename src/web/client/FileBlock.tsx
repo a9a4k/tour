@@ -47,7 +47,8 @@ export type ExpandAction =
       direction: "up" | "down" | "both";
       count: number;
     }
-  | { kind: "expand-file"; file: string };
+  | { kind: "expand-file"; file: string }
+  | { kind: "expand-file-all"; file: string };
 
 /** Pass-through fields to `<CardRow>` / `AnnotationCard`. Bundled into one
  *  prop so the FileBlock signature stays narrow — App-level callbacks all
@@ -212,6 +213,16 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     void navigator.clipboard?.writeText?.(file.name).catch(() => {});
   };
 
+  // PRD #270 / issue #274 (Slice 4): per-file Expand-all affordance. The
+  // header is also the toggle-collapse target, so `event.stopPropagation`
+  // here mirrors the copy-path button's pattern from #225 — clicking the
+  // expand-all button reveals every hidden gap in the file without
+  // toggling the file's collapsed state.
+  const handleExpandAll = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onDispatchExpand({ kind: "expand-file-all", file: file.name });
+  };
+
   return (
     <div className="tour-file-outer" data-file={file.name}>
       <div className="tour-file-header" onClick={onToggleCollapse}>
@@ -228,6 +239,14 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
             deletions={stats.deletions}
             segments={segments}
           />
+          <button
+            type="button"
+            className="tour-file-expand-all-button"
+            aria-label="Expand all hidden context in this file"
+            onClick={handleExpandAll}
+          >
+            ↕
+          </button>
           <button
             type="button"
             className="tour-file-copy-button"

@@ -113,6 +113,40 @@ export function expandFile(state: ExpansionState, file: string): ExpansionState 
   return next;
 }
 
+/** One file boundary's gap size — caller provides one entry per addressable
+ *  boundary (file-top, file-bottom, each mid-file hunk-separator). PRD #270
+ *  / issue #274 (Slice 4): drives `expandFileAll` so the reducer can saturate
+ *  every gap in the file in one pure-helper call, without re-deriving the
+ *  per-boundary gap size that the surfaces already computed for the row
+ *  stream. */
+export interface FileBoundaryGap {
+  ref: BoundaryRef;
+  gapSize: number;
+}
+
+/** Saturate every hidden gap in a file in one pass. PRD #270 / issue #274
+ *  (Slice 4): the per-file Expand-all-hidden button / TUI affordance
+ *  dispatches a single action that reveals every gap in the file at once
+ *  (replacing the role that `Shift+Enter` used to play for whole-file
+ *  expansion). Direction follows the existing per-boundary convention:
+ *  `"top"` reveals toward line 1 (`up`), `"bottom"` reveals toward EOF
+ *  (`down`), numeric refs split symmetrically (`both`). Empty `boundaries`
+ *  list returns the input state by reference. */
+export function expandFileAll(
+  state: ExpansionState,
+  file: string,
+  boundaries: ReadonlyArray<FileBoundaryGap>,
+): ExpansionState {
+  if (boundaries.length === 0) return state;
+  let next = state;
+  for (const b of boundaries) {
+    const direction: Direction =
+      b.ref === "top" ? "up" : b.ref === "bottom" ? "down" : "both";
+    next = applyExpand(next, { file, ref: b.ref }, "all", b.gapSize, direction);
+  }
+  return next;
+}
+
 export function seedFromOrphans(
   state: ExpansionState,
   windows: OrphanWindow[],

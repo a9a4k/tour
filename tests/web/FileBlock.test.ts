@@ -392,6 +392,73 @@ describe("<FileBlock> — GitHub-style header chrome (#225)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-file Expand-all-hidden button (PRD #270 / issue #274 — Slice 4)
+// ---------------------------------------------------------------------------
+
+describe("<FileBlock> — per-file Expand-all-hidden button (#274)", () => {
+  it("renders a chrome button with the documented aria-label between diff-stats and copy-path", () => {
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const right = c.querySelector(".tour-file-header-right") as HTMLElement;
+    expect(right).not.toBeNull();
+    const expandButton = right.querySelector(".tour-file-expand-all-button") as HTMLButtonElement;
+    expect(expandButton).not.toBeNull();
+    expect(expandButton.tagName).toBe("BUTTON");
+    expect(expandButton.getAttribute("aria-label")).toBe(
+      "Expand all hidden context in this file",
+    );
+    const children = Array.from(right.children);
+    const statsIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-stats"),
+    );
+    const expandIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-expand-all-button"),
+    );
+    const copyIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-copy-button"),
+    );
+    expect(statsIdx).toBeLessThan(expandIdx);
+    expect(expandIdx).toBeLessThan(copyIdx);
+  });
+
+  it("dispatches an `expand-file-all` ExpandAction on click", () => {
+    const captured: ExpandAction[] = [];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ onDispatchExpand: (a: ExpandAction) => captured.push(a) }),
+      ),
+    );
+    const button = c.querySelector(".tour-file-expand-all-button") as HTMLButtonElement;
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(captured).toEqual([{ kind: "expand-file-all", file: "x.ts" }]);
+  });
+
+  it("does NOT toggle file collapse when the button is clicked (stopPropagation, mirrors #225)", () => {
+    let toggled = 0;
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ onToggleCollapse: () => (toggled += 1) }),
+      ),
+    );
+    const button = c.querySelector(".tour-file-expand-all-button") as HTMLButtonElement;
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(toggled).toBe(0);
+  });
+
+  it("renders a glyph child inside the button (visual cue, ASCII v1 — no Octicons)", () => {
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-expand-all-button") as HTMLButtonElement;
+    // The button contains visible text content (the up/down arrow glyph).
+    expect((button.textContent ?? "").trim().length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GitHub-style file diff-stats indicator (#228)
 // ---------------------------------------------------------------------------
 

@@ -1437,6 +1437,95 @@ index 1..2 100644
       );
     });
 
+    // PRD #270 / issue #274 (Slice 4): per-file Expand-all-hidden affordance.
+    // Emitted by the planner at file top (when `emitExpandFileAllAffordance`
+    // is on AND the file has hidden gaps). Renders through the generic
+    // interactive-row pipeline so the cursor walks it like any other
+    // interactive row.
+    it("renders an expand-file-all row with the planner's `↕ Expand all hidden` text", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-file-all",
+          boundaryRef: "top",
+          text: "↕ Expand all hidden",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["text"]).toBe("↕ Expand all hidden");
+    });
+
+    it("emits the expand-file-all row id `interactive-row-${file}-expand-file-all-top`", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-file-all",
+          boundaryRef: "top",
+          text: "↕ Expand all hidden",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-expand-file-all-top");
+      expect(wrapper).toBeDefined();
+    });
+
+    it("dispatches onInteractiveClick with the expand-file-all subkind on click", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-file-all",
+          boundaryRef: "top",
+          text: "↕ Expand all hidden",
+        },
+      ];
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.txt",
+        rows,
+        layout: "split",
+        cursorCardId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-expand-file-all-top");
+      expect(wrapper).toBeDefined();
+      const handler = wrapper!.props["onMouseDown"];
+      expect(typeof handler).toBe("function");
+      (handler as () => void)();
+      expect(onInteractiveClick).toHaveBeenCalledWith(
+        "x.txt",
+        "expand-file-all",
+        "top",
+      );
+    });
+
+    it("lights up cursor on an expand-file-all row when the cursor's interactive anchor matches", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-file-all",
+          boundaryRef: "top",
+          text: "↕ Expand all hidden",
+        },
+      ];
+      const cursor = {
+        kind: "row" as const,
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: {
+          subKind: "expand-file-all" as const,
+          boundaryRef: "top" as const,
+        },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const cells = diffLineCellsOf(tree);
+      expect(cells[0].props["cursorActive"]).toBe(true);
+    });
+
     // PRD #108 issue #113: classifier-collapsed file's synthetic indicator
     // row renders through the same generic interactive-row pipeline.
     it("renders a collapsed-file row with the planner's `··· N lines hidden — Enter to expand ···` text", () => {
