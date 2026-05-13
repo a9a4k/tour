@@ -8,6 +8,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: empty half of a split-layout row no longer leaves a black gap
+  when the populated half wraps (issue #267, parity with webapp #227).**
+  Pre-fix, the TUI's split-layout rows nested each `DiffLine` inside a
+  50%-width click wrapper with default (column) flex direction. When
+  the populated half's content wrapped to N visual rows, the outer row
+  container stretched to match, and the opposite click wrapper
+  inherited the N-row height via the parent's default
+  `alignItems="stretch"`. The `DiffLine` inside it, however, has
+  `minHeight={1}` on its outer `<box>` and no `alignSelf="stretch"` /
+  `flexGrow` against the wrapper's main axis — so it stayed 1 visual
+  row tall, leaving N − 1 rows of unpainted terminal background (a
+  visible black gap below the empty half's line-number cell). The fix
+  is one prop on each 50%-width wrapper: `flexDirection="row"`. The
+  wrapper hosts a single `DiffLine` child, so swapping the wrapper's
+  main axis from column to row leaves child placement structurally
+  unchanged but flips the default `alignItems="stretch"` onto the
+  cross axis = vertical. The wrapper's N-row height now transmits to
+  the `DiffLine`'s outer box, whose internal sub-boxes (accent stripe,
+  gutter bg, content-bg wrapper) already escape its own
+  `alignItems="flex-start"` via `alignSelf="stretch"` — so every bg
+  layer (neutral fill / diff bg / annotation tint / cursor) paints
+  across the wrapped row height for free. The line-number text stays
+  anchored to visual row 1 (the `flex-start` pin inside `DiffLine` is
+  preserved). Unified-layout rows are unaffected (single `DiffLine`
+  per row, no sibling height mismatch); annotation rows in split
+  layout are unchanged (their empty sibling already inherits the
+  card's intrinsic row height through the outer row container).
+
+  Issue: #267
+
 - **TUI: tour-level diff stats `+N -M` in the top header (issue #266,
   parity with webapp #233).** Pre-fix, the TUI's top header carried
   hamburger toggle, tour title, source labels, annotation nav, and the

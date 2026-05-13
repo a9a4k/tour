@@ -539,6 +539,144 @@ index 1..2 100644
     });
   });
 
+  // Issue #267 — the split-row wrappers each carry a single DiffLine
+  // child whose outer <box> has minHeight={1} and no flex-grow against
+  // the wrapper's main axis. Default wrapper direction is column, so
+  // when the sibling half wraps to N visual rows, the parent row
+  // container stretches to N rows, the wrapper inherits N rows of
+  // height via the parent's default alignItems="stretch" (cross-axis),
+  // but the DiffLine's outer box stays 1 row tall — leaving N − 1 rows
+  // of unpainted terminal background (black gap). The fix: switch each
+  // 50%-width wrapper to flexDirection="row" so the wrapper's own
+  // cross axis is vertical, and its default alignItems="stretch" pulls
+  // the DiffLine's outer box to the wrapper's full height. The
+  // DiffLine's internal sub-boxes (accent stripe, gutter bg, content
+  // bg wrapper) already escape DiffLine's outer alignItems="flex-start"
+  // via alignSelf="stretch" — so once the outer box stretches, every
+  // bg layer paints across the wrapped rows for free.
+  describe("split-layout empty-half stretch on wrapped rows (issue #267)", () => {
+    it("each 50%-width side wrapper carries flexDirection=\"row\" so its default alignItems=stretch pulls the DiffLine to the wrapper's full height", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const splitRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
+      );
+      expect(splitRowBox).toBeDefined();
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
+      expect(halves.length).toBe(2);
+      expect(halves[0].props["flexDirection"]).toBe("row");
+      expect(halves[1].props["flexDirection"]).toBe("row");
+    });
+
+    it("applies on pure-addition rows (empty deletions half still stretches)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pureAddIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber === null &&
+          r.rightLineNumber !== null,
+      );
+      const tree = callDiffRows({ rows: rows.slice(pureAddIdx, pureAddIdx + 1), layout: "split" });
+      const splitRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
+      );
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
+      expect(halves.length).toBe(2);
+      expect(halves[0].props["flexDirection"]).toBe("row");
+      expect(halves[1].props["flexDirection"]).toBe("row");
+    });
+
+    it("applies on pure-deletion rows (empty additions half still stretches)", () => {
+      const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,1 @@
+ ctx
+-only-del
+`;
+      const file = parseFile(diff);
+      const rows = planRows(file, [], "split");
+      const pureDelIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber === null,
+      );
+      const tree = callDiffRows({ rows: rows.slice(pureDelIdx, pureDelIdx + 1), layout: "split" });
+      const splitRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["minHeight"] === 1,
+      );
+      const halves = (splitRowBox!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
+      expect(halves.length).toBe(2);
+      expect(halves[0].props["flexDirection"]).toBe("row");
+      expect(halves[1].props["flexDirection"]).toBe("row");
+    });
+
+    it("unified layout's row wrapper is not affected (single DiffLine — no sibling-driven height mismatch)", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const addIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "addition");
+      const addRow = rows[addIdx];
+      if (addRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const tree = callDiffRows({ rows: rows.slice(addIdx, addIdx + 1), layout: "unified" });
+      const wrapper = flatten(tree).find(
+        (el) => el.props["id"] === `diff-row-x.txt-additions-${addRow.rightLineNumber}`,
+      );
+      expect(wrapper).toBeDefined();
+      // No flexDirection set — unified row wrapper stays column-default;
+      // its sole child is the DiffLine.
+      expect(wrapper!.props["flexDirection"]).toBeUndefined();
+    });
+
+    it("annotation rows in split layout are not changed by the diff-row fix (50%-width wrappers remain default-direction)", () => {
+      // The annotation row's empty sibling already inherits the card's
+      // intrinsic height via the outer row container's
+      // alignItems=stretch — no bug there. The brief explicitly says
+      // not to double-apply the fix to annotation rows.
+      const annotationRow: PlannedRow = {
+        kind: "annotation",
+        id: "ann-1",
+        annotation: {
+          id: "ann-1",
+          file: "x.txt",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "x",
+          author: "u",
+          author_kind: "human",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+        replies: [],
+      };
+      const tree = callDiffRows({ rows: [annotationRow], layout: "split" });
+      const outerRowBox = flatten(tree).find(
+        (el) => el.props["flexDirection"] === "row" && el.props["width"] === "100%",
+      );
+      expect(outerRowBox).toBeDefined();
+      const halves = (outerRowBox!.props["children"] as AnyElement[]).filter(
+        (c) => isElement(c) && c.props["width"] === "50%",
+      );
+      expect(halves.length).toBe(2);
+      // Annotation 50%-width wrappers stay column-default — the brief
+      // forbids double-applying the fix here.
+      expect(halves[0].props["flexDirection"]).toBeUndefined();
+      expect(halves[1].props["flexDirection"]).toBeUndefined();
+    });
+  });
+
   describe("cursor row matching (ADR 0011)", () => {
     it("lights up the right (additions) cell on a paired row when cursor is on the additions side", () => {
       const file = parseFile(SIMPLE_DIFF);

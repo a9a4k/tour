@@ -390,9 +390,27 @@ export function DiffRows({
             onCursorClick && rightClick
               ? () => onCursorClick(fileName, rightClick.side, rightClick.lineNumber)
               : undefined;
+          // Issue #267 — flexDirection="row" on each 50%-width half
+          // wrapper. The wrapper hosts a single DiffLine child; swapping
+          // the wrapper's main axis from column to row leaves child
+          // placement structurally unchanged but flips alignItems=stretch
+          // (default) onto the cross axis = vertical. When the sibling
+          // half wraps to N visual rows, the outer split-row container
+          // stretches both wrappers to N rows tall; with row-direction
+          // wrappers, that height is now transmitted to the DiffLine's
+          // outer <box>, whose internal sub-boxes (accent stripe, gutter
+          // bg, content-bg wrapper) already escape its own
+          // alignItems="flex-start" via alignSelf="stretch" — so every
+          // bg layer paints across the wrapped rows and the empty half
+          // no longer leaves a black gap below visual row 1.
           return (
             <box key={key} flexDirection="row" width="100%" minHeight={1}>
-              <box id={leftId} width="50%" onMouseDown={onLeftMouseDown}>
+              <box
+                id={leftId}
+                width="50%"
+                flexDirection="row"
+                onMouseDown={onLeftMouseDown}
+              >
                 <DiffLine
                   gutter={splitGutter(row.leftLineNumber, splitSign(row, "left"))}
                   text={row.leftText}
@@ -410,7 +428,12 @@ export function DiffRows({
               <box width={1} alignSelf="stretch" flexShrink={0}>
                 <text fg={theme.border.muted}>{DIVIDER_GLYPH}</text>
               </box>
-              <box id={rightId} width="50%" onMouseDown={onRightMouseDown}>
+              <box
+                id={rightId}
+                width="50%"
+                flexDirection="row"
+                onMouseDown={onRightMouseDown}
+              >
                 <DiffLine
                   gutter={splitGutter(row.rightLineNumber, splitSign(row, "right"))}
                   text={row.rightText}
