@@ -425,7 +425,8 @@ export const InteractiveRow = memo(InteractiveRowImpl);
 
 // Canonical hunk-header form: `@@ -a,b +c,d @@` followed optionally by a
 // function-context tail (e.g. ` function foo() {`). The `,b` / `,d` count
-// is optional (single-line hunks omit it).
+// is optional (single-line hunks omit it). Planner emits the header with
+// git's trailing newline, so we strip trailing whitespace before matching.
 const HUNK_HEADER_REGEX =
   /^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)\s*(.*)$/;
 
@@ -433,8 +434,9 @@ export function parseHunkHeader(header: string): {
   range: string;
   context: string;
 } {
-  const m = HUNK_HEADER_REGEX.exec(header);
-  if (!m) return { range: header, context: "" };
+  const trimmed = header.replace(/\s+$/, "");
+  const m = HUNK_HEADER_REGEX.exec(trimmed);
+  if (!m) return { range: trimmed, context: "" };
   return { range: m[1], context: m[2] };
 }
 

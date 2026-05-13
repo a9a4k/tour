@@ -779,6 +779,20 @@ describe("parseHunkHeader (#223)", () => {
       context: "",
     });
   });
+
+  it("strips trailing whitespace before matching so planner output with \\n parses correctly", () => {
+    // Pierre's parser preserves git's trailing newline on the hunk-header
+    // line. Without trimming, the `$` anchor wouldn't match after the `\n`
+    // and the full string would land in `range`, leaving `context` empty.
+    expect(parseHunkHeader("@@ -33,7 +33,7 @@ import {\n")).toEqual({
+      range: "@@ -33,7 +33,7 @@",
+      context: "import {",
+    });
+    expect(parseHunkHeader("@@ -1,4 +1,4 @@\n")).toEqual({
+      range: "@@ -1,4 +1,4 @@",
+      context: "",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -140,6 +140,10 @@ export const FILE_GRID_CSS = `
      here — the two text segments flow inline). Range segment renders
      muted; context segment renders in the default fg. */
   .tour-hunk-header {
+    /* Override .tour-row's display:grid + subgrid template so the two
+       text segments flow inline as block content instead of slotting
+       into the gutter/symbol tracks (which would force-wrap the text). */
+    display: block;
     background-color: ${theme.bg.accentSubtle.web};
     padding: 6px 16px;
     cursor: pointer;

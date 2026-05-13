@@ -168,6 +168,14 @@ describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
     );
   });
 
+  it("overrides .tour-row's `display: grid` so banner text flows inline", () => {
+    // Without this override the two text segments slot into the subgrid's
+    // gutter/symbol tracks and force-wrap inside the narrow auto columns.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header[^{]*\{[^}]*display:\s*block/,
+    );
+  });
+
   it("keeps the banner clickable (cursor: pointer)", () => {
     expect(FILE_GRID_CSS).toMatch(
       /\.tour-hunk-header[^{]*\{[^}]*cursor:\s*pointer/,
