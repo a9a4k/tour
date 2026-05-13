@@ -67,7 +67,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "const x = 1;",
         isCursor: false,
-
       }),
     );
     const row = c.querySelector(".tour-row");
@@ -85,7 +84,6 @@ describe("<DiffRow>", () => {
         leftText: "foo",
         rightText: "foo",
         isCursor: false,
-
       }),
     );
     const row = c.querySelector(".tour-row") as HTMLElement;
@@ -104,7 +102,6 @@ describe("<DiffRow>", () => {
         leftText: "foo",
         rightText: "foo",
         isCursor: false,
-
       }),
     );
     const gutters = c.querySelectorAll(".tour-row [data-line-number]");
@@ -123,7 +120,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-
       }),
     );
     const gutters = c.querySelectorAll(".tour-row [data-line-number]");
@@ -145,7 +141,6 @@ describe("<DiffRow>", () => {
         rightText: "const x = 1;",
         tokensRight,
         isCursor: false,
-
       }),
     );
     const code = c.querySelector('.tour-row [data-side="additions"] .tour-row-code');
@@ -164,7 +159,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "plain text",
         isCursor: false,
-
       }),
     );
     const code = c.querySelector(".tour-row .tour-row-code");
@@ -200,7 +194,6 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-
       }),
     );
     cell = c.querySelector(".tour-row-cell") as HTMLElement;
@@ -506,7 +499,6 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-
         onClick: (side: "additions" | "deletions") => calls.push(side),
       }),
     );
@@ -539,7 +531,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-
         onClick: (side: string) => sides.push(side),
       }),
     );
@@ -560,7 +551,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "const x = 1;",
         isCursor: false,
-
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -583,7 +573,6 @@ describe("<DiffRow>", () => {
         leftText: "old line",
         rightText: "",
         isCursor: false,
-
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -602,7 +591,6 @@ describe("<DiffRow>", () => {
         leftText: "x",
         rightText: "x",
         isCursor: false,
-
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -624,7 +612,6 @@ describe("<DiffRow>", () => {
         leftText: "old",
         rightText: "new",
         isCursor: false,
-
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -643,7 +630,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-
       }),
     );
     const symbols = c.querySelectorAll(".tour-row-symbol");
@@ -662,7 +648,6 @@ describe("<DiffRow>", () => {
         leftText: "",
         rightText: "x",
         isCursor: false,
-
         onMouseEnter: () => {
           hovered += 1;
         },
