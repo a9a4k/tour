@@ -40,6 +40,7 @@ import {
 import {
   deriveTourSessionView,
   useTourSessionView,
+  type NavBase,
   type TourSessionView,
 } from "../../core/tour-session-view.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
@@ -1946,7 +1947,7 @@ function Composer({
 }
 
 interface AnnotationListSnapshotLostProps {
-  nav: import("../../core/tour-session-view.js").NavBase;
+  nav: NavBase;
   cursor: Cursor | null;
   registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
