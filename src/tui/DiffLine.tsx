@@ -20,11 +20,16 @@ interface DiffLineProps {
   gutterTinted: boolean;
   contentTinted: boolean;
   gutterAccent: boolean;
-  // Diff +/- row bg (issue #74). When set, paints a subtle add/del bg under
-  // both the gutter and content cells. Annotation tint composes on top per
-  // ADR 0008: on +/- rows the gutter tint wins (caller passes
-  // contentTinted=false so the diff bg shows on content); on context rows
-  // diffBg is undefined so the annotation tint paints both cells.
+  // Diff +/- row bg (issue #74; two-tone since #262). When set, paints
+  // two tones: the brighter `*Range.tui` rail on the gutter cell and the
+  // softer `*Cell.tui` wash on the content cell. The bright rail anchors
+  // the vertical scan; the softer wash keeps syntax-highlighted tokens
+  // readable. Mirrors webapp #221 (introduced two-tone) + #247 (flipped
+  // direction to bright-rail / soft-code). Annotation tint composes on
+  // top per ADR 0008: on +/- rows the gutter tint wins (caller passes
+  // contentTinted=false so the soft diff cell bg shows on content); on
+  // context rows diffBg is undefined so the annotation tint paints both
+  // cells.
   diffBg?: "addition" | "deletion";
   // Line cursor (ADR 0011). When true, both the gutter cell and the
   // content cell paint theme.bg.cursorRow (winning over annotation tint
@@ -53,10 +58,19 @@ interface DiffLineProps {
   width: string | number;
 }
 
-function diffBgColor(kind: "addition" | "deletion" | undefined): string | undefined {
-  if (kind === "addition") return theme.bg.successRange.tui;
-  if (kind === "deletion") return theme.bg.dangerRange.tui;
-  return undefined;
+interface DiffBgTones {
+  gutter: string | undefined;
+  content: string | undefined;
+}
+
+function diffBgTones(kind: "addition" | "deletion" | undefined): DiffBgTones {
+  if (kind === "addition") {
+    return { gutter: theme.bg.successRange.tui, content: theme.bg.successCell.tui };
+  }
+  if (kind === "deletion") {
+    return { gutter: theme.bg.dangerRange.tui, content: theme.bg.dangerCell.tui };
+  }
+  return { gutter: undefined, content: undefined };
 }
 
 export function DiffLine({
@@ -73,25 +87,26 @@ export function DiffLine({
   emptySide,
   width,
 }: DiffLineProps) {
-  const diffColor = diffBgColor(diffBg);
+  const diffTones = diffBgTones(diffBg);
   const emptySideBg = emptySide ? theme.canvas.inset : undefined;
-  // Composition rule (ADR 0011 + #260): cursor bg > annotation tint >
-  // +/- bg > empty-side neutral fill. Cursor bg fills both gutter and
-  // content so the active row reads as a single solid plate — the
-  // terminal-native equivalent of the web's outlined row. The
-  // empty-side fill sits at the bottom of the stack; it only paints
-  // when no other layer claims the cell, which on a single-side row's
-  // blank half is always (no cursor / no range / no diff bg apply).
+  // Composition rule (ADR 0011 + #260 + #262): cursor bg > annotation
+  // tint > +/- bg (two-tone: bright rail on gutter, soft wash on content)
+  // > empty-side neutral fill. Cursor bg fills both gutter and content so
+  // the active row reads as a single solid plate — the terminal-native
+  // equivalent of the web's outlined row. The empty-side fill sits at the
+  // bottom of the stack; it only paints when no other layer claims the
+  // cell, which on a single-side row's blank half is always (no cursor /
+  // no range / no diff bg apply).
   const gutterBg = cursorActive
     ? CURSOR_ROW_BG
     : gutterTinted
       ? TINT_BG
-      : (diffColor ?? emptySideBg);
+      : (diffTones.gutter ?? emptySideBg);
   const contentBg = cursorActive
     ? CURSOR_ROW_BG
     : contentTinted
       ? TINT_BG
-      : (diffColor ?? emptySideBg);
+      : (diffTones.content ?? emptySideBg);
   const showCode = !!filetype && text.length > 0 && !mutedText;
   // Drop one leading char so the total gutter width is preserved when the
   // cursor glyph rides in front of the line number.

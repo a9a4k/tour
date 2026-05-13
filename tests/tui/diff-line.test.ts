@@ -116,10 +116,13 @@ describe("DiffLine layout", () => {
   });
 });
 
-// Diff add/del row backgrounds. Issue #74: a deletion row paints
-// theme.bg.dangerRange on both gutter and content; an addition row paints
-// theme.bg.successRange. The annotation tint composes on top per ADR 0008
-// (gutter tint wins on +/- rows, content tint wins on context rows).
+// Diff add/del row backgrounds. Issue #74 introduced a single-tone tint
+// across gutter + content. Issue #262 (mirroring webapp #221 + #247) splits
+// it into two tones: brighter rail on the gutter, softer wash on the code
+// cell. Addition paints successRange (gutter) + successCell (content);
+// deletion paints dangerRange (gutter) + dangerCell (content). The
+// annotation tint composes on top per ADR 0008 (gutter tint wins on +/-
+// rows, content tint wins on context rows).
 
 function contentBgOf(root: AnyElement): unknown {
   const kids = childrenOf(root).filter(isElement);
@@ -137,17 +140,24 @@ function gutterBgOf(root: AnyElement): unknown {
   return gutterCell.props["backgroundColor"] ?? gutterCell.props["bg"];
 }
 
-describe("DiffLine diff backgrounds (issue #74)", () => {
-  it("paints dangerRange on gutter and content when diffBg='deletion'", () => {
+describe("DiffLine diff backgrounds (issue #74 + #262 two-tone)", () => {
+  it("paints dangerRange on gutter and dangerCell on content when diffBg='deletion' (#262)", () => {
     const root = render({ diffBg: "deletion" } as never);
     expect(gutterBgOf(root)).toBe(theme.bg.dangerRange.tui);
-    expect(contentBgOf(root)).toBe(theme.bg.dangerRange.tui);
+    expect(contentBgOf(root)).toBe(theme.bg.dangerCell.tui);
   });
 
-  it("paints successRange on gutter and content when diffBg='addition'", () => {
+  it("paints successRange on gutter and successCell on content when diffBg='addition' (#262)", () => {
     const root = render({ diffBg: "addition" } as never);
     expect(gutterBgOf(root)).toBe(theme.bg.successRange.tui);
-    expect(contentBgOf(root)).toBe(theme.bg.successRange.tui);
+    expect(contentBgOf(root)).toBe(theme.bg.successCell.tui);
+  });
+
+  it("the two tones differ on a tinted row (#262 — bright rail vs soft wash)", () => {
+    const add = render({ diffBg: "addition" } as never);
+    expect(gutterBgOf(add)).not.toBe(contentBgOf(add));
+    const del = render({ diffBg: "deletion" } as never);
+    expect(gutterBgOf(del)).not.toBe(contentBgOf(del));
   });
 
   it("paints no bg when diffBg is undefined and no annotation flags", () => {
@@ -156,17 +166,18 @@ describe("DiffLine diff backgrounds (issue #74)", () => {
     expect(contentBgOf(root)).toBeFalsy();
   });
 
-  it("on a +/- row inside an annotation range, gutter shows annotation tint and content keeps the diff bg (ADR 0008)", () => {
+  it("on a +/- row inside an annotation range, gutter shows annotation tint and content keeps the soft diff cell bg (ADR 0008 + #262)", () => {
     // gutterTinted=true (annotation falls on this row), contentTinted=false
     // (planner restricts content tint to paired/context rows so the +/-
-    // signal survives on the content column).
+    // signal survives on the content column). Content carries the softer
+    // cell tint per #262.
     const root = render({
       diffBg: "addition",
       gutterTinted: true,
       contentTinted: false,
     } as never);
     expect(gutterBgOf(root)).toBe(TINT_BG);
-    expect(contentBgOf(root)).toBe(theme.bg.successRange.tui);
+    expect(contentBgOf(root)).toBe(theme.bg.successCell.tui);
   });
 
   it("on a context row inside an annotation range, both gutter and content show annotation tint", () => {
