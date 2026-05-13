@@ -45,7 +45,7 @@ import {
 } from "../../core/tour-session-view.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
-import { tourDiffStats } from "./diff-stats.js";
+import { tourDiffStats } from "../../core/diff-stats.js";
 import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
 import { decideReanchor } from "./re-anchor-policy.js";

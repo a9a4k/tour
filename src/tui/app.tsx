@@ -63,10 +63,11 @@ import {
 } from "./file-entry-label.js";
 import {
   folderRowLabel,
-  fileRowLabel,
+  fileRowSegments,
   folderRowFixedCost,
   fileRowFixedCost,
 } from "./sidebar-row-label.js";
+import { countDiffStats } from "../core/diff-stats.js";
 import { TourWatcher } from "../core/watcher.js";
 import { requestReply } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
@@ -1578,18 +1579,50 @@ function App(props: AppProps) {
                   </text>
                 );
               }
+              // Per-file diff stats (#265): `+N` in fg.success and `-M`
+              // in fg.danger between filename and annotation badge. The
+              // stats need their own foreground colors, so the row is a
+              // flex-row box of sibling <text>s instead of one <text>.
+              // countDiffStats handles the change-row shape: new files
+              // count `+1`, deleted files count `-1`, paired-change rows
+              // count `+1 -1`. Pure-rename rows (no content change)
+              // return 0/0 and render no stats segments.
+              const stats = countDiffStats(plannedRowsByFile.get(row.path) ?? []);
+              const segs = fileRowSegments(
+                row,
+                stats,
+                SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row, stats),
+              );
               return (
-                <text
+                <box
                   key={`f:${row.path}`}
                   id={`row-${row.path}`}
-                  fg={theme.fg.default}
-                  bg={bg}
-                  bold={isSelected}
-                  selectable={false}
+                  flexDirection="row"
+                  backgroundColor={bg}
                   onMouseDown={onRowMouseDown}
                 >
-                  {fileRowLabel(row, SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row))}
-                </text>
+                  <text fg={theme.fg.default} bold={isSelected} selectable={false}>
+                    {segs.leading}
+                  </text>
+                  {segs.additions.length > 0 && (
+                    <text fg={theme.fg.success} bold={isSelected} selectable={false}>
+                      {segs.additions}
+                    </text>
+                  )}
+                  {segs.deletions.length > 0 && (
+                    <text fg={theme.fg.danger} bold={isSelected} selectable={false}>
+                      {segs.deletions}
+                    </text>
+                  )}
+                  {segs.badge.length > 0 && (
+                    <text fg={theme.fg.default} bold={isSelected} selectable={false}>
+                      {segs.badge}
+                    </text>
+                  )}
+                  <text fg={theme.fg.default} bold={isSelected} selectable={false}>
+                    {segs.trailing}
+                  </text>
+                </box>
               );
             })}
           </scrollbox>

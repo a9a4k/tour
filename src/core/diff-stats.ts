@@ -1,4 +1,4 @@
-import type { PlannedRow } from "../../core/diff-rows.js";
+import type { PlannedRow } from "./diff-rows.js";
 
 /**
  * Diff-stats helpers for the GitHub-style indicators (issues #228 + #233).

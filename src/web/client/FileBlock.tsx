@@ -21,7 +21,7 @@ import {
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
 import { ChevronDownIcon, ChevronRightIcon, CopyIcon } from "./icons.js";
 import { fileIcon } from "./file-icon.js";
-import { countDiffStats, proportionSegments } from "./diff-stats.js";
+import { countDiffStats, proportionSegments } from "../../core/diff-stats.js";
 
 /**
  * Per-file React component for the web row renderer. Owns the file-level
