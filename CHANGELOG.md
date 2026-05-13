@@ -8,6 +8,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: split-layout vertical divider now extends continuously through
+  wrapped rows (issue #269, sibling fix to #267).** Pre-fix, the
+  1-cell-wide divider column between the deletions and additions halves
+  was a stretched `<box>` containing a single `│` (U+2502) text glyph.
+  The box correctly stretched to the row's full visual height via
+  `alignSelf="stretch"`, but the glyph is a leaf that occupies one
+  cell — so on wrapped rows where the populated half spans N visual
+  rows, the divider painted the glyph on visual row 1 and left N − 1
+  cells of unpainted terminal background (a visible black gap) for
+  visual rows 2..N. Issue #267 fixed the analogous bug on the side
+  halves via flex-direction trickery, but the divider column couldn't
+  take that route (its content is a leaf glyph). The fix replaces the
+  glyph with a `backgroundColor={theme.border.muted}` paint on the
+  same stretched box — same pattern as `DiffLine`'s annotation accent
+  stripe (a 1-cell-wide `alignSelf="stretch"` box with `bg`, no glyph
+  child). The bg paints the box's full height regardless of wrap
+  depth, with no dependency on a per-visual-row repeated glyph.
+  Un-wrapped rows render visually identically to before (1-cell
+  vertical bar in `theme.border.muted`). Unified layout is unchanged
+  (no divider). Annotation rows in split layout are unchanged (no
+  divider between the card + empty sibling). Banner rows (hunk-header,
+  interactive) take the full-width branch and continue to break the
+  rule. The now-orphan `DIVIDER_GLYPH` constant is removed in the
+  same commit per CLAUDE.md's "remove orphans" rule.
+
+  Issue: #269
+
 - **TUI: context-row gutter line numbers now render in `fg.muted` so
   bright numbers anchor scan on tinted rows (issue #268, inverse of
   webapp #248).** Pre-fix, `DiffLine.tsx`'s gutter `<text>` rendered
