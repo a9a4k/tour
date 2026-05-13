@@ -235,6 +235,14 @@ function App(props: AppProps) {
   // expansion → empty).
   const cursor = sessionState.cursor;
   const expansion = sessionState.expansion;
+  // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
+  // shape — the action union has no combined "set-or-clear" variant.
+  // Callers that need a same-ref short-circuit (motion helpers, intent
+  // listener) layer it on top.
+  const dispatchAnchorOrClear = (next: Cursor | null) => {
+    if (next === null) store.dispatch({ type: "cursor.clear" });
+    else store.dispatch({ type: "cursor.set", anchor: next });
+  };
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
@@ -512,9 +520,7 @@ function App(props: AppProps) {
   useEffect(() => {
     if (cursor === null) return;
     const validated = validateCursor(cursor, flatRowsList, files);
-    if (validated === cursor) return;
-    if (validated === null) store.dispatch({ type: "cursor.clear" });
-    else store.dispatch({ type: "cursor.set", anchor: validated });
+    if (validated !== cursor) dispatchAnchorOrClear(validated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatRowsList, liveTopLevel]);
 
@@ -798,9 +804,7 @@ function App(props: AppProps) {
         const c = cursorRef.current;
         if (c === null) return;
         const validated = validateCursor(c, flatRowsRef.current, filesRef.current);
-        if (validated === c) return;
-        if (validated === null) store.dispatch({ type: "cursor.clear" });
-        else store.dispatch({ type: "cursor.set", anchor: validated });
+        if (validated !== c) dispatchAnchorOrClear(validated);
         return;
       }
       if (intent.type === "scrollCursorTarget") {
@@ -1053,14 +1057,12 @@ function App(props: AppProps) {
   };
 
   // Bridge for surface-side cursor mutations: the pure motion helpers in
-  // `core/cursor-state.ts` return `Cursor | null`; the store accepts only
-  // `cursor.set { anchor: Cursor }` or `cursor.clear`. Same-ref short-
-  // circuit avoids a no-op dispatch (the reducer's `setCursor` would
-  // still emit `scrollCursorTarget`, which we don't want on a noop motion).
+  // `core/cursor-state.ts` return `Cursor | null`. Same-ref short-circuit
+  // avoids a no-op dispatch (the reducer's `setCursor` would still emit
+  // `scrollCursorTarget`, which we don't want on a noop motion).
   const dispatchCursor = (next: Cursor | null) => {
     if (next === cursor) return;
-    if (next === null) store.dispatch({ type: "cursor.clear" });
-    else store.dispatch({ type: "cursor.set", anchor: next });
+    dispatchAnchorOrClear(next);
   };
 
   // Lazy materialization (ADR 0011 Revisions). Returns the seeded
@@ -1292,9 +1294,7 @@ function App(props: AppProps) {
         // contribute no rows so cursor clears. currentAnnotationId is
         // unchanged — annotation focus is independent of code-reading
         // position.
-        const target = cursorAtFirstFileRow(selectedRow.path, flatRowsList);
-        if (target === null) store.dispatch({ type: "cursor.clear" });
-        else store.dispatch({ type: "cursor.set", anchor: target });
+        dispatchCursor(cursorAtFirstFileRow(selectedRow.path, flatRowsList));
         return;
       }
       case "toggle-collapse": {
