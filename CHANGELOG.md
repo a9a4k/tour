@@ -732,6 +732,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp diff-row long lines soft-wrap instead of producing per-cell
+  horizontal scrollbars (issue #240).** The #239 monospace + preserved-
+  whitespace fix picked Path A (`white-space: pre` + per-cell
+  `overflow-x: auto`); the result was that every long line in every diff
+  rendered its own horizontal scrollbar — and in split layout, a long
+  addition and a long deletion on the same row each got their own,
+  independently scrollable. Visually noisy and not how GitHub actually
+  behaves (empirical DOM inspection of a live PR diff cell shows
+  `white-space: pre-wrap` + `overflow-x: visible`, i.e. soft-wrap).
+  `.tour-row-code` now declares `white-space: pre-wrap` (preserves leading
+  + internal whitespace identically to `pre`, but breaks at the cell edge)
+  + `word-break: break-all` (a single unbroken token — URL, base64 blob,
+  generated hash, minified line — wraps at a character boundary rather
+  than overflowing). `.tour-row-cell` drops `overflow-x: auto`; the
+  default `overflow: visible` is the right behavior under soft-wrap.
+  `min-width: 0` remains so the file-grid's `1fr` code track can still
+  shrink below content size. The cursor outline, range tint, two-tone
+  line-type backgrounds, and empty-side neutral fill all paint via
+  `background-color` / `outline` / `box-shadow` which flex with the
+  cell's actual height, so the taller wrapped rows compose correctly
+  with no other rule change. Shiki token spans set `color: #…` inline;
+  the parent's new `white-space` / `word-break` don't touch token colors.
+
+  Issue: #240
+
 - **Webapp diff-row code cells render as code again (issue #239).**
   Pre-Pierre-cutover, Pierre's `<FileDiff>` wrapped each diff line in a
   `<pre>` so the code cell inherited `font-family: monospace` +

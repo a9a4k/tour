@@ -199,18 +199,25 @@ export const FILE_GRID_CSS = `
      Tour-owned <span class="tour-row-code"> wrapper introduced by the
      cutover (issue 220) inherited the body's sans-serif font and
      white-space: normal, collapsing indentation and word-wrapping inside
-     the cell (issue 239). Path A: white-space: pre + horizontal overflow
-     on the cell; long lines scroll instead of wrapping under one line
-     number, matching GitHub's default diff treatment. */
+     the cell (issue 239). Path B (issue 240, replacing the original
+     Path A from issue 239): soft-wrap long lines via white-space: pre-wrap +
+     word-break: break-all — long lines flow onto additional physical
+     rows under the same logical line number rather than producing a
+     per-cell horizontal scrollbar. Matches GitHub's actual default
+     (empirical DOM inspection of a live PR diff cell). pre-wrap
+     preserves leading + internal whitespace identically to pre;
+     break-all wraps a single unbroken token (URL, base64, generated
+     hash, minified line) at a character boundary so nothing visually
+     overflows the cell. */
   .tour-row-code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    white-space: pre;
+    white-space: pre-wrap;
+    word-break: break-all;
     tab-size: 2;
     font-size: 12px;
   }
 
   .tour-row-cell {
-    overflow-x: auto;
     min-width: 0;
   }
 

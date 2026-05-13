@@ -421,17 +421,21 @@ describe("FILE_GRID_CSS — empty-side neutral fill (#227)", () => {
   });
 });
 
-describe("FILE_GRID_CSS — code cell typography (#239)", () => {
+describe("FILE_GRID_CSS — code cell typography (#240, was #239)", () => {
   // The pre-Pierre-cutover renderer relied on Pierre's <pre> wrapper to give
   // diff-row code cells `font-family: monospace` + `white-space: pre`. After
   // the cutover (#220) the Tour-owned `<span class="tour-row-code">` wrapper
   // inherited the body's sans-serif font and `white-space: normal`, so every
   // line of code rendered with collapsed indentation, word-wrapped at the
-  // cell edge, and proportional character widths. The CSS module gains a
-  // `.tour-row-code` rule that re-instates the equivalent text-rendering
-  // declarations; the rule sits orthogonal to the existing line-type
-  // backgrounds / range tints / cursor outline (which all paint backgrounds
-  // or outlines, not text properties), so no other rule needs to change.
+  // cell edge, and proportional character widths. The #239 fix re-instated
+  // monospace + preserved whitespace via Path A (`white-space: pre` + per-cell
+  // `overflow-x: auto`), but the resulting per-cell horizontal scrollbars
+  // read as visually broken — every long line got its own scrollbar, two
+  // per row in split layout (#240). Issue #240 switches to Path B: soft-wrap
+  // long lines via `white-space: pre-wrap` + `word-break: break-all`; the
+  // cell's `overflow-x: auto` is dropped so wrapped continuation rows
+  // expand the row vertically with no scrollbar UI. GitHub's actual default
+  // is Path B.
 
   it("declares a .tour-row-code rule (Tour-owned replacement for Pierre's <pre> wrapper)", () => {
     expect(FILE_GRID_CSS).toContain(".tour-row-code");
@@ -446,11 +450,31 @@ describe("FILE_GRID_CSS — code cell typography (#239)", () => {
     );
   });
 
-  it("preserves leading + internal whitespace with `white-space: pre`", () => {
-    // Path A: long lines extend horizontally rather than wrapping under the
-    // same logical line number. Issue #239 picks Path A explicitly.
+  it("soft-wraps long lines via `white-space: pre-wrap` (Path B, GitHub default)", () => {
+    // Path B: long lines wrap to additional physical rows under the same
+    // logical line number, instead of overflowing horizontally. `pre-wrap`
+    // preserves leading + internal whitespace identically to `pre` — the
+    // only behavior change is that line-breaks happen at the cell edge
+    // instead of overflowing.
     expect(FILE_GRID_CSS).toMatch(
-      /\.tour-row-code[^{]*\{[^}]*white-space:\s*pre/,
+      /\.tour-row-code[^{]*\{[^}]*white-space:\s*pre-wrap/,
+    );
+  });
+
+  it("does NOT declare `white-space: pre` (Path A would re-introduce per-cell scrollbars, #240)", () => {
+    // Guard against regression to Path A. The rule must declare `pre-wrap`
+    // (matched by the test above), never bare `pre`.
+    expect(FILE_GRID_CSS).not.toMatch(
+      /\.tour-row-code[^{]*\{[^}]*white-space:\s*pre\s*;/,
+    );
+  });
+
+  it("breaks single unbroken tokens at character boundaries via `word-break: break-all` (#240)", () => {
+    // Without this, a single token longer than the cell width (URL,
+    // base64 blob, generated hash, minified line) would still visually
+    // overflow even with `pre-wrap`.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-code[^{]*\{[^}]*word-break:\s*break-all/,
     );
   });
 
@@ -466,14 +490,22 @@ describe("FILE_GRID_CSS — code cell typography (#239)", () => {
     );
   });
 
-  it("lets long lines overflow the cell horizontally rather than break row layout", () => {
-    // With `white-space: pre` on the code, the cell must allow horizontal
-    // overflow. `min-width: 0` is required on grid items so they can shrink
-    // below their content size — without it the 1fr code track stretches to
-    // the longest line and pushes the file-block past 100% width.
-    expect(FILE_GRID_CSS).toMatch(
+  it("does NOT paint a per-cell horizontal scrollbar (`overflow-x: auto` was Path A, #240)", () => {
+    // Path B replaces the per-cell scrollbar with soft-wrap. The
+    // `.tour-row-cell` rule must NOT declare `overflow-x: auto` (the
+    // previous Path A choice that produced the visually-noisy scrollbar UI).
+    expect(FILE_GRID_CSS).not.toMatch(
       /\.tour-row-cell[^{]*\{[^}]*overflow-x:\s*auto/,
     );
+  });
+
+  it("keeps `min-width: 0` on .tour-row-cell so the 1fr code track can shrink below content size", () => {
+    // Even with soft-wrap, `min-width: 0` is still required on grid items
+    // so the 1fr code track can shrink below its `min-content` width —
+    // without it the file-block can blow out past 100% width on rows
+    // whose unbreakable runs (e.g. a long pasted URL with no spaces)
+    // momentarily exceed the cell width before `word-break: break-all`
+    // forces a character-boundary break.
     expect(FILE_GRID_CSS).toMatch(
       /\.tour-row-cell[^{]*\{[^}]*min-width:\s*0/,
     );
