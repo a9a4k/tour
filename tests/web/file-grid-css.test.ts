@@ -337,6 +337,58 @@ describe("FILE_GRID_CSS — sticky file header", () => {
   });
 });
 
+describe("FILE_GRID_CSS — file-card boundary (#249)", () => {
+  // GitHub wraps each file in a bordered, rounded card with vertical spacing
+  // between cards — the single biggest navigation cue in a multi-file PR
+  // review. Pre-#249 the `.tour-file-outer` div was a transparent
+  // passthrough (no rule); files stacked edge-to-edge with nothing for the
+  // eye to anchor against. New rule paints the 1px border, 6px radius,
+  // 16px vertical gap, canvas.default background, and overflow: hidden so
+  // the file header's top corners and the diff body's bottom corners clip
+  // to the rounded boundary. `overflow: hidden` also bounds the sticky
+  // file-header's stick range to its own card — one sticky header at a
+  // time instead of all file headers stacking at the viewport top.
+
+  const outerRule = FILE_GRID_CSS.match(
+    /\.tour-file-outer\s*\{([^}]*)\}/,
+  )?.[1] ?? "";
+
+  it("declares a .tour-file-outer rule (the previously-style-less passthrough div)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-outer");
+    expect(outerRule).not.toBe("");
+  });
+
+  it("paints a 1px solid border in theme.border.default (#3d444d)", () => {
+    expect(outerRule).toMatch(
+      new RegExp(`border:\\s*1px\\s+solid\\s+${theme.border.default}`, "i"),
+    );
+  });
+
+  it("rounds the card corners with border-radius: 6px (matches GitHub)", () => {
+    expect(outerRule).toMatch(/border-radius:\s*6px/);
+  });
+
+  it("declares 16px margin-bottom so consecutive cards have visible breathing room", () => {
+    expect(outerRule).toMatch(/margin-bottom:\s*16px/);
+  });
+
+  it("clips children to the rounded corners via overflow: hidden", () => {
+    // Without this, the file header's top corners and the diff body's
+    // bottom corners stay square even though the outer container is
+    // rounded — the children paint over the rounded boundary.
+    // overflow: hidden also bounds the sticky file-header's stick range
+    // to the card box so only the current file's header sticks at any
+    // moment (instead of all headers stacking at the viewport top).
+    expect(outerRule).toMatch(/overflow:\s*hidden/);
+  });
+
+  it("sets background-color to theme.canvas.default so the card sits over the page canvas", () => {
+    expect(outerRule).toMatch(
+      new RegExp(`background(-color)?:\\s*${theme.canvas.default}`, "i"),
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — GitHub-style header chrome (#225)", () => {
   it("declares the header as a flex row", () => {
     expect(FILE_GRID_CSS).toMatch(

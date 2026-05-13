@@ -55,6 +55,24 @@ const MONO_STACK =
  *     full-width otherwise.
  */
 export const FILE_GRID_CSS = `
+  /* Per-file card container (issue 249). GitHub wraps each file in a
+     bordered, rounded card with vertical spacing between cards — the
+     single biggest navigation cue in a multi-file PR review. The card
+     contains the sticky file header and the diff body. \`overflow: hidden\`
+     clips children to the rounded corners (so the header's top corners
+     and the diff body's bottom corners follow the radius) AND bounds the
+     sticky file-header's stick range to the card's own box, so only the
+     current file's header sticks at any moment instead of all headers
+     stacking at the viewport top. Last card's \`margin-bottom\` is absorbed
+     by the parent container's \`padding-bottom\`. */
+  .tour-file-outer {
+    border: 1px solid ${theme.border.default};
+    border-radius: 6px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    background-color: ${theme.canvas.default};
+  }
+
   /* File-level grid container. data-layout flips column count. */
   .tour-file-block {
     display: grid;

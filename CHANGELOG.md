@@ -8,6 +8,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Diff body wraps each file in a bordered, rounded card (issue #249).**
+  Pre-fix the per-file `.tour-file-outer` div was a style-less
+  passthrough — files in the diff body stacked edge-to-edge with no
+  border, no rounded corners, no margin, and no overflow clipping;
+  scanning a multi-file tour required reading file-header text rather
+  than recognizing card boundaries. New `.tour-file-outer` rule in
+  `file-grid-css.ts` paints `1px solid theme.border.default` (#3d444d),
+  `border-radius: 6px`, `margin-bottom: 16px`, `overflow: hidden`, and
+  `background-color: theme.canvas.default` — matches GitHub's empirical
+  `.file` container shape. `overflow: hidden` clips children to the
+  rounded corners AND bounds the sticky file-header's stick range to
+  its own card so only the current file's header sticks at any moment
+  (instead of all file headers stacking at the viewport top). No DOM /
+  prop change; no new theme tokens.
+
+  Issue: #249
+
 - **Diff-row gutter line numbers + `+` / `-` symbol promote to
   `fg.default` on tinted rows (issue #248).** Companion to #247: with
   the gutter+symbol now wearing the brighter range tint, the previously
