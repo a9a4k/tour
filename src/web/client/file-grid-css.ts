@@ -194,6 +194,26 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.muted};
   }
 
+  /* Diff-row code cell: monospace text rendering. Pre-Pierre-cutover the
+     enclosing <pre> wrapper supplied font-family + white-space; the
+     Tour-owned <span class="tour-row-code"> wrapper introduced by the
+     cutover (issue 220) inherited the body's sans-serif font and
+     white-space: normal, collapsing indentation and word-wrapping inside
+     the cell (issue 239). Path A: white-space: pre + horizontal overflow
+     on the cell; long lines scroll instead of wrapping under one line
+     number, matching GitHub's default diff treatment. */
+  .tour-row-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    white-space: pre;
+    tab-size: 2;
+    font-size: 12px;
+  }
+
+  .tour-row-cell {
+    overflow-x: auto;
+    min-width: 0;
+  }
+
   /* Two-tone line-type backgrounds: the gutter + symbol cells carry the
      lighter range tint; the code cell carries the darker fill. Context
      rows inherit canvas (no rule). */
