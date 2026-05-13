@@ -441,6 +441,59 @@ describe("deriveTourSessionView — rows slice", () => {
     expect(view.rows.flatRowsList).toEqual(expected);
     expect(view.rows.rowCount).toBe(view.rows.flatRowsList.length);
   });
+
+  // PRD #270 / issue #273 (TUI Slice 3). The TUI threads
+  // `hunkHeaderCursorStop: false` through `useTourSessionView` so the
+  // hunk-header banner is display-only on the TUI surface — the cursor
+  // walks past it. The web surface keeps the default (Slice 1/2
+  // transition).
+  it("hunkHeaderCursorStop: false suppresses hunk-header → cursor stop promotion in the flatRowsList", () => {
+    // Bundle with a file-top gap (hunk starts at line 5, lines 1-4
+    // hidden) so the default flat-rows projection emits a
+    // `boundary-top` cursor stop.
+    const DIFF_WITH_GAP = `diff --git a/c.ts b/c.ts
+--- a/c.ts
++++ b/c.ts
+@@ -5,1 +5,1 @@
+-old
++new
+`;
+    const bf: BundleFile = {
+      name: "c.ts",
+      type: "change",
+      hunks: [
+        {
+          additionStart: 5,
+          additionCount: 1,
+          deletionStart: 5,
+          deletionCount: 1,
+          content: [],
+        },
+      ],
+      oldContent: "1\n2\n3\n4\nold\n",
+      newContent: "1\n2\n3\n4\nnew\n",
+      classification: { collapsed: false },
+      orphanWindows: [],
+    };
+    const bundle = okBundle({ files: [bf], diff: DIFF_WITH_GAP });
+    const state = initialTourSessionState();
+    const defaultView = expectOk(deriveTourSessionView(bundle, state));
+    const tuiView = expectOk(
+      deriveTourSessionView(bundle, state, { hunkHeaderCursorStop: false }),
+    );
+    const defaultBanners = defaultView.rows.flatRowsList.filter(
+      (r) =>
+        r.kind === "interactive" &&
+        (r.subKind === "boundary-top" || r.subKind === "hunk-separator"),
+    );
+    const tuiBanners = tuiView.rows.flatRowsList.filter(
+      (r) =>
+        r.kind === "interactive" &&
+        (r.subKind === "boundary-top" || r.subKind === "hunk-separator"),
+    );
+    expect(defaultBanners.length).toBeGreaterThan(0);
+    expect(tuiBanners.length).toBe(0);
+  });
 });
 
 describe("deriveTourSessionView — cursor slice", () => {

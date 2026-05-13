@@ -69,6 +69,19 @@ export interface CardFlatRow {
 
 export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 
+/** Options for `flatRows`. */
+export interface FlatRowsOptions {
+  /** When `false`, the `hunk-header` row is NOT promoted to a cursor stop —
+   *  the banner becomes a display-only metadata row and the cursor walks
+   *  past it. The TUI surface adopts this mode in Slice 3 (issue #273) per
+   *  PRD #270: directional `expand-up` / `expand-down` / `expand-all` rows
+   *  are the only cursor-walkable affordances around a hunk-header. Default
+   *  `true` keeps the legacy promotion (web surface during PRD #270 Slice
+   *  1/2 transition; Slice 2 will eventually drop it for cross-surface
+   *  parity). */
+  hunkHeaderCursorStop?: boolean;
+}
+
 /**
  * Build a DiffFlatRow from `(file, leftLineNumber, rightLineNumber)`. Used
  * by `flatRows` to project the planner's `PlannedRow[]` into the cursor's
@@ -102,7 +115,9 @@ export function flatRows(
   files: DiffFile[],
   plannedRowsByFile: Map<string, PlannedRow[]>,
   isFileFolded: (name: string) => boolean,
+  options: FlatRowsOptions = {},
 ): FlatRow[] {
+  const hunkHeaderCursorStop = options.hunkHeaderCursorStop ?? true;
   const out: FlatRow[] = [];
   for (const file of files) {
     if (isFileFolded(file.name)) continue;
@@ -130,6 +145,12 @@ export function flatRows(
         // `"top"` so dispatch routes to the file-top reducer path; mid-file
         // hunk-headers tag as `hunk-separator` / `hunkIndex` (existing
         // convention).
+        //
+        // PRD #270 / issue #273: when `hunkHeaderCursorStop === false` the
+        // banner is display-only; the cursor walks past it via the
+        // directional `expand-up` / `expand-down` / `expand-all` rows the
+        // planner emits adjacent to the hunk-header instead.
+        if (!hunkHeaderCursorStop) continue;
         if (row.gapAbove <= 0) continue;
         if (row.hunkIndex === 0) {
           out.push({
