@@ -252,6 +252,13 @@ function App(props: AppProps) {
   const rowsSlice = view.kind === "ok" ? view.rows : null;
   const treeSlice = view.kind === "ok" ? view.tree : null;
   const cursorSlice = view.kind === "ok" ? view.cursor : null;
+  // Cursor / nav predicates ride on the view (PRD #242). The validated
+  // anchor — a CardAnchor to a deleted annotation resolves to null — is
+  // what drives `r` / `s` enablement, the sidebar follow effect, and the
+  // `[N/M]` pill.
+  const cursorCardId = cursorSlice?.cardId ?? null;
+  const cursorCardAnnotation = cursorSlice?.cardAnnotation ?? null;
+  const sendTargetVal = navSlice?.sendTarget ?? null;
   // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
   // shape — the action union has no combined "set-or-clear" variant.
   // Callers that need a same-ref short-circuit (motion helpers, intent
@@ -517,12 +524,6 @@ function App(props: AppProps) {
     pendingScrollIdRef.current = null;
   }, [annotations, plannedRowsByFile]);
 
-  // Cursor / nav predicates ride on the view (PRD #242). The validated
-  // anchor — a CardAnchor to a deleted annotation resolves to null —
-  // is what drives `r` / `s` enablement and the `[N/M]` pill.
-  const cursorCardId = cursorSlice?.cardId ?? null;
-  const cursorCardAnnotation = cursorSlice?.cardAnnotation ?? null;
-  const sendTargetVal = navSlice?.sendTarget ?? null;
   const sendHintVerdict =
     sendTargetVal !== null
       ? canSendToAgent({
