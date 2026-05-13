@@ -78,6 +78,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp tour title bar: GitHub-style tour-level diff-stats indicator
+  (issue #233).** The tour title bar gains a compact `+N -M` text
+  indicator sitting between the annotation-navigation widget
+  (`SequencePill`) and the Split/Unified layout toggle. The totals
+  aggregate additions and deletions across every file in the loaded
+  bundle, regardless of UI / classifier collapse state — collapse is a
+  per-viewing concern, not a stats concern. New pure helper
+  `tourDiffStats(files)` sits alongside `countDiffStats` /
+  `proportionSegments` in the `diff-stats` module; it walks each file's
+  `PlannedRow[]` via the existing `countDiffStats` and sums the results,
+  inheriting the per-row change-shape inspection for free (new-file
+  rows `+1`, deleted-file rows `-1`, paired-change rows `+1 -1`).
+  Memoized against `parsedFiles` + `modelFilesByName` so cursor moves,
+  layout toggles, expansion-state changes, and annotation navigation do
+  not re-walk the rows. Sides are independently omitted at zero so
+  pure-addition / pure-deletion tours read cleanly (`+12` only, not
+  `+12 -0`). Display-only — no click handler. Uses `fg.success` /
+  `fg.danger` for the colored counts, monospace + tabular numerals so
+  the numbers don't jitter as the reviewer navigates. No proportion bar
+  at the tour level — the per-file bars carry the finer-grain
+  proportion signal already. Closes the diff-stats arc: per-row glyph
+  → per-file header (5-segment bar + count) → per-tour total (count
+  only).
+
+  Issue: #233 · PRD: #212
+
 - **Tour-session slice 2 foundation: cursor + expansion slices land in
   the reducer (issue #230).** `TourSessionState` gains `cursor: Cursor |
   null` and `expansion: ExpansionState` slices, alongside four new

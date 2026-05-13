@@ -355,6 +355,15 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.tour-refs\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
+  it("styles the tour-level diff-stats indicator with monospace + tabular numerals (Issue #233)", () => {
+    const out = html();
+    expect(out).toMatch(/\.tour-stats\s*\{[^}]*display:\s*inline-flex/);
+    expect(out).toMatch(/\.tour-stats\s*\{[^}]*font-family:[^}]*'SF Mono'/);
+    expect(out).toMatch(/\.tour-stats\s*\{[^}]*font-variant-numeric:\s*tabular-nums/);
+    expect(out).toMatch(/\.tour-stats-count\.added\s*\{[^}]*color:\s*var\(--fg-success\)/);
+    expect(out).toMatch(/\.tour-stats-count\.deleted\s*\{[^}]*color:\s*var\(--fg-danger\)/);
+  });
+
   it("styles the selected-file path slot in the header — muted, monospace, ellipsized on overflow", () => {
     const out = html();
     expect(out).toMatch(/\.tour-header-path\s*\{[^}]*color:\s*var\(--fg-muted\)/);

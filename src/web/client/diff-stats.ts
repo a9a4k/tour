@@ -64,3 +64,19 @@ export function proportionSegments(
 
   return { greens, reds, neutrals: 5 - greens - reds };
 }
+
+// Tour-level (PR-equivalent) aggregate of additions / deletions across every
+// file in the loaded bundle (issue #233). Each file contributes via
+// `countDiffStats(rows)`; the totals are the sum. Inherits the per-row
+// `change`-shape inspection from `countDiffStats` for free — new-file rows
+// count `+1`, deleted-file rows count `-1`, paired-change rows count `+1 -1`.
+export function tourDiffStats(files: ReadonlyArray<{ rows: PlannedRow[] }>): DiffStats {
+  let additions = 0;
+  let deletions = 0;
+  for (const f of files) {
+    const s = countDiffStats(f.rows);
+    additions += s.additions;
+    deletions += s.deletions;
+  }
+  return { additions, deletions };
+}
