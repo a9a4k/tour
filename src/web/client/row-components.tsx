@@ -450,9 +450,10 @@ export interface HunkHeaderBannerProps {
   onActivate: (count: number) => void;
 }
 
-// `data-subkind` mirrors the value `<FileBlock>` would compute (and that
-// `App.tsx`'s `scrollCursorIntoView` queries) — `"boundary-top"` at the
-// file top, `"hunk-separator"` mid-file.
+// `data-subkind` derives from `boundaryRef`: `"top"` (file-top) maps to
+// `"boundary-top"`, a numeric hunk-index maps to `"hunk-separator"`.
+// Mirrors the `InteractiveSubKind` vocabulary so row-lookup selectors
+// resolve banners alongside interactive rows.
 function hunkHeaderSubKind(
   boundaryRef: BoundaryRef,
 ): "boundary-top" | "hunk-separator" {
