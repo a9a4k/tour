@@ -42,11 +42,11 @@ export function FileSeparator(): ReactElement {
 // separator. Brief AC4 + AC5 ✓.
 export function withFileSeparators<T extends { name: string }>(
   files: readonly T[],
-  renderCard: (file: T, index: number) => ReactElement,
+  renderCard: (file: T) => ReactElement,
 ): ReactNode[] {
   const out: ReactNode[] = [];
   files.forEach((file, i) => {
-    out.push(renderCard(file, i));
+    out.push(renderCard(file));
     if (i < files.length - 1) {
       out.push(<FileSeparator key={`file-separator-${file.name}`} />);
     }
