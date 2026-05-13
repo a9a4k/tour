@@ -56,22 +56,37 @@ describe("DiffLine layout", () => {
     expect(accent.props["height"]).not.toBe(1);
   });
 
-  it("accent cell paints accent color when gutterAccent=true", () => {
+  it("accent cell paints a half-block glyph rule in accent fg when gutterAccent=true", () => {
     const root = render({ gutterAccent: true });
     const accent = childrenOf(root).filter(isElement)[0]!;
-    // bg via box backgroundColor is the option-A pattern (1-cell-wide
-    // cell stretches with row height). fg+glyph would also satisfy
-    // visually but only if the glyph is repeated per visual line, which
-    // OpenTUI's <text> does not do.
+    // Prototype 2026-05-14 picked variant C (▌ glyph + position="absolute"
+    // + overflow="hidden" on the wrapper) over A (full-cell bg). The bg
+    // approach read as too thick; the half-block glyph paints the leftmost
+    // half of the cell, reading as a thinner rule. Layout footprint is
+    // unchanged (still 1 cell wide, alignSelf="stretch" follows wrap).
     const bg = accent.props["backgroundColor"] ?? accent.props["bg"];
-    expect(bg).toBe(ACCENT_FG);
+    expect(bg).toBeFalsy();
+    expect(accent.props["overflow"]).toBe("hidden");
+    const inner = childrenOf(accent).filter(isElement);
+    const glyph = inner.find((c) => c.type === "text");
+    expect(glyph).toBeDefined();
+    expect(glyph!.props["position"]).toBe("absolute");
+    expect(glyph!.props["fg"]).toBe(ACCENT_FG);
+    // Glyph body is the repeated ▌; multiline so the rule extends through
+    // any wrapped row depth (clipped by overflow="hidden" on the wrapper).
+    const body = glyph!.props["children"];
+    expect(typeof body === "string" && body.includes("▌")).toBe(true);
+    expect(typeof body === "string" && body.includes("\n")).toBe(true);
   });
 
-  it("accent cell has no bg when gutterAccent=false", () => {
+  it("accent cell has no glyph child when gutterAccent=false", () => {
     const root = render({ gutterAccent: false });
     const accent = childrenOf(root).filter(isElement)[0]!;
     const bg = accent.props["backgroundColor"] ?? accent.props["bg"];
     expect(bg).toBeFalsy();
+    const inner = childrenOf(accent).filter(isElement);
+    const glyph = inner.find((c) => c.type === "text");
+    expect(glyph).toBeUndefined();
   });
 
   it("accent cell is exactly 1 column wide", () => {
@@ -193,8 +208,14 @@ describe("DiffLine diff backgrounds (issue #74 + #262 two-tone)", () => {
   it("the accent stripe still paints on top of a diff bg row (not clipped)", () => {
     const root = render({ diffBg: "addition", gutterAccent: true } as never);
     const accent = childrenOf(root).filter(isElement)[0]!;
+    // Post-2026-05-14 the stripe is a glyph child, not a bg paint — assert
+    // the glyph child is present (in accent fg) with no wrapper bg that
+    // could obscure the gutter's addition rail behind it.
     const bg = accent.props["backgroundColor"] ?? accent.props["bg"];
-    expect(bg).toBe(ACCENT_FG);
+    expect(bg).toBeFalsy();
+    const glyph = childrenOf(accent).filter(isElement).find((c) => c.type === "text");
+    expect(glyph).toBeDefined();
+    expect(glyph!.props["fg"]).toBe(ACCENT_FG);
     // The accent cell still owns column 0; gutter bg lives on the next cell.
     expect(gutterBgOf(root)).toBe(theme.bg.successRange.tui);
   });
