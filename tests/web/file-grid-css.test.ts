@@ -66,7 +66,7 @@ describe("FILE_GRID_CSS — cards", () => {
 });
 
 describe("FILE_GRID_CSS — line-type backgrounds (two-tone, #221)", () => {
-  it("paints additions / change-additions gutter+symbol with the lighter success-range token", () => {
+  it("paints additions / change-additions gutter+symbol with the brighter success-range token", () => {
     expect(FILE_GRID_CSS).toContain('[data-line-type="addition"]');
     expect(FILE_GRID_CSS).toContain('[data-line-type="change-addition"]');
     expect(FILE_GRID_CSS).toContain(theme.bg.successRange.web);
@@ -75,20 +75,20 @@ describe("FILE_GRID_CSS — line-type backgrounds (two-tone, #221)", () => {
     );
   });
 
-  it("paints additions / change-additions code cell with the darker success-cell token", () => {
+  it("paints additions / change-additions code cell with the softer success-cell token", () => {
     expect(FILE_GRID_CSS).toContain(theme.bg.successCell.web);
     expect(FILE_GRID_CSS).toMatch(
       /\.tour-row\[data-line-type="addition"\] \.tour-row-cell[\s\S]*?background-color:\s*\$?\{?[^}]*\}?/,
     );
   });
 
-  it("paints deletions / change-deletions gutter+symbol with the lighter danger-range token", () => {
+  it("paints deletions / change-deletions gutter+symbol with the brighter danger-range token", () => {
     expect(FILE_GRID_CSS).toContain('[data-line-type="deletion"]');
     expect(FILE_GRID_CSS).toContain('[data-line-type="change-deletion"]');
     expect(FILE_GRID_CSS).toContain(theme.bg.dangerRange.web);
   });
 
-  it("paints deletions / change-deletions code cell with the darker danger-cell token", () => {
+  it("paints deletions / change-deletions code cell with the softer danger-cell token", () => {
     expect(FILE_GRID_CSS).toContain(theme.bg.dangerCell.web);
     expect(FILE_GRID_CSS).toMatch(
       /\.tour-row\[data-line-type="deletion"\] \.tour-row-cell[\s\S]*?background-color:\s*\$?\{?[^}]*\}?/,
