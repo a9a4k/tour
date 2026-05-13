@@ -178,20 +178,36 @@ export const FILE_GRID_CSS = `
     grid-column: 1 / -1;
   }
 
-  /* Line-number gutter: right-aligned, muted color, breathing room. */
+  /* Line-number gutter: right-aligned, muted color, breathing room.
+     font-family / font-size / line-height (issue 241) match the
+     symbol + code cells so the row reads with one consistent vertical
+     rhythm. Pre-241 the gutter inherited the body's sans-serif font at
+     16px with browser-computed line-height — proportional-width digits
+     broke visual rhythm and the content-dependent line-height drifted
+     out of sync with the code cell on wrapped rows. GitHub's empirical
+     default is monospace 12px / line-height 20px on both. */
   .tour-row-gutter {
     text-align: right;
     color: ${theme.fg.muted};
     padding: 0 8px;
     user-select: none;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 20px;
   }
 
-  /* Symbol column: single +/-/blank glyph, monospace, centered. */
+  /* Symbol column: single +/-/blank glyph, monospace, centered.
+     Same font / size / line-height as the gutter + code (issue 241) so
+     the plus / minus glyph aligns with the row's text baseline and the
+     column widths stay digit-rhythmic. */
   .tour-row-symbol {
     text-align: center;
     padding: 0 4px;
     user-select: none;
     color: ${theme.fg.muted};
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 20px;
   }
 
   /* Diff-row code cell: monospace text rendering. Pre-Pierre-cutover the
@@ -210,11 +226,12 @@ export const FILE_GRID_CSS = `
      hash, minified line) at a character boundary so nothing visually
      overflows the cell. */
   .tour-row-code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     white-space: pre-wrap;
     word-break: break-all;
     tab-size: 2;
     font-size: 12px;
+    line-height: 20px;
   }
 
   .tour-row-cell {
