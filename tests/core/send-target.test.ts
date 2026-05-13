@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tuiSendTarget } from "../../src/tui/send-target.js";
+import { sendTarget } from "../../src/core/send-target.js";
 import type { Annotation } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
@@ -42,39 +42,36 @@ function index(
 }
 
 /**
- * Issue #196: the TUI's `s` keystroke now targets the latest human leaf
- * in the focused Thread, not the cursor-focused top-level Annotation.
- * `n`/`p` still walks top-levels only; the cursor identifies the
- * Thread, the helper picks the leaf inside it.
+ * `s` dispatch target — latest human leaf in the cursor-focused Thread
+ * (issue #196 / PRD #181; canonical home per PRD #242 / issue #243).
+ * `n`/`p` walks top-levels; the cursor identifies the Thread, the
+ * helper picks the leaf inside it.
  */
-describe("tuiSendTarget (issue #196)", () => {
+describe("sendTarget", () => {
   it("returns null when the cursor is null", () => {
-    expect(tuiSendTarget(null, [], new Map())).toBeNull();
+    expect(sendTarget(null, [], new Map())).toBeNull();
   });
 
   it("returns null when the cursor is on a row (no focused Thread)", () => {
-    expect(tuiSendTarget(rowCursor, [], new Map())).toBeNull();
+    expect(sendTarget(rowCursor, [], new Map())).toBeNull();
   });
 
   it("returns null when the cursor's card id is not in the annotation list (stale)", () => {
     const top = ann({ id: "a1", author_kind: "human" });
     expect(
-      tuiSendTarget(cardCursor("ghost"), [top], index([top], { a1: [] })),
+      sendTarget(cardCursor("ghost"), [top], index([top], { a1: [] })),
     ).toBeNull();
   });
 
   it("returns the top-level itself on a human-top-level Thread with no replies", () => {
     const top = ann({ id: "a1", author_kind: "human" });
-    const out = tuiSendTarget(cardCursor("a1"), [top], index([top], { a1: [] }));
+    const out = sendTarget(cardCursor("a1"), [top], index([top], { a1: [] }));
     expect(out).not.toBeNull();
     expect(out!.leafId).toBe("a1");
     expect(out!.leaf).toBe(top);
   });
 
   it("returns the latest human reply when the Thread has back-and-forth ending on human", () => {
-    // top (human) → agent reply → human follow-up. The TUI cursor is
-    // on the top-level (n/p only walks top-levels); `s` must target
-    // the human follow-up, not the top-level.
     const top = ann({
       id: "t1",
       author_kind: "human",
@@ -92,7 +89,7 @@ describe("tuiSendTarget (issue #196)", () => {
       author_kind: "human",
       created_at: "2026-05-12T00:00:02Z",
     });
-    const out = tuiSendTarget(
+    const out = sendTarget(
       cardCursor("t1"),
       [top],
       index([top], { t1: [agentReply, humanFollowUp] }),
@@ -103,8 +100,6 @@ describe("tuiSendTarget (issue #196)", () => {
   });
 
   it("returns null when the latest turn in the focused Thread is agent-authored", () => {
-    // top (human) → agent reply. The hint must hide; `s` must not
-    // dispatch. The user is expected to write a Reply first.
     const top = ann({
       id: "t1",
       author_kind: "human",
@@ -116,7 +111,7 @@ describe("tuiSendTarget (issue #196)", () => {
       author_kind: "agent",
       created_at: "2026-05-12T00:00:01Z",
     });
-    const out = tuiSendTarget(
+    const out = sendTarget(
       cardCursor("t1"),
       [top],
       index([top], { t1: [agentReply] }),
@@ -127,7 +122,7 @@ describe("tuiSendTarget (issue #196)", () => {
   it("returns null when the top-level itself is agent-authored and there are no human descendants", () => {
     const top = ann({ id: "t1", author_kind: "agent" });
     expect(
-      tuiSendTarget(cardCursor("t1"), [top], index([top], { t1: [] })),
+      sendTarget(cardCursor("t1"), [top], index([top], { t1: [] })),
     ).toBeNull();
   });
 
@@ -143,7 +138,7 @@ describe("tuiSendTarget (issue #196)", () => {
       author_kind: "human",
       created_at: "2026-05-12T00:00:01Z",
     });
-    const out = tuiSendTarget(
+    const out = sendTarget(
       cardCursor("t1"),
       [top],
       index([top], { t1: [humanReply] }),

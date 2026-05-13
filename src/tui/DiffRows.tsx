@@ -15,7 +15,7 @@ import type { Cursor } from "../core/cursor-state.js";
 
 interface DiffRowsProps {
   fileName: string;
-  rows: PlannedRow[];
+  rows: ReadonlyArray<PlannedRow>;
   layout: "split" | "unified";
   /** Annotation id the unified cursor sits on, or null when the cursor is
    *  on a row / interactive / null. Drives the three-cue active treatment
@@ -48,7 +48,7 @@ interface DiffRowsProps {
   now?: number;
   /** 1-based nav-order index per top-level annotation id, for the `i / n`
    *  counter in each AnnotationCard header. */
-  navIndexById?: Map<string, number>;
+  navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
 }
 

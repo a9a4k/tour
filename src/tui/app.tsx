@@ -10,20 +10,19 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Annotation } from "../core/types.js";
-import type { DiffFile, FileDiffMetadata } from "../core/diff-model.js";
+import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { planRows, GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
+import { GAP_TWO_ROW_THRESHOLD } from "../core/diff-rows.js";
 import {
   emptyExpansion,
   getBoundary,
   seedFromOrphans,
   type OrphanWindow,
 } from "../core/expansion-state.js";
-import type { FileContentPair } from "../core/file-content-provider.js";
 import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
-import { DiffRows } from "./DiffRows.js";
 import type { FileClassification } from "../core/file-classifier.js";
+import { DiffRows } from "./DiffRows.js";
 import {
   buildTree,
   compress,
@@ -31,7 +30,6 @@ import {
   revealAncestors,
   revealAndLocate,
   sortFilesForStream,
-  type VisibleRow,
 } from "../core/file-tree.js";
 import { buildPickerRows, type PickerRow } from "../core/tour-list.js";
 import {
@@ -40,7 +38,6 @@ import {
   pickerHighlighted,
   isBundleResolved,
   initialTourSessionState,
-  type ComposerTarget,
   type TourSummary,
 } from "../core/tour-session.js";
 import { theme } from "../core/theme.js";
@@ -52,8 +49,7 @@ import {
   buildReplyComposer,
   buildTopLevelComposer,
 } from "./composer-state.js";
-import { buildThreads, topLevelAnnotations } from "../core/threads.js";
-import { tuiSendTarget } from "./send-target.js";
+import { useTourSessionView } from "../core/tour-session-view.js";
 import {
   fileCardPlaceholder,
   fileClassification,
@@ -69,7 +65,7 @@ import { TourWatcher } from "../core/watcher.js";
 import { requestReply } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import { canSendToAgent } from "../core/can-send-to-agent.js";
-import { flatRows, type FlatRow } from "../core/flat-rows.js";
+import type { FlatRow } from "../core/flat-rows.js";
 import {
   initialCursor,
   moveCursor,
@@ -81,7 +77,6 @@ import {
   cursorFromAnnotation,
   cursorAtFirstFileRow,
   cursorOnInteractive,
-  resolveCursorRowIdx,
   type Cursor,
 } from "../core/cursor-state.js";
 import {
@@ -99,6 +94,18 @@ function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   const idx = rows.findIndex((r) => r.id !== currentId);
   return idx === -1 ? 0 : idx;
 }
+
+// Stable empty defaults for the snapshot-lost branch — render branches gate
+// the diff pane off in that case, so these are inert at the surface. Lifted
+// to module scope so the surface's snapshot-lost projection doesn't churn
+// the identity of these fallback values across renders.
+const EMPTY_VISIBLE_ROWS = [] as const;
+const EMPTY_FLAT_ROWS: ReadonlyArray<FlatRow> = [];
+const EMPTY_PLANNED_ROWS: ReadonlyMap<string, ReadonlyArray<PlannedRow>> = new Map();
+const EMPTY_ANNOTATION_COUNTS: Readonly<Record<string, number>> = {};
+const EMPTY_CLASSIFICATIONS: Readonly<Record<string, FileClassification>> = {};
+const EMPTY_NAV_INDEX: ReadonlyMap<string, number> = new Map();
+const EMPTY_TREE = compress(buildTree<BundleFile>([]));
 
 export type WriteAnnotationInput =
   | {
@@ -139,7 +146,7 @@ function fileCardBody(
   collapsed: boolean,
   hasHunks: boolean,
   reason: string | undefined,
-  rows: PlannedRow[],
+  rows: ReadonlyArray<PlannedRow>,
   layout: "split" | "unified",
   cursorCardId: string | null,
   cursor: Cursor | null,
@@ -156,7 +163,7 @@ function fileCardBody(
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
-  navIndexById: Map<string, number>,
+  navIndexById: ReadonlyMap<string, number>,
   navTotal: number,
 ) {
   const placeholder = fileCardPlaceholder(collapsed, hasHunks, reason);
@@ -235,6 +242,16 @@ function App(props: AppProps) {
   const collapsedFolders = sessionState.collapsedFolders;
   const collapsedOverrides = sessionState.collapsedOverrides;
   const layout = sessionState.layout;
+  // Tour-session view (PRD #242 / issue #244) — single source for the
+  // rendered shape. Eight previously-duplicated `useMemo` derivations +
+  // seven previously-inline cursor/nav predicates all flow from these
+  // five namespaces. The `live*` projection prefix is gone.
+  const view = useTourSessionView(store, bundle);
+  const bundleSlice = view.kind === "ok" ? view.bundle : null;
+  const navSlice = view.kind === "ok" ? view.nav : null;
+  const rowsSlice = view.kind === "ok" ? view.rows : null;
+  const treeSlice = view.kind === "ok" ? view.tree : null;
+  const cursorSlice = view.kind === "ok" ? view.cursor : null;
   // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
   // shape — the action union has no combined "set-or-clear" variant.
   // Callers that need a same-ref short-circuit (motion helpers, intent
@@ -243,20 +260,14 @@ function App(props: AppProps) {
     if (next === null) store.dispatch({ type: "cursor.clear" });
     else store.dispatch({ type: "cursor.set", anchor: next });
   };
-  // Reveal a file's collapsed ancestors (via `folds.toggleFolder`
-  // dispatches against the snapshot) and return the file's post-reveal
-  // row index — null if the file isn't in the tree. The snapshot —
-  // `collapsedFolders` from this render or the intent listener's
-  // `collapsedFoldersRef` — is the consistent "which ancestors need
-  // expanding" view; each per-path toggle is idempotent so a racing
-  // dispatch can only fold-then-unfold, never lose a user-requested
-  // reveal. The rowIdx is computed against the same snapshot —
-  // `revealAndLocate` re-derives the post-reveal flatten internally.
+  // Reveal a file's collapsed ancestors then return its post-reveal row
+  // index. Per-path toggles are idempotent so a racing dispatch can only
+  // fold-then-unfold, never lose a user-requested reveal.
   const revealAndLocateFile = (
     file: string,
     tree: Parameters<typeof revealAncestors>[0],
     snapshot: ReadonlySet<string>,
-    counts: Record<string, number>,
+    counts: Readonly<Record<string, number>>,
   ): number | null => {
     const ancestors = revealAncestors(tree, file);
     for (const path of ancestors) {
@@ -290,56 +301,19 @@ function App(props: AppProps) {
   // interaction (PRD #192 US 25 — no visible cursor on tour load).
   const seededTourIdRef = useRef<string | null>(null);
 
-  const liveTour = bundle.tour;
-  const liveAnnotations = bundle.annotations;
-  const liveDiff = bundle.kind === "ok" ? bundle.diff : "";
-  const liveSnapshotLost = bundle.kind === "snapshot-lost";
-  const liveFiles: DiffFile[] = bundle.kind === "ok" ? bundle.files : [];
-  const liveClassifications = useMemo<Record<string, FileClassification>>(() => {
-    if (bundle.kind !== "ok") return {};
-    const out: Record<string, FileClassification> = {};
-    for (const f of bundle.files) out[f.name] = f.classification;
-    return out;
-  }, [bundle]);
-  const liveFileContents = useMemo<Map<string, FileContentPair>>(() => {
-    if (bundle.kind !== "ok") return new Map();
-    const out = new Map<string, FileContentPair>();
-    for (const f of bundle.files) {
-      if (typeof f.oldContent === "string" && typeof f.newContent === "string") {
-        out.set(f.name, { oldContent: f.oldContent, newContent: f.newContent });
-      }
-    }
-    return out;
-  }, [bundle]);
-  const liveReplyLock = replyLock;
-  const liveTopLevel = useMemo(() => topLevelAnnotations(liveAnnotations), [liveAnnotations]);
-  // Per-root descendant index used by the `s` keystroke + footer hint to
-  // identify the latest human leaf in the focused Thread (issue #196, PRD
-  // #181). Memoised alongside the bundle so re-renders don't rebuild the
-  // tree.
-  const repliesByRoot = useMemo(() => {
-    const out = new Map<string, Annotation[]>();
-    for (const t of buildThreads(liveAnnotations)) out.set(t.root.id, t.replies);
-    return out;
-  }, [liveAnnotations]);
-  // 1-based nav-order index per top-level annotation id, for rendering the
-  // `i / n` counter in each AnnotationCard header (mirrors webapp).
-  const navIndexById = useMemo(() => {
-    const m = new Map<string, number>();
-    liveTopLevel.forEach((a, i) => m.set(a.id, i + 1));
-    return m;
-  }, [liveTopLevel]);
-  const navTotal = liveTopLevel.length;
+  // `bundle.tour` / `bundle.annotations` are present in both bundle
+  // kinds; the view's ok-branch namespaces gate the rest.
+  const annotations: ReadonlyArray<Annotation> = bundle.annotations;
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
   // second only when a lock is present so we don't burn renders on the idle
   // path.
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
-    if (!liveReplyLock) return;
+    if (!replyLock) return;
     const handle = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(handle);
-  }, [liveReplyLock]);
+  }, [replyLock]);
 
   // Per-tour file watcher: drives the bundle reload (so newly-written
   // Annotations show up) and the reply-lock state (so the in-flight pill
@@ -349,13 +323,13 @@ function App(props: AppProps) {
   // loadTour is wired.
   useEffect(() => {
     if (!props.cwd || !props.loadTour) return;
-    const watcher = new TourWatcher(props.cwd, liveTour.id);
+    const watcher = new TourWatcher(props.cwd, bundle.tour.id);
 
     let cancelled = false;
     const reload = async () => {
       if (!props.loadTour || cancelled) return;
       try {
-        const next = await props.loadTour(liveTour.id);
+        const next = await props.loadTour(bundle.tour.id);
         if (cancelled) return;
         // Same-tour refresh (issue #211): dispatch `bundle.refreshed`
         // (NOT `tour.switched`) so the watcher reload doesn't trigger
@@ -380,7 +354,7 @@ function App(props: AppProps) {
     const reloadLock = async () => {
       if (!props.loadReplyLock || cancelled) return;
       try {
-        const next = await props.loadReplyLock(liveTour.id);
+        const next = await props.loadReplyLock(bundle.tour.id);
         if (cancelled) return;
         store.dispatch({ type: "replyLock.loaded", replyLock: next });
       } catch {
@@ -406,107 +380,47 @@ function App(props: AppProps) {
       cancelled = true;
       watcher.stop();
     };
-  }, [liveTour.id, props.cwd, props.loadTour]);
+  }, [bundle.tour.id, props.cwd, props.loadTour]);
 
+  // Sorted file list for diff-pane render order. `view.rows.plannedRowsByFile`
+  // is keyed by name; we still need the ordered file list for the JSX.
   const files = useMemo(
-    () => sortFilesForStream(liveFiles),
-    [liveFiles],
+    () => sortFilesForStream(bundleSlice?.files ?? ([] as ReadonlyArray<BundleFile>)),
+    [bundleSlice],
   );
 
-  const tree = useMemo(() => compress(buildTree(liveFiles)), [liveFiles]);
-
-  const annotationCounts = useMemo<Record<string, number>>(() => {
-    const out: Record<string, number> = {};
-    for (const a of liveAnnotations) {
-      out[a.file] = (out[a.file] ?? 0) + 1;
-    }
-    return out;
-  }, [liveAnnotations]);
-
-  const visibleRows = useMemo<VisibleRow<DiffFile>[]>(
-    () => flatten(tree, collapsedFolders, annotationCounts),
-    [tree, collapsedFolders, annotationCounts],
-  );
-
+  const tree = treeSlice?.root ?? EMPTY_TREE;
+  const annotationCounts = treeSlice?.annotationCounts ?? EMPTY_ANNOTATION_COUNTS;
+  const visibleRows = treeSlice?.visibleRows ?? EMPTY_VISIBLE_ROWS;
   const safeRowIdx = visibleRows.length === 0
     ? 0
     : Math.min(Math.max(0, selectedRowIdx), visibleRows.length - 1);
-  const selectedRow: VisibleRow<DiffFile> | undefined = visibleRows[safeRowIdx];
+  const selectedRow = visibleRows[safeRowIdx];
 
+  // Hunk-header metadata for the expansion gap calculations — not exposed
+  // by the view; parsed locally so the expansion handlers stay self-contained.
   const fileMetadata = useMemo(() => {
     const out = new Map<string, FileDiffMetadata>();
-    for (const meta of parseFileDiffMetadata(liveDiff)) out.set(meta.name, meta);
-    return out;
-  }, [liveDiff]);
-
-  // Returns true when the planner should emit a synthetic CollapsedFileRow
-  // in place of this file's diff body (PRD #108 issue #113). Mirror of the
-  // legacy isFileCollapsed-without-annotations rule, but kept distinct so
-  // the App can route the body to DiffRows always (the synthetic row IS
-  // the affordance the user clicks Enter on).
-  const isClassifierCollapsed = (fileName: string): boolean => {
-    const override = collapsedOverrides[fileName];
-    if (override === false) return false;
-    const cls = fileClassification(liveClassifications, fileName);
-    if (!cls.collapsed) return false;
-    if (cls.reason === "binary") return false;
-    const hasAnnotations = liveAnnotations.some((a) => a.file === fileName);
-    if (hasAnnotations) return false;
-    return true;
-  };
-
-  const plannedRowsByFile = useMemo(() => {
-    const out = new Map<string, PlannedRow[]>();
-    for (const [name, meta] of fileMetadata) {
-      const fileAnns = liveAnnotations.filter((a) => a.file === name);
-      const contents = liveFileContents.get(name);
-      out.set(
-        name,
-        planRows(meta, fileAnns, layout, {
-          oldContent: contents?.oldContent,
-          newContent: contents?.newContent,
-          expansion,
-          classifierCollapsed: isClassifierCollapsed(name),
-        }),
-      );
+    if (bundle.kind === "ok") {
+      for (const meta of parseFileDiffMetadata(bundle.diff)) out.set(meta.name, meta);
     }
     return out;
-    // isClassifierCollapsed reads from the deps below — listed explicitly.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    fileMetadata,
-    liveAnnotations,
-    layout,
-    liveFileContents,
-    expansion,
-    collapsedOverrides,
-    liveClassifications,
-  ]);
+  }, [bundle]);
+
+  const flatRowsList = rowsSlice?.flatRowsList ?? EMPTY_FLAT_ROWS;
+  const plannedRowsByFile = rowsSlice?.plannedRowsByFile ?? EMPTY_PLANNED_ROWS;
+  const classifications = bundleSlice?.classifications ?? EMPTY_CLASSIFICATIONS;
 
   // Body-level visibility (binary placeholder + user-driven `c` collapse).
-  // A classifier-collapsed (non-binary) file is NOT body-collapsed any
-  // longer — its body always renders and the planner emits the synthetic
-  // CollapsedFileRow inside. `c` on a classifier-collapsed file thus
-  // toggles between "synthetic row visible" and "body hidden entirely".
+  // The view's planner uses the same rule internally for its
+  // classifierCollapsed flag; this surface-side mirror gates body render
+  // of binary files and honours the `c` override.
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
     if (override !== undefined) return override;
-    const cls = fileClassification(liveClassifications, fileName);
+    const cls = fileClassification(classifications, fileName);
     return cls.reason === "binary";
   };
-
-  // Cross-file flat row sequence the line cursor walks (ADR 0011). Skips
-  // hunk-headers, annotation rows, and folded files. Re-derives whenever
-  // the underlying diff, layout, or fold state changes — the cursor's
-  // anchor is invariant across this re-derivation; only its resolved
-  // viewport index moves.
-  const flatRowsList = useMemo<FlatRow[]>(
-    () => flatRows(files, plannedRowsByFile, isFileCollapsed),
-    // isFileCollapsed is a fresh closure per render but its observable
-    // output is fully determined by the listed state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [files, plannedRowsByFile, collapsedOverrides, liveClassifications, liveAnnotations],
-  );
 
   // Tour-open per-tour side effects (PRD #192 / ADR 0022): the cursor
   // itself stays null until the user's first interaction (lazy
@@ -515,38 +429,30 @@ function App(props: AppProps) {
   // annotation's file in the tree so the next j/k or n/p lands on
   // visible material. Empty tours keep the default sidebar focus
   // (nothing to read; tree is the right anchor).
+  const topLevel = navSlice?.topLevel ?? [];
   useEffect(() => {
-    if (seededTourIdRef.current !== liveTour.id) {
-      seededTourIdRef.current = liveTour.id;
-      if (liveTopLevel.length === 0) return;
-      const first = liveTopLevel[0];
+    if (seededTourIdRef.current !== bundle.tour.id) {
+      seededTourIdRef.current = bundle.tour.id;
+      if (topLevel.length === 0) return;
+      const first = topLevel[0];
       setSidebarFocused(false);
       const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, annotationCounts);
       if (rowIdx === null) return;
       setSelectedRowIdx(rowIdx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveTopLevel, liveTour.id]);
+  }, [topLevel, bundle.tour.id]);
 
-  // Validate the cursor in place when the row sequence shifts under it
-  // (fold toggle, layout change, expansion). For a RowAnchor: anchor
-  // preserved when it still resolves; snapped to file's first row when
-  // the specific row vanishes; snapped to next file in stream order when
-  // the file is gone; cleared when no row remains. For a CardAnchor:
-  // preserved when its annotationId is still in the flat-row stream;
-  // cleared otherwise (cards have no fallback row, PRD #192).
-  //
-  // Bundle-driven revalidation also runs through the reducer's
-  // `bundle.refreshed` → `revalidateCursor` intent (issue #231 / PRD #229).
-  // Both paths dispatch the same `cursor.set` / `cursor.clear` actions and
-  // are idempotent — the useEffect is the catch-all for non-bundle row-
-  // sequence shifts (folds aren't yet in the store).
+  // Reconcile the raw cursor with the view's validated anchor. The view
+  // prunes a CardAnchor whose annotation was deleted and snaps a RowAnchor
+  // whose specific row vanished (issue #231 / PRD #229 + #232 rules).
   useEffect(() => {
     if (cursor === null) return;
-    const validated = validateCursor(cursor, flatRowsList, files);
-    if (validated !== cursor) dispatchAnchorOrClear(validated);
+    if (cursorSlice && cursorSlice.anchor !== cursor) {
+      dispatchAnchorOrClear(cursorSlice.anchor);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRowsList, liveTopLevel]);
+  }, [cursorSlice]);
 
   // Keep the cursor's row visible. A RowAnchor scrolls its diff/interactive
   // row with `block:nearest`; a CardAnchor centres its card in the viewport
@@ -569,17 +475,13 @@ function App(props: AppProps) {
     );
   }, [cursor, layout]);
 
-  // Sidebar follows the cursor's file. RowAnchor → cursor.file directly.
-  // CardAnchor → annotation.file resolved from the bundle. The deps key
-  // off the resolved file so in-file j/k motion leaves the sidebar
-  // untouched — sidebar selection is a per-file affordance, not a
-  // per-row one.
-  const cursorFile = useMemo<string | null>(() => {
-    if (!cursor) return null;
-    if (cursor.kind === "row") return cursor.file;
-    const ann = liveAnnotations.find((a) => a.id === cursor.annotationId);
-    return ann ? ann.file : null;
-  }, [cursor, liveAnnotations]);
+  // Sidebar follows the cursor's file. RowAnchor → cursor.file directly;
+  // CardAnchor → view.cursor.cardAnnotation.file. Deps key off the
+  // resolved file so in-file j/k motion leaves the sidebar untouched.
+  const cursorFile: string | null =
+    cursor === null ? null
+    : cursor.kind === "row" ? cursor.file
+    : cursorCardAnnotation?.file ?? null;
   useEffect(() => {
     if (!cursorFile) return;
     const rowIdx = revealAndLocateFile(cursorFile, tree, collapsedFolders, annotationCounts);
@@ -613,40 +515,19 @@ function App(props: AppProps) {
     if (!sb.content.findDescendantById(targetId)) return;
     scrollChildIntoView(sb, targetId);
     pendingScrollIdRef.current = null;
-  }, [liveAnnotations, plannedRowsByFile]);
+  }, [annotations, plannedRowsByFile]);
 
-  // Derived: the cursor's card target (PRD #192 / ADR 0022). When the
-  // cursor is on a card, the target is that card's id; when on a row
-  // (or null), there is no card target — `r`/`s` are no-ops with a
-  // footer hint.
-  const cursorCardId: string | null =
-    cursor && cursor.kind === "card" ? cursor.annotationId : null;
-  const cursorCardAnnotation =
-    cursorCardId !== null
-      ? liveAnnotations.find((a) => a.id === cursorCardId) ?? null
-      : null;
-  // 1-based nav index of the cursor's card in the top-level list, or
-  // -1 when there is no card target. The top-header pill renders
-  // `—/M` when -1 (kind === "row" or null cursor); index is 1-based
-  // for human readability.
-  const cursorCardNavIdx =
-    cursorCardId !== null
-      ? liveTopLevel.findIndex((a) => a.id === cursorCardId)
-      : -1;
-
-  // Show the `s: send to {agent}` hint whenever the focused Thread has a
-  // latest human leaf (issue #196, PRD #181). The cursor walks top-levels
-  // only, so the cursor-focused Annotation may not be the dispatch
-  // target — the helper resolves the actual target inside the Thread.
-  // The latest leaf is by construction a leaf (`hasReply: false`) and
-  // human (per `latestHumanLeafId`'s contract), so the predicate inputs
-  // collapse to the agent-configured + lock-held axes.
-  const sendTarget = tuiSendTarget(cursor, liveTopLevel, repliesByRoot);
+  // Cursor / nav predicates ride on the view (PRD #242). The validated
+  // anchor — a CardAnchor to a deleted annotation resolves to null —
+  // is what drives `r` / `s` enablement and the `[N/M]` pill.
+  const cursorCardId = cursorSlice?.cardId ?? null;
+  const cursorCardAnnotation = cursorSlice?.cardAnnotation ?? null;
+  const sendTargetVal = navSlice?.sendTarget ?? null;
   const sendHintVerdict =
-    sendTarget !== null
+    sendTargetVal !== null
       ? canSendToAgent({
           replyAgentConfigured: !!props.replyAgent,
-          lockHeld: liveReplyLock !== null,
+          lockHeld: replyLock !== null,
           authorKind: "human",
           hasReply: false,
         })
@@ -662,7 +543,6 @@ function App(props: AppProps) {
   // so we approximate by comparing the cursor's row index to the rough
   // visible range. When the scrollbox isn't ready, the suffix is
   // omitted.
-  const cursorRowIdx = resolveCursorRowIdx(cursor, flatRowsList);
   const viewportRange = ((): { start: number; end: number } | undefined => {
     const sb = diffScrollRef.current;
     if (!sb || flatRowsList.length === 0) return undefined;
@@ -678,9 +558,9 @@ function App(props: AppProps) {
   })();
   const footerPreview = composeFooterPreview({
     cursor,
-    annotations: liveAnnotations,
+    annotations,
     viewportRange,
-    cursorRowIdx,
+    cursorRowIdx: cursorSlice?.rowIdx ?? -1,
   });
   const baseFooter = `${footerPreview}  ·  ${footerHints}`;
   const footer = footerStatus ? `${baseFooter}  ·  ${footerStatus}` : baseFooter;
@@ -709,7 +589,7 @@ function App(props: AppProps) {
       store.dispatch({ type: "tourList.loaded", tours: summaries });
       const rows = buildPickerRows({ tours, annotationCounts: counts, now: Date.now() });
       store.dispatch({ type: "picker.open", rows });
-      const initialIdx = initialPickerCursor(rows, liveTour.id);
+      const initialIdx = initialPickerCursor(rows, bundle.tour.id);
       for (let i = 0; i < initialIdx; i++) {
         store.dispatch({ type: "picker.move", delta: 1 });
       }
@@ -725,15 +605,15 @@ function App(props: AppProps) {
   // inline below as each value is computed.
   const cursorRef = useRef<Cursor | null>(cursor);
   cursorRef.current = cursor;
-  const flatRowsRef = useRef<FlatRow[]>(flatRowsList);
+  const flatRowsRef = useRef<ReadonlyArray<FlatRow>>(flatRowsList);
   flatRowsRef.current = flatRowsList;
-  const filesRef = useRef<DiffFile[]>(files);
+  const filesRef = useRef<ReadonlyArray<BundleFile>>(files);
   filesRef.current = files;
   const treeRef = useRef(tree);
   treeRef.current = tree;
   const collapsedFoldersRef = useRef<Set<string>>(collapsedFolders);
   collapsedFoldersRef.current = collapsedFolders;
-  const annotationCountsRef = useRef<Record<string, number>>(annotationCounts);
+  const annotationCountsRef = useRef<Readonly<Record<string, number>>>(annotationCounts);
   annotationCountsRef.current = annotationCounts;
   const safeRowIdxRef = useRef<number>(safeRowIdx);
   safeRowIdxRef.current = safeRowIdx;
@@ -756,7 +636,7 @@ function App(props: AppProps) {
       if (intent.type === "loadTour") {
         const tourId = intent.tourId;
         if (!props.loadTour) return;
-        if (tourId === liveTour.id) {
+        if (tourId === bundle.tour.id) {
           // Same-tour Enter: keymap short-circuited to picker.close, so
           // this branch is defensive against direct loadTour intents from
           // future call sites.
@@ -940,9 +820,9 @@ function App(props: AppProps) {
       unsubscribe();
     };
     // store / props.loadTour / props.loadReplyLock are stable for the
-    // TUI's CLI invocation; liveTour.id is read inside the closure.
+    // TUI's CLI invocation; bundle.tour.id is read inside the closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, props.loadTour, props.loadReplyLock, liveTour.id]);
+  }, [store, props.loadTour, props.loadReplyLock, bundle.tour.id]);
 
   const jumpToAnnotation = (ann: Annotation) => {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
@@ -969,17 +849,17 @@ function App(props: AppProps) {
   // enters the track at the topLevel edge (cursor position not
   // consulted; issue #206 revert of #203).
   const gotoPrevAnnotation = () => {
-    const target = prevCard(cursor, liveTopLevel);
+    const target = prevCard(cursor, topLevel);
     if (target) {
-      const ann = liveAnnotations.find((a) => a.id === target.annotationId);
+      const ann = annotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);
     }
   };
 
   const gotoNextAnnotation = () => {
-    const target = nextCard(cursor, liveTopLevel);
+    const target = nextCard(cursor, topLevel);
     if (target) {
-      const ann = liveAnnotations.find((a) => a.id === target.annotationId);
+      const ann = annotations.find((a) => a.id === target.annotationId);
       if (ann) jumpToAnnotation(ann);
     }
   };
@@ -1048,7 +928,7 @@ function App(props: AppProps) {
     if (!meta || meta.hunks.length === 0) return 0;
     const last = meta.hunks[meta.hunks.length - 1];
     const lastEnd = last.additionStart + last.additionCount - 1;
-    const contents = liveFileContents.get(file);
+    const contents = bundleSlice?.fileContents.get(file);
     if (!contents?.newContent) return 0;
     const trimmed = contents.newContent.endsWith("\n")
       ? contents.newContent.slice(0, -1)
@@ -1167,7 +1047,7 @@ function App(props: AppProps) {
   const materializeCursor = (): Cursor | null => {
     if (cursor) return cursor;
     const seeded = initialCursor({
-      topLevelAnnotations: liveTopLevel,
+      topLevelAnnotations: topLevel,
       flatRows: flatRowsList,
     });
     if (seeded) store.dispatch({ type: "cursor.materialize", anchor: seeded });
@@ -1227,14 +1107,14 @@ function App(props: AppProps) {
     }
     if (!sendHintVerdict.enabled) {
       if (sendHintVerdict.reason === "lock-held") {
-        setFooterStatus(`${liveReplyLock?.agent ?? props.replyAgent} is replying — wait`);
+        setFooterStatus(`${replyLock?.agent ?? props.replyAgent} is replying — wait`);
       }
       // sendTarget === null (latest turn is agent) falls out of the
       // visible set (footer hint hidden), so pressing `s` is a silent
       // no-op.
       return;
     }
-    if (!sendTarget) return;
+    if (!sendTargetVal) return;
     setFooterStatus(null);
     // Auto-recall (PRD #192 user story 14): pull the focused card into
     // view before dispatching so the user sees the card the agent is
@@ -1245,8 +1125,8 @@ function App(props: AppProps) {
     if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
     void requestReply({
       cwd: props.cwd,
-      tourId: liveTour.id,
-      annotationId: sendTarget.leafId,
+      tourId: bundle.tour.id,
+      annotationId: sendTargetVal.leafId,
       agent: props.replyAgent,
     }).catch(() => {
       // transient — the watcher's reload will surface any state change
@@ -1284,7 +1164,7 @@ function App(props: AppProps) {
       if (key.name === "return") {
         const highlighted = pickerHighlighted(sessionState);
         if (!highlighted) return;
-        if (highlighted.id === liveTour.id) {
+        if (highlighted.id === bundle.tour.id) {
           store.dispatch({ type: "picker.close" });
           return;
         }
@@ -1298,10 +1178,10 @@ function App(props: AppProps) {
       { name: key.name, ctrl: key.ctrl, shift: key.shift },
       {
         sidebarFocused,
-        rowCount: visibleRows.length,
+        rowCount: rowsSlice?.rowCount ?? 0,
         selectedRowKind: selectedRow?.kind ?? null,
-        cursorOnInteractive: cursor?.kind === "row" && cursor.interactive != null,
-        cursorOnCard: cursor?.kind === "card",
+        cursorOnInteractive: cursorSlice?.onInteractive ?? false,
+        cursorOnCard: cursorSlice?.onCard ?? false,
       },
     );
 
@@ -1332,7 +1212,7 @@ function App(props: AppProps) {
         setSidebarFocused(true);
         return;
       case "move-file-down":
-        setSelectedRowIdx((i) => Math.min(i + 1, visibleRows.length - 1));
+        setSelectedRowIdx((i) => Math.min(i + 1, (treeSlice?.visibleRows.length ?? 0) - 1));
         return;
       case "move-file-up":
         setSelectedRowIdx((i) => Math.max(i - 1, 0));
@@ -1354,7 +1234,7 @@ function App(props: AppProps) {
       case "toggle-collapse": {
         if (selectedRow?.kind !== "file") return;
         const f = selectedRow.file;
-        const cls = fileClassification(liveClassifications, f.name);
+        const cls = fileClassification(classifications, f.name);
         if (cls.reason === "binary") return;
         store.dispatch({
           type: "folds.setOverride",
@@ -1551,10 +1431,13 @@ function App(props: AppProps) {
   return (
     <box width="100%" height="100%" flexDirection="column">
       <TopHeaderTui
-        tour={liveTour}
+        tour={bundle.tour}
         layout={layout}
-        currentAnnotationIdx={cursorCardNavIdx}
-        topLevelTotal={liveTopLevel.length}
+        // SequencePill expects 0-based / -1 sentinel; the view's
+        // `navSlice.currentIdx` is 1-based / 0 sentinel. The translation
+        // is symmetric: `currentIdx === 0` → -1, otherwise idx - 1.
+        currentAnnotationIdx={(navSlice?.currentIdx ?? 0) - 1}
+        topLevelTotal={topLevel.length}
         selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
         onPrevAnnotation={gotoPrevAnnotation}
@@ -1563,7 +1446,7 @@ function App(props: AppProps) {
         onUnified={() => store.dispatch({ type: "layout.set", layout: "unified" })}
       />
 
-      {liveSnapshotLost && (
+      {view.kind === "snapshot-lost" && (
         <box height={2} width="100%" paddingX={1}>
           <text fg={theme.fg.attention} bold>
             ⚠ Snapshot lost — annotations preserved but diff cannot be displayed
@@ -1641,7 +1524,7 @@ function App(props: AppProps) {
           flexDirection="column"
           onMouseDown={() => setSidebarFocused(false)}
         >
-          {!liveSnapshotLost && liveDiff && (
+          {view.kind === "ok" && bundle.kind === "ok" && bundle.diff && (
             <scrollbox
               ref={diffScrollRef}
               height="100%"
@@ -1660,7 +1543,7 @@ function App(props: AppProps) {
               {files.map((file) => {
                 const collapsed = isFileCollapsed(file.name);
                 const rows = plannedRowsByFile.get(file.name) ?? [];
-                const reason = fileClassification(liveClassifications, file.name).reason;
+                const reason = fileClassification(classifications, file.name).reason;
                 return (
                   <box
                     key={file.name}
@@ -1670,7 +1553,7 @@ function App(props: AppProps) {
                     flexDirection="column"
                     marginBottom={1}
                   >
-                    <text>{fileEntryLabel(file, liveClassifications, liveAnnotations)}</text>
+                    <text>{fileEntryLabel(file, classifications, annotations)}</text>
                     {fileCardBody(
                       file.name,
                       collapsed,
@@ -1683,10 +1566,10 @@ function App(props: AppProps) {
                       onCursorClick,
                       onInteractiveClick,
                       repliesCollapsed,
-                      liveReplyLock,
+                      replyLock,
                       now,
-                      navIndexById,
-                      navTotal,
+                      navSlice?.navIndexById ?? EMPTY_NAV_INDEX,
+                      navSlice?.navTotal ?? 0,
                     )}
                   </box>
                 );
@@ -1704,7 +1587,7 @@ function App(props: AppProps) {
       {sessionState.picker.kind === "open" && (
         <TourPicker
           rows={sessionState.picker.rows}
-          currentTourId={liveTour.id}
+          currentTourId={bundle.tour.id}
           cursor={sessionState.picker.cursor}
           scrollRef={pickerScrollRef}
         />
@@ -1716,7 +1599,7 @@ function App(props: AppProps) {
           body={composer.body}
           parent={
             composer.target.kind === "reply"
-              ? liveAnnotations.find((a) => a.id === composer.target.replies_to) ?? null
+              ? annotations.find((a) => a.id === composer.target.replies_to) ?? null
               : null
           }
           onInput={(body) => store.dispatch({ type: "composer.setBody", body })}

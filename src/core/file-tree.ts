@@ -41,7 +41,7 @@ function joinPath(parent: string, child: string): string {
   return parent === "" ? child : `${parent}/${child}`;
 }
 
-export function buildTree<F extends FileEntry>(files: F[]): FolderNode<F> {
+export function buildTree<F extends FileEntry>(files: ReadonlyArray<F>): FolderNode<F> {
   const root: FolderNode<F> = { kind: "folder", path: "", displayName: "", children: [] };
   for (const file of files) {
     const parts = file.name.split("/").filter((p) => p.length > 0);
@@ -101,7 +101,7 @@ function compareSiblings<F extends FileEntry>(a: TreeNode<F>, b: TreeNode<F>): n
   return a.displayName.localeCompare(b.displayName);
 }
 
-export function sortFilesForStream<F extends FileEntry>(files: F[]): F[] {
+export function sortFilesForStream<F extends FileEntry>(files: ReadonlyArray<F>): F[] {
   if (files.length <= 1) return [...files];
   const out: F[] = [];
   const visit = (node: TreeNode<F>): void => {
@@ -118,7 +118,7 @@ export function sortFilesForStream<F extends FileEntry>(files: F[]): F[] {
 
 function rollupAnnotations<F extends FileEntry>(
   node: TreeNode<F>,
-  counts: Record<string, number>,
+  counts: Readonly<Record<string, number>>,
   cache: Map<string, number>,
 ): number {
   if (node.kind === "file") {
@@ -137,7 +137,7 @@ function rollupAnnotations<F extends FileEntry>(
 export function flatten<F extends FileEntry>(
   root: FolderNode<F>,
   collapsed: ReadonlySet<string>,
-  annotationCounts: Record<string, number>,
+  annotationCounts: Readonly<Record<string, number>>,
 ): VisibleRow<F>[] {
   const out: VisibleRow<F>[] = [];
   const cache = new Map<string, number>();
@@ -192,7 +192,7 @@ export interface RevealResult<F extends FileEntry> {
 export function revealAndLocate<F extends FileEntry>(
   root: FolderNode<F>,
   collapsedFolders: ReadonlySet<string>,
-  annotationCounts: Record<string, number>,
+  annotationCounts: Readonly<Record<string, number>>,
   filePath: string,
 ): RevealResult<F> | null {
   const ancestors = revealAncestors(root, filePath);

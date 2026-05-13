@@ -75,8 +75,8 @@ export function preferredSideOf(c: Cursor | null): "additions" | "deletions" {
  * of the card being a first-class cursor stop.
  */
 export function initialCursor(args: {
-  topLevelAnnotations: Annotation[];
-  flatRows: FlatRow[];
+  topLevelAnnotations: ReadonlyArray<Annotation>;
+  flatRows: ReadonlyArray<FlatRow>;
 }): Cursor | null {
   if (args.flatRows.length === 0) return null;
   const a = args.topLevelAnnotations[0];
@@ -106,7 +106,7 @@ export function initialCursor(args: {
 export function moveCursor(
   cursor: Cursor | null,
   direction: "up" | "down",
-  flatRows: FlatRow[],
+  flatRows: ReadonlyArray<FlatRow>,
 ): Cursor | null {
   if (!cursor) return null;
   const idx = resolveCursorRowIdx(cursor, flatRows);
@@ -164,7 +164,7 @@ function walkCards(
 export function setCursorSide(
   cursor: Cursor | null,
   side: "additions" | "deletions",
-  flatRows: FlatRow[],
+  flatRows: ReadonlyArray<FlatRow>,
 ): Cursor | null {
   if (!cursor) return null;
   // h/l is meaningful only on paired diff rows. On cards and interactive
@@ -200,7 +200,7 @@ export function setCursorSide(
  */
 export function validateCursor(
   cursor: Cursor | null,
-  flatRows: FlatRow[],
+  flatRows: ReadonlyArray<FlatRow>,
   files?: ReadonlyArray<{ name: string }>,
 ): Cursor | null {
   if (!cursor) return null;
@@ -219,7 +219,7 @@ export function validateCursor(
  */
 export function cursorAtFirstFileRow(
   file: string,
-  flatRows: FlatRow[],
+  flatRows: ReadonlyArray<FlatRow>,
 ): RowAnchor | null {
   const r = flatRows.find(
     (row): row is DiffFlatRow => row.kind === "diff" && row.file === file,
@@ -250,7 +250,7 @@ export function cursorOnInteractive(args: {
 
 export function resolveCursorRowIdx(
   cursor: Cursor | null,
-  flatRows: FlatRow[],
+  flatRows: ReadonlyArray<FlatRow>,
 ): number {
   if (!cursor) return -1;
   if (cursor.kind === "card") {
