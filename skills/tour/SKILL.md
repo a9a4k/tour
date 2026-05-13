@@ -41,6 +41,8 @@ A Tour is a guided traversal of a pinned git diff. The agent authors line-anchor
 
 **Scope and sizing.** Tour is for **architectural and high-level review** — the kind of thing a senior engineer flags in a 15-minute conversation walking through a PR. **Target ~10 minutes for the human to step through the whole tour.** That's roughly 5–15 annotations depending on density; bigger diffs do not mean more annotations, they mean picking the architectural beats and trusting the reader to read the rest.
 
+**First beat is always motivation.** Before any code beat, open with one annotation answering *why does this PR exist?* — the problem or need it addresses, not what the diff shows. Anchor it to the most-representative line of the change, or the first changed file. A reviewer should understand the *why* before reading any code.
+
 **What to annotate**: the shape of new dependencies, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff alone doesn't explain, the bug's root cause and why the fix lives where it does.
 
 **What to skip**: variable renames, micro-formatting, "this method is now five lines instead of seven", anything a linter or a careful code-read catches on its own. If the diff itself is the explanation, don't annotate.
