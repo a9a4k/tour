@@ -31,6 +31,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #272
 
+- **Top header right cluster: tour-level diff stats `+N -M` now leads,
+  annotation-nav pill and layout toggle follow (issue #277).** Both
+  surfaces previously read `‹ n/N › +N -M [Split | Unified]` — a static
+  info element sandwiched between two interactive controls. The cluster
+  now reads `+N -M ‹ n/N › [Split | Unified]`, matching GitHub's PR
+  header strip convention: stats lead the right side as a navigational
+  landmark, interactive controls (nav + toggle) cluster together after
+  it. Empty / pure-addition / pure-deletion tours retain the existing
+  per-side render rules — when both counts are zero the indicator
+  renders nothing and the cluster collapses cleanly to `‹ n/N › [Split |
+  Unified]` with no orphan leading gap. The TUI's TourStatsIndicator
+  internal 1-col spacer flips from leading to trailing so the gap-to-
+  next-sibling stays attached to the indicator's render condition (no
+  orphan spacer when the indicator is null). No prop-surface change on
+  any of the three components; no CSS class additions.
+
+  Issue: #277
+
 ### Added
 
 - **TUI: hunk-header banner adopts the directional `expand-up` /

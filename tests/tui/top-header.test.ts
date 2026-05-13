@@ -337,11 +337,11 @@ describe("TopHeaderTui (issue #93)", () => {
     });
   });
 
-  // Tour-level diff stats — `+N -M` in the right cluster between the
-  // SequencePill and the LayoutToggle (issue #266 / webapp parity #233).
-  // Pure presentation: zero counts render nothing, non-zero counts paint
-  // in theme.fg.success / theme.fg.danger, single-space gap, no proportion
-  // bar.
+  // Tour-level diff stats — `+N -M` in the right cluster (issue #266 /
+  // webapp parity #233). Leads the cluster ahead of the SequencePill and
+  // LayoutToggle per issue #277. Pure presentation: zero counts render
+  // nothing, non-zero counts paint in theme.fg.success / theme.fg.danger,
+  // single-space gap, no proportion bar.
   describe("tour-level diff stats indicator (issue #266)", () => {
     function additionTextNode(root: AnyElement): AnyElement | undefined {
       return walk(root).find(
@@ -424,6 +424,95 @@ describe("TopHeaderTui (issue #93)", () => {
       );
       expect(inLeft).toBe(false);
       expect(inRight).toBe(true);
+    });
+  });
+
+  // Issue #277: the right cluster reads left-to-right as stats, sequence
+  // pill, layout toggle. The stats text leads the cluster as a
+  // navigational landmark (GitHub PR-header convention) — interactive
+  // controls cluster after it.
+  describe("right cluster reading order (issue #277)", () => {
+    // Indexes within the cluster of the first text node carrying each
+    // signature. `+N` / `-M` belong to the TourStatsIndicator; ` N/M ` /
+    // ` —/M ` belongs to the SequencePill; `Split` / `Unified` belongs to
+    // the LayoutToggle. Indexes are first-occurrence positions in the
+    // walk order, which mirrors render order.
+    function firstIndex(
+      texts: string[],
+      predicate: (s: string) => boolean,
+    ): number {
+      return texts.findIndex(predicate);
+    }
+
+    it("stats lead, then nav pill, then layout toggle (mixed stats)", () => {
+      const root = render({
+        tourStats: { additions: 12, deletions: 7 },
+        topLevelTotal: 3,
+        currentAnnotationIdx: 0,
+      });
+      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const texts = walk(right)
+        .filter((e) => e.type === "text")
+        .map(textChildOf);
+      const statsIdx = firstIndex(texts, (s) => /^\+\d+$/.test(s));
+      const navIdx = firstIndex(texts, (s) => /^\s\d+\/\d+\s$/.test(s));
+      const splitIdx = firstIndex(texts, (s) => s === "Split");
+      expect(statsIdx).toBeGreaterThanOrEqual(0);
+      expect(navIdx).toBeGreaterThanOrEqual(0);
+      expect(splitIdx).toBeGreaterThanOrEqual(0);
+      expect(statsIdx).toBeLessThan(navIdx);
+      expect(navIdx).toBeLessThan(splitIdx);
+    });
+
+    it("pure-addition tour: `+N` leads the cluster", () => {
+      const root = render({
+        tourStats: { additions: 9, deletions: 0 },
+        topLevelTotal: 2,
+        currentAnnotationIdx: 0,
+      });
+      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const texts = walk(right)
+        .filter((e) => e.type === "text")
+        .map(textChildOf);
+      const statsIdx = firstIndex(texts, (s) => /^\+\d+$/.test(s));
+      const navIdx = firstIndex(texts, (s) => /^\s\d+\/\d+\s$/.test(s));
+      expect(statsIdx).toBeGreaterThanOrEqual(0);
+      expect(statsIdx).toBeLessThan(navIdx);
+    });
+
+    it("pure-deletion tour: `-M` leads the cluster", () => {
+      const root = render({
+        tourStats: { additions: 0, deletions: 6 },
+        topLevelTotal: 2,
+        currentAnnotationIdx: 0,
+      });
+      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const texts = walk(right)
+        .filter((e) => e.type === "text")
+        .map(textChildOf);
+      const statsIdx = firstIndex(texts, (s) => /^-\d+$/.test(s));
+      const navIdx = firstIndex(texts, (s) => /^\s\d+\/\d+\s$/.test(s));
+      expect(statsIdx).toBeGreaterThanOrEqual(0);
+      expect(statsIdx).toBeLessThan(navIdx);
+    });
+
+    it("zero-total tour: cluster reads nav pill then layout toggle, no orphan leading gap", () => {
+      const root = render({
+        tourStats: { additions: 0, deletions: 0 },
+        topLevelTotal: 2,
+        currentAnnotationIdx: 0,
+      });
+      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const texts = walk(right)
+        .filter((e) => e.type === "text")
+        .map(textChildOf)
+        .join(" | ");
+      // No `+N` / `-M` segments — the indicator is gone entirely.
+      expect(texts).not.toMatch(/\+\d/);
+      expect(texts).not.toMatch(/-\d/);
+      // Nav pill and layout toggle still render.
+      expect(texts).toMatch(/\s\d+\/\d+\s/);
+      expect(texts).toContain("Split");
     });
   });
 });

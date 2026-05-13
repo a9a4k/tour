@@ -229,4 +229,27 @@ describe("App integration smoke (Issue #235)", () => {
     const rows = document.querySelectorAll(".tour-row");
     expect(rows.length).toBeGreaterThan(0);
   });
+
+  // Issue #277: tour-level diff-stats indicator leads the right cluster,
+  // annotation nav and layout toggle follow. The reorder aligns with
+  // GitHub's PR header strip mental model — stats at the leading edge as a
+  // navigational landmark, interactive controls grouped together after it.
+  it("right cluster renders left-to-right: stats, nav pill, layout toggle (issue #277)", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const right = container.querySelector(".tour-header-right");
+    expect(right).not.toBeNull();
+    const directChildren = Array.from(right!.children) as HTMLElement[];
+    // Three direct children — stats, sequence pill, layout toggle.
+    // The stats indicator must be the first; the layout toggle the last.
+    expect(directChildren.length).toBe(3);
+    expect(directChildren[0]!.classList.contains("tour-stats")).toBe(true);
+    expect(directChildren[1]!.classList.contains("sequence-pill")).toBe(true);
+    expect(directChildren[2]!.classList.contains("layout-toggle")).toBe(true);
+  });
 });
