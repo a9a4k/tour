@@ -188,14 +188,13 @@ export const FILE_GRID_CSS = `
   }
 
   /* Empty-side neutral fill: in split layout, the three cells of a
-     single-side diff row (gutter + symbol + code cell of the side whose
-     gutter has no line number) recede behind a subtle canvas.inset fill
-     so each row reads as "one side intentionally blank" rather than
-     "content on one side, void on the other". <Column> emits
-     data-line-number="" when lineNumber is null; the adjacent-sibling
-     chain extends the cue onto the symbol and cell that share the side.
-     :not(.in-range) lets the per-cell range tint win on the rare
-     empty-side-in-range cell. */
+     single-side diff row recede behind canvas.inset so each row reads
+     as "one side intentionally blank" rather than "content on one
+     side, void on the other". Keys on the empty gutter's
+     data-line-number="" signal (the attribute drops to "" when there
+     is no line number); the adjacent-sibling chain extends the cue onto the
+     matching symbol and code cell. :not(.in-range) lets the per-cell
+     range tint win on the rare empty-side-in-range cell. */
   .tour-file-block[data-layout="split"] .tour-row-gutter[data-line-number=""]:not(.in-range),
   .tour-file-block[data-layout="split"] .tour-row-gutter[data-line-number=""] + .tour-row-symbol:not(.in-range),
   .tour-file-block[data-layout="split"] .tour-row-gutter[data-line-number=""] + .tour-row-symbol + .tour-row-cell:not(.in-range) {
