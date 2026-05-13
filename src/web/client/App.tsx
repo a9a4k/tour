@@ -1408,10 +1408,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           ) : (
             <>
               <style>{FILE_GRID_CSS}</style>
-              {Array.from(view.rows.plannedRowsByFile.keys()).map((fileName) => {
+              {Array.from(view.rows.plannedRowsByFile, ([fileName, rows]) => {
                 const bf = view.bundle.filesByName.get(fileName);
                 if (!bf) return null;
-                const rows = view.rows.plannedRowsByFile.get(fileName) ?? [];
                 const topLevelComposer =
                   composerTarget &&
                   composerTarget.kind === "top-level" &&
