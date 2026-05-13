@@ -27,94 +27,78 @@ allowed-tools:
 
 # Tour
 
-A Tour is a guided traversal of a pinned git diff. The agent authors line-anchored annotations via CLI; the human steps through them in a TUI or webapp and comments; the agent picks up the conversation via `tour pickup`.
+## Author
 
-## Pick your phase
-
-| Phase | When | Verbs |
-|---|---|---|
-| **Author** | User asks for review / feedback / a tour on a branch or diff | `tour create`, `tour annotate`, `tour serve --open` |
-| **Continue** | Human commented (or replied) on an existing Tour; user wants you to act on it | `tour pickup`, `tour annotate` with `replies_to` |
-| **Lookup** | User references an existing Tour | `tour list`, `tour show` |
-
-## Default style: narrative walkthrough
-
-**Scope and sizing.** Tour is for **architectural and high-level review** — the kind of thing a senior engineer flags in a 15-minute conversation walking through a PR. **Target ~10 minutes for the human to step through.** Roughly 5–15 annotations; bigger diffs do not mean more annotations, they mean picking the architectural beats and trusting the reader to read the rest. If you're writing the 20th, stop — usually three or four collapse into one beat and the rest can disappear.
-
-**First beat is always motivation.** Before any code beat, open with one annotation answering *why does this PR exist?* — the problem or need it addresses, not what the diff shows. Anchor it to a representative line or the first changed file.
-
-**What to annotate**: the shape of new dependencies, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff alone doesn't explain, the bug's root cause and why the fix lives where it does.
-
-**What to skip**: variable renames, micro-formatting, "this method is now five lines instead of seven", anything a linter or a careful code-read catches on its own. If the diff itself is the explanation, don't annotate.
-
-**Per annotation**: 2–4 sentences in plain language; cut anything that doesn't carry the *why*. Order by reading flow, not file order. Visual when it helps — before/after snippets, small tables, Mermaid for control/data flow render in the webapp. If an annotation needs context from a linked issue, codebase convention, or Slack thread, inline that context or drop the annotation.
-
-**Findings variation**: when converting external findings (security scan, lint output, thorough-review results) into Tour annotations, drop the narrative arc — one annotation per finding.
-
-## Author — quick start
+When asked for a review / walkthrough on a branch or diff:
 
 ```sh
 TOUR_ID=$(tour create --head HEAD)
-
 cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
 {"file":"src/foo.ts","side":"additions","line_start":12,"line_end":14,"body":"..."}
 {"file":"src/foo.ts","side":"additions","line_start":40,"body":"..."}
 JSONL
-
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-**Diff scope**: leave `--base` alone. The default merge-base-with-upstream matches GitHub's PR diff; passing `--base origin/main` inverts every commit landed on main since branch divergence and buries your changes. See [REFERENCE.md](REFERENCE.md) for fallback rules.
+The background server prints a Cmd/Ctrl-clickable URL. Your job ends there — don't pass `--open`. Same-cwd re-runs reuse the running server.
 
-**End with `tour serve "$TOUR_ID" --reply-agent <name> &`**. The background server prints a Cmd/Ctrl-clickable URL; don't pass `--open` — the agent's job ends with the URL. Same-cwd re-runs reuse the running server.
+Pass `--reply-agent <name>` only when you can self-identify (Claude Code → `claude`, Codex → `codex`). If unsure, drop the flag — Tour auto-detects shipped CLIs on PATH. See [REFERENCE.md](REFERENCE.md#reply-agent-selection).
 
-Pass `--reply-agent <name>` only when you can self-identify as one of the shipped CLIs (Claude Code → `claude`, Codex → `codex`, etc.). If you can't, **drop the flag**: in v2.0.0+, Tour auto-detects shipped CLIs on the user's PATH and prints a one-line tip naming the right value. See [REFERENCE.md](REFERENCE.md#reply-agent-selection) for the registry and the skip-when-uncertain rule.
+Don't pass `--base origin/main`. The default merge-base-with-upstream matches GitHub's PR diff; `--base origin/main` inverts every commit landed on main since branch divergence and buries your changes.
 
-## Continue (pickup) — quick start
+## Annotation rules
+
+1. **Architectural scope.** Tour is for the senior-engineer walkthrough. Target ~10 minutes — roughly 5–15 annotations. If you write the 20th, stop; usually three or four collapse into one beat.
+2. **First beat is motivation.** One annotation answering *why does this PR exist?* — the problem, not the diff. Anchor to a representative line or the first changed file.
+3. **What to annotate**: new dependency shapes, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff doesn't explain, the bug's root cause.
+4. **What to skip**: variable renames, micro-formatting, "5 lines instead of 7", linter-catchable nits. If the diff is the explanation, don't annotate.
+5. **Per annotation**: 2–4 sentences in plain language; cut anything that doesn't carry the *why*. Order by reading flow, not file order. Visual when it helps — before/after snippets, small tables, Mermaid render in the webapp. If an annotation needs context from a linked issue, codebase convention, or Slack thread, inline it or drop the annotation.
+6. **Findings batch**: external findings (security scan, lint, thorough-review) get one annotation per finding — drop the narrative arc.
+
+## Continue (pickup)
+
+When the user references human comments on an existing Tour:
 
 ```sh
 tour pickup "$TOUR_ID" --json
 ```
 
-Returns a `ConversationTree` with threaded annotations. Distinguish actors by the `author` field:
+Returns a `ConversationTree`. Actors:
 
 | `author_kind` | `author` value | Actor |
 |---|---|---|
 | `"human"` | (any) | Human |
 | `"agent"` | `claude` / `codex` / `gemini` / `opencode` / `pi` | Reply-agent |
-| `"agent"` | `"agent"` (literal) or anything else | Main-agent (you, earlier) |
+| `"agent"` | other | You (earlier) |
 
-Most human comments have no reply-agent child — they're directives for you. Comments with a reply-agent child already had one agent turn; you may need to follow up (code change, further reply, etc.).
+Most human comments have no reply-agent child — they're directives for you. Comments with a reply-agent child already had one agent turn; you may need to follow up.
 
-For each thread, decide: code change | reply | close | defer. Reply by writing an annotation with `replies_to` set:
-
-```sh
-echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_xxx","body":"..."}' \
-  | tour annotate "$TOUR_ID" --batch -
-```
-
-Reply annotations inherit their parent's anchor, but the schema still requires `file`/`side`/`line_start` for write-time validation. See [EXAMPLES.md](EXAMPLES.md) for full pickup → action flows.
-
-## Lookup — quick start
+For each thread: code change | reply | close | defer. Reply with `replies_to`:
 
 ```sh
-tour list --json                  # find existing tours in this repo
-tour show "$TOUR_ID" --json       # agent-facing read of pinned diff + annotations (no TUI)
-tour serve "$TOUR_ID" --reply-agent claude &   # reopen the webapp; server prints the deep URL the user clicks
+echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_xxx","body":"..."}' | tour annotate "$TOUR_ID" --batch -
 ```
 
-Reuse an existing Tour for the same HEAD; create a new one for a different HEAD.
+Replies inherit the parent's anchor; `file`/`side`/`line_start` are still required at write time.
+
+## Lookup
+
+```sh
+tour list --json
+tour show "$TOUR_ID" --json
+tour serve "$TOUR_ID" --reply-agent claude &
+```
+
+Reuse for same HEAD; create a new Tour for a different HEAD.
 
 ## Install fallback
 
-If `tour` isn't on `PATH`:
-
 ```sh
-bunx tourdiff <command> ...        # bun
-npx -y tourdiff <command> ...      # npm
+bunx tourdiff <command>      # bun
+npx -y tourdiff <command>    # npm
 ```
 
-## Further reading
+## Reference
 
-- [REFERENCE.md](REFERENCE.md) — JSONL schema, full flag reference, reply-agent registry, edge cases
-- [EXAMPLES.md](EXAMPLES.md) — worked examples: narrative refactor tour, findings batch, pickup → reply, pickup → code change
+- [REFERENCE.md](REFERENCE.md) — JSONL schema, flag reference, reply-agent registry, edge cases
+- [EXAMPLES.md](EXAMPLES.md) — worked examples
