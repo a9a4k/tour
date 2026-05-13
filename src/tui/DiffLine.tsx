@@ -35,13 +35,13 @@ interface DiffLineProps {
   cursorActive?: boolean;
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
-  /** Hunk-header / metadata text (issue #259). When true, skip the
-   *  `<code>` syntax-highlight branch regardless of filetype and paint
-   *  the plain `<text>` in `theme.fg.muted`. GitHub renders the entire
-   *  `@@ ... @@ <function-context>` line in continuous fg.muted grey —
-   *  the banner is metadata, not code, and the syntax pipeline would
-   *  otherwise paint keywords in the function-context tail (e.g.
-   *  `import` red, `function` red) breaking the muted continuity. */
+  // Hunk-header / metadata text (issue #259). When true, skip the
+  // <code> syntax-highlight branch regardless of filetype and paint
+  // the plain <text> in theme.fg.muted. GitHub renders the entire
+  // `@@ ... @@ <function-context>` line in continuous fg.muted grey —
+  // the banner is metadata, not code, and the syntax pipeline would
+  // otherwise paint keywords in the function-context tail (e.g.
+  // `import` red, `function` red) breaking the muted continuity.
   mutedText?: boolean;
   width: string | number;
 }
