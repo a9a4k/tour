@@ -170,7 +170,7 @@ describe("<DiffRow>", () => {
     expect(code!.textContent).toBe("plain text");
   });
 
-  it("applies .is-cursor when isCursor is true; removes it when false", () => {
+  it("applies .is-cursor to the single code cell in unified layout when isCursor is true", () => {
     const c = mount(
       createElement(DiffRow, {
         kind: "context",
@@ -183,8 +183,11 @@ describe("<DiffRow>", () => {
         isInRange: false,
       }),
     );
+    let cell = c.querySelector(".tour-row-cell") as HTMLElement;
+    expect(cell.classList.contains("is-cursor")).toBe(true);
+    // Row container does not carry .is-cursor — the outline is per-cell now (#222).
     let row = c.querySelector(".tour-row") as HTMLElement;
-    expect(row.classList.contains("is-cursor")).toBe(true);
+    expect(row.classList.contains("is-cursor")).toBe(false);
 
     render(
       createElement(DiffRow, {
@@ -198,8 +201,88 @@ describe("<DiffRow>", () => {
         isInRange: false,
       }),
     );
+    cell = c.querySelector(".tour-row-cell") as HTMLElement;
+    expect(cell.classList.contains("is-cursor")).toBe(false);
     row = c.querySelector(".tour-row") as HTMLElement;
     expect(row.classList.contains("is-cursor")).toBe(false);
+  });
+
+  it("scopes the cursor outline to the additions-side cell only in split layout (#222)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: true,
+        cursorSide: "additions",
+        isInRange: false,
+      }),
+    );
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    expect(additionsCell.classList.contains("is-cursor")).toBe(true);
+    expect(deletionsCell.classList.contains("is-cursor")).toBe(false);
+    // The row container itself stays clean — outline doesn't span both halves.
+    const row = c.querySelector(".tour-row") as HTMLElement;
+    expect(row.classList.contains("is-cursor")).toBe(false);
+  });
+
+  it("scopes the cursor outline to the deletions-side cell only in split layout (#222)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: true,
+        cursorSide: "deletions",
+        isInRange: false,
+      }),
+    );
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    expect(deletionsCell.classList.contains("is-cursor")).toBe(true);
+    expect(additionsCell.classList.contains("is-cursor")).toBe(false);
+  });
+
+  it("falls back to the side-with-content for addition-only rows when cursorSide disagrees (#222)", () => {
+    // Edge case from the issue: an addition-only row in split layout has no
+    // deletions content. If cursorSide somehow points at deletions, scope to
+    // the side carrying content (additions).
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "addition",
+        layout: "split",
+        leftLineNumber: null,
+        rightLineNumber: 7,
+        leftText: "",
+        rightText: "new",
+        isCursor: true,
+        cursorSide: "deletions",
+        isInRange: false,
+      }),
+    );
+    const additionsCell = c.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsCell = c.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    expect(additionsCell.classList.contains("is-cursor")).toBe(true);
+    expect(deletionsCell.classList.contains("is-cursor")).toBe(false);
   });
 
   it("applies .in-range when isInRange is true", () => {

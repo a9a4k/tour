@@ -54,6 +54,12 @@ export interface DiffRowProps {
   tokensLeft?: TokenLines | null;
   tokensRight?: TokenLines | null;
   isCursor: boolean;
+  /** Which side carries the cursor outline (issue #222). Required in split
+   *  layout when `isCursor=true` to scope the outline to one cell instead of
+   *  the whole row. Unused in unified (the single rendered cell is the only
+   *  candidate). Falls back to the kind-implied side, then `preferredSide`,
+   *  then the side with content. */
+  cursorSide?: Side;
   isInRange: boolean;
   /** Informs which column reads the cursor outline in split layout when
    *  the row carries content on only one side. The component falls back
@@ -103,6 +109,33 @@ function symbolForColumn(
     : "";
 }
 
+// Picks which split-layout side reads `.is-cursor` on its `.tour-row-cell`
+// (issue #222). Resolution order: explicit `cursorSide` → kind-implied side
+// → `preferredSide` → side with content. The last fallback handles the
+// "addition-only / deletion-only row, cursorSide disagrees" edge case the
+// issue calls out: scope to the side that actually carries content.
+function resolveCursorSide(args: {
+  isCursor: boolean;
+  cursorSide?: Side;
+  kind: DiffRowKind;
+  preferredSide?: Side;
+  leftLineNumber: number | null;
+  rightLineNumber: number | null;
+}): Side | null {
+  if (!args.isCursor) return null;
+  const implied = impliedSideFromKind(args.kind);
+  const candidate =
+    args.cursorSide ?? implied ?? args.preferredSide ?? "additions";
+  const candidateHasContent =
+    candidate === "additions"
+      ? args.rightLineNumber != null
+      : args.leftLineNumber != null;
+  if (candidateHasContent) return candidate;
+  if (args.rightLineNumber != null) return "additions";
+  if (args.leftLineNumber != null) return "deletions";
+  return candidate;
+}
+
 function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
   const {
     kind,
@@ -114,15 +147,27 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     tokensLeft,
     tokensRight,
     isCursor,
+    cursorSide,
     isInRange,
     preferredSide,
     onClick,
     onMouseEnter,
   } = props;
 
+  // .is-cursor lives on the cursored .tour-row-cell, NOT on the row (issue
+  // #222) — split layout would otherwise outline both halves. Range tint
+  // stays row-wide (explicitly out-of-scope in the issue).
   const classes = ["tour-row"];
-  if (isCursor) classes.push("is-cursor");
   if (isInRange) classes.push("in-range");
+
+  const cursorOnSide = resolveCursorSide({
+    isCursor,
+    cursorSide,
+    kind,
+    preferredSide,
+    leftLineNumber,
+    rightLineNumber,
+  });
 
   const handleColumnClick = (side: Side) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -143,6 +188,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           text={leftText}
           tokens={tokensLeft}
           symbol={symbolForColumn(kind, "deletions", leftLineNumber)}
+          isCursor={cursorOnSide === "deletions"}
           onClick={onClick ? handleColumnClick("deletions") : undefined}
         />
         <Column
@@ -151,6 +197,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           text={rightText}
           tokens={tokensRight}
           symbol={symbolForColumn(kind, "additions", rightLineNumber)}
+          isCursor={cursorOnSide === "additions"}
           onClick={onClick ? handleColumnClick("additions") : undefined}
         />
       </div>
@@ -179,6 +226,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
         text={text}
         tokens={tokens}
         symbol={symbolForColumn(kind, sideForClick, lineNumber)}
+        isCursor={isCursor}
         onClick={onClick ? handleColumnClick(sideForClick) : undefined}
       />
     </div>
@@ -191,6 +239,7 @@ interface ColumnProps {
   text: string;
   tokens?: TokenLines | null;
   symbol: string;
+  isCursor: boolean;
   onClick?: (e: React.MouseEvent) => void;
 }
 
@@ -200,9 +249,12 @@ function Column({
   text,
   tokens,
   symbol,
+  isCursor,
   onClick,
 }: ColumnProps): React.JSX.Element {
   const html = lineNumber != null ? tokens?.get(lineNumber) : undefined;
+  const cellClasses = ["tour-row-cell"];
+  if (isCursor) cellClasses.push("is-cursor");
   return (
     <>
       <span
@@ -215,7 +267,7 @@ function Column({
       <span className="tour-row-symbol" data-side={side} aria-hidden="true">
         {symbol}
       </span>
-      <span className="tour-row-cell" data-side={side} onClick={onClick}>
+      <span className={cellClasses.join(" ")} data-side={side} onClick={onClick}>
         {html !== undefined ? (
           <span
             className="tour-row-code"

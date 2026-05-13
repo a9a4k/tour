@@ -130,8 +130,12 @@ export const FILE_GRID_CSS = `
     box-shadow: inset 3px 0 0 ${theme.fg.accent};
   }
 
-  /* Cursor outline — prop-driven (.is-cursor className). */
-  .tour-row.is-cursor {
+  /* Cursor outline — prop-driven (.is-cursor className). InteractiveRow
+     paints the class on the row (full-width); DiffRow paints it on the
+     cursored .tour-row-cell so split layout outlines only the cursored
+     half instead of spanning both sides. */
+  .tour-row.is-cursor,
+  .tour-row-cell.is-cursor {
     outline: 2px solid ${theme.fg.accent};
     outline-offset: -1px;
     border-radius: 4px;

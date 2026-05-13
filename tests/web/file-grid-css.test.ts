@@ -130,6 +130,10 @@ describe("FILE_GRID_CSS — cursor outline (prop, not attribute)", () => {
     expect(FILE_GRID_CSS).toContain(".tour-row.is-cursor");
   });
 
+  it("also keys the outline on .tour-row-cell.is-cursor so split-layout cursors scope to one side", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-row-cell.is-cursor");
+  });
+
   it("does NOT use the legacy [data-tour-cursor] attribute selector", () => {
     expect(FILE_GRID_CSS).not.toContain("data-tour-cursor");
   });

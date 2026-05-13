@@ -390,7 +390,7 @@ describe("<FileBlock> — interactive row activation", () => {
 // ---------------------------------------------------------------------------
 
 describe("<FileBlock> — isCursor flow", () => {
-  it("applies .is-cursor to the matching diff row for a RowAnchor cursor", () => {
+  it("applies .is-cursor to the matching diff row's cursored cell for a RowAnchor cursor (#222)", () => {
     const cursor: Cursor = {
       kind: "row",
       file: "x.ts",
@@ -400,10 +400,19 @@ describe("<FileBlock> — isCursor flow", () => {
     };
     const c = mount(createElement(FileBlock, defaultProps({ cursor })));
     const additionRow = c.querySelector('.tour-row[data-line-type="addition"]') as HTMLElement;
-    expect(additionRow.classList.contains("is-cursor")).toBe(true);
-    // Context row above does NOT carry the class.
+    // Outline is on the additions-side cell only, not the row container.
+    const additionsCell = additionRow.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsCell = additionRow.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    expect(additionsCell.classList.contains("is-cursor")).toBe(true);
+    expect(deletionsCell.classList.contains("is-cursor")).toBe(false);
+    expect(additionRow.classList.contains("is-cursor")).toBe(false);
+    // Context row above carries no cursor cue at all.
     const contextRow = c.querySelector('.tour-row[data-line-type="context"]') as HTMLElement;
-    expect(contextRow.classList.contains("is-cursor")).toBe(false);
+    expect(contextRow.querySelector(".tour-row-cell.is-cursor")).toBeNull();
   });
 
   it("does NOT match a diff row when the cursor's file differs", () => {
@@ -416,7 +425,29 @@ describe("<FileBlock> — isCursor flow", () => {
     };
     const c = mount(createElement(FileBlock, defaultProps({ cursor })));
     const additionRow = c.querySelector('.tour-row[data-line-type="addition"]') as HTMLElement;
-    expect(additionRow.classList.contains("is-cursor")).toBe(false);
+    expect(additionRow.querySelector(".tour-row-cell.is-cursor")).toBeNull();
+  });
+
+  it("scopes the outline to the deletions cell when cursor.side === 'deletions' (#222)", () => {
+    // Context row in split layout: both sides hold the same content. The
+    // cursor's `side` field decides which cell carries the cue.
+    const cursor: Cursor = {
+      kind: "row",
+      file: "x.ts",
+      lineNumber: 1,
+      side: "deletions",
+      preferredSide: "deletions",
+    };
+    const c = mount(createElement(FileBlock, defaultProps({ cursor })));
+    const contextRow = c.querySelector('.tour-row[data-line-type="context"]') as HTMLElement;
+    const additionsCell = contextRow.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    const deletionsCell = contextRow.querySelector(
+      '.tour-row-cell[data-side="deletions"]',
+    ) as HTMLElement;
+    expect(deletionsCell.classList.contains("is-cursor")).toBe(true);
+    expect(additionsCell.classList.contains("is-cursor")).toBe(false);
   });
 
   it("applies .is-cursor to the matching CardRow for a CardAnchor cursor", () => {
@@ -456,7 +487,7 @@ describe("<FileBlock> — isCursor flow", () => {
     expect(row.classList.contains("is-cursor")).toBe(true);
   });
 
-  it("removes .is-cursor when the cursor moves to a different row", () => {
+  it("removes .is-cursor from the prior cell when the cursor moves to a different row (#222)", () => {
     const cursor1: Cursor = {
       kind: "row",
       file: "x.ts",
@@ -474,9 +505,12 @@ describe("<FileBlock> — isCursor flow", () => {
     const c = mount(createElement(FileBlock, defaultProps({ cursor: cursor1 })));
     rerender(createElement(FileBlock, defaultProps({ cursor: cursor2 })));
     const additionRow = c.querySelector('.tour-row[data-line-type="addition"]') as HTMLElement;
-    expect(additionRow.classList.contains("is-cursor")).toBe(false);
+    expect(additionRow.querySelector(".tour-row-cell.is-cursor")).toBeNull();
     const contextRow = c.querySelector('.tour-row[data-line-type="context"]') as HTMLElement;
-    expect(contextRow.classList.contains("is-cursor")).toBe(true);
+    const cursoredCell = contextRow.querySelector(
+      '.tour-row-cell[data-side="additions"]',
+    ) as HTMLElement;
+    expect(cursoredCell.classList.contains("is-cursor")).toBe(true);
   });
 });
 

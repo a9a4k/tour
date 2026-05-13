@@ -401,6 +401,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp cursor outline no longer spans both columns in split layout
+  (issue #222).** After the Pierre cutover (PRD #212 slice 7), the
+  cursor outline was painted as `.is-cursor` on the diff row, which
+  spans the full file-grid width. In split layout this drew the
+  outline around both halves regardless of which side the cursor
+  logically belonged to. `<DiffRow>` now accepts a `cursorSide?:
+  Side` prop alongside `isCursor`, and emits `.is-cursor` on the
+  cursored `.tour-row-cell` (not the row). `<FileBlock>` derives
+  `cursorSide` from whichever side's `lineNumber` matched the
+  cursor's anchor. `<InteractiveRow>` is unchanged — its outline
+  stays full-width. The CSS rule keys on either `.tour-row.is-cursor`
+  or `.tour-row-cell.is-cursor`. Falls back to the side carrying
+  content when `cursorSide` disagrees (the addition-only /
+  deletion-only edge case). (#222)
+
 - **`syntax-highlight` no longer caches its pre-init fallback at the
   same key, so the first post-`ensureHighlighter()` call returns styled
   output (issue #214).** `tokenize()` cached every result, including the

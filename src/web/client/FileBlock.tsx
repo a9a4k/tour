@@ -303,9 +303,9 @@ function renderDiffRow(
   onRowClick: (anchor: RowClickAnchor) => void,
 ): React.ReactNode {
   const kind = diffRowKindFor(row.type);
-  // Cursor matches whichever side's lineNumber agrees. Check the cursor's
-  // active side first — h/l toggles that field so the outline follows the
-  // user's column.
+  // Cursor matches whichever side's lineNumber agrees. h/l toggles
+  // cursor.side, so the matched side determines which cell reads the
+  // outline (issue #222 — outline scopes to one side, not the whole row).
   const isCursorOnAdditions = rowCursorMatches(
     cursor,
     file.name,
@@ -319,6 +319,11 @@ function renderDiffRow(
     row.leftLineNumber,
   );
   const isCursor = isCursorOnAdditions || isCursorOnDeletions;
+  const cursorSide: Side | undefined = isCursorOnAdditions
+    ? "additions"
+    : isCursorOnDeletions
+      ? "deletions"
+      : undefined;
   const isInRange = !!(row.leftTinted || row.rightTinted);
   const handleClick = (side: Side) => {
     const lineNumber =
@@ -338,6 +343,7 @@ function renderDiffRow(
       tokensLeft={tokensLeft}
       tokensRight={tokensRight}
       isCursor={isCursor}
+      cursorSide={cursorSide}
       isInRange={isInRange}
       onClick={handleClick}
     />
