@@ -84,6 +84,44 @@ describe("countDiffStats (#228)", () => {
     // deletions: 1 (pure) + 1 (from change) = 2
     expect(countDiffStats(rows)).toEqual({ additions: 3, deletions: 2 });
   });
+
+  // The planner emits `type: "change"` for any row in a hunk that mixes
+  // adds + deletes, including new-file and deleted-file hunks where one
+  // side of the row has no content. The counter must inspect the row's
+  // shape (line numbers) rather than blindly counting both sides.
+  it("change row with no left content counts as addition only (new-file case)", () => {
+    const row: PlannedRow = {
+      kind: "diff-row",
+      type: "change",
+      leftLineNumber: null,
+      rightLineNumber: 1,
+      leftText: "",
+      rightText: "x",
+    };
+    expect(countDiffStats([row])).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("change row with no right content counts as deletion only (deleted-file case)", () => {
+    const row: PlannedRow = {
+      kind: "diff-row",
+      type: "change",
+      leftLineNumber: 1,
+      rightLineNumber: null,
+      leftText: "x",
+      rightText: "",
+    };
+    expect(countDiffStats([row])).toEqual({ additions: 0, deletions: 1 });
+  });
+
+  it("mixed change rows (paired + right-only + left-only) count each side independently", () => {
+    const rows: PlannedRow[] = [
+      { kind: "diff-row", type: "change", leftLineNumber: 1, rightLineNumber: 1, leftText: "a", rightText: "b" },
+      { kind: "diff-row", type: "change", leftLineNumber: null, rightLineNumber: 2, leftText: "", rightText: "c" },
+      { kind: "diff-row", type: "change", leftLineNumber: 3, rightLineNumber: null, leftText: "d", rightText: "" },
+    ];
+    // paired: +1A +1D; right-only: +1A; left-only: +1D
+    expect(countDiffStats(rows)).toEqual({ additions: 2, deletions: 2 });
+  });
 });
 
 describe("proportionSegments (#228)", () => {

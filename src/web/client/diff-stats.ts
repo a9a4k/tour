@@ -34,8 +34,12 @@ export function countDiffStats(rows: PlannedRow[]): DiffStats {
     if (row.type === "addition") additions += 1;
     else if (row.type === "deletion") deletions += 1;
     else if (row.type === "change") {
-      additions += 1;
-      deletions += 1;
+      // The planner emits `change` for any row in a hunk that mixes
+      // adds + deletes — including new-file / deleted-file hunks where
+      // one side has no content. Count each side only when it actually
+      // carries a line number.
+      if (row.rightLineNumber != null) additions += 1;
+      if (row.leftLineNumber != null) deletions += 1;
     }
   }
   return { additions, deletions };
