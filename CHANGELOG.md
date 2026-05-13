@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Split-layout diff rows render a 1px vertical rule between the
+  deletions and additions halves (issue #251).** Pre-fix the two halves
+  sat flush against each other with no visible separator — on context
+  blocks where both halves had identical content, the split layout read
+  as one continuous wide grid rather than two parallel columns. GitHub
+  paints a thin vertical rule down every row at the column boundary,
+  implemented as a `border-left` on the additions-side line-number
+  gutter cell. New rule in `file-grid-css.ts` keys on
+  `.tour-file-block[data-layout="split"] .tour-row-gutter[data-side="additions"]`
+  and declares `border-left: 1px solid ${theme.border.muted}` (#2f3742) —
+  visually nearly identical to GitHub's `rgba(61, 68, 77, 0.7)` blended
+  over `canvas.default`. Reuses an existing token. Unified-layout rows
+  are unaffected (selector qualifies on the layout attribute). Banner
+  rows and annotation cards span full width with no additions-side
+  gutter, so the rule naturally breaks at each banner — matches GitHub.
+  Clipped to the file-card's rounded corners by the existing
+  `.tour-file-outer` `overflow: hidden`. No DOM / prop change; no new
+  theme tokens.
+
+  Issue: #251
+
 - **Diff body wraps each file in a bordered, rounded card (issue #249).**
   Pre-fix the per-file `.tour-file-outer` div was a style-less
   passthrough — files in the diff body stacked edge-to-edge with no

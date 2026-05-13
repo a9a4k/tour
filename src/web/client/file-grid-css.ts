@@ -341,6 +341,22 @@ export const FILE_GRID_CSS = `
     background-color: ${theme.canvas.inset};
   }
 
+  /* Split-layout vertical rule (issue 251): GitHub paints a 1px translucent
+     border-left on the additions-side line-number gutter cell, producing a
+     continuous vertical rule down the column boundary between the deletions
+     and additions halves. Without it, the two halves blend visually on
+     context blocks. Solid theme.border.muted is close enough to GitHub's
+     rgba(61, 68, 77, 0.7) blended over canvas.default; reuses the existing
+     muted-border token. Scoped to [data-layout="split"] so unified-layout
+     rows do not paint a phantom line; clipped to the file-card's rounded
+     corners by the .tour-file-outer overflow:hidden (issue 249). Banner
+     rows (hunk-header, interactive-row) and annotation cards span the full
+     width without an additions-side gutter, so the rule naturally breaks at
+     each banner — matches GitHub. */
+  .tour-file-block[data-layout="split"] .tour-row-gutter[data-side="additions"] {
+    border-left: 1px solid ${theme.border.muted};
+  }
+
   /* Range tint: subtle accent fill painted per-side so split-layout rows
      scope the cue to the annotated half. The 3px accent inset stripe sits
      on the leftmost tinted gutter (.in-range-stripe). ADR 0008. */

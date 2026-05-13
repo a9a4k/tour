@@ -337,6 +337,45 @@ describe("FILE_GRID_CSS — sticky file header", () => {
   });
 });
 
+describe("FILE_GRID_CSS — split-layout vertical rule (#251)", () => {
+  // GitHub paints a thin 1px vertical rule down every row in split layout
+  // at the column boundary between the deletions side and the additions
+  // side — implemented as a `border-left` on the additions-side line-
+  // number gutter cell. Without it, the two halves blend visually and a
+  // reviewer scanning a split-layout diff has nothing to indicate "the
+  // left column shows the old version, the right column shows the new"
+  // except column position. New rule keys on `[data-layout="split"]` +
+  // `.tour-row-gutter[data-side="additions"]` so unified-layout rows do
+  // not paint a phantom line. Color: `theme.border.muted` (#2f3742),
+  // solid, no alpha — visually nearly identical to GitHub's
+  // `rgba(61, 68, 77, 0.7)` over canvas.default.
+
+  const ruleMatch = FILE_GRID_CSS.match(
+    /\.tour-file-block\[data-layout="split"\]\s+\.tour-row-gutter\[data-side="additions"\]\s*\{([^}]*)\}/,
+  );
+  const ruleBody = ruleMatch?.[1] ?? "";
+
+  it("declares a rule keyed on split-layout file-block + additions-side gutter", () => {
+    expect(ruleMatch).toBeTruthy();
+    expect(ruleBody).not.toBe("");
+  });
+
+  it("paints a 1px solid border-left in theme.border.muted (#2f3742)", () => {
+    expect(ruleBody).toMatch(
+      new RegExp(`border-left:\\s*1px\\s+solid\\s+${theme.border.muted}`, "i"),
+    );
+  });
+
+  it("does NOT paint the rule on unified-layout rows (selector qualifies on [data-layout=\"split\"])", () => {
+    // Sanity check: the rule body must sit underneath the split-layout
+    // file-block selector. A bare `.tour-row-gutter[data-side="additions"]`
+    // rule would leak into unified-layout rows.
+    expect(FILE_GRID_CSS).not.toMatch(
+      /(^|\})\s*\.tour-row-gutter\[data-side="additions"\]\s*\{/,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — file-card boundary (#249)", () => {
   // GitHub wraps each file in a bordered, rounded card with vertical spacing
   // between cards — the single biggest navigation cue in a multi-file PR
