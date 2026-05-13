@@ -26,7 +26,8 @@ interface TopHeaderTuiProps {
 // Single-line header per parent PRD #91 / #93, with a row-2 split for the
 // selected-path slot. Two flex children inside row-1 — left cluster
 // (hamburger + title + sources) anchored to the left edge, right cluster
-// (pill + layout toggle) pushed right via marginLeft="auto".
+// (tour-level diff stats + annotation-nav pill + layout toggle, in that
+// reading order per issue #277) pushed right via marginLeft="auto".
 // Row-1 keeps `flexWrap="wrap"` as a safety net for sub-100-col terminals
 // where row-1 itself can't fit. Title and sources clip with truncate +
 // maxWidth so a long title can never push controls off-screen.
@@ -75,15 +76,15 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
           </box>
         </box>
         <box flexDirection="row" alignItems="center" marginLeft="auto">
+          <TourStatsIndicatorTui
+            additions={tourStats.additions}
+            deletions={tourStats.deletions}
+          />
           <SequencePillTui
             idx={currentAnnotationIdx}
             total={topLevelTotal}
             onPrev={onPrevAnnotation}
             onNext={onNextAnnotation}
-          />
-          <TourStatsIndicatorTui
-            additions={tourStats.additions}
-            deletions={tourStats.deletions}
           />
           <box width={1} />
           <LayoutToggleTui layout={layout} onSplit={onSplit} onUnified={onUnified} />
@@ -149,16 +150,17 @@ interface TourStatsIndicatorTuiProps {
 // when both counts are zero (a degenerate empty-diff tour would otherwise
 // pay a `+0 -0` cost for no signal). Text-only by design; no proportion
 // bar — the TUI is text-only anyway and the count itself carries the
-// signal. A left-padding spacer keeps a single-column gap from the
-// SequencePill's `]`.
+// signal. A trailing single-column spacer keeps a gap from the
+// SequencePill's `[` that immediately follows (issue #277 reorder placed
+// the indicator at the leading edge of the right cluster).
 function TourStatsIndicatorTui({ additions, deletions }: TourStatsIndicatorTuiProps) {
   if (additions <= 0 && deletions <= 0) return null;
   return (
     <box flexDirection="row">
-      <box width={1} />
       {additions > 0 ? <text fg={theme.fg.success}>{`+${additions}`}</text> : null}
       {additions > 0 && deletions > 0 ? <text>{" "}</text> : null}
       {deletions > 0 ? <text fg={theme.fg.danger}>{`-${deletions}`}</text> : null}
+      <box width={1} />
     </box>
   );
 }

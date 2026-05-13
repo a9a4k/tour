@@ -1350,15 +1350,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           </span>
         </div>
         <div className="tour-header-right">
+          <TourStatsIndicator
+            additions={tourStats.additions}
+            deletions={tourStats.deletions}
+          />
           <SequencePill
             idx={pillIdx}
             total={view.nav.navTotal}
             onPrev={() => navigateBy(-1)}
             onNext={() => navigateBy(1)}
-          />
-          <TourStatsIndicator
-            additions={tourStats.additions}
-            deletions={tourStats.deletions}
           />
           <LayoutToggle layout={layout} onChange={setLayoutChoice} />
         </div>
