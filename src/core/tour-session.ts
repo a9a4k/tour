@@ -258,10 +258,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "cursor.clear": {
       if (state.cursor === null) return { state, intents: NO_INTENTS };
-      const intents: Intent[] = [];
-      if (isCardAnchor(state.cursor)) {
-        intents.push({ type: "mirrorAnnUrl", annotationId: null });
-      }
+      const intents: Intent[] = isCardAnchor(state.cursor)
+        ? [{ type: "mirrorAnnUrl", annotationId: null }]
+        : NO_INTENTS;
       return { state: { ...state, cursor: null }, intents };
     }
 
@@ -302,42 +301,44 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (state.cursor !== null) return { state, intents: NO_INTENTS };
       return setCursor(state, action.anchor);
 
-    case "expansion.expand": {
-      const next = expandBoundary(
-        state.expansion,
-        { file: action.file, ref: action.ref },
-        action.mode,
-        action.gapSize,
-        action.direction,
+    case "expansion.expand":
+      return withExpansion(
+        state,
+        expandBoundary(
+          state.expansion,
+          { file: action.file, ref: action.ref },
+          action.mode,
+          action.gapSize,
+          action.direction,
+        ),
       );
-      if (next === state.expansion) return { state, intents: NO_INTENTS };
-      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
-    }
 
-    case "expansion.expandTop": {
-      const next = expansionExpandTop(state.expansion, action.file, action.mode, action.gapSize);
-      if (next === state.expansion) return { state, intents: NO_INTENTS };
-      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
-    }
+    case "expansion.expandTop":
+      return withExpansion(
+        state,
+        expansionExpandTop(state.expansion, action.file, action.mode, action.gapSize),
+      );
 
-    case "expansion.expandBottom": {
-      const next = expansionExpandBottom(state.expansion, action.file, action.mode, action.gapSize);
-      if (next === state.expansion) return { state, intents: NO_INTENTS };
-      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
-    }
+    case "expansion.expandBottom":
+      return withExpansion(
+        state,
+        expansionExpandBottom(state.expansion, action.file, action.mode, action.gapSize),
+      );
 
-    case "expansion.expandFile": {
-      const next = expansionExpandFile(state.expansion, action.file);
-      if (next === state.expansion) return { state, intents: NO_INTENTS };
-      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
-    }
+    case "expansion.expandFile":
+      return withExpansion(state, expansionExpandFile(state.expansion, action.file));
 
-    case "expansion.seedFromOrphans": {
-      const next = expansionSeedFromOrphans(state.expansion, action.windows);
-      if (next === state.expansion) return { state, intents: NO_INTENTS };
-      return { state: { ...state, expansion: next }, intents: NO_INTENTS };
-    }
+    case "expansion.seedFromOrphans":
+      return withExpansion(state, expansionSeedFromOrphans(state.expansion, action.windows));
   }
+}
+
+// Shared expansion-slice writer: every `expansion.*` action delegates to a
+// pure helper in `core/expansion-state.ts` and is otherwise structurally
+// identical — same-ref short-circuit, no intents, slice-only mutation.
+function withExpansion(state: TourSessionState, next: ExpansionState): ReduceResult {
+  if (next === state.expansion) return { state, intents: NO_INTENTS };
+  return { state: { ...state, expansion: next }, intents: NO_INTENTS };
 }
 
 // Shared `cursor.set` / `cursor.materialize` transition: writes the slice
