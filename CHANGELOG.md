@@ -8,6 +8,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: split-layout renders a vertical `│` rule between the
+  deletions and additions halves (issue #258, mirrors webapp #251).**
+  Pre-fix the two halves sat flush against each other with no visible
+  separator. On context blocks where both halves carried identical
+  content, the split layout read as one continuous wide grid rather
+  than two parallel columns; with no cue at the column boundary, the
+  eye lost the "this is the boundary between old and new" anchor.
+  Webapp shipped a 1px `border.muted` vertical rule down every split
+  row in #251. The TUI's terminal-native equivalent is a `│` (U+2502
+  BOX DRAWINGS LIGHT VERTICAL) glyph painted in `theme.border.muted`
+  (`#2f3742` — same token webapp picked for parity). The divider is
+  a 1-cell-wide `<box width={1} alignSelf="stretch" flexShrink={0}>`
+  containing a `<text fg={theme.border.muted}>│</text>`, inserted
+  between the two 50%-width half columns in the split-layout row
+  composition. Default `flexShrink=1` on the halves absorbs the 1-
+  cell divider into the 100% row width with no visible alignment
+  shift. The lighter LIGHT VERTICAL weight (vs the HEAVY `┃` the
+  file-block uses for its outer border) keeps the inner divider from
+  competing for attention with the outer box. Banner rows (hunk-
+  header, interactive: gap / boundary / collapsed-file) take the
+  full-width render branch and skip the split composition entirely,
+  so the rule naturally breaks at each banner — matches GitHub's
+  behaviour. Annotation card rows in split layout keep their existing
+  two-half composition with the card slotted into one side; the
+  divider is not threaded through the annotation render path, so the
+  card visually breaks the rule where it occupies — acceptable per
+  the issue brief because the card is a different content kind and
+  the break correctly signals "this is a comment, not code". Cursor
+  row-fill composition is unchanged: the cursor's `bg.cursorRow.tui`
+  fills both halves' DiffLine cells but does not extend across the
+  divider's 1-cell column, so the divider remains visible through
+  cursored rows. Unified layout untouched — the change is layout-
+  aware (the divider only renders in the `layout === "split"`
+  branch). No planner / annotation / cursor / expansion / syntax-
+  highlight change; no theme change (reuses `theme.border.muted`).
+
+  Issue: #258
+
 - **TUI: cursor materialises on the first top-level annotation on tour
   load (issue #256).** Pre-fix, opening a TUI tour with at least one
   annotation left the cursor null and the diff pane parked at
