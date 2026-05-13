@@ -78,6 +78,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session view foundation: pure projection from `(bundle, state)`
+  to the rendered shape both surfaces consume (issue #243, PRD #242).**
+  New `core/tour-session-view.ts` exports a `TourSessionView`
+  discriminated union mirroring `TourBundle`'s `ok` / `snapshot-lost`
+  split, layered into `bundle` / `nav` / `rows` / `tree` / `cursor`
+  namespaces, plus `deriveTourSessionView(bundle, state)` (pure, no
+  React) and a `useTourSessionView(store, bundle)` hook that runs one
+  `useMemo` per namespace so granular invalidation survives the move
+  in slices 2 + 3. The view's `cursor.anchor` is the **validated**
+  cursor — `state.cursor` pruned against the live `flatRowsList` (a
+  CardAnchor to a deleted annotation resolves to null) — so the
+  `validateCursor` call that lives inline in both Apps' useEffects
+  is now derivable from one source. `core/send-target.ts` is the new
+  canonical home for the `SendTarget` type + latest-human-leaf rule;
+  `tui/send-target.ts` becomes a thin re-export so existing callers
+  keep working until slice 2 migrates them through
+  `view.nav.sendTarget`. No surface wiring — both `tui/app.tsx` and
+  `web/client/App.tsx` are unchanged at the end of this slice; the
+  verifiability story is the pure-data test battery (snapshot-lost
+  short-circuit, killer cursor-validation fixture for a stale
+  CardAnchor, namespace shape assertions, watcher-reload
+  preservation). `CONTEXT.md` Language section gains a `Tour-session
+  view` entry paired with `Tour-session` and `Tour bundle`.
+
+  Issue: #243 · PRD: #242
+
 - **TUI thins composer + folds + layout through the Tour-session store
   (issue #237).** The TUI's local `useState`s for `composer`,
   `collapsedOverrides`, `collapsedFolders`, `layout`, and the post-submit
