@@ -8,6 +8,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: cursor materialises on the first top-level annotation on tour
+  load (issue #256).** Pre-fix, opening a TUI tour with at least one
+  annotation left the cursor null and the diff pane parked at
+  `scrollTop = 0` — the first annotation was off-screen unless it
+  happened to sit near the top of the first file, and the user had to
+  scroll manually or press `n`/`j` to materialise the cursor and
+  trigger a scroll. ADR 0011's "lazy materialization" rule (2026-05-10)
+  was justified by surface parity with the webapp and a "land on first
+  annotation" eye-catcher, but ADR 0022's URL-anchored mount broke the
+  parity rationale (the webapp now materialises the cursor at `?ann=`
+  or the first top-level annotation on mount unconditionally), and the
+  eye-catcher only delivered when the first annotation sat inside the
+  initial viewport. Fix dispatches `cursor.materialize` in the App-
+  shell's existing tour-open `useEffect`, seeded by `initialCursor`
+  with the live `topLevel` + `flatRowsList`. Same first-paint-per-tour
+  guard (`seededTourIdRef` on `bundle.tour.id`) used by the tree-
+  reveal side effect — `bundle.refreshed` does not re-seed, so user
+  motion before a watcher reload survives. Empty tours and snapshot-
+  lost bundles keep the lazy-materialization rule (no target to seed
+  on; cursor stays null). ADR 0011 carries a new revision entry
+  reverting the on-load rule for the non-empty path.
+
+  Issue: #256
+
 - **TUI: top-level annotation submit no longer silently fails — diverged
   `WriteAnnotationInput` types and unrendered `errored` composer state fixed
   (issue #254).** Pre-fix `WriteAnnotationInput` was declared twice: once in
