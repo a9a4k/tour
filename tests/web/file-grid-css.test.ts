@@ -96,6 +96,74 @@ describe("FILE_GRID_CSS — line-type backgrounds (two-tone, #221)", () => {
   });
 });
 
+describe("FILE_GRID_CSS — gutter+symbol foreground on tinted rows (#248)", () => {
+  // GitHub renders the line-number gutter + +/- symbol in `fg.default`
+  // (white) on tinted addition / deletion / change-addition /
+  // change-deletion rows so the digits stay legible against the bright
+  // success-range / danger-range rail. The base `.tour-row-gutter` /
+  // `.tour-row-symbol` rule mutes those cells via fg.muted; the new
+  // [data-line-type] selectors override the color on the four tinted
+  // row kinds. Context rows have no [data-line-type] background rule,
+  // so the new color rule also doesn't match — the base muted color
+  // stands. The four addition / deletion / change-addition /
+  // change-deletion combos × { gutter, symbol } produce eight covered
+  // selector × target pairs.
+
+  it("paints the four tinted [data-line-type] × { gutter, symbol } combos in theme.fg.default", () => {
+    // `change-deletion .tour-row-symbol` is a closing selector in both
+    // the existing dangerRange background-color rule and the new
+    // foreground rule, so collect every rule body keyed on it and
+    // assert one of them is the color rule.
+    const bodies = Array.from(
+      FILE_GRID_CSS.matchAll(
+        /\.tour-row\[data-line-type="change-deletion"\] \.tour-row-symbol\s*\{([^}]*)\}/g,
+      ),
+      (m) => m[1],
+    );
+    expect(bodies.length).toBeGreaterThanOrEqual(2);
+    const colorBodies = bodies.filter((b) =>
+      new RegExp(`color:\\s*${theme.fg.default}`, "i").test(b),
+    );
+    expect(colorBodies.length).toBe(1);
+  });
+
+  it("groups all four tinted [data-line-type] × { gutter, symbol } selectors into a single color rule", () => {
+    // Eight selector parts (4 line types × 2 cells) — same selector
+    // grouping shape as the two-tone background rules so the foreground
+    // / background rule pair stays parallel.
+    const expected = [
+      '.tour-row[data-line-type="addition"] .tour-row-gutter',
+      '.tour-row[data-line-type="addition"] .tour-row-symbol',
+      '.tour-row[data-line-type="change-addition"] .tour-row-gutter',
+      '.tour-row[data-line-type="change-addition"] .tour-row-symbol',
+      '.tour-row[data-line-type="deletion"] .tour-row-gutter',
+      '.tour-row[data-line-type="deletion"] .tour-row-symbol',
+      '.tour-row[data-line-type="change-deletion"] .tour-row-gutter',
+      '.tour-row[data-line-type="change-deletion"] .tour-row-symbol',
+    ];
+    for (const sel of expected) {
+      expect(FILE_GRID_CSS).toContain(sel);
+    }
+  });
+
+  it("does NOT override .tour-row-gutter base color (context rows stay muted)", () => {
+    // The base rule on `.tour-row-gutter` still resolves to fg.muted —
+    // the new rule layers on top of it only when [data-line-type]
+    // matches one of the four tinted kinds. Context rows have no
+    // matching [data-line-type] background rule, so the base muted
+    // color stands.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter\s*\{[^}]*color:\s*#9198a1/i,
+    );
+  });
+
+  it("does NOT override .tour-row-symbol base color (context rows stay muted)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-symbol\s*\{[^}]*color:\s*#9198a1/i,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — line-number polish (#221)", () => {
   it("right-aligns line numbers", () => {
     expect(FILE_GRID_CSS).toMatch(

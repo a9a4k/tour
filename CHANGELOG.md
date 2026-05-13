@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Diff-row gutter line numbers + `+` / `-` symbol promote to
+  `fg.default` on tinted rows (issue #248).** Companion to #247: with
+  the gutter+symbol now wearing the brighter range tint, the previously
+  uniform `fg.muted` text color produced low-contrast grey digits on a
+  saturated green/red rail. GitHub's pattern is white text on tinted
+  rows (`addition` / `deletion` / `change-addition` / `change-deletion`)
+  and muted text on plain-canvas context rows; color discrimination is
+  carried by the background, not the foreground. New
+  `[data-line-type]` × `{ .tour-row-gutter, .tour-row-symbol }` rule
+  in `file-grid-css.ts` overrides the base muted color to
+  `theme.fg.default` on the four tinted row kinds; context rows fall
+  through to the unchanged base rule. No new tokens, no DOM/prop
+  change.
+
+  Issue: #248
+
 - **Diff-row two-tone tint flipped to GitHub's empirical direction
   (issue #247).** The line-number gutter + `+`/`-` symbol cells now wear
   the brighter range tint (alpha .30 of fg.success / fg.danger); the

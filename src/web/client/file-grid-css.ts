@@ -283,6 +283,24 @@ export const FILE_GRID_CSS = `
     background-color: ${theme.bg.dangerCell.web};
   }
 
+  /* Tinted-row foreground (issue 248): on rows whose gutter+symbol
+     wear the bright range tint, the line-number digits and +/- glyph
+     promote from fg.muted to fg.default so the text stays legible
+     against the saturated rail. Context rows have no [data-line-type]
+     background rule, so this selector also doesn't match — they keep
+     the base muted color. Mirrors GitHub's pattern (white text on
+     tinted rows, muted on context). */
+  .tour-row[data-line-type="addition"] .tour-row-gutter,
+  .tour-row[data-line-type="addition"] .tour-row-symbol,
+  .tour-row[data-line-type="change-addition"] .tour-row-gutter,
+  .tour-row[data-line-type="change-addition"] .tour-row-symbol,
+  .tour-row[data-line-type="deletion"] .tour-row-gutter,
+  .tour-row[data-line-type="deletion"] .tour-row-symbol,
+  .tour-row[data-line-type="change-deletion"] .tour-row-gutter,
+  .tour-row[data-line-type="change-deletion"] .tour-row-symbol {
+    color: ${theme.fg.default};
+  }
+
   /* Comment-affordance pointer on annotatable diff lines. */
   .tour-row[data-line-type="addition"],
   .tour-row[data-line-type="deletion"],
