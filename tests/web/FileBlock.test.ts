@@ -671,7 +671,10 @@ describe("<FileBlock> — interactive row activation", () => {
     expect(actions[0].kind === "expand" ? actions[0].count : 0).toBeGreaterThan(0);
   });
 
-  it("forwards hunk-separator activation with direction 'both' and the hunk index", () => {
+  it("clicking the hunk-header banner is a no-op — dispatches no expand action (#272)", () => {
+    // PRD #270 Slice 2 / issue #272: the banner becomes display-only.
+    // The directional expand buttons (Slice 1) own the affordance; the
+    // banner text is no longer a click target.
     const actions: ExpandAction[] = [];
     const rows: PlannedRow[] = [
       { kind: "hunk-header", header: "@@ -33,7 +33,7 @@", hunkIndex: 2, gapAbove: 8 },
@@ -687,12 +690,7 @@ describe("<FileBlock> — interactive row activation", () => {
     act(() => {
       row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(actions[0]).toMatchObject({
-      kind: "expand",
-      file: "x.ts",
-      boundaryRef: 2,
-      direction: "both",
-    });
+    expect(actions).toEqual([]);
   });
 
   it("renders hunk-header rows through <HunkHeaderBanner> with parsed range + context (#223)", () => {

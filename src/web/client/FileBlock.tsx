@@ -267,7 +267,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
               return [node];
             }
             if (row.kind === "hunk-header") {
-              return [renderHunkHeader(row, idx, file, cursor, onDispatchExpand)];
+              return [renderHunkHeader(row, idx, file, cursor)];
             }
             if (row.kind === "interactive") {
               return [renderInteractive(row, idx, file, cursor, onDispatchExpand)];
@@ -426,12 +426,20 @@ function renderDiffRow(
   );
 }
 
+// PRD #270 Slice 2 / issue #272: the hunk-header banner is display-only —
+// no click / keyboard dispatch. The directional expand affordance is
+// owned by the `<InteractiveRow>` subkinds (`expand-up` / `expand-down` /
+// `expand-all`) emitted by `expandRowsForGap` (Slice 1); the banner
+// itself is rendered for wayfinding only. `cursor` is still passed
+// through so the `.is-cursor` outline rule applies structurally if the
+// cursor were ever placed on the banner — in practice
+// `flatRows` no longer promotes hunk-header rows to interactive
+// flat-rows, so the cursor never walks here.
 function renderHunkHeader(
   row: HunkHeaderRow,
   idx: number,
   file: BundleFile,
   cursor: Cursor | null,
-  onDispatchExpand: (action: ExpandAction) => void,
 ): React.ReactNode {
   // hunkIndex === 0 → boundary-top (file-top), boundaryRef "top".
   // hunkIndex  >  0 → hunk-separator, boundaryRef = hunkIndex.
@@ -440,25 +448,13 @@ function renderHunkHeader(
   const boundaryRef: BoundaryRef = row.hunkIndex === 0 ? "top" : row.hunkIndex;
   const direction = hunkHeaderDirection(row.hunkIndex);
   const isCursor = interactiveCursorMatches(cursor, file.name, subKind, boundaryRef);
-  const onActivate = (count: number) => {
-    if (row.gapAbove <= 0) return;
-    onDispatchExpand({
-      kind: "expand",
-      file: file.name,
-      boundaryRef,
-      direction,
-      count,
-    });
-  };
   return (
     <HunkHeaderBanner
       key={`hh-${idx}`}
       header={row.header}
       boundaryRef={boundaryRef}
       direction={direction}
-      gapAbove={row.gapAbove}
       isCursor={isCursor}
-      onActivate={onActivate}
     />
   );
 }

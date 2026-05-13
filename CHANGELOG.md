@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.0.0] — 2026-05-12
 
+### Changed
+
+- **Web: hunk-header banner is now display-only; the `#252` `::before`
+  cue is removed (issue #272, PRD #270 Slice 2).** Slice 1 (issue #271)
+  introduced explicit directional `expand-up` / `expand-down` /
+  `expand-all` interactive rows as the cursor-walkable affordance for
+  revealing hidden context. Slice 2 retires the now-redundant click
+  target on the `<HunkHeaderBanner>` itself: the component drops its
+  `onClick`, `onKeyDown`, `role="button"`, `tabIndex={0}`, and
+  `onActivate` prop, becoming a pure display component that renders
+  the parsed range segment (`@@ -X,Y +Z,W @@`) and function-context
+  tail only. The `.tour-hunk-header::before` rule (the saturated-blue
+  44px cue with a `…` glyph added in #252) is removed from
+  `file-grid-css.ts`; `position: relative` and the 60px left-padding
+  carve-out revert to the pre-#252 16px symmetric inset; `cursor:
+  pointer` is dropped. `flatRows` no longer promotes hunk-header
+  planner rows to interactive cursor stops — the cursor steps over
+  the banner with `j` / `k` and lands on the next interactive row
+  (typically a directional expand button or a diff row). The `data-
+  subkind` / `data-direction` / `data-boundary-ref` attributes remain
+  for selector-based lookups; the `.is-cursor` outline rule is
+  retained structurally even though the cursor no longer walks here.
+
+  Issue: #272
+
 ### Added
 
 - **Web: GitHub-style directional + Expand-All buttons replace the
