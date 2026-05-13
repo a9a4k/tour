@@ -243,22 +243,29 @@ function App(props: AppProps) {
     if (next === null) store.dispatch({ type: "cursor.clear" });
     else store.dispatch({ type: "cursor.set", anchor: next });
   };
-  // Dispatch one `folds.toggleFolder` per currently-collapsed ancestor in
-  // `folders` against the supplied snapshot. The snapshot — usually
+  // Reveal a file's collapsed ancestors (via `folds.toggleFolder`
+  // dispatches against the snapshot) and return the file's post-reveal
+  // row index — null if the file isn't in the tree. The snapshot —
   // `collapsedFolders` from this render or the intent listener's
-  // `collapsedFoldersRef` — is the consistent view of "which ancestors
-  // need expanding". Each toggle is idempotent on a per-path basis, so a
-  // racing dispatch in between can only fold-then-unfold, never lose a
-  // user-requested reveal.
-  const revealFolderAncestors = (
-    folders: Iterable<string>,
+  // `collapsedFoldersRef` — is the consistent "which ancestors need
+  // expanding" view; each per-path toggle is idempotent so a racing
+  // dispatch can only fold-then-unfold, never lose a user-requested
+  // reveal. The rowIdx is computed against the same snapshot —
+  // `revealAndLocate` re-derives the post-reveal flatten internally.
+  const revealAndLocateFile = (
+    file: string,
+    tree: Parameters<typeof revealAncestors>[0],
     snapshot: ReadonlySet<string>,
-  ) => {
-    for (const path of folders) {
+    counts: Record<string, number>,
+  ): number | null => {
+    const ancestors = revealAncestors(tree, file);
+    for (const path of ancestors) {
       if (snapshot.has(path)) {
         store.dispatch({ type: "folds.toggleFolder", path });
       }
     }
+    const located = revealAndLocate(tree, snapshot, counts, file);
+    return located ? located.rowIdx : null;
   };
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
@@ -514,11 +521,9 @@ function App(props: AppProps) {
       if (liveTopLevel.length === 0) return;
       const first = liveTopLevel[0];
       setSidebarFocused(false);
-      const ancestors = revealAncestors(tree, first.file);
-      revealFolderAncestors(ancestors, collapsedFolders);
-      const located = revealAndLocate(tree, collapsedFolders, annotationCounts, first.file);
-      if (!located) return;
-      setSelectedRowIdx(located.rowIdx);
+      const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, annotationCounts);
+      if (rowIdx === null) return;
+      setSelectedRowIdx(rowIdx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTopLevel, liveTour.id]);
@@ -577,12 +582,9 @@ function App(props: AppProps) {
   }, [cursor, liveAnnotations]);
   useEffect(() => {
     if (!cursorFile) return;
-    const ancestors = revealAncestors(tree, cursorFile);
-    revealFolderAncestors(ancestors, collapsedFolders);
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, cursorFile);
-    if (!located) return;
-    if (located.rowIdx !== safeRowIdx) {
-      setSelectedRowIdx(located.rowIdx);
+    const rowIdx = revealAndLocateFile(cursorFile, tree, collapsedFolders, annotationCounts);
+    if (rowIdx !== null && rowIdx !== safeRowIdx) {
+      setSelectedRowIdx(rowIdx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursorFile]);
@@ -836,17 +838,14 @@ function App(props: AppProps) {
         return;
       }
       if (intent.type === "revealSidebarFile") {
-        const ancestors = revealAncestors(treeRef.current, intent.file);
-        revealFolderAncestors(ancestors, collapsedFoldersRef.current);
-        const located = revealAndLocate(
+        const rowIdx = revealAndLocateFile(
+          intent.file,
           treeRef.current,
           collapsedFoldersRef.current,
           annotationCountsRef.current,
-          intent.file,
         );
-        if (!located) return;
-        if (located.rowIdx !== safeRowIdxRef.current) {
-          setSelectedRowIdx(located.rowIdx);
+        if (rowIdx !== null && rowIdx !== safeRowIdxRef.current) {
+          setSelectedRowIdx(rowIdx);
         }
         return;
       }
@@ -949,11 +948,9 @@ function App(props: AppProps) {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
     // subsequent j/k move the diff cursor, not the file row.
     setSidebarFocused(false);
-    const ancestors = revealAncestors(tree, ann.file);
-    revealFolderAncestors(ancestors, collapsedFolders);
-    const located = revealAndLocate(tree, collapsedFolders, annotationCounts, ann.file);
-    if (located && located.rowIdx !== safeRowIdx) {
-      setSelectedRowIdx(located.rowIdx);
+    const rowIdx = revealAndLocateFile(ann.file, tree, collapsedFolders, annotationCounts);
+    if (rowIdx !== null && rowIdx !== safeRowIdx) {
+      setSelectedRowIdx(rowIdx);
     }
     store.dispatch({ type: "folds.setOverride", file: ann.file, value: false });
     // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
