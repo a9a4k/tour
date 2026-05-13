@@ -44,6 +44,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Parity test harness: render canonical Tours through both renderers
+  + compare (PRD #212 slice 6).** New `tests/web/parity-render.test.ts`
+  is the merge gate for the Pierre → Tour-owned web row renderer
+  cutover (next slice). For every canonical fixture under
+  `tests/web/parity-fixtures/` (single-small-file, many-files,
+  hidden-context, orphan-window-annotations, file-renames,
+  binary-files, classifier-collapsed, stacked-annotations,
+  deep-link-ann, layout-split-and-unified, expansion-applied), the
+  harness parses the patch via `parsePatchFiles`, computes the
+  planner's `PlannedRow[]`, mounts the new `<FileBlock>` (#218) per
+  file in happy-dom, renders Pierre's SSR HTML per file via
+  `@pierre/diffs/ssr`'s `preloadFileDiff` / `preloadMultiFileDiff`,
+  extracts normalized row sequences from both DOMs, and asserts (a)
+  the new-renderer DOM equals the planner expected sequence row-for-
+  row (full parity including annotations + interactive rows), and (b)
+  the new-renderer's Pierre-visible projection equals Pierre's SSR
+  diff-row backbone (skipped for fixtures whose Pierre-side semantics
+  diverge by design — classifier-collapsed files, fixtures with
+  expansion state, and fixtures supplying full file contents where
+  Pierre's `MultiFileDiff` re-computes hunk boundaries). Normalization
+  strips React-generated keys, shadow-DOM vs light-DOM container
+  differences, class strings, and syntax-highlighting span colors;
+  preserves row kind, line numbers per side, plain-text row content,
+  hunk-header text, and annotation anchor row. After the cutover
+  deletes Pierre, the harness deletes itself.
+
+  Issue: #219 · PRD: #212 · ADR: 0024
+
 - **`<FileBlock>`: per-file React component owning the grid, lazy
   highlight, planner walk, and row dispatch (PRD #212 slice 5).** New
   `src/web/client/FileBlock.tsx` exports a `React.memo`'d `<FileBlock>`
