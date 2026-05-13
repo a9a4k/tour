@@ -8,6 +8,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: two-tone tint within a +/- row — bright gutter rail + soft
+  code wash (issue #262, parity with webapp #221 + #247).** Pre-fix,
+  `DiffLine` computed one `diffColor` from the row's diff kind and
+  painted it across both the gutter and content cells: addition rows
+  used `theme.bg.successRange.tui` (`#1c4328`) everywhere; deletion
+  rows used `theme.bg.dangerRange.tui` (`#542426`) everywhere. The
+  webapp's post-#247 pattern paints the brighter `*Range` rail on
+  the gutter + symbol column and the softer `*Cell` wash on the
+  code column — the bright rail anchors the vertical scan and the
+  softer wash keeps syntax-highlighted tokens readable. The TUI
+  inherits the same theme tokens (`bg.successCell.tui` `#142a20`,
+  `bg.dangerCell.tui` `#24171c`) but was applying only the range
+  value. `diffBgColor` is replaced by `diffBgTones`, which returns
+  `{ gutter, content }` per row kind. `DiffLine` routes the gutter
+  side to `gutterBg`'s diff-bg fallback and the content side to
+  `contentBg`'s. All composition rules stay (cursor row-fill >
+  annotation tint > +/- bg > empty-side neutral fill); only the
+  diff-bg layer is split. No theme change, no `DiffLine` prop
+  surface change from a caller's perspective, no planner / cursor
+  / annotation-model change.
 - **TUI: clicking an annotation card moves the cursor to that card
   (issue #261).** Pre-fix, the TUI's `DiffRows` annotation branch
   rendered an `AnnotationCard` (or a 50/50 split-layout wrapper
