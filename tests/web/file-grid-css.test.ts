@@ -319,6 +319,54 @@ describe("FILE_GRID_CSS — comment-affordance pointer", () => {
   });
 });
 
+describe("FILE_GRID_CSS — empty-side neutral fill (#227)", () => {
+  it("paints the canvas-inset fill on the empty-side gutter of a split-layout row", () => {
+    // <Column> emits `data-line-number=""` when lineNumber is null, so the
+    // selector matches the three empty-side cells without prop-surface change.
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-block\[data-layout="split"\][^{}]*\.tour-row-gutter\[data-line-number=""\][^{]*\{[^}]*background-color:\s*#010409/i,
+    );
+  });
+
+  it("paints the canvas-inset fill on the empty-side symbol (adjacent-sibling of the empty gutter)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter\[data-line-number=""\]\s*\+\s*\.tour-row-symbol/,
+    );
+  });
+
+  it("paints the canvas-inset fill on the empty-side code cell (sibling chain past the symbol)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-gutter\[data-line-number=""\]\s*\+\s*\.tour-row-symbol\s*\+\s*\.tour-row-cell/,
+    );
+  });
+
+  it("scopes the fill to split layout only — unified-layout rows have a non-null gutter, so the selector keys on [data-layout=\"split\"]", () => {
+    // Sanity check that the rule sits under the split-layout file-block
+    // selector and doesn't leak into unified-layout rows.
+    const splitScoped = FILE_GRID_CSS.match(
+      /\.tour-file-block\[data-layout="split"\][^{}]*\.tour-row-gutter\[data-line-number=""\][^}]*\}/,
+    );
+    expect(splitScoped).toBeTruthy();
+  });
+
+  it("uses the canvas.inset token (≈6% darker than canvas.default)", () => {
+    expect(FILE_GRID_CSS).toContain(theme.canvas.inset);
+    // The empty-side fill rule itself references canvas.inset.
+    expect(FILE_GRID_CSS).toMatch(
+      /\[data-line-number=""\][\s\S]*?background-color:\s*#010409/i,
+    );
+  });
+
+  it("steps aside for .in-range so the range tint still wins on degenerate empty-side-in-range cells", () => {
+    // AC8: per-cell range tint takes precedence over the neutral fill when
+    // both apply. Implemented via :not(.in-range) on the empty-side rule so
+    // the in-range selector paints unopposed.
+    expect(FILE_GRID_CSS).toMatch(
+      /\[data-line-number=""\][^{]*:not\(\.in-range\)/,
+    );
+  });
+});
+
 describe("FILE_GRID_CSS — no duplicated hex literals", () => {
   it("every hex literal in the emitted CSS appears in a core/theme.ts token", () => {
     // Whitelist of theme strings the module is allowed to reference.

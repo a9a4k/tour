@@ -78,6 +78,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp split layout: neutral fill on the empty side of single-side
+  diff rows (issue #227).** In split layout, pure-addition and
+  pure-deletion rows now paint a subtle `theme.canvas.inset` fill on the
+  three cells (gutter + symbol + code cell) of the side with no line
+  number, so each row reads as "one side intentionally blank" rather
+  than "content on one side, void on the other". CSS-only: keys on the
+  pre-existing `data-line-number=""` attribute that `<Column>` emits
+  when `lineNumber` is null, and uses adjacent-sibling selectors to
+  extend the cue onto the matching symbol and cell. Scoped to
+  `.tour-file-block[data-layout="split"]` so unified-layout rows are
+  unaffected. The rule sits between the two-tone line-type backgrounds
+  and the per-cell `.in-range` tint, with a `:not(.in-range)` qualifier
+  so range-tinted cells keep their accent fill on the rare empty-side-
+  in-range case. No prop-surface change to `<DiffRow>` / `<Column>`,
+  `<FileBlock>`, the planner, or the annotation model. Three subtle
+  depth layers now: empty side recedes (`canvas.inset`), context side
+  sits at canvas level, tinted active cells sit "above" the page surface.
+
+  Issue: #227 · PRD: #212 · ADR: 0024
+
 - **Webapp file header: GitHub-style chrome — status icon, collapse
   chevron, copy-path button (issue #225).** The per-file sticky header
   now renders as a flex row with a left disclosure / identity region and

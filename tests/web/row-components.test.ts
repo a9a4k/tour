@@ -464,6 +464,97 @@ describe("<DiffRow>", () => {
     expect(additionsCell.classList.contains("in-range")).toBe(false);
   });
 
+  it("emits data-line-number=\"\" on the empty-side gutter so file-grid-css can paint the neutral fill (#227)", () => {
+    // Pure-addition split-layout row: deletions-side gutter has no line
+    // number. The empty signal is `data-line-number=""` (already required
+    // for column alignment); the neutral-fill CSS keys on it.
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "addition",
+        layout: "split",
+        leftLineNumber: null,
+        rightLineNumber: 42,
+        leftText: "",
+        rightText: "const x = 1;",
+        isCursor: false,
+      }),
+    );
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsGutter.getAttribute("data-line-number")).toBe("");
+    expect(additionsGutter.getAttribute("data-line-number")).toBe("42");
+  });
+
+  it("emits data-line-number=\"\" on the empty-side gutter for pure-deletion rows (#227)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "deletion",
+        layout: "split",
+        leftLineNumber: 7,
+        rightLineNumber: null,
+        leftText: "old line",
+        rightText: "",
+        isCursor: false,
+      }),
+    );
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsGutter.getAttribute("data-line-number")).toBe("7");
+    expect(additionsGutter.getAttribute("data-line-number")).toBe("");
+  });
+
+  it("both gutters carry non-empty data-line-number on context rows so neither side reads as empty (#227)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+      }),
+    );
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsGutter.getAttribute("data-line-number")).toBe("5");
+    expect(additionsGutter.getAttribute("data-line-number")).toBe("5");
+  });
+
+  it("both gutters carry non-empty data-line-number on paired change rows (#227)", () => {
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "change-addition",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "old",
+        rightText: "new",
+        isCursor: false,
+      }),
+    );
+    const deletionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const additionsGutter = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletionsGutter.getAttribute("data-line-number")).toBe("5");
+    expect(additionsGutter.getAttribute("data-line-number")).toBe("5");
+  });
+
   it("composes per-cell range tint with the cursor outline scoped to the cursored cell (#226)", () => {
     // Decorations are independent: the cursored cell carries .is-cursor,
     // the tinted side carries .in-range, both can land on the same

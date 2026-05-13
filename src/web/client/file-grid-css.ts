@@ -187,6 +187,21 @@ export const FILE_GRID_CSS = `
     cursor: pointer;
   }
 
+  /* Empty-side neutral fill: in split layout, the three cells of a
+     single-side diff row (gutter + symbol + code cell of the side whose
+     gutter has no line number) recede behind a subtle canvas.inset fill
+     so each row reads as "one side intentionally blank" rather than
+     "content on one side, void on the other". <Column> emits
+     data-line-number="" when lineNumber is null; the adjacent-sibling
+     chain extends the cue onto the symbol and cell that share the side.
+     :not(.in-range) lets the per-cell range tint win on the rare
+     empty-side-in-range cell. */
+  .tour-file-block[data-layout="split"] .tour-row-gutter[data-line-number=""]:not(.in-range),
+  .tour-file-block[data-layout="split"] .tour-row-gutter[data-line-number=""] + .tour-row-symbol:not(.in-range),
+  .tour-file-block[data-layout="split"] .tour-row-gutter[data-line-number=""] + .tour-row-symbol + .tour-row-cell:not(.in-range) {
+    background-color: ${theme.canvas.inset};
+  }
+
   /* Range tint: subtle accent fill painted per-side so split-layout rows
      scope the cue to the annotated half. The 3px accent inset stripe sits
      on the leftmost tinted gutter (.in-range-stripe). ADR 0008. */
