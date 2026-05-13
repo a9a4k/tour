@@ -78,6 +78,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp composer + folds + layout routed through the Tour-session store
+  (issue #238).** The webapp no longer owns local `useState`s for
+  `composerTarget`, `composerError`, the textarea `value`,
+  `collapsedFolders`, `collapsedOverrides`, or `layout` — all five slices
+  read from `sessionState` and mutate via `store.dispatch(...)`. The
+  `<Composer>` textarea is now a controlled component reading
+  `state.composer.body` and dispatching `composer.setBody` on every
+  keystroke; the slice's tagged-union state machine collapses the
+  webapp's three-`useState` composer split into one source of truth, and
+  the watcher-reload-doesn't-eat-the-draft invariant is now a tested
+  property of the reducer rather than a React-reconciliation accident.
+  Keymap + click + segmented-control callsites route through
+  `composer.open` / `composer.close` / `composer.submit` /
+  `composer.setBody`, `folds.toggleFolder` / `folds.setOverride` /
+  `folds.clearOverride`, and `layout.set`; the intent listener realises
+  `submitAnnotation` (HTTP POST to `/api/tours/:id/annotations` + dispatch
+  `composer.submitted` / `composer.failed`) and `scrollToAnnotation`
+  (DOM `scrollIntoView({ block: "center" })`). The `loadTour` flow's
+  hand-rolled `setComposerTarget(null)` / `setComposerError(null)` /
+  `setCollapsedOverrides({})` / `setCollapsedFolders(new Set())` calls
+  are gone — `tour.switched` in the reducer owns those resets. The only
+  remaining surface-side reset is `selectedFile` (sidebar position,
+  derivable from cursor, explicitly out of scope per PRD #234).
+  CONTEXT.md's **Tour-session** entry updated to confirm composer,
+  folds, and layout are now authoritative slices.
+
+  Issue: #238 · PRD: #234
+
 - **Tour-session slice 3 foundation: composer + folds + layout slices
   land in the reducer (issue #236).** `TourSessionState` gains three new
   slices: `composer: ComposerSlice` (tagged-union state machine —

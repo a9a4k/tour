@@ -54,10 +54,12 @@ export type ExpandAction =
  *  ride this object. */
 export interface AnnotationProps {
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
+  composerBody?: string;
   composerError?: string | null;
+  onComposerBodyChange?: (body: string) => void;
   replyTargetId?: string | null;
   onOpenReply?: (annotationId: string) => void;
-  onSubmitReply?: (body: string) => void;
+  onSubmitReply?: () => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
@@ -522,7 +524,9 @@ function renderAnnotation(
       side={ann.side}
       layout={layout}
       registerRef={annotationProps?.registerRef}
+      composerBody={annotationProps?.composerBody ?? ""}
       composerError={annotationProps?.composerError ?? null}
+      onComposerBodyChange={annotationProps?.onComposerBodyChange}
       replyTargetId={annotationProps?.replyTargetId ?? null}
       onOpenReply={annotationProps?.onOpenReply}
       onSubmitReply={annotationProps?.onSubmitReply}
