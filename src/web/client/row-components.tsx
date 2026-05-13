@@ -54,9 +54,9 @@ export interface DiffRowProps {
   tokensLeft?: TokenLines | null;
   tokensRight?: TokenLines | null;
   isCursor: boolean;
-  /** Which side carries the cursor outline (issue #222). Required in split
-   *  layout when `isCursor=true` to scope the outline to one cell instead of
-   *  the whole row. Unused in unified (the single rendered cell is the only
+  /** Which side carries the cursor outline. Required in split layout when
+   *  `isCursor=true` to scope the outline to one cell instead of the whole
+   *  row. Unused in unified (the single rendered cell is the only
    *  candidate). Falls back to the kind-implied side, then `preferredSide`,
    *  then the side with content. */
   cursorSide?: Side;
@@ -109,11 +109,11 @@ function symbolForColumn(
     : "";
 }
 
-// Picks which split-layout side reads `.is-cursor` on its `.tour-row-cell`
-// (issue #222). Resolution order: explicit `cursorSide` → kind-implied side
-// → `preferredSide` → side with content. The last fallback handles the
-// "addition-only / deletion-only row, cursorSide disagrees" edge case the
-// issue calls out: scope to the side that actually carries content.
+// Picks which split-layout side reads `.is-cursor` on its `.tour-row-cell`.
+// Resolution order: explicit `cursorSide` → kind-implied side →
+// `preferredSide` → side with content. The last fallback handles the
+// addition-only / deletion-only row when `cursorSide` disagrees: scope to
+// the side that actually carries content.
 function resolveCursorSide(args: {
   isCursor: boolean;
   cursorSide?: Side;
@@ -154,9 +154,8 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     onMouseEnter,
   } = props;
 
-  // .is-cursor lives on the cursored .tour-row-cell, NOT on the row (issue
-  // #222) — split layout would otherwise outline both halves. Range tint
-  // stays row-wide (explicitly out-of-scope in the issue).
+  // .is-cursor lives on the cursored .tour-row-cell, NOT on the row — split
+  // layout would otherwise outline both halves. Range tint stays row-wide.
   const classes = ["tour-row"];
   if (isInRange) classes.push("in-range");
 

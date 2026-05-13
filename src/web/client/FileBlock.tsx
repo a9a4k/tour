@@ -305,7 +305,7 @@ function renderDiffRow(
   const kind = diffRowKindFor(row.type);
   // Cursor matches whichever side's lineNumber agrees. h/l toggles
   // cursor.side, so the matched side determines which cell reads the
-  // outline (issue #222 — outline scopes to one side, not the whole row).
+  // outline (scoped to one side, not the whole row).
   const isCursorOnAdditions = rowCursorMatches(
     cursor,
     file.name,
