@@ -293,11 +293,14 @@ function App(props: AppProps) {
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const pickerScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // First-paint-per-tour guard for the side effects that ride alongside the
-  // cursor: revealAndLocate the first annotation's file in the sidebar tree
-  // and drop sidebar focus so j/k routes to the diff pane (issue #132
-  // revision). The cursor itself stays null until the user's first
-  // interaction (PRD #192 US 25 — no visible cursor on tour load).
+  // First-paint-per-tour guard for the tour-open side effects: reveal the
+  // first annotation's file in the sidebar tree, drop sidebar focus so
+  // j/k routes to the diff pane (issue #132 revision), and materialise
+  // the cursor on the first top-level annotation (issue #256 — reverts
+  // ADR 0011's lazy-materialization rule for non-empty tours, restoring
+  // surface parity with the webapp's ADR 0022 URL-anchored mount). The
+  // ref is keyed on `bundle.tour.id` so `bundle.refreshed` does NOT
+  // re-seed — user motion taken before a watcher reload survives.
   const seededTourIdRef = useRef<string | null>(null);
 
   // `bundle.tour` / `bundle.annotations` are present in both bundle
@@ -421,13 +424,23 @@ function App(props: AppProps) {
     return cls.reason === "binary";
   };
 
-  // Tour-open per-tour side effects (PRD #192 / ADR 0022): the cursor
-  // itself stays null until the user's first interaction (lazy
-  // materialization, US 25). Tour-open still drops sidebar focus when
-  // annotations exist (issue #132 revision) and reveals the first
-  // annotation's file in the tree so the next j/k or n/p lands on
-  // visible material. Empty tours keep the default sidebar focus
-  // (nothing to read; tree is the right anchor).
+  // Tour-open per-tour side effects (PRD #192 / ADR 0022; cursor seed
+  // restored by issue #256): on a non-empty tour drop sidebar focus
+  // (issue #132 revision), reveal the first annotation's file in the
+  // tree, and materialise the cursor on `topLevel[0]` as a CardAnchor so
+  // the user lands on the first annotation card with the same surface
+  // contract the webapp gets from ADR 0022's URL-anchored mount. The
+  // cursor-follow useEffect handles the viewport scroll once the cursor
+  // slice changes — no parallel scroll plumbing.
+  //
+  // Empty tours keep the lazy-materialization rule (no annotation to
+  // seed on; cursor stays null and the sidebar tree is the home anchor).
+  // Snapshot-lost bundles fall through `initialCursor`'s null branch
+  // (empty flatRowsList), so the cursor also stays null on the no-rows
+  // path. Same-tour `bundle.refreshed` is suppressed by `seededTourIdRef`
+  // so a watcher reload doesn't re-seed over user motion; the reducer's
+  // `cursor.materialize` is a strict no-op on a non-null cursor as a
+  // belt-and-suspenders fallback.
   const topLevel = nav.topLevel;
   useEffect(() => {
     if (seededTourIdRef.current !== bundle.tour.id) {
@@ -435,6 +448,11 @@ function App(props: AppProps) {
       if (topLevel.length === 0) return;
       const first = topLevel[0];
       setSidebarFocused(false);
+      const seed = initialCursor({
+        topLevelAnnotations: topLevel,
+        flatRows: flatRowsList,
+      });
+      if (seed) store.dispatch({ type: "cursor.materialize", anchor: seed });
       const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, annotationCounts);
       if (rowIdx === null) return;
       setSelectedRowIdx(rowIdx);

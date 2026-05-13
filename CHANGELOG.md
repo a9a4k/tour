@@ -8,6 +8,76 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: cursor materialises on the first top-level annotation on tour
+  load (issue #256).** Pre-fix, opening a TUI tour with at least one
+  annotation left the cursor null and the diff pane parked at
+  `scrollTop = 0` — the first annotation was off-screen unless it
+  happened to sit near the top of the first file, and the user had to
+  scroll manually or press `n`/`j` to materialise the cursor and
+  trigger a scroll. ADR 0011's "lazy materialization" rule (2026-05-10)
+  was justified by surface parity with the webapp and a "land on first
+  annotation" eye-catcher, but ADR 0022's URL-anchored mount broke the
+  parity rationale (the webapp now materialises the cursor at `?ann=`
+  or the first top-level annotation on mount unconditionally), and the
+  eye-catcher only delivered when the first annotation sat inside the
+  initial viewport. Fix dispatches `cursor.materialize` in the App-
+  shell's existing tour-open `useEffect`, seeded by `initialCursor`
+  with the live `topLevel` + `flatRowsList`. Same first-paint-per-tour
+  guard (`seededTourIdRef` on `bundle.tour.id`) used by the tree-
+  reveal side effect — `bundle.refreshed` does not re-seed, so user
+  motion before a watcher reload survives. Empty tours and snapshot-
+  lost bundles keep the lazy-materialization rule (no target to seed
+  on; cursor stays null). ADR 0011 carries a new revision entry
+  reverting the on-load rule for the non-empty path.
+
+  Issue: #256
+
+- **TUI: split-layout gutter renders `+` / `-` sign column (issue #257,
+  mirrors webapp #221).** Pre-fix `splitGutter(lineNumber)` returned
+  `${pad(lineNumber)} ` — line number + trailing space, no sign. Tint
+  alone signalled addition / deletion / change rows in split layout,
+  which is insufficient for color-blind readers and didn't match the
+  TUI's own unified-layout behaviour (`unifiedSign` already emits
+  `+` / `-` / blank). Webapp shipped the sign column in both layouts
+  in #221; TUI was partial. Fix adds a `splitSign(row, side)` helper
+  that mirrors `unifiedSign`'s vocabulary but reads the sign from the
+  populated side: in split layout the planner emits both pure adds and
+  pure dels as `type: "change"` with one side's line number null,
+  so the sign on each side is `-` (left, deletions) or `+` (right,
+  additions) when that side carries content, and a blank space when
+  the side is empty or the row is `type: "context"`. `splitGutter`
+  takes the sign as a second argument and appends `${sign} ` after
+  the line-number column, keeping the gutter width uniform across all
+  row kinds. `INTERACTIVE_PAD_GUTTER` widens to match (LINE_NUMBER_WIDTH
+  + 3) so hunk-separator / collapsed-file rows still align their body
+  text with the diff column. Paired-change rows: deletions side `-`,
+  additions side `+`. Pure-add: additions side `+`, deletions side
+  blank. Pure-del: deletions side `-`, additions side blank. Context:
+  both sides blank. Unified layout unchanged.
+
+  Issue: #257
+
+- **TUI hunk-header renders in continuous fg.muted, no syntax highlighting on
+  the function-context tail (issue #259).** Pre-fix the interactive
+  hunk-header (`@@ -X,Y +Z,W @@ <function-context>` with `gapAbove > 0`)
+  routed its text through `DiffLine` with the same `filetype` /
+  `syntaxStyle` as the diff-row code cells. The function-context tail ran
+  through the syntax highlighter — `import` painted red, identifiers blue,
+  brackets white — and the banner read as a colourful element pulling
+  attention from the diff rows below. GitHub renders the entire
+  `td.blob-code-hunk` cell in one continuous `fg.muted` grey
+  (`#9198a1`); the webapp's `.tour-hunk-header` matches. The TUI now does
+  too: `DiffLine` grows a `mutedText?: boolean` prop that forces the plain
+  `<text>` branch regardless of filetype and tints the content in
+  `theme.fg.muted`. `DiffRows` passes `mutedText` for the interactive
+  hunk-header. The inert path (`gapAbove === 0`) was already rendered as
+  `<text fg={theme.fg.muted}>` and is unchanged. Cursor visual, gutter
+  padding, and the `↑` / `↓` / `↕` direction glyph + `··· N hidden ···`
+  suffix are unchanged — only the syntax pipeline is bypassed and the
+  text is tinted muted.
+
+  Issue: #259
+
 - **TUI: top-level annotation submit no longer silently fails — diverged
   `WriteAnnotationInput` types and unrendered `errored` composer state fixed
   (issue #254).** Pre-fix `WriteAnnotationInput` was declared twice: once in

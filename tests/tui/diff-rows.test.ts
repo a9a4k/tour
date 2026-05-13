@@ -188,6 +188,116 @@ index 1..2 100644
     });
   });
 
+  // Issue #257 — TUI split layout's gutter previously omitted the +/-
+  // sign character that the unified layout has via `unifiedSign`. Color-
+  // blind / tint-only signalling was insufficient. Mirror the webapp's
+  // #221 behaviour: split rows carry `+` on the additions side and `-`
+  // on the deletions side; context rows carry a blank sign; the empty
+  // side of a single-side change row carries no sign (blank padding).
+  describe("split-layout +/- sign column (#257)", () => {
+    it("paired change row: left gutter shows '-' sign, right gutter shows '+' sign", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pairedIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber !== null,
+      );
+      expect(pairedIdx).toBeGreaterThanOrEqual(0);
+      const tree = callDiffRows({ rows: rows.slice(pairedIdx, pairedIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["gutter"]).toContain("-");
+      expect(cells[0].props["gutter"]).not.toContain("+");
+      expect(cells[1].props["gutter"]).toContain("+");
+      expect(cells[1].props["gutter"]).not.toContain("-");
+    });
+
+    it("pure-addition change row: right gutter shows '+', left gutter has no sign", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const pureAddIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber === null &&
+          r.rightLineNumber !== null,
+      );
+      expect(pureAddIdx).toBeGreaterThanOrEqual(0);
+      const tree = callDiffRows({ rows: rows.slice(pureAddIdx, pureAddIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["gutter"]).not.toContain("+");
+      expect(cells[0].props["gutter"]).not.toContain("-");
+      expect(cells[1].props["gutter"]).toContain("+");
+      expect(cells[1].props["gutter"]).not.toContain("-");
+    });
+
+    it("pure-deletion change row: left gutter shows '-', right gutter has no sign", () => {
+      const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,2 +1,1 @@
+ ctx
+-only-del
+`;
+      const file = parseFile(diff);
+      const rows = planRows(file, [], "split");
+      const pureDelIdx = rows.findIndex(
+        (r) =>
+          r.kind === "diff-row" &&
+          r.type === "change" &&
+          r.leftLineNumber !== null &&
+          r.rightLineNumber === null,
+      );
+      expect(pureDelIdx).toBeGreaterThanOrEqual(0);
+      const tree = callDiffRows({ rows: rows.slice(pureDelIdx, pureDelIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["gutter"]).toContain("-");
+      expect(cells[0].props["gutter"]).not.toContain("+");
+      expect(cells[1].props["gutter"]).not.toContain("+");
+      expect(cells[1].props["gutter"]).not.toContain("-");
+    });
+
+    it("context row: neither gutter shows a sign", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      expect(ctxIdx).toBeGreaterThanOrEqual(0);
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "split" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(2);
+      expect(cells[0].props["gutter"]).not.toContain("+");
+      expect(cells[0].props["gutter"]).not.toContain("-");
+      expect(cells[1].props["gutter"]).not.toContain("+");
+      expect(cells[1].props["gutter"]).not.toContain("-");
+    });
+
+    it("all split diff-row gutters share a single width across the file (sign column reserved on every row)", () => {
+      // Mix of context + paired + pure-add rows in one file. Every split
+      // cell's gutter string must be the same length so code text aligns
+      // across kinds. Drives keeping a blank sign on context / empty
+      // sides rather than dropping the sign column.
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const diffRowIdxs = rows
+        .map((r, i) => (r.kind === "diff-row" ? i : -1))
+        .filter((i) => i >= 0);
+      expect(diffRowIdxs.length).toBeGreaterThan(0);
+      const tree = callDiffRows({
+        rows: diffRowIdxs.map((i) => rows[i]),
+        layout: "split",
+      });
+      const cells = diffLineCellsOf(tree);
+      const widths = new Set(cells.map((c) => (c.props["gutter"] as string).length));
+      expect(widths.size).toBe(1);
+    });
+  });
+
   describe("cursor row matching (ADR 0011)", () => {
     it("lights up the right (additions) cell on a paired row when cursor is on the additions side", () => {
       const file = parseFile(SIMPLE_DIFF);
@@ -842,6 +952,31 @@ index 1..2 100644
       const node = findText(tree, (s) => s.startsWith("@@"));
       expect(node).toBeDefined();
       expect(node!.props.children).toBe("@@ -1,3 +1,3 @@");
+      // GitHub paints the whole hunk-header line in continuous fg.muted
+      // grey — the inert TUI path follows the same treatment.
+      expect(node!.props.fg).toBe(theme.fg.muted);
+    });
+
+    // Issue #259: previously the interactive hunk-header ran the
+    // function-context tail through the syntax highlighter (keyword `import`
+    // painted red, identifiers blue, etc), making the banner read as code
+    // and pulling attention from the diff rows below. GitHub renders the
+    // entire hunk-header line in one continuous fg.muted grey. The TUI
+    // matches by passing `mutedText` to DiffLine, which skips the syntax
+    // pipeline and tints the content text in theme.fg.muted.
+    it("interactive hunk-header passes mutedText=true to DiffLine — no syntax highlight on the function-context tail (issue #259)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -65,6 +65,46 @@ import {",
+          hunkIndex: 1,
+          gapAbove: 5,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split", fileName: "x.ts" });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["mutedText"]).toBe(true);
     });
   });
 

@@ -35,6 +35,14 @@ interface DiffLineProps {
   cursorActive?: boolean;
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
+  // Hunk-header / metadata text (issue #259). When true, skip the
+  // <code> syntax-highlight branch regardless of filetype and paint
+  // the plain <text> in theme.fg.muted. GitHub renders the entire
+  // `@@ ... @@ <function-context>` line in continuous fg.muted grey —
+  // the banner is metadata, not code, and the syntax pipeline would
+  // otherwise paint keywords in the function-context tail (e.g.
+  // `import` red, `function` red) breaking the muted continuity.
+  mutedText?: boolean;
   width: string | number;
 }
 
@@ -54,6 +62,7 @@ export function DiffLine({
   cursorActive,
   filetype,
   syntaxStyle,
+  mutedText,
   width,
 }: DiffLineProps) {
   const diffColor = diffBgColor(diffBg);
@@ -71,7 +80,7 @@ export function DiffLine({
     : contentTinted
       ? TINT_BG
       : diffColor;
-  const showCode = !!filetype && text.length > 0;
+  const showCode = !!filetype && text.length > 0 && !mutedText;
   // Drop one leading char so the total gutter width is preserved when the
   // cursor glyph rides in front of the line number.
   const gutterText = cursorActive && gutter.length > 0 ? gutter.slice(1) : gutter;
@@ -128,7 +137,7 @@ export function DiffLine({
         // Same reason as above: wrap so the bg fills the row, not just the
         // glyph cells. Matters for the empty side of pure +/- rows in split.
         <box flexGrow={1} minHeight={1} backgroundColor={contentBg}>
-          <text wrapMode="word">{text}</text>
+          <text wrapMode="word" fg={mutedText ? theme.fg.muted : undefined}>{text}</text>
         </box>
       )}
     </box>
