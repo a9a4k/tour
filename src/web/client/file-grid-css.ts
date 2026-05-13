@@ -1,5 +1,17 @@
 import { theme } from "../../core/theme.js";
 
+/* GitHub's web monospace stack, byte-for-byte. Three diff-row rules
+   (.tour-row-gutter, .tour-row-symbol, .tour-row-code) share this so the
+   gutter, +/- symbol, and code text resolve to the same monospace face
+   on every platform. Interpolated as a literal string into the emitted
+   CSS — keeping it a TS constant (rather than a CSS custom property)
+   preserves the "monospace" substring the typography tests pattern-match
+   against. .tour-file-stats carries its own narrower stack (no
+   "SF Mono", no "Liberation Mono") and stays inline — out of scope
+   for issue #241. */
+const MONO_STACK =
+  `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`;
+
 /**
  * Layout + visual-cue CSS for the Tour-owned web row renderer (ADR 0024).
  *
@@ -191,7 +203,7 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.muted};
     padding: 0 8px;
     user-select: none;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: ${MONO_STACK};
     font-size: 12px;
     line-height: 20px;
   }
@@ -205,7 +217,7 @@ export const FILE_GRID_CSS = `
     padding: 0 4px;
     user-select: none;
     color: ${theme.fg.muted};
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: ${MONO_STACK};
     font-size: 12px;
     line-height: 20px;
   }
@@ -226,7 +238,7 @@ export const FILE_GRID_CSS = `
      hash, minified line) at a character boundary so nothing visually
      overflows the cell. */
   .tour-row-code {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: ${MONO_STACK};
     white-space: pre-wrap;
     word-break: break-all;
     tab-size: 2;
