@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.0.0] — 2026-05-12
 
+### Added
+
+- **Web: GitHub-style directional + Expand-All buttons replace the
+  legacy `gap-mid-top` row family (issue #271, PRD #270 Slice 1).**
+  The planner's `InteractiveSubKind` vocabulary gains three variants —
+  `expand-up`, `expand-down`, `expand-all` — and loses `gap-mid-top`.
+  A new pure helper `expandRowsForGap(gapAbove, isFirst, isLast)`
+  encodes the per-edge-position + gap-size rules: `gapAbove === 0`
+  emits no rows; `gapAbove < 40` emits a single `↕ Expand All ${gapAbove}
+  lines` row that dispatches `direction: "both"` with `count =
+  gapAbove`; `gapAbove >= 40` mid-file emits a two-row pair
+  `[↓ Expand Down, ↑ Expand Up]` (DOM order: Down first at the top of
+  the gap, Up second just above the hunk-header) that dispatch
+  `direction: "down"` / `direction: "up"` respectively with the
+  EXPANSION_STEP count; `gapAbove >= 40` file-top emits a single
+  `↑ Expand Up`; `gapAbove >= 40` file-bottom emits a single
+  `↓ Expand Down`. All three new subkinds render through the existing
+  `<InteractiveRow>` primitive using its `glyph` field; the planner
+  paints the row text from `expandRowText`. The reducer's
+  `direction: "up" | "down" | "both"` state machine is reused
+  unchanged — only the renderer + planner vocabulary changes. The
+  `<HunkHeaderBanner>` click handler stays as a fallback during this
+  slice (Slice 2 makes it display-only). The file-bottom path
+  replaces the standalone `boundary-bottom` emission with the same
+  directional family at `boundaryRef: "bottom"`; the `boundary-bottom`
+  subkind remains in the vocabulary so the existing reducer / cursor
+  paths keep routing. The TUI cursor dispatch grows handler cases for
+  the new subkinds so cross-surface cursor walks still produce the
+  right action; the TUI visual rendering of the new rows is in Slice
+  3.
+
+  Issue: #271
+
 ### Fixed
 
 - **TUI: split-layout vertical divider now extends continuously through

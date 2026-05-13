@@ -880,7 +880,7 @@ describe("<InteractiveRow>", () => {
   it("renders the glyph when provided", () => {
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "gap-mid-top",
+        subKind: "expand-up",
         boundaryRef: 2,
         direction: "up",
         gapAbove: 12,
@@ -977,7 +977,7 @@ describe("<InteractiveRow>", () => {
     const calls: number[] = [];
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "gap-mid-top",
+        subKind: "expand-up",
         boundaryRef: 2,
         direction: "up",
         gapAbove: 99,
@@ -1020,11 +1020,11 @@ describe("<InteractiveRow>", () => {
     // display:grid, no grid-template-columns — mirroring <HunkHeaderBanner>.
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "gap-mid-top",
+        subKind: "expand-up",
         boundaryRef: 1,
         direction: "up",
         gapAbove: 12,
-        glyph: "↑ ··· 12 lines hidden ···",
+        glyph: "↑ Expand Up",
         isCursor: false,
         onActivate: () => {},
       }),
@@ -1034,6 +1034,95 @@ describe("<InteractiveRow>", () => {
     expect(row.style.gridColumn).toMatch(/1\s*\/\s*-1/);
     expect(row.style.display).not.toBe("grid");
     expect(row.style.gridTemplateColumns).toBe("");
+  });
+
+  // PRD #270 / issue #271: `expand-all` always reveals the entire
+  // remaining gap in one Enter — the button's label IS the contract.
+  // Click + Enter (with or without Shift) dispatches `count = gapAbove`,
+  // never EXPANSION_STEP.
+  it("`expand-all` click always dispatches count = gapAbove regardless of Shift (PRD #270)", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(InteractiveRow, {
+        subKind: "expand-all",
+        boundaryRef: 1,
+        direction: "both",
+        gapAbove: 12,
+        glyph: "↕ Expand All 12 lines",
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-row") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    });
+    expect(calls).toEqual([12, 12]);
+  });
+
+  it("`expand-all` Enter while isCursor dispatches count = gapAbove (PRD #270)", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(InteractiveRow, {
+        subKind: "expand-all",
+        boundaryRef: 2,
+        direction: "both",
+        gapAbove: 37,
+        glyph: "↕ Expand All 37 lines",
+        isCursor: true,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-row") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([37]);
+  });
+
+  it("`expand-up` click dispatches count = EXPANSION_STEP (not the full gap) on a plain click (PRD #270)", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(InteractiveRow, {
+        subKind: "expand-up",
+        boundaryRef: 1,
+        direction: "up",
+        gapAbove: 100,
+        glyph: "↑ Expand Up",
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-row") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([EXPANSION_STEP]);
+  });
+
+  it("`expand-down` Shift+click dispatches the full gap (max(gapAbove, EXPANSION_STEP)) (PRD #270)", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(InteractiveRow, {
+        subKind: "expand-down",
+        boundaryRef: 1,
+        direction: "down",
+        gapAbove: 100,
+        glyph: "↓ Expand Down",
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const row = c.querySelector(".tour-row") as HTMLElement;
+    act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    });
+    expect(calls).toEqual([100]);
   });
 
   it("carries role=button + tabindex=0 for keyboard activation (#224)", () => {

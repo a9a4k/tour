@@ -967,20 +967,35 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         const gapSize =
           subKind === "boundary-top"
             ? boundaryTopGapSize(cursor.file)
-            : subKind === "boundary-bottom"
+            : subKind === "boundary-bottom" || boundaryRef === "bottom"
               ? boundaryBottomGapSize(cursor.file)
               : typeof boundaryRef === "number"
                 ? hunkSeparatorGapSize(cursor.file, boundaryRef)
                 : 0;
         if (gapSize > 0) {
           e.preventDefault();
+          // PRD #270 / issue #271 directional Enter mapping. The
+          // directional subkinds dispatch their named direction; legacy
+          // `boundary-top` / `boundary-bottom` keep their pre-#270
+          // single-direction routing; `hunk-separator` (still
+          // interactive in slice 1) keeps `both`.
           const direction: "up" | "down" | "both" =
-            subKind === "boundary-top" || subKind === "gap-mid-top"
+            subKind === "boundary-top" || subKind === "expand-up"
               ? "up"
-              : subKind === "boundary-bottom"
+              : subKind === "boundary-bottom" || subKind === "expand-down"
                 ? "down"
-                : "both";
-          const count = e.shiftKey ? Math.max(gapSize, EXPANSION_STEP) : EXPANSION_STEP;
+                : subKind === "expand-all"
+                  ? "both"
+                  : "both";
+          // `expand-all` reveals the entire remaining gap in one Enter;
+          // every other directional / banner row uses the EXPANSION_STEP
+          // ladder with Shift as the full-gap modifier.
+          const count =
+            subKind === "expand-all"
+              ? gapSize
+              : e.shiftKey
+                ? Math.max(gapSize, EXPANSION_STEP)
+                : EXPANSION_STEP;
           dispatchExpand({
             kind: "expand",
             file: cursor.file,

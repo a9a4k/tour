@@ -451,6 +451,20 @@ function expansionCount(gapAbove: number, shift: boolean): number {
   return shift ? Math.max(gapAbove, EXPANSION_STEP) : EXPANSION_STEP;
 }
 
+// PRD #270 / issue #271: `expand-all` always reveals the entire remaining
+// gap in one Enter — the button's label IS the contract ("Expand All
+// ${gapAbove} lines"), so the count is `gapAbove` regardless of Shift.
+// Every other directional / banner row uses the EXPANSION_STEP ladder
+// with Shift as the full-gap modifier.
+function interactiveRowCount(
+  subKind: InteractiveSubKind,
+  gapAbove: number,
+  shift: boolean,
+): number {
+  if (subKind === "expand-all") return gapAbove;
+  return expansionCount(gapAbove, shift);
+}
+
 function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
   const {
     subKind,
@@ -465,13 +479,13 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
   if (isCursor) classes.push("is-cursor");
   const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onActivate(expansionCount(gapAbove, e.shiftKey));
+    onActivate(interactiveRowCount(subKind, gapAbove, e.shiftKey));
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isCursor) return;
     if (e.key !== "Enter") return;
     e.preventDefault();
-    onActivate(expansionCount(gapAbove, e.shiftKey));
+    onActivate(interactiveRowCount(subKind, gapAbove, e.shiftKey));
   };
   return (
     <div
