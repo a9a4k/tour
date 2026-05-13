@@ -25,6 +25,21 @@ import type { Layout, TourSessionState, TourSessionStore } from "./tour-session.
 import { useTourSession } from "./tour-session.js";
 import { sendTarget, type SendTarget } from "./send-target.js";
 
+/** Surface-controlled view options.
+ *
+ *  - `emitExpandFileAllAffordance` (PRD #270 / issue #274, Slice 4): the
+ *    TUI sets this `true` so the planner emits a cursor-walkable per-file
+ *    Expand-all banner row at the top of each file with hidden gaps; the
+ *    web leaves it off and uses its header-chrome button instead.
+ *  - `hunkHeaderCursorStop` (PRD #270 / issue #273, Slice 3): vestigial.
+ *    Slices 2 & 3 collapsed both surfaces onto unconditional skip of
+ *    hunk-header rows. Kept for caller-side compatibility (TUI passes
+ *    `false`); the value is now ignored downstream. */
+export interface ViewOptions {
+  emitExpandFileAllAffordance?: boolean;
+  hunkHeaderCursorStop?: boolean;
+}
+
 // --- Slice shapes -----------------------------------------------------------
 
 export interface BundleSlice {
@@ -185,7 +200,7 @@ function deriveRowsSlice(
   bundle: OkBundle,
   state: TourSessionState,
   parsedFiles: ReadonlyArray<FileDiffMetadata>,
-  options: TourSessionViewOptions = {},
+  options: ViewOptions = {},
 ): RowsSlice {
   const filesByName = new Map<string, BundleFile>();
   for (const f of bundle.files) filesByName.set(f.name, f);
@@ -224,6 +239,7 @@ function deriveRowsSlice(
         newContent: bf?.newContent,
         expansion,
         classifierCollapsed: isClassifierCollapsed(f.name),
+        emitExpandFileAllAffordance: options.emitExpandFileAllAffordance ?? false,
       }),
     );
   }
@@ -267,15 +283,6 @@ function deriveCursorSlice(
   return { anchor, onCard, onInteractive, cardId, cardAnnotation, rowIdx };
 }
 
-/** Surface-specific knobs the view exposes to keep the projection pure
- *  while letting each surface opt into its own row-stream / cursor
- *  convention. The TUI Slice 3 (PRD #270, issue #273) uses
- *  `hunkHeaderCursorStop: false` so the cursor walks past hunk-header
- *  banners; the web keeps the default until Slice 2 (issue #272) lands. */
-export interface TourSessionViewOptions {
-  hunkHeaderCursorStop?: boolean;
-}
-
 /**
  * Pure projection from `(TourBundle, TourSessionState)` to the rendered
  * shape both surfaces consume (PRD #242, issue #243). Discriminated by
@@ -285,7 +292,7 @@ export interface TourSessionViewOptions {
 export function deriveTourSessionView(
   bundle: TourBundle,
   state: TourSessionState,
-  options: TourSessionViewOptions = {},
+  options: ViewOptions = {},
 ): TourSessionView {
   const navBase = deriveNavBase(bundle.annotations);
   if (bundle.kind === "snapshot-lost") {
@@ -334,7 +341,7 @@ export function deriveTourSessionView(
 export function useTourSessionView(
   store: TourSessionStore,
   bundle: TourBundle,
-  options: TourSessionViewOptions = {},
+  options: ViewOptions = {},
 ): TourSessionView {
   const state = useTourSession(store);
   const annotations: ReadonlyArray<Annotation> = bundle.annotations;
@@ -375,14 +382,16 @@ export function useTourSessionView(
   );
 
   const hunkHeaderCursorStop = options.hunkHeaderCursorStop;
+  const emitExpandFileAllAffordance = options.emitExpandFileAllAffordance ?? false;
   const rowsSlice = useMemo<RowsSlice | null>(
     () =>
       isOk
         ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles, {
             hunkHeaderCursorStop,
+            emitExpandFileAllAffordance,
           })
         : null,
-    // Only the four fields `deriveRowsSlice` reads — listing `state` here
+    // Only the fields `deriveRowsSlice` reads — listing `state` here
     // would defeat granular invalidation (cursor moves would bust the
     // planner cache).
     [
@@ -393,6 +402,7 @@ export function useTourSessionView(
       state.layout,
       parsedFiles,
       hunkHeaderCursorStop,
+      emitExpandFileAllAffordance,
     ],
   );
 

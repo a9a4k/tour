@@ -205,6 +205,39 @@ export const FILE_GRID_CSS = `
     outline-offset: 1px;
   }
 
+  /* Per-file Expand-all-hidden button (PRD 270 / issue 274 Slice 4).
+     Sits in the file-header right region between the diff-stats indicator
+     and the copy-path button. Click dispatches the new expand-file-all
+     reducer action; stopPropagation in the handler defends against the
+     header-level collapse-toggle (same pattern as the copy-path button
+     from issue 225). Visual treatment mirrors the copy-path button so
+     the two header-right buttons read as a single chrome family. v1
+     uses the up/down-arrow ASCII glyph (no Octicons per PRD scope). */
+  .tour-file-expand-all-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: ${theme.fg.muted};
+    padding: 4px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font: inherit;
+    line-height: 1;
+  }
+
+  .tour-file-expand-all-button:hover {
+    background-color: ${theme.bg.neutralSubtle.web};
+    color: ${theme.fg.default};
+  }
+
+  .tour-file-expand-all-button:focus-visible {
+    outline: 1px solid ${theme.border.accent};
+    outline-offset: 1px;
+  }
+
   /* Row subgrid: inherits the file's column tracks; spans the full width. */
   .tour-row {
     display: grid;

@@ -9,6 +9,7 @@ import type {
   BoundaryRef,
   ExpandMode,
   ExpansionState,
+  FileBoundaryGap,
   OrphanWindow,
 } from "./expansion-state.js";
 import {
@@ -16,6 +17,7 @@ import {
   expand as expandBoundary,
   expandBottom as expansionExpandBottom,
   expandFile as expansionExpandFile,
+  expandFileAll as expansionExpandFileAll,
   expandTop as expansionExpandTop,
   seedFromOrphans as expansionSeedFromOrphans,
 } from "./expansion-state.js";
@@ -131,6 +133,11 @@ export type Action =
   | { type: "expansion.expandTop"; file: string; mode: ExpandMode; gapSize: number }
   | { type: "expansion.expandBottom"; file: string; mode: ExpandMode; gapSize: number }
   | { type: "expansion.expandFile"; file: string }
+  | {
+      type: "expansion.expandFileAll";
+      file: string;
+      boundaries: ReadonlyArray<FileBoundaryGap>;
+    }
   | { type: "expansion.seedFromOrphans"; windows: OrphanWindow[] }
   | { type: "composer.open"; target: ComposerTarget }
   | { type: "composer.close" }
@@ -378,6 +385,12 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "expansion.expandFile":
       return withExpansion(state, expansionExpandFile(state.expansion, action.file));
+
+    case "expansion.expandFileAll":
+      return withExpansion(
+        state,
+        expansionExpandFileAll(state.expansion, action.file, action.boundaries),
+      );
 
     case "expansion.seedFromOrphans":
       return withExpansion(state, expansionSeedFromOrphans(state.expansion, action.windows));

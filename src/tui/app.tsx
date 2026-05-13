@@ -244,13 +244,20 @@ function App(props: AppProps) {
   // seven previously-inline cursor/nav predicates all flow from these
   // five namespaces. The `live*` projection prefix is gone.
   //
-  // PRD #270 / issue #273: the TUI's hunk-header banner is display-only;
-  // the cursor walks past it via the directional `expand-up` /
-  // `expand-down` / `expand-all` rows the planner emits adjacent to the
-  // banner. `hunkHeaderCursorStop: false` suppresses the flat-rows
-  // promotion that would otherwise make `j`/`k` land on the banner.
+  // PRD #270 / issue #273 (Slice 3): the TUI's hunk-header banner is
+  // display-only; the cursor walks past it via the directional
+  // `expand-up` / `expand-down` / `expand-all` rows the planner emits
+  // adjacent to the banner. `hunkHeaderCursorStop: false` is vestigial
+  // (Slices 2 & 3 collapsed both surfaces onto unconditional skip) but
+  // still threaded for caller-side clarity.
+  //
+  // PRD #270 / issue #274 (Slice 4): opt-in to the planner's per-file
+  // Expand-all-hidden affordance row. The TUI surfaces it as a cursor-
+  // walkable banner at the top of each file with hidden gaps; the web
+  // leaves the option off and uses its header-chrome button instead.
   const view = useTourSessionView(store, bundle, {
     hunkHeaderCursorStop: false,
+    emitExpandFileAllAffordance: true,
   });
   // NavBase lives on both branches (issue #246); ok-only slices keep
   // their nullable destructure so hooks below preserve optional-chaining
@@ -1080,6 +1087,28 @@ function App(props: AppProps) {
     store.dispatch({ type: "expansion.expandFile", file });
   };
 
+  // PRD #270 / issue #274 (Slice 4): per-file Expand-all dispatch. Walk
+  // every boundary in the file (file-top, mid-file separators, file-
+  // bottom), compute each gap size, and saturate them all in one
+  // reducer hop. After dispatch every gap is zero-sized; the planner
+  // stops emitting the directional family AND the `expand-file-all`
+  // row itself (no work left to do).
+  const expandAllInFile = (file: string) => {
+    const meta = fileMetadata.get(file);
+    if (!meta || meta.hunks.length === 0) return;
+    const boundaries: { ref: BoundaryRef; gapSize: number }[] = [];
+    const topGap = boundaryTopGapSize(file);
+    if (topGap > 0) boundaries.push({ ref: "top", gapSize: topGap });
+    for (let i = 1; i < meta.hunks.length; i++) {
+      const gap = hunkSeparatorGapSize(file, i);
+      if (gap > 0) boundaries.push({ ref: i, gapSize: gap });
+    }
+    const botGap = boundaryBottomGapSize(file);
+    if (botGap > 0) boundaries.push({ ref: "bottom", gapSize: botGap });
+    if (boundaries.length === 0) return;
+    store.dispatch({ type: "expansion.expandFileAll", file, boundaries });
+  };
+
   // Routes a primary-action / primary-action-all keystroke to the row-kind-
   // specific handler. Pure dispatch table — the actual expansion behaviour
   // lives in the stubs above.
@@ -1104,10 +1133,13 @@ function App(props: AppProps) {
         expandCollapsedFile(cursor.file);
         return;
       // `hunk-separator` / `boundary-top` / `boundary-bottom` are no
-      // longer reachable on the TUI: with `hunkHeaderCursorStop: false`
+      // longer reachable on the TUI: with hunk-headers display-only,
       // the cursor never lands on a banner, and the planner emits
       // file-bottom gaps via `expand-all` / `expand-down` instead of a
       // lone `boundary-bottom` row (PRD #270, issue #271 + #273).
+      case "expand-file-all":
+        expandAllInFile(cursor.file);
+        return;
     }
   };
 
