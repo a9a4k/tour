@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { PickerRow } from "./tour-list.js";
 import type { TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
-import type { Tour } from "./types.js";
+import type { Annotation, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
 import { isCardAnchor, isRowAnchor } from "./cursor-state.js";
 import type {
@@ -59,10 +59,36 @@ export type PickerState =
 
 export type Layout = "split" | "unified";
 
+// Composer target: parent annotation id for replies, file + side + line range
+// for a top-level annotation. The reply target deliberately carries the parent
+// annotation **id** (not the full Annotation) so the slice doesn't go stale
+// when the bundle refreshes mid-composition — issue #236, PRD #234 under
+// PRD #207.
+export type ComposerTarget =
+  | {
+      kind: "top-level";
+      file: string;
+      side: "additions" | "deletions";
+      line_start: number;
+      line_end: number;
+    }
+  | { kind: "reply"; replies_to: string };
+
+// Tagged-union state machine for the annotation composer (PRD #234). The
+// surface's three useStates (composerTarget + composerError + textarea body
+// on the webapp; one ComposerState | null on the TUI) collapse to one
+// authoritative slice. `submitting` and `errored` preserve target + body so
+// retry / dismissError can resume cleanly.
+export type ComposerSlice =
+  | { kind: "closed" }
+  | { kind: "open"; target: ComposerTarget; body: string }
+  | { kind: "submitting"; target: ComposerTarget; body: string }
+  | { kind: "errored"; target: ComposerTarget; body: string; error: string };
+
 // The state aggregate a single surface drives for one opened Tour. Per
 // the CONTEXT.md Tour-session entry: layout is preserved across Tour-switch;
 // cursor + expansion slices arrive in slice 2 (PRD #229 / issue #230);
-// folds / composer slices land later still.
+// composer + folds slices land in slice 3 (PRD #234 / issue #236).
 export interface TourSessionState {
   currentTourId: string | null;
   tourList: RemoteData<TourSummary[]>;
@@ -72,6 +98,9 @@ export interface TourSessionState {
   layout: Layout;
   cursor: Cursor | null;
   expansion: ExpansionState;
+  composer: ComposerSlice;
+  collapsedFolders: Set<string>;
+  collapsedOverrides: Record<string, boolean>;
 }
 
 export type Action =
@@ -102,7 +131,20 @@ export type Action =
   | { type: "expansion.expandTop"; file: string; mode: ExpandMode; gapSize: number }
   | { type: "expansion.expandBottom"; file: string; mode: ExpandMode; gapSize: number }
   | { type: "expansion.expandFile"; file: string }
-  | { type: "expansion.seedFromOrphans"; windows: OrphanWindow[] };
+  | { type: "expansion.seedFromOrphans"; windows: OrphanWindow[] }
+  | { type: "composer.open"; target: ComposerTarget }
+  | { type: "composer.close" }
+  | { type: "composer.setBody"; body: string }
+  | { type: "composer.submit" }
+  | { type: "composer.submitted"; annotation: Annotation }
+  | { type: "composer.failed"; error: string }
+  | { type: "composer.retry" }
+  | { type: "composer.dismissError" }
+  | { type: "folds.toggleFolder"; path: string }
+  | { type: "folds.setOverride"; file: string; value: boolean }
+  | { type: "folds.clearOverride"; file: string }
+  | { type: "folds.clearAll" }
+  | { type: "layout.set"; layout: Layout };
 
 export type ScrollCursorTarget =
   | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
@@ -115,7 +157,9 @@ export type Intent =
   | { type: "revalidateCursor" }
   | { type: "scrollCursorTarget"; target: ScrollCursorTarget }
   | { type: "revealSidebarFile"; file: string }
-  | { type: "mirrorAnnUrl"; annotationId: string | null };
+  | { type: "mirrorAnnUrl"; annotationId: string | null }
+  | { type: "submitAnnotation"; tourId: string; target: ComposerTarget; body: string }
+  | { type: "scrollToAnnotation"; annotationId: string };
 
 export interface ReduceResult {
   state: TourSessionState;
@@ -132,6 +176,9 @@ export function initialTourSessionState(): TourSessionState {
     layout: "split",
     cursor: null,
     expansion: emptyExpansion(),
+    composer: { kind: "closed" },
+    collapsedFolders: new Set<string>(),
+    collapsedOverrides: {},
   };
 }
 
@@ -215,10 +262,11 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "tour.switched":
       // CONTEXT-pinned Tour-switch reset rules: layout preserved; picker
       // closed; reply-lock reset; cursor → null and expansion → empty
-      // (slice 2 additions per PRD #229 / issue #230); folds / composer
-      // reset when those slices land. Distinct from `bundle.refreshed` so
-      // a same-tour watcher reload doesn't dump picker / replyLock /
-      // cursor / expansion state.
+      // (slice 2 additions per PRD #229 / issue #230); composer → closed
+      // and folds (collapsedFolders + collapsedOverrides) → empty (slice 3
+      // additions per PRD #234 / issue #236). Distinct from
+      // `bundle.refreshed` so a same-tour watcher reload doesn't dump
+      // picker / replyLock / cursor / expansion / composer / folds.
       return {
         state: {
           ...state,
@@ -228,6 +276,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           replyLock: { kind: "idle" },
           cursor: null,
           expansion: emptyExpansion(),
+          composer: { kind: "closed" },
+          collapsedFolders: new Set<string>(),
+          collapsedOverrides: {},
         },
         intents: NO_INTENTS,
       };
@@ -330,6 +381,138 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "expansion.seedFromOrphans":
       return withExpansion(state, expansionSeedFromOrphans(state.expansion, action.windows));
+
+    case "composer.open":
+      // Any prior kind → fresh `open` with empty body and the new target.
+      // The reducer is the single home for "what does opening a composer
+      // mean" — the surfaces no longer need to clear stale draft text or
+      // error state when re-targeting.
+      return {
+        state: { ...state, composer: { kind: "open", target: action.target, body: "" } },
+        intents: NO_INTENTS,
+      };
+
+    case "composer.close":
+      if (state.composer.kind === "closed") return { state, intents: NO_INTENTS };
+      return { state: { ...state, composer: { kind: "closed" } }, intents: NO_INTENTS };
+
+    case "composer.setBody": {
+      const c = state.composer;
+      // Strict no-op on closed; harmless update on submitting / errored
+      // (the user may keep typing while the submit is in flight, and
+      // errored's body is preserved verbatim for retry).
+      if (c.kind === "closed") return { state, intents: NO_INTENTS };
+      if (c.body === action.body) return { state, intents: NO_INTENTS };
+      return { state: { ...state, composer: { ...c, body: action.body } }, intents: NO_INTENTS };
+    }
+
+    case "composer.submit": {
+      // Open → submitting; emit `submitAnnotation { tourId, target, body }`
+      // for the surface to realise via its `writeAnnotation` plumbing
+      // (in-process TUI / HTTP webapp). Same-state no-op on other kinds.
+      // Guard on currentTourId: composer is opened only while a tour is
+      // loaded (surface invariant), but a missing tourId would be a bug we
+      // surface as a no-op rather than emit an empty-string intent.
+      if (state.composer.kind !== "open") return { state, intents: NO_INTENTS };
+      if (state.currentTourId === null) return { state, intents: NO_INTENTS };
+      const { target, body } = state.composer;
+      return {
+        state: { ...state, composer: { kind: "submitting", target, body } },
+        intents: [{ type: "submitAnnotation", tourId: state.currentTourId, target, body }],
+      };
+    }
+
+    case "composer.submitted": {
+      // Submitting → closed; emit `scrollToAnnotation` so the freshly-
+      // created annotation card scrolls into view (replaces the TUI's
+      // `pendingScrollAnnotationId` useState per PRD #234).
+      if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, composer: { kind: "closed" } },
+        intents: [{ type: "scrollToAnnotation", annotationId: action.annotation.id }],
+      };
+    }
+
+    case "composer.failed": {
+      // Submitting → errored, preserving target + body so the user can
+      // retry without re-typing.
+      if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
+      const { target, body } = state.composer;
+      return {
+        state: { ...state, composer: { kind: "errored", target, body, error: action.error } },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "composer.retry": {
+      // Errored → submitting; re-emit the submit intent.
+      if (state.composer.kind !== "errored") return { state, intents: NO_INTENTS };
+      if (state.currentTourId === null) return { state, intents: NO_INTENTS };
+      const { target, body } = state.composer;
+      return {
+        state: { ...state, composer: { kind: "submitting", target, body } },
+        intents: [{ type: "submitAnnotation", tourId: state.currentTourId, target, body }],
+      };
+    }
+
+    case "composer.dismissError": {
+      // Errored → open with body preserved (target stays put; the
+      // user can edit the draft and re-submit).
+      if (state.composer.kind !== "errored") return { state, intents: NO_INTENTS };
+      const { target, body } = state.composer;
+      return {
+        state: { ...state, composer: { kind: "open", target, body } },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "folds.toggleFolder": {
+      const next = new Set(state.collapsedFolders);
+      if (next.has(action.path)) next.delete(action.path);
+      else next.add(action.path);
+      return { state: { ...state, collapsedFolders: next }, intents: NO_INTENTS };
+    }
+
+    case "folds.setOverride": {
+      if (state.collapsedOverrides[action.file] === action.value) {
+        return { state, intents: NO_INTENTS };
+      }
+      return {
+        state: {
+          ...state,
+          collapsedOverrides: { ...state.collapsedOverrides, [action.file]: action.value },
+        },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "folds.clearOverride": {
+      if (!(action.file in state.collapsedOverrides)) return { state, intents: NO_INTENTS };
+      const next = { ...state.collapsedOverrides };
+      delete next[action.file];
+      return { state: { ...state, collapsedOverrides: next }, intents: NO_INTENTS };
+    }
+
+    case "folds.clearAll": {
+      // Used internally by `tour.switched`; exposed as an action so the
+      // reset can be unit-tested in isolation. Same-ref short-circuit when
+      // both slices are already empty.
+      if (state.collapsedFolders.size === 0 && Object.keys(state.collapsedOverrides).length === 0) {
+        return { state, intents: NO_INTENTS };
+      }
+      return {
+        state: {
+          ...state,
+          collapsedFolders: new Set<string>(),
+          collapsedOverrides: {},
+        },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "layout.set":
+      if (state.layout === action.layout) return { state, intents: NO_INTENTS };
+      return { state: { ...state, layout: action.layout }, intents: NO_INTENTS };
   }
 }
 

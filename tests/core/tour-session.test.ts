@@ -11,6 +11,7 @@ import {
   map,
   withDefault,
   isOk,
+  type ComposerTarget,
   type Intent,
   type TourSessionState,
   type TourSummary,
@@ -83,7 +84,7 @@ describe("RemoteData<T> helpers", () => {
 });
 
 describe("initialTourSessionState", () => {
-  it("starts idle for every RemoteData slot, closed picker, split layout, null cursor, empty expansion", () => {
+  it("starts idle for every RemoteData slot, closed picker, split layout, null cursor, empty expansion, closed composer, empty folds", () => {
     const s = initialTourSessionState();
     expect(s).toEqual({
       currentTourId: null,
@@ -94,6 +95,9 @@ describe("initialTourSessionState", () => {
       layout: "split",
       cursor: null,
       expansion: new Map(),
+      composer: { kind: "closed" },
+      collapsedFolders: new Set(),
+      collapsedOverrides: {},
     });
   });
 });
@@ -952,5 +956,531 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
     const files: ReadonlyArray<{ name: string }> = [{ name: "foo.ts" }];
     const validated = validateCursor(store.getState().cursor, newFlatRows, files);
     expect(validated).toBe(store.getState().cursor); // Same ref — no dispatch.
+  });
+});
+
+// --- Slice 3 (PRD #234 / issue #236) ----------------------------------------
+
+function topLevelTarget(
+  over: Partial<{
+    file: string;
+    side: "additions" | "deletions";
+    line_start: number;
+    line_end: number;
+  }> = {},
+): ComposerTarget {
+  return {
+    kind: "top-level",
+    file: over.file ?? "foo.ts",
+    side: over.side ?? "additions",
+    line_start: over.line_start ?? 10,
+    line_end: over.line_end ?? 10,
+  };
+}
+
+function replyTarget(replies_to: string = "parent-1"): ComposerTarget {
+  return { kind: "reply", replies_to };
+}
+
+function mkAnnotation(over: Partial<Annotation> & { id: string }): Annotation {
+  return {
+    id: over.id,
+    file: over.file ?? "foo.ts",
+    side: over.side ?? "additions",
+    line_start: over.line_start ?? 10,
+    line_end: over.line_end ?? 10,
+    body: over.body ?? "body text",
+    author: over.author ?? "claude",
+    author_kind: over.author_kind ?? "agent",
+    created_at: over.created_at ?? "2026-05-13T00:00:00Z",
+    ...(over.replies_to !== undefined ? { replies_to: over.replies_to } : {}),
+  };
+}
+
+function stateWithTourLoaded(tourId: string = "tour-a"): TourSessionState {
+  return reduce(initialTourSessionState(), {
+    type: "tour.switched",
+    tourId,
+    bundle: mkBundle(tourId),
+  }).state;
+}
+
+describe("reduce — composer slice (slice 3 foundation)", () => {
+  it("composer.open from closed → { kind: 'open', target, body: '' } (no intents)", () => {
+    const target = topLevelTarget({ line_start: 7, line_end: 9 });
+    const r = reduce(initialTourSessionState(), { type: "composer.open", target });
+    expect(r.state.composer).toEqual({ kind: "open", target, body: "" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.open from open re-targets and clears body (no stale draft text)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "composer.open",
+      target: topLevelTarget({ file: "foo.ts" }),
+    }).state;
+    s = reduce(s, { type: "composer.setBody", body: "stale draft" }).state;
+    const t2 = replyTarget("ann-99");
+    const r = reduce(s, { type: "composer.open", target: t2 });
+    expect(r.state.composer).toEqual({ kind: "open", target: t2, body: "" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.open from submitting / errored re-targets and clears body", () => {
+    let s: TourSessionState = stateWithTourLoaded();
+    s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+    s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    expect(s.composer.kind).toBe("submitting");
+    const t2 = replyTarget("ann-7");
+    const r1 = reduce(s, { type: "composer.open", target: t2 });
+    expect(r1.state.composer).toEqual({ kind: "open", target: t2, body: "" });
+
+    let s2: TourSessionState = stateWithTourLoaded();
+    s2 = reduce(s2, { type: "composer.open", target: topLevelTarget() }).state;
+    s2 = reduce(s2, { type: "composer.setBody", body: "draft" }).state;
+    s2 = reduce(s2, { type: "composer.submit" }).state;
+    s2 = reduce(s2, { type: "composer.failed", error: "boom" }).state;
+    expect(s2.composer.kind).toBe("errored");
+    const r2 = reduce(s2, { type: "composer.open", target: t2 });
+    expect(r2.state.composer).toEqual({ kind: "open", target: t2, body: "" });
+  });
+
+  it("composer.setBody updates body on open / submitting / errored", () => {
+    let s: TourSessionState = stateWithTourLoaded();
+    s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+    s = reduce(s, { type: "composer.setBody", body: "open-body" }).state;
+    expect((s.composer as { body: string }).body).toBe("open-body");
+
+    s = reduce(s, { type: "composer.submit" }).state;
+    expect(s.composer.kind).toBe("submitting");
+    s = reduce(s, { type: "composer.setBody", body: "while-submitting" }).state;
+    expect((s.composer as { body: string }).body).toBe("while-submitting");
+
+    s = reduce(s, { type: "composer.failed", error: "boom" }).state;
+    expect(s.composer.kind).toBe("errored");
+    s = reduce(s, { type: "composer.setBody", body: "edited-after-error" }).state;
+    expect((s.composer as { body: string }).body).toBe("edited-after-error");
+  });
+
+  it("composer.setBody on closed is a strict no-op (same state ref, no intents)", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "composer.setBody", body: "anything" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.setBody with the same body is a same-state-ref no-op", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "composer.open",
+      target: topLevelTarget(),
+    }).state;
+    s = reduce(s, { type: "composer.setBody", body: "same" }).state;
+    const r = reduce(s, { type: "composer.setBody", body: "same" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.submit on open → submitting; emits submitAnnotation { tourId, target, body }", () => {
+    let s = stateWithTourLoaded("tour-a");
+    const target = topLevelTarget({ file: "foo.ts", line_start: 1, line_end: 1 });
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "the draft" }).state;
+    const r = reduce(s, { type: "composer.submit" });
+    expect(r.state.composer).toEqual({ kind: "submitting", target, body: "the draft" });
+    expect(r.intents).toEqual([
+      { type: "submitAnnotation", tourId: "tour-a", target, body: "the draft" },
+    ]);
+  });
+
+  it("composer.submit on closed / submitting / errored is a no-op (same state ref, no intents)", () => {
+    // closed
+    const closedBefore = stateWithTourLoaded();
+    const r1 = reduce(closedBefore, { type: "composer.submit" });
+    expect(r1.state).toBe(closedBefore);
+    expect(r1.intents).toEqual([]);
+
+    // submitting
+    let s2 = stateWithTourLoaded();
+    s2 = reduce(s2, { type: "composer.open", target: topLevelTarget() }).state;
+    s2 = reduce(s2, { type: "composer.setBody", body: "x" }).state;
+    s2 = reduce(s2, { type: "composer.submit" }).state;
+    const r2 = reduce(s2, { type: "composer.submit" });
+    expect(r2.state).toBe(s2);
+    expect(r2.intents).toEqual([]);
+
+    // errored
+    let s3 = stateWithTourLoaded();
+    s3 = reduce(s3, { type: "composer.open", target: topLevelTarget() }).state;
+    s3 = reduce(s3, { type: "composer.setBody", body: "x" }).state;
+    s3 = reduce(s3, { type: "composer.submit" }).state;
+    s3 = reduce(s3, { type: "composer.failed", error: "boom" }).state;
+    const r3 = reduce(s3, { type: "composer.submit" });
+    expect(r3.state).toBe(s3);
+    expect(r3.intents).toEqual([]);
+  });
+
+  it("composer.submitted on submitting → closed; emits scrollToAnnotation { annotationId }", () => {
+    let s = stateWithTourLoaded();
+    s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+    s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    const ann = mkAnnotation({ id: "fresh-ann-1" });
+    const r = reduce(s, { type: "composer.submitted", annotation: ann });
+    expect(r.state.composer).toEqual({ kind: "closed" });
+    expect(r.intents).toEqual([{ type: "scrollToAnnotation", annotationId: "fresh-ann-1" }]);
+  });
+
+  it("composer.submitted on non-submitting states is a no-op (same state ref, no intents)", () => {
+    const ann = mkAnnotation({ id: "x" });
+    // closed
+    const before = initialTourSessionState();
+    const r1 = reduce(before, { type: "composer.submitted", annotation: ann });
+    expect(r1.state).toBe(before);
+    expect(r1.intents).toEqual([]);
+    // open
+    const opened = reduce(before, { type: "composer.open", target: topLevelTarget() }).state;
+    const r2 = reduce(opened, { type: "composer.submitted", annotation: ann });
+    expect(r2.state).toBe(opened);
+    expect(r2.intents).toEqual([]);
+  });
+
+  it("composer.failed on submitting → errored, preserving target + body", () => {
+    let s = stateWithTourLoaded();
+    const target = topLevelTarget({ file: "z.ts", line_start: 3, line_end: 3 });
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "preserved body" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    const r = reduce(s, { type: "composer.failed", error: "permission denied" });
+    expect(r.state.composer).toEqual({
+      kind: "errored",
+      target,
+      body: "preserved body",
+      error: "permission denied",
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.failed on non-submitting states is a no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "composer.failed", error: "boom" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.retry on errored → submitting; re-emits submitAnnotation", () => {
+    let s = stateWithTourLoaded("tour-x");
+    const target = topLevelTarget();
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "retry body" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    s = reduce(s, { type: "composer.failed", error: "503" }).state;
+    const r = reduce(s, { type: "composer.retry" });
+    expect(r.state.composer).toEqual({ kind: "submitting", target, body: "retry body" });
+    expect(r.intents).toEqual([
+      { type: "submitAnnotation", tourId: "tour-x", target, body: "retry body" },
+    ]);
+  });
+
+  it("composer.retry on non-errored states is a no-op", () => {
+    // open
+    const opened = reduce(initialTourSessionState(), {
+      type: "composer.open",
+      target: topLevelTarget(),
+    }).state;
+    const r = reduce(opened, { type: "composer.retry" });
+    expect(r.state).toBe(opened);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.dismissError on errored → open with body preserved (no intents)", () => {
+    let s = stateWithTourLoaded();
+    const target = replyTarget("ann-1");
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "still-typing" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    s = reduce(s, { type: "composer.failed", error: "boom" }).state;
+    const r = reduce(s, { type: "composer.dismissError" });
+    expect(r.state.composer).toEqual({ kind: "open", target, body: "still-typing" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.dismissError on non-errored states is a no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "composer.dismissError" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.close from any kind → closed (no intents)", () => {
+    // From open
+    let s1 = reduce(initialTourSessionState(), {
+      type: "composer.open",
+      target: topLevelTarget(),
+    }).state;
+    expect(reduce(s1, { type: "composer.close" }).state.composer).toEqual({ kind: "closed" });
+
+    // From submitting
+    let s2 = stateWithTourLoaded();
+    s2 = reduce(s2, { type: "composer.open", target: topLevelTarget() }).state;
+    s2 = reduce(s2, { type: "composer.setBody", body: "x" }).state;
+    s2 = reduce(s2, { type: "composer.submit" }).state;
+    expect(reduce(s2, { type: "composer.close" }).state.composer).toEqual({ kind: "closed" });
+
+    // From errored
+    let s3 = stateWithTourLoaded();
+    s3 = reduce(s3, { type: "composer.open", target: topLevelTarget() }).state;
+    s3 = reduce(s3, { type: "composer.setBody", body: "x" }).state;
+    s3 = reduce(s3, { type: "composer.submit" }).state;
+    s3 = reduce(s3, { type: "composer.failed", error: "y" }).state;
+    expect(reduce(s3, { type: "composer.close" }).state.composer).toEqual({ kind: "closed" });
+  });
+
+  it("composer.close on closed is a same-state-ref no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "composer.close" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("bundle.refreshed does not touch composer (kind / target / body all preserved)", () => {
+    let s = stateWithTourLoaded("tour-a");
+    const target = topLevelTarget({ file: "foo.ts", line_start: 5, line_end: 5 });
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "preserved draft" }).state;
+    const composerBefore = s.composer;
+    const r = reduce(s, { type: "bundle.refreshed", bundle: mkBundle("tour-a") });
+    // Same composer slice reference — bundle.refreshed never mutates it.
+    expect(r.state.composer).toBe(composerBefore);
+    expect(r.state.composer).toEqual({ kind: "open", target, body: "preserved draft" });
+  });
+});
+
+describe("reduce — folds slice (slice 3 foundation)", () => {
+  it("folds.toggleFolder adds a path that wasn't present", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "folds.toggleFolder",
+      path: "src/web",
+    });
+    expect(r.state.collapsedFolders.has("src/web")).toBe(true);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.toggleFolder removes a path that was already present", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "folds.toggleFolder",
+      path: "src/web",
+    }).state;
+    s = reduce(s, { type: "folds.toggleFolder", path: "src/core" }).state;
+    const r = reduce(s, { type: "folds.toggleFolder", path: "src/web" });
+    expect(r.state.collapsedFolders.has("src/web")).toBe(false);
+    expect(r.state.collapsedFolders.has("src/core")).toBe(true);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.toggleFolder keeps other slices reference-stable", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    s = reduce(s, { type: "expansion.expandFile", file: "foo.ts" }).state;
+    const r = reduce(s, { type: "folds.toggleFolder", path: "src" });
+    expect(r.state.cursor).toBe(s.cursor);
+    expect(r.state.expansion).toBe(s.expansion);
+    expect(r.state.bundle).toBe(s.bundle);
+    expect(r.state.picker).toBe(s.picker);
+    expect(r.state.replyLock).toBe(s.replyLock);
+    expect(r.state.composer).toBe(s.composer);
+    expect(r.state.collapsedOverrides).toBe(s.collapsedOverrides);
+  });
+
+  it("folds.setOverride writes a file→boolean entry to the record", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: true,
+    });
+    expect(r.state.collapsedOverrides).toEqual({ "foo.ts": true });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.setOverride is a same-state-ref no-op when value is unchanged", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: true,
+    }).state;
+    const r = reduce(s, { type: "folds.setOverride", file: "foo.ts", value: true });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.setOverride toggles boolean values (true ↔ false)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: true,
+    }).state;
+    s = reduce(s, { type: "folds.setOverride", file: "foo.ts", value: false }).state;
+    expect(s.collapsedOverrides).toEqual({ "foo.ts": false });
+  });
+
+  it("folds.clearOverride removes the file from the record", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: true,
+    }).state;
+    s = reduce(s, { type: "folds.setOverride", file: "bar.ts", value: false }).state;
+    const r = reduce(s, { type: "folds.clearOverride", file: "foo.ts" });
+    expect(r.state.collapsedOverrides).toEqual({ "bar.ts": false });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.clearOverride is a same-state-ref no-op when the file is absent", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "folds.clearOverride", file: "ghost.ts" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.clearAll empties both slices (collapsedFolders + collapsedOverrides)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "folds.toggleFolder",
+      path: "src",
+    }).state;
+    s = reduce(s, { type: "folds.setOverride", file: "foo.ts", value: true }).state;
+    const r = reduce(s, { type: "folds.clearAll" });
+    expect(r.state.collapsedFolders).toEqual(new Set());
+    expect(r.state.collapsedOverrides).toEqual({});
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.clearAll is a same-state-ref no-op when both slices are already empty", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "folds.clearAll" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+});
+
+describe("reduce — layout slice (slice 3 foundation)", () => {
+  it("layout.set switches split → unified (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "layout.set",
+      layout: "unified",
+    });
+    expect(r.state.layout).toBe("unified");
+    expect(r.intents).toEqual([]);
+  });
+
+  it("layout.set is a same-state-ref no-op when the layout is unchanged", () => {
+    const before = initialTourSessionState();
+    expect(before.layout).toBe("split");
+    const r = reduce(before, { type: "layout.set", layout: "split" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("layout.set keeps other slices reference-stable", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    s = reduce(s, { type: "expansion.expandFile", file: "foo.ts" }).state;
+    s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+    const r = reduce(s, { type: "layout.set", layout: "unified" });
+    expect(r.state.cursor).toBe(s.cursor);
+    expect(r.state.expansion).toBe(s.expansion);
+    expect(r.state.composer).toBe(s.composer);
+    expect(r.state.collapsedFolders).toBe(s.collapsedFolders);
+    expect(r.state.collapsedOverrides).toBe(s.collapsedOverrides);
+  });
+});
+
+describe("reduce — tour.switched reset cascade (slice 3 extension)", () => {
+  it("tour.switched resets composer → closed, folds → empty Set + empty Record; layout preserved", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = { ...s, layout: "unified" };
+    s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+    s = reduce(s, { type: "composer.setBody", body: "draft to discard" }).state;
+    s = reduce(s, { type: "folds.toggleFolder", path: "src" }).state;
+    s = reduce(s, { type: "folds.setOverride", file: "foo.ts", value: true }).state;
+    const r = reduce(s, {
+      type: "tour.switched",
+      tourId: "tour-b",
+      bundle: mkBundle("tour-b"),
+    });
+    expect(r.state.composer).toEqual({ kind: "closed" });
+    expect(r.state.collapsedFolders).toEqual(new Set());
+    expect(r.state.collapsedOverrides).toEqual({});
+    // Layout preserved per CONTEXT.md pinned rule.
+    expect(r.state.layout).toBe("unified");
+    // Slice 1 + 2 resets still apply:
+    expect(r.state.picker).toEqual({ kind: "closed" });
+    expect(r.state.replyLock).toEqual({ kind: "idle" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.state.expansion).toEqual(new Map());
+    expect(r.intents).toEqual([]);
+  });
+});
+
+describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
+  // The architectural payoff of slice 3: the composer's body survives a
+  // watcher reload as a *tested property of the reducer*, not as a React-
+  // reconciliation accident. Pure-data, deterministic; no React / OpenTUI /
+  // JSDOM rendering required.
+  it("composer open with draft body + bundle.refreshed → composer slice unchanged (ref-equal); only revalidateCursor emitted (slice 2 carryover), no composer.* mutations", () => {
+    const store = new TourSessionStore();
+    const intents: Intent[] = [];
+    store.onIntent((i) => intents.push(i));
+
+    // Seed: load a tour, set a cursor (so bundle.refreshed emits
+    // revalidateCursor per slice 2 wiring), open composer, type draft.
+    store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle: mkBundle("tour-a") });
+    store.dispatch({
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 7 }),
+    });
+    const target = topLevelTarget({ file: "foo.ts", line_start: 7, line_end: 7 });
+    store.dispatch({ type: "composer.open", target });
+    store.dispatch({ type: "composer.setBody", body: "draft text" });
+    intents.length = 0;
+
+    const composerBefore = store.getState().composer;
+    expect(composerBefore).toEqual({ kind: "open", target, body: "draft text" });
+
+    // The killer: a watcher reload arrives. The composer must NOT be
+    // touched — its kind, target, and body all remain bit-for-bit identical
+    // (in fact reference-identical, since the reducer's bundle.refreshed
+    // branch spreads ...state).
+    store.dispatch({ type: "bundle.refreshed", bundle: mkBundle("tour-a") });
+
+    expect(store.getState().composer).toBe(composerBefore);
+    expect(store.getState().composer).toEqual({ kind: "open", target, body: "draft text" });
+
+    // Intent stream contains revalidateCursor (slice 2 carryover) and
+    // nothing composer-related.
+    expect(intents).toEqual([{ type: "revalidateCursor" }]);
+    expect(intents.every((i) => !i.type.startsWith("composer."))).toBe(true);
+    expect(intents.every((i) => i.type !== "submitAnnotation")).toBe(true);
+    expect(intents.every((i) => i.type !== "scrollToAnnotation")).toBe(true);
+  });
+
+  it("with no cursor set, bundle.refreshed still leaves composer untouched and emits no intents at all", () => {
+    const store = new TourSessionStore();
+    const intents: Intent[] = [];
+    store.onIntent((i) => intents.push(i));
+
+    store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle: mkBundle("tour-a") });
+    const target = replyTarget("parent-ann");
+    store.dispatch({ type: "composer.open", target });
+    store.dispatch({ type: "composer.setBody", body: "draft" });
+    intents.length = 0;
+
+    const composerBefore = store.getState().composer;
+    store.dispatch({ type: "bundle.refreshed", bundle: mkBundle("tour-a") });
+    expect(store.getState().composer).toBe(composerBefore);
+    // No cursor → no revalidateCursor either; the intent stream is empty.
+    expect(intents).toEqual([]);
   });
 });

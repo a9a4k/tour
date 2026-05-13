@@ -78,6 +78,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session slice 3 foundation: composer + folds + layout slices
+  land in the reducer (issue #236).** `TourSessionState` gains three new
+  slices: `composer: ComposerSlice` (tagged-union state machine —
+  `closed | open | submitting | errored` — with `target: ComposerTarget`
+  carrying the parent annotation **id** for replies so the slice doesn't
+  go stale when the bundle refreshes mid-composition), `collapsedFolders:
+  Set<string>`, and `collapsedOverrides: Record<string, boolean>`. Eight
+  composer actions (`composer.open`, `composer.close`, `composer.setBody`,
+  `composer.submit`, `composer.submitted`, `composer.failed`,
+  `composer.retry`, `composer.dismissError`) drive the state machine;
+  four fold actions (`folds.toggleFolder`, `folds.setOverride`,
+  `folds.clearOverride`, `folds.clearAll`) own the fold slices; the
+  slice-1-leftover `layout.set { layout }` action wires up the existing
+  `layout` field. Two new intents on the union: `submitAnnotation
+  { tourId, target, body }` (emitted by `composer.submit` / `composer.retry`
+  for the surface to realise via its existing `writeAnnotation` plumbing
+  — in-process TUI / HTTP webapp — then dispatch `composer.submitted` or
+  `composer.failed`), and `scrollToAnnotation { annotationId }` (emitted
+  by `composer.submitted` so the freshly-created card scrolls into view;
+  replaces the TUI's `pendingScrollAnnotationId` useState). The
+  `tour.switched` reset cascade extends to clear composer (→ closed) and
+  both fold slices (→ empty Set + empty Record); layout preserved per
+  CONTEXT.md's pinned rule. `bundle.refreshed` does **not** touch the
+  composer slice — the composer-survives-watcher-reload killer fixture
+  passes as a pure-data property of the reducer rather than as a
+  React-reconciliation accident. No surface wiring in this slice: both
+  Apps continue to own their local useStates for composer / folds /
+  layout; the store is exercised only by tests. TUI + webapp migrations
+  land separately (siblings #237 + #238).
+
+  Issue: #236 · PRD: #234
+
 - **TUI cursor + expansion routed through the Tour-session store
   (issue #231).** The TUI no longer owns `useState<Cursor | null>` or
   `useState<ExpansionState>` — both slices are read from `sessionState`
