@@ -78,6 +78,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Tour-session view: nav lifted to both branches; single early-narrow
+  per App (issue #246, PRD #242 follow-up).** `TourSessionView`'s
+  `snapshot-lost` branch now carries `nav: NavBase` (topLevel /
+  repliesByRoot / navIndexById / navTotal); `currentIdx` and `sendTarget`
+  stay ok-only on the NavSlice that extends NavBase. The webapp's
+  inline `topLevelAnnotations` / `buildThreads` re-derivation in
+  `AnnotationListSnapshotLost` (and the parallel call inside the
+  re-anchor `useEffect`) is gone — both reads route through `view.nav`.
+  The TUI's `navSlice` destructure flattens to a non-nullable `nav` of
+  type NavBase | NavSlice; `EMPTY_NAV_INDEX` is deleted. The webapp's
+  render branches on `view.kind === "snapshot-lost"` once (the sidebar
+  and main body are inside one ternary); the body-proper `view.kind ===
+  "ok"` ternaries for `navTotal` / `pillIdx` are gone (NavBase universal;
+  pillIdx uses a property check on `nav.currentIdx`).
+
+  Issue: #246 · PRD: #242
+
 - **Webapp migration to Tour-session view (issue #245, PRD #242).**
   `web/client/App.tsx` now reads `const view = useTourSessionView(store,
   bundle)` at root and consumes namespace slices (`view.bundle.*`,
