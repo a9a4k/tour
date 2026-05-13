@@ -344,3 +344,104 @@ describe("DiffLine mutedText (issue #259)", () => {
     expect(textNode!.props["fg"]).toBeUndefined();
   });
 });
+
+// Issue #268: the TUI's diff-row gutter renders line numbers in the
+// default white foreground on all row kinds. GitHub renders context-row
+// gutter numbers in fg.muted and tinted-row numbers in fg.default —
+// bright numbers anchor scan on tinted rows, muted numbers keep
+// context rows quiet. DiffLine now derives a gutterFg from the
+// existing diffBg prop: tinted rows (addition / deletion) keep
+// fg.default; context rows (no diffBg) mute to fg.muted.
+describe("DiffLine gutter fg by row kind (issue #268)", () => {
+  function gutterNumberTextOf(root: AnyElement): AnyElement {
+    const gutterCell = childrenOf(root).filter(isElement)[1]!;
+    const innerTexts = childrenOf(gutterCell).filter(
+      (c) => isElement(c) && c.type === "text",
+    ) as AnyElement[];
+    const number = innerTexts.find((t) => {
+      const c = t.props.children;
+      return typeof c === "string" && c !== CURSOR_GLYPH;
+    });
+    if (!number) throw new Error("no gutter number text found");
+    return number;
+  }
+
+  it("paints the gutter line-number text in theme.fg.muted on a context row (no diffBg)", () => {
+    const root = render({ diffBg: undefined } as never);
+    expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.muted);
+  });
+
+  it("paints the gutter line-number text in theme.fg.default on an addition row", () => {
+    const root = render({ diffBg: "addition" } as never);
+    expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.default);
+  });
+
+  it("paints the gutter line-number text in theme.fg.default on a deletion row", () => {
+    const root = render({ diffBg: "deletion" } as never);
+    expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.default);
+  });
+
+  it("cursor glyph keeps its CURSOR_FG colour independent of the gutter-text rule (context row)", () => {
+    const root = render({ cursorActive: true, diffBg: undefined } as never);
+    const gutterCell = childrenOf(root).filter(isElement)[1]!;
+    const innerTexts = childrenOf(gutterCell).filter(
+      (c) => isElement(c) && c.type === "text",
+    ) as AnyElement[];
+    const glyph = innerTexts.find((t) => {
+      const c = t.props.children;
+      return typeof c === "string" && c === CURSOR_GLYPH;
+    });
+    expect(glyph).toBeDefined();
+    expect(glyph!.props["fg"]).toBe(CURSOR_FG);
+    // And the number text alongside it still follows the row-kind rule.
+    const number = innerTexts.find((t) => {
+      const c = t.props.children;
+      return typeof c === "string" && c !== CURSOR_GLYPH;
+    });
+    expect(number!.props["fg"]).toBe(theme.fg.muted);
+  });
+
+  it("cursor glyph keeps its CURSOR_FG colour and the number stays bright on tinted rows", () => {
+    const root = render({ cursorActive: true, diffBg: "addition" } as never);
+    const gutterCell = childrenOf(root).filter(isElement)[1]!;
+    const innerTexts = childrenOf(gutterCell).filter(
+      (c) => isElement(c) && c.type === "text",
+    ) as AnyElement[];
+    const glyph = innerTexts.find((t) => {
+      const c = t.props.children;
+      return typeof c === "string" && c === CURSOR_GLYPH;
+    });
+    expect(glyph!.props["fg"]).toBe(CURSOR_FG);
+    const number = innerTexts.find((t) => {
+      const c = t.props.children;
+      return typeof c === "string" && c !== CURSOR_GLYPH;
+    });
+    expect(number!.props["fg"]).toBe(theme.fg.default);
+  });
+
+  it("annotation tint on a context row does not change the gutter-text colour (stays muted)", () => {
+    // gutterTinted=true with no diffBg = a context row inside an
+    // annotation range. The bg layer composes; the fg rule still keys
+    // off diffBg, so the number stays muted.
+    const root = render({
+      gutterTinted: true,
+      contentTinted: true,
+      diffBg: undefined,
+    } as never);
+    expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.muted);
+  });
+
+  it("annotation tint on a +/- row does not change the gutter-text colour (stays bright)", () => {
+    const root = render({
+      gutterTinted: true,
+      contentTinted: false,
+      diffBg: "addition",
+    } as never);
+    expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.default);
+  });
+
+  it("emptySide context row still uses the muted gutter-fg rule (no number to paint, but rule is consistent)", () => {
+    const root = render({ emptySide: true, diffBg: undefined } as never);
+    expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.muted);
+  });
+});

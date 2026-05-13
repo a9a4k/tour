@@ -111,6 +111,12 @@ export function DiffLine({
   // Drop one leading char so the total gutter width is preserved when the
   // cursor glyph rides in front of the line number.
   const gutterText = cursorActive && gutter.length > 0 ? gutter.slice(1) : gutter;
+  // Issue #268 — context rows mute the gutter line-number + sign cell
+  // so the bright-on-tinted contrast emerges naturally. Tinted rows
+  // (addition / deletion) keep fg.default so numbers stay readable
+  // against the bright *Range.tui rail. Cursor glyph (CURSOR_FG) is
+  // independent — handled on its own <text> below.
+  const gutterFg = diffBg ? theme.fg.default : theme.fg.muted;
 
   return (
     // alignItems="flex-start" pins the line-number text to visual-line 1 when
@@ -139,7 +145,7 @@ export function DiffLine({
         {cursorActive && (
           <text height={1} flexShrink={0} fg={CURSOR_FG}>{CURSOR_GLYPH}</text>
         )}
-        <text height={1} flexShrink={0}>{gutterText}</text>
+        <text height={1} flexShrink={0} fg={gutterFg}>{gutterText}</text>
       </box>
       {showCode ? (
         // <code> as a direct flex child reports a measure that includes a

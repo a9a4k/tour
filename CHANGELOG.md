@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: context-row gutter line numbers now render in `fg.muted` so
+  bright numbers anchor scan on tinted rows (issue #268, inverse of
+  webapp #248).** Pre-fix, `DiffLine.tsx`'s gutter `<text>` rendered
+  with no explicit `fg`, inheriting OpenTUI's default white-ish
+  foreground (`rgb(240, 246, 252)` ≈ `theme.fg.default`). Result:
+  every gutter line number painted in `fg.default` regardless of row
+  kind — context rows pulled attention away from the actual diff
+  content because their numbers shone as brightly as the
+  addition/deletion numbers on the `*Range.tui` rails. The fix is a
+  one-line derivation inside `DiffLine`: `gutterFg = diffBg ?
+  theme.fg.default : theme.fg.muted`, applied as `fg` to the existing
+  gutter `<text>` element. Tinted rows (`addition` / `deletion`,
+  including paired-change halves in split) keep `fg.default` so
+  numbers stay readable against the bright tinted rail; context rows
+  (no `diffBg`) drop to `fg.muted` (`#9198a1`). The `+`/`-` sign cell
+  (post-#257) follows automatically — it shares the gutter `<text>`.
+  Cursor glyph (`CURSOR_FG`) is independent, sitting on its own
+  `<text>` element. Annotation tint composition, two-tone diff bg
+  composition, empty-side neutral fill, hunk-header `mutedText`
+  path, and the interactive-row branch are all unchanged.
+
+  Issue: #268
+
 - **TUI: empty half of a split-layout row no longer leaves a black gap
   when the populated half wraps (issue #267, parity with webapp #227).**
   Pre-fix, the TUI's split-layout rows nested each `DiffLine` inside a
