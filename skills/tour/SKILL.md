@@ -12,14 +12,10 @@ description: >
   human will read asynchronously. Also activates on responding to a human
   reply on an existing Tour, via `tour pickup`.
 
-  Default annotation style is a narrative walkthrough — concise (typically
-  2–4 sentences each), the reader lacks context about the problem, the
-  codebase, or prior discussion; explain why, not just what. Avoid
-  mini-essays. Findings-style batches are a supported variation.
-
   Does NOT apply to inline chat feedback consumed this turn, opening GitHub
   PRs (use `gh pr create`), filing issues, or repo-wide notes with no line
-  anchor.
+  anchor. For annotation style and authoring guidance, see the body of
+  this skill.
 allowed-tools:
   Bash(tour:*),
   Bash(bunx tourdiff:*),
