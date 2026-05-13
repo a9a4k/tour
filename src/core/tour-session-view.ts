@@ -5,7 +5,6 @@ import type { FileClassification } from "./file-classifier.js";
 import type { FileContentPair } from "./file-content-provider.js";
 import type { Cursor } from "./cursor-state.js";
 import { resolveCursorRowIdx, validateCursor } from "./cursor-state.js";
-import type { ExpansionState } from "./expansion-state.js";
 import {
   buildTree,
   compress,
@@ -126,11 +125,12 @@ function deriveNavSlice(
   annotations: ReadonlyArray<Annotation>,
   cursor: Cursor | null,
 ): NavSlice {
-  const topLevel = topLevelAnnotations([...annotations]);
+  const annArr = [...annotations];
+  const topLevel = topLevelAnnotations(annArr);
   const navIndexById = new Map<string, number>();
   topLevel.forEach((a, i) => navIndexById.set(a.id, i + 1));
   const repliesByRoot = new Map<string, ReadonlyArray<Annotation>>();
-  for (const t of buildThreads([...annotations])) {
+  for (const t of buildThreads(annArr)) {
     repliesByRoot.set(t.root.id, t.replies);
   }
   let currentIdx = 0;
@@ -233,14 +233,16 @@ function deriveCursorSlice(
   files: ReadonlyArray<BundleFile>,
   annotations: ReadonlyArray<Annotation>,
 ): CursorSlice {
-  const anchor = validateCursor(cursor, [...flatRowsList], files);
+  const flatRowsArr = [...flatRowsList];
+  const anchor = validateCursor(cursor, flatRowsArr, files);
   const onCard = anchor !== null && anchor.kind === "card";
   const onInteractive =
     anchor !== null && anchor.kind === "row" && !!anchor.interactive;
-  const cardId = onCard ? (anchor as { annotationId: string }).annotationId : null;
+  const cardId =
+    anchor !== null && anchor.kind === "card" ? anchor.annotationId : null;
   const cardAnnotation =
     cardId !== null ? annotations.find((a) => a.id === cardId) ?? null : null;
-  const rowIdx = resolveCursorRowIdx(anchor, [...flatRowsList]);
+  const rowIdx = resolveCursorRowIdx(anchor, flatRowsArr);
   return { anchor, onCard, onInteractive, cardId, cardAnnotation, rowIdx };
 }
 
@@ -335,6 +337,9 @@ export function useTourSessionView(
 
   const rowsSlice = useMemo<RowsSlice | null>(
     () => (isOk ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles) : null),
+    // Only the three fields `deriveRowsSlice` reads — listing `state` here
+    // would defeat granular invalidation (cursor moves would bust the
+    // planner cache).
     [
       isOk,
       bundle,
@@ -342,7 +347,6 @@ export function useTourSessionView(
       state.collapsedOverrides,
       state.layout,
       parsedFiles,
-      state,
     ],
   );
 

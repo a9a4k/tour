@@ -522,7 +522,6 @@ describe("deriveTourSessionView — watcher-reload preservation", () => {
   });
 
   it("cursor on a card whose annotation disappears from the refreshed bundle resolves to null", () => {
-    const t1 = ann({ id: "t1", file: "a.ts" });
     const state: TourSessionState = {
       ...initialTourSessionState(),
       cursor: cardCursor("t1"),
@@ -533,6 +532,5 @@ describe("deriveTourSessionView — watcher-reload preservation", () => {
     expect(view.cursor.anchor).toBeNull();
     expect(view.cursor.cardAnnotation).toBeNull();
     expect(state.cursor).toEqual(cardCursor("t1")); // raw state unchanged
-    void t1;
   });
 });
