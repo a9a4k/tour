@@ -36,6 +36,7 @@ import {
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
 import { emptyExpansion, getBoundary } from "../../core/expansion-state.js";
 import {
+  cursorAfterExpand,
   cursorAtFirstFileRow,
   cursorFromAnnotation,
   initialCursor,
@@ -46,6 +47,7 @@ import {
   resolveCursorRowIdx,
   setCursorSide,
   type Cursor,
+  type ExpandOrphanKind,
 } from "../../core/cursor-state.js";
 import type { FlatRow } from "../../core/flat-rows.js";
 import {
@@ -841,6 +843,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // routes through `hunkHeaderExpandPlan` (issue #280); standalone
       // `expand-down` uses EXPANSION_STEP. The Shift modifier carries
       // no special meaning (PRD #270 Slice 5 / issue #275).
+      //
+      // Issue #306: when the dispatch consumes the row's gap entirely
+      // (banner with primaryExpand:"all", expand-down with addition >=
+      // remaining for file-bottom or new-gap < 40 for mid-file, or any
+      // collapsed-file press) the next render drops the row from
+      // flatRows and `j`/`k` no-ops on the stranded anchor. Predict the
+      // orphan, capture a landing target via `cursorAfterExpand` against
+      // the pre-dispatch flatRows, then dispatch `cursor.set` alongside
+      // the `expansion.*` action so state and view stay in lockstep.
       if (
         e.key === "Enter" &&
         !focusInEditable &&
@@ -851,9 +862,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ) {
         const subKind = cursor.interactive.subKind;
         const boundaryRef = cursor.interactive.boundaryRef;
+        const flatRowsBefore = view.kind === "ok" ? view.rows.flatRowsList : [];
         if (subKind === "collapsed-file") {
           e.preventDefault();
+          const landing = cursorAfterExpand(cursor, flatRowsBefore, "collapsed-file");
           dispatchExpand({ kind: "expand-file", file: cursor.file });
+          if (landing !== cursor) {
+            store.dispatch({ type: "cursor.set", anchor: landing });
+          }
           return;
         }
         let gapSize: number;
@@ -877,6 +893,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // carries no special meaning (PRD #270 Slice 5 / issue #275).
           let direction: "up" | "down" | "both";
           let count: number;
+          let orphanKind: ExpandOrphanKind | null = null;
           if (subKind === "boundary-top" || subKind === "hunk-separator") {
             const plan = hunkHeaderExpandPlan(
               gapSize,
@@ -889,13 +906,38 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             } else {
               direction = "both";
               count = gapSize;
+              // "all" dispatch reveals the entire remaining gap → next
+              // render sets primaryExpand=null and the banner drops out
+              // of flatRows. Issue #306 orphan path.
+              orphanKind = subKind === "boundary-top" ? "boundary-top" : "hunk-separator";
             }
           } else if (subKind === "expand-down") {
             direction = "down";
             count = EXPANSION_STEP;
+            // Predict orphan from the post-dispatch remaining gap. The
+            // surface's dispatch maps to mode="all" iff count >= gapSize
+            // (whole gap fits in one press); otherwise symmetric-20
+            // direction="down" adds min(EXPANSION_STEP, remaining). Bottom
+            // row stops emitting when new gap == 0; mid-file row stops
+            // emitting when new gap < GAP_TWO_ROW_THRESHOLD (planner's
+            // `emitLeadingExpandDown` rule).
+            const ref = boundaryRef === "bottom" ? "bottom" : (boundaryRef as number);
+            const cur = getBoundary(expansion, { file: cursor.file, ref });
+            const remaining = gapSize - cur.up - cur.down;
+            const addition = Math.min(EXPANSION_STEP, remaining);
+            const newRemaining = remaining - addition;
+            if (boundaryRef === "bottom") {
+              orphanKind = newRemaining <= 0 ? "expand-down-bottom" : null;
+            } else {
+              orphanKind = newRemaining < GAP_TWO_ROW_THRESHOLD ? "expand-down-mid" : null;
+            }
           } else {
             return;
           }
+          const landing =
+            orphanKind === null
+              ? null
+              : cursorAfterExpand(cursor, flatRowsBefore, orphanKind);
           dispatchExpand({
             kind: "expand",
             file: cursor.file,
@@ -903,6 +945,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             direction,
             count,
           });
+          if (landing !== null && landing !== cursor) {
+            store.dispatch({ type: "cursor.set", anchor: landing });
+          }
           return;
         }
       }
