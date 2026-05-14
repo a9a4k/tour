@@ -583,6 +583,25 @@ describe("FILE_GRID_CSS — GitHub-style header chrome (#225)", () => {
     );
     expect(FILE_GRID_CSS).toContain(".tour-file-copy-button:hover");
   });
+
+  // Issue #317: copy-path button moved into the left region next to the
+  // filename. A very long path must shrink the filename via ellipsis
+  // instead of pushing the button or the right region off the row.
+  it("declares the filename span as shrinkable with ellipsis truncation (issue #317)", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-file-name");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-name[^{]*\{[^}]*min-width:\s*0/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-name[^{]*\{[^}]*overflow:\s*hidden/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-name[^{]*\{[^}]*text-overflow:\s*ellipsis/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-name[^{]*\{[^}]*white-space:\s*nowrap/,
+    );
+  });
 });
 
 describe("FILE_GRID_CSS — per-file Expand-all-hidden button (#274)", () => {

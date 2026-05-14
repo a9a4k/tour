@@ -142,10 +142,25 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.danger};
   }
 
+  /* Filename shrink behaviour (issue 317): with the copy-path button now
+     in the left region after the filename, a very long path needs to be
+     the thing that gives way — not the button, not the right region. The
+     left region is already flex; min-width: 0 lets the filename shrink
+     below its intrinsic content width, and the overflow / ellipsis rules
+     keep the truncation visible. The button stays flex-shrink: 0 so it
+     remains visible adjacent to the (truncated) filename. */
+  .tour-file-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Per-file diff-stats indicator: a 5-segment proportion bar followed by
-     +N -M count text. Sits in the header's right region between the
-     classification reason tag and the copy-path button (issue 228).
-     Non-interactive — purely a display surface. */
+     +N -M count text. Sits in the header's right region after the
+     classification reason tag (issue 228 / issue 317 — the copy-path
+     button moved to the left region next to the filename). Non-
+     interactive — purely a display surface. */
   .tour-file-stats {
     display: inline-flex;
     align-items: center;

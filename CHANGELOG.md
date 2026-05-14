@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Webapp file header: copy-path button moved next to the filename
+  (GitHub parity, issue #317).** The per-file sticky header's left
+  region now renders `chevron · status-icon · rename-indicator? ·
+  filename · copy-path`; the right region keeps the reason tag, diff-
+  stats indicator, and the per-file Expand-all `↕` button (when ≥ 2
+  hidden gaps). The button's behaviour is unchanged from #225 (click
+  writes `file.name` to the clipboard, does NOT toggle collapse,
+  keeps `aria-label="Copy file path"` and its hover chrome). The
+  filename span gains `min-width: 0` + `overflow: hidden; text-
+  overflow: ellipsis; white-space: nowrap` so a very long path
+  truncates the filename instead of pushing the button or right
+  region off-row.
+
+  Issue: #317
+
 - **Hunk-header banner is now a two-cell layout with the primary expand
   button on the leftmost cell (issue #280).** GitHub puts Expand Up /
   Expand All on the same row as the `@@` text — only the second

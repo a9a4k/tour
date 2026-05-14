@@ -215,8 +215,8 @@ describe("<FileBlock> — collapsed state", () => {
 // GitHub-style header chrome (#225)
 // ---------------------------------------------------------------------------
 
-describe("<FileBlock> — GitHub-style header chrome (#225)", () => {
-  it("renders left and right regions with chevron + status icon on the left, copy button on the right", () => {
+describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
+  it("renders left and right regions with chevron + status icon + filename + copy button on the left, copy button NOT on the right (issue #317)", () => {
     const c = mount(createElement(FileBlock, defaultProps()));
     const left = c.querySelector(".tour-file-header-left");
     const right = c.querySelector(".tour-file-header-right");
@@ -225,7 +225,46 @@ describe("<FileBlock> — GitHub-style header chrome (#225)", () => {
     expect(left!.querySelector(".tour-file-chevron")).not.toBeNull();
     expect(left!.querySelector(".tour-file-status-icon")).not.toBeNull();
     expect(left!.querySelector(".tour-file-name")).not.toBeNull();
-    expect(right!.querySelector(".tour-file-copy-button")).not.toBeNull();
+    expect(left!.querySelector(".tour-file-copy-button")).not.toBeNull();
+    expect(right!.querySelector(".tour-file-copy-button")).toBeNull();
+  });
+
+  it("places the copy button immediately after the filename in the left region (issue #317)", () => {
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const left = c.querySelector(".tour-file-header-left") as HTMLElement;
+    expect(left).not.toBeNull();
+    const children = Array.from(left.children);
+    const nameIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-name"),
+    );
+    const copyIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-copy-button"),
+    );
+    expect(nameIdx).toBeGreaterThanOrEqual(0);
+    expect(copyIdx).toBe(nameIdx + 1);
+  });
+
+  it("places the copy button after the rename indicator + filename in the left region (issue #317)", () => {
+    const file: BundleFile = {
+      ...baseFile,
+      name: "new.ts",
+      prevName: "old.ts",
+    };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const left = c.querySelector(".tour-file-header-left") as HTMLElement;
+    const children = Array.from(left.children);
+    const renameIdx = children.findIndex((el) =>
+      el.classList.contains("rename-path"),
+    );
+    const nameIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-name"),
+    );
+    const copyIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-copy-button"),
+    );
+    expect(renameIdx).toBeGreaterThanOrEqual(0);
+    expect(renameIdx).toBeLessThan(nameIdx);
+    expect(nameIdx).toBeLessThan(copyIdx);
   });
 
   it("renders the down chevron when the file is expanded", () => {
@@ -400,8 +439,8 @@ describe("<FileBlock> — GitHub-style header chrome (#225)", () => {
 // gated to ≥ 2 hidden gaps per issue #298)
 // ---------------------------------------------------------------------------
 
-describe("<FileBlock> — per-file Expand-all-hidden button (#274 / #298)", () => {
-  it("renders a chrome button with the documented aria-label between diff-stats and copy-path (when hasMultipleHiddenGaps)", () => {
+describe("<FileBlock> — per-file Expand-all-hidden button (#274 / #298 / #317)", () => {
+  it("renders a chrome button with the documented aria-label after diff-stats in the right region (issue #317: copy-path moved to left)", () => {
     const c = mount(createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: true })));
     const right = c.querySelector(".tour-file-header-right") as HTMLElement;
     expect(right).not.toBeNull();
@@ -418,11 +457,10 @@ describe("<FileBlock> — per-file Expand-all-hidden button (#274 / #298)", () =
     const expandIdx = children.findIndex((el) =>
       el.classList.contains("tour-file-expand-all-button"),
     );
-    const copyIdx = children.findIndex((el) =>
-      el.classList.contains("tour-file-copy-button"),
-    );
     expect(statsIdx).toBeLessThan(expandIdx);
-    expect(expandIdx).toBeLessThan(copyIdx);
+    // Issue #317: the copy-path button moved to the left region — it must
+    // no longer appear in the right region at all.
+    expect(right.querySelector(".tour-file-copy-button")).toBeNull();
   });
 
   it("dispatches an `expand-file-all` ExpandAction on click", () => {
@@ -500,7 +538,7 @@ describe("<FileBlock> — file diff-stats indicator (#228)", () => {
     };
   }
 
-  it("renders the stats indicator in the right region between reason and copy button", () => {
+  it("renders the stats indicator in the right region after the reason tag (issue #317: copy-path moved to left)", () => {
     const file: BundleFile = {
       ...baseFile,
       classification: { collapsed: false, reason: "generated" },
@@ -511,7 +549,6 @@ describe("<FileBlock> — file diff-stats indicator (#228)", () => {
     expect(right).not.toBeNull();
     const indicator = right.querySelector(".tour-file-stats");
     expect(indicator).not.toBeNull();
-    // Stats node lives between the reason tag and the copy button.
     const children = Array.from(right.children);
     const reasonIdx = children.findIndex((el) =>
       el.classList.contains("reason-tag"),
@@ -519,11 +556,9 @@ describe("<FileBlock> — file diff-stats indicator (#228)", () => {
     const statsIdx = children.findIndex((el) =>
       el.classList.contains("tour-file-stats"),
     );
-    const copyIdx = children.findIndex((el) =>
-      el.classList.contains("tour-file-copy-button"),
-    );
     expect(reasonIdx).toBeLessThan(statsIdx);
-    expect(statsIdx).toBeLessThan(copyIdx);
+    // Issue #317: copy-path lives in the left region now; not in right.
+    expect(right.querySelector(".tour-file-copy-button")).toBeNull();
   });
 
   it("renders the indicator even without a classification reason", () => {
