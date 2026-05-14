@@ -138,7 +138,7 @@ describe("CLI integration", () => {
         await gitCmd(["branch", `--set-upstream-to=origin/${branch}`, branch], dir);
       }
 
-      it("uses merge-base with upstream on a multi-commit branch", async () => {
+      it("uses merge-base with origin/<default> on a multi-commit branch (issue #289)", async () => {
         // The temp repo starts with 2 commits. Pin upstream to the first,
         // putting HEAD 2 commits ahead — merge-base(HEAD, upstream) == initial.
         await gitCmd(["reset", "--hard", "HEAD^"], repo);
@@ -150,12 +150,15 @@ describe("CLI integration", () => {
         await gitCmd(["add", "."], repo);
         await gitCmd(["commit", "-m", "third"], repo);
 
-        const expectedBase = await gitCmd(["merge-base", "HEAD@{upstream}", "HEAD"], repo);
+        const branch = await gitCmd(["rev-parse", "--abbrev-ref", "HEAD"], repo);
+        const expectedBase = await gitCmd(["merge-base", `origin/${branch}`, "HEAD"], repo);
         const result = await run(["create", "--head", "HEAD", "--json"], repo);
         expect(result.exitCode).toBe(0);
         const tour = JSON.parse(result.stdout);
         expect(tour.base_sha).toBe(expectedBase);
-        expect(tour.base_source).toBe("merge-base(HEAD@{upstream})");
+        // Post-#289: the probe chain names the resolved default-branch
+        // anchor in the source string, not `@{upstream}`.
+        expect(tour.base_source).toBe(`merge-base(origin/${branch})`);
       });
 
       it("falls back to HEAD^ on a single-commit branch ahead of upstream", async () => {
@@ -215,13 +218,14 @@ describe("CLI integration", () => {
         await gitCmd(["commit", "-m", "third"], repo);
         await writeFile(join(repo, "wip.txt"), "wip changes\n");
 
-        const expectedBase = await gitCmd(["merge-base", "HEAD@{upstream}", "HEAD"], repo);
+        const branch = await gitCmd(["rev-parse", "--abbrev-ref", "HEAD"], repo);
+        const expectedBase = await gitCmd(["merge-base", `origin/${branch}`, "HEAD"], repo);
         const result = await run(["create", "--head", "WIP", "--json"], repo);
         expect(result.exitCode).toBe(0);
         const tour = JSON.parse(result.stdout);
         expect(tour.wip_snapshot).toBe(true);
         expect(tour.base_sha).toBe(expectedBase);
-        expect(tour.base_source).toBe("merge-base(HEAD@{upstream})");
+        expect(tour.base_source).toBe(`merge-base(origin/${branch})`);
       });
     });
   });

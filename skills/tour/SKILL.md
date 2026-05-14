@@ -47,7 +47,7 @@ Pass `--reply-agent <name>` only when you can self-identify (Claude Code → `cl
 
 For uncommitted work, use `--head WIP` — Tour snapshots the working tree as a synthetic commit; no need to commit first.
 
-Don't pass `--base origin/main`. The default merge-base-with-upstream matches GitHub's PR diff; `--base origin/main` inverts every commit landed on main since branch divergence and buries your changes.
+Don't pass `--base` unless reviewing against a non-default-branch target. The default probes `origin/HEAD` → `origin/main` → `origin/master` → `@{upstream}` and picks the first that produces a non-empty merge-base — matching the GitHub PR diff for the common feature-branch-off-main flow.
 
 ## Annotation rules
 
