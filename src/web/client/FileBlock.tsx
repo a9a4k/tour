@@ -45,10 +45,9 @@ import { countDiffStats, proportionSegments } from "../../core/diff-stats.js";
 type Side = "additions" | "deletions";
 type Layout = "split" | "unified";
 
-// Issue #319: revert window for the copy-button success indicator. 1.2 s is
-// the same window the original #16 implementation used and is the GitHub-
-// observable "copied" cue duration. Hardcoded — a configuration knob isn't
-// pulling its weight here (the brief is explicit).
+// Issue #319: revert window for the copy-button success indicator.
+// 1.2 s matches the original #16 implementation and GitHub's observable
+// "copied" cue duration.
 const COPY_REVERT_MS = 1200;
 
 export type ExpandAction =
@@ -231,7 +230,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
   // chrome restructure). Failure stays silent (no swap, no toast — matches
   // GitHub). Rapid re-clicks re-copy and re-arm the timer.
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
-  const revertTimerRef = useRef<number | null>(null);
+  const revertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
       if (revertTimerRef.current !== null) {
@@ -253,7 +252,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
         revertTimerRef.current = setTimeout(() => {
           revertTimerRef.current = null;
           setCopyState("idle");
-        }, COPY_REVERT_MS) as unknown as number;
+        }, COPY_REVERT_MS);
       },
       () => {},
     );
@@ -280,10 +279,9 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           <RenameHeaderSpan name={file.name} prevName={file.prevName} />
           <span className="tour-file-name">{file.name}</span>
           {/* Issue #317: copy-path button sits next to the filename (GitHub
-              parity). Long-path shrink behaviour lives on `.tour-file-name`.
-              Issue #319: icon swaps to CheckIcon for 1.2 s after a successful
-              clipboard write; `min-width` on the button pins its bounding
-              box so the swap doesn't reflow the adjacent filename. */}
+              parity); long-path shrink behaviour lives on `.tour-file-name`.
+              Issue #319: icon swap state lives at `copyState` above; layout-
+              stability `min-width` lives on `.tour-file-copy-button`. */}
           <button
             type="button"
             className="tour-file-copy-button"
