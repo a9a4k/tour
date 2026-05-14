@@ -91,6 +91,12 @@ import {
 } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import { scrollChildIntoView, centerChildInView } from "./scroll-into-view.js";
+import {
+  animatedCenterChildInView,
+  animatedScrollChildIntoView,
+  animatedScrollTo,
+  isSmoothScrollEnabled,
+} from "./smooth-scroll.js";
 import { buildRowYResolver } from "./row-y-resolver.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 
@@ -501,7 +507,16 @@ function App(props: AppProps) {
       cursor.kind === "card"
         ? `annotation-${cursor.annotationId}`
         : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
-    const scroll = cursor.kind === "card" ? centerChildInView : scrollChildIntoView;
+    // Issue #294 Slice 1: route through the animated wrapper when the
+    // smooth-scroll flag is on (`TOUR_TUI_SMOOTH_SCROLL=1`). Flag off →
+    // identical to today (instant). Interruption is built into the
+    // wrapper, so the adapter-scheduled scroll (intent path) and this
+    // useEffect-scheduled scroll (commit-time path) converge on the same
+    // tween for a given cursor move without fighting over scrollTop.
+    const animate = isSmoothScrollEnabled();
+    const scroll = cursor.kind === "card"
+      ? (animate ? animatedCenterChildInView : centerChildInView)
+      : (animate ? animatedScrollChildIntoView : scrollChildIntoView);
     const handle = setTimeout(() => scroll(sb, targetId), 0);
     return (): void => clearTimeout(handle);
   }, [cursor, layout]);
@@ -883,10 +898,18 @@ function App(props: AppProps) {
   // matching "show me from the top"), scrolls the diff stream to the file
   // card, and lands the cursor on the file's first annotatable row. Kept
   // out-of-switch so the two entry points can't drift.
-  const selectSidebarFile = (filePath: string) => {
+  const selectSidebarFile = (filePath: string, opts: { animate?: boolean } = {}) => {
     setSidebarFocused(false);
     if (diffScrollRef.current) {
-      scrollChildIntoView(diffScrollRef.current, `file-card-${filePath}`);
+      // Issue #294 Slice 1: the keyboard `select-file` path passes
+      // `animate: true`; the mouse-click path on a file row passes nothing
+      // (default false). Per the brief, sidebar mouse-click on a file is a
+      // random-access jump that would slog under animation; keyboard select-
+      // file is the in-flight cursor gesture that benefits from smooth motion.
+      const animate = opts.animate === true && isSmoothScrollEnabled();
+      const targetId = `file-card-${filePath}`;
+      if (animate) animatedScrollChildIntoView(diffScrollRef.current, targetId);
+      else scrollChildIntoView(diffScrollRef.current, targetId);
     }
     dispatchCursor(cursorAtFirstFileRow(filePath, flatRowsList));
   };
@@ -1091,7 +1114,9 @@ function App(props: AppProps) {
         // contribute no rows so cursor clears. currentAnnotationId is
         // unchanged — annotation focus is independent of code-reading
         // position. Shared with the mouse path via `selectSidebarFile`.
-        selectSidebarFile(selectedRow.path);
+        // Issue #294 Slice 1: the keyboard path animates; mouse-click
+        // stays instant (passed through the default at the mouse site).
+        selectSidebarFile(selectedRow.path, { animate: true });
         return;
       }
       case "toggle-collapse": {
@@ -1263,7 +1288,13 @@ function App(props: AppProps) {
         );
         dispatchCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {
-          sb.scrollTo(result.scrollTop);
+          // Issue #294 Slice 1: j/k crossing the edge margin tweens the
+          // one-row shift when the smooth-scroll flag is on. The cursor-
+          // follow useEffect's block:nearest scroll is a no-op for j/k
+          // (the new row sits at the edge, already in viewport), so this
+          // direct scroll is the only animation hook for the gesture.
+          if (isSmoothScrollEnabled()) animatedScrollTo(sb, result.scrollTop);
+          else sb.scrollTo(result.scrollTop);
         }
         return;
       }
