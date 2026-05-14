@@ -253,6 +253,35 @@ describe("App integration smoke (Issue #235)", () => {
     expect(directChildren[2]!.classList.contains("layout-toggle")).toBe(true);
   });
 
+  // Issue #323: the webapp sidebar now carries a drag-resize handle on
+  // its right edge, and an auto-fit effect that runs once per tour
+  // switch. The `<aside>` consumes its width from React state (inline
+  // style) so the auto-fit / drag writes are visible on the DOM.
+  it("renders the sidebar drag-resize handle and applies width via inline style (issue #323)", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const aside = container.querySelector<HTMLElement>(".app-sidebar");
+    expect(aside).not.toBeNull();
+    // Width is driven by React state — inline style wins over the
+    // CSS fallback. Auto-fit has run (fixture has visible rows) so
+    // the width is at least SIDEBAR_MIN_PX.
+    const inlineWidth = aside!.style.width;
+    expect(inlineWidth).toMatch(/\d+(\.\d+)?(px)?/);
+    const parsed = parseFloat(inlineWidth);
+    expect(parsed).toBeGreaterThanOrEqual(240);
+
+    // The drag handle is mounted inside the sidebar.
+    const handle = aside!.querySelector<HTMLElement>(".sidebar-resize-handle");
+    expect(handle).not.toBeNull();
+    expect(handle!.getAttribute("role")).toBe("separator");
+    expect(handle!.getAttribute("aria-orientation")).toBe("vertical");
+  });
+
   // Issue #308: the .tour-refs span used to render the user's typed
   // ref names (`${base_source} ← ${head_source}`). On a re-opened tour
   // those labels mis-read as "current main / current HEAD" — the fix

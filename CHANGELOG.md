@@ -8,6 +8,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp: drag-resizable sidebar with auto-fit on every tour switch
+  (issue #323).** The previous `width: 280px; flex-shrink: 0` sidebar
+  had no resize affordance — keyboard-only users had no escape valve
+  for ellipsised paths and mouse users had to fall back to the hover
+  tooltip on every truncated row. Now: a thin drag handle on the
+  sidebar's right edge (`role="separator"`, `cursor: col-resize`)
+  lets the user resize via `pointerdown` → `pointermove` →
+  `pointerup`, with `setPointerCapture` so the drag survives the
+  pointer leaving the window. Auto-fit runs once per tour switch
+  against the visible tree rows, computing the minimum pixel width
+  that fits the widest row's chevron / icon / displayName / badge
+  decorations without `text-overflow: ellipsis` clipping.
+
+  Cap formulas mirror the TUI's #312 / #315 work: auto-fit clamps at
+  `viewportWidth - 600px` (defensible diff-pane floor), drag clamps
+  at `viewportWidth - 240px` (only the symmetric sidebar floor), so
+  an explicit user gesture can squeeze the diff past the auto-fit
+  floor but auto-fit cannot. Both clamps share `SIDEBAR_MIN_PX = 240`
+  as the lower bound.
+
+  Both writers (auto-fit + drag) capture the cursor row's on-screen
+  `getBoundingClientRect().top` BEFORE the `setSidebarWidth` write
+  and apply `window.scrollBy(delta)` in a `useLayoutEffect` AFTER
+  React commits the new width but BEFORE the browser paints. Without
+  the wire, an annotation card above the cursor reflowing under the
+  width change would walk the cursor up or down the screen — same
+  failure mode the TUI's #318 / #303 follow-ups fixed.
+
+  Manual drag width is session-local (mirrors the TUI semantics).
+  Switching tours re-runs auto-fit; the drag override does NOT carry
+  over. Folder expand / collapse within a tour does NOT re-fit. The
+  layout-toggle preserveScreenY effect is unchanged — the new
+  resize-apply effect is a parallel `useLayoutEffect` keyed on
+  `sidebarWidth` (vs. `layout`).
+
+  Issue: #323
+
 - **Webapp: GitHub-style `+` button on every annotatable diff row
   (issue #320).** Hidden by default, revealed on row `:hover` and on
   the Cursor's focused side. Click opens the top-level Composer at
