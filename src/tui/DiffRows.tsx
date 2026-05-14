@@ -200,6 +200,16 @@ export function DiffRows({
           // iff `primaryExpand !== null` (flat-rows projects to
           // `boundary-top` / `hunk-separator`); cursor outline paints
           // on the left cell.
+          //
+          // `height={1}` on the inner `<text>` glyph + `<text>` header is
+          // a workaround for the same OpenTUI quirk documented at
+          // `DiffLine.tsx` (~L173): a measure-func-backed element
+          // (`<text>` / `<code>`) used as a direct flex child of a
+          // bg-painted flex container reports a phantom extra row,
+          // doubling the cell's terminal height. Explicit `height={1}`
+          // short-circuits the bad measure and pins the row to 1 grid
+          // row. Don't strip it — same trap as PR upstream
+          // anomalyco/opentui#621.
           const interactive = row.primaryExpand !== null;
           const cursorActive =
             interactive &&
@@ -238,12 +248,12 @@ export function DiffRows({
                 paddingRight={2}
                 backgroundColor={buttonBg}
               >
-                <text fg={theme.fg.onEmphasis}>
+                <text height={1} fg={theme.fg.onEmphasis}>
                   {hunkHeaderGlyph(row.primaryExpand)}
                 </text>
               </box>
               <box flexGrow={1} backgroundColor={textBg} paddingLeft={1}>
-                <text fg={theme.fg.muted}>{row.header}</text>
+                <text height={1} fg={theme.fg.muted}>{row.header}</text>
               </box>
             </box>
           );
@@ -264,7 +274,9 @@ export function DiffRows({
           // button cell carrying `↓` + empty `bg.accentSubtle` right
           // cell. The button cell's bg flips to `bg.cursorRow` when
           // cursored, matching the hunk-header banner's left-cell
-          // cursor treatment from #280.
+          // cursor treatment from #280. `height={1}` on the inner
+          // `<text>` glyph is the same OpenTUI phantom-row workaround
+          // applied to the hunk-header banner above; see that comment.
           if (row.subKind === "expand-down") {
             const buttonBg = cursorActive
               ? theme.bg.cursorRow.tui
@@ -284,7 +296,7 @@ export function DiffRows({
                   paddingRight={2}
                   backgroundColor={buttonBg}
                 >
-                  <text fg={theme.fg.onEmphasis}>↓</text>
+                  <text height={1} fg={theme.fg.onEmphasis}>↓</text>
                 </box>
                 <box flexGrow={1} backgroundColor={textBg} />
               </box>
