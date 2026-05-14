@@ -1414,6 +1414,17 @@ function App(props: AppProps) {
                 SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row, stats),
               );
               return (
+                // `height={1}` on each inner `<text>` is the OpenTUI
+                // phantom-row workaround documented at `DiffLine.tsx`
+                // ~L173 and `DiffRows.tsx`'s hunk-header banner: a
+                // measure-func-backed `<text>` used as a direct flex
+                // child of a `backgroundColor`-painted flex container
+                // doubles its terminal height. Without the pin every
+                // sidebar file row silently rendered at 2 grid rows
+                // tall, leaving a "blank" phantom row below each entry
+                // (folder rows render as `<text bg={bg}>` directly and
+                // never tripped the trap). Don't strip — same upstream
+                // bug as anomalyco/opentui#621.
                 <box
                   key={`f:${row.path}`}
                   id={`row-${row.path}`}
@@ -1421,25 +1432,25 @@ function App(props: AppProps) {
                   backgroundColor={bg}
                   onMouseDown={onRowMouseDown}
                 >
-                  <text fg={theme.fg.default} bold={isSelected} selectable={false}>
+                  <text height={1} fg={theme.fg.default} bold={isSelected} selectable={false}>
                     {segs.leading}
                   </text>
                   {segs.additions.length > 0 && (
-                    <text fg={theme.fg.success} bold={isSelected} selectable={false}>
+                    <text height={1} fg={theme.fg.success} bold={isSelected} selectable={false}>
                       {segs.additions}
                     </text>
                   )}
                   {segs.deletions.length > 0 && (
-                    <text fg={theme.fg.danger} bold={isSelected} selectable={false}>
+                    <text height={1} fg={theme.fg.danger} bold={isSelected} selectable={false}>
                       {segs.deletions}
                     </text>
                   )}
                   {segs.badge.length > 0 && (
-                    <text fg={theme.fg.default} bold={isSelected} selectable={false}>
+                    <text height={1} fg={theme.fg.default} bold={isSelected} selectable={false}>
                       {segs.badge}
                     </text>
                   )}
-                  <text fg={theme.fg.default} bold={isSelected} selectable={false}>
+                  <text height={1} fg={theme.fg.default} bold={isSelected} selectable={false}>
                     {segs.trailing}
                   </text>
                 </box>
