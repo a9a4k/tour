@@ -22,11 +22,7 @@ import {
   revealAndLocate,
 } from "../core/file-tree.js";
 import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
-import {
-  animatedCenterChildInView,
-  animatedScrollChildIntoView,
-  isSmoothScrollEnabled,
-} from "./smooth-scroll.js";
+import { animatedScrollChildIntoView, isSmoothScrollEnabled } from "./smooth-scroll.js";
 import { requestReply as runRequestReply } from "../core/reply-runner.js";
 
 // TUI substrate dependencies the adapter needs. The renderer-bound
@@ -79,14 +75,13 @@ export function createTuiTourSessionAdapter(
     // Issue #294 Slice 1: animate when the smooth-scroll flag is on and
     // this is an in-flight navigation (placement === "nearest"). Fresh
     // landings (placement === "center" — cursor materialize, URL restore,
-    // tour-switch, send-to-agent recall) stay instant.
-    const animate = mode === "nearest" && isSmoothScrollEnabled();
+    // tour-switch, send-to-agent recall) stay instant by construction.
     if (mode === "center") {
-      if (animate) animatedCenterChildInView(sb, targetId);
-      else centerChildInView(sb, targetId);
+      centerChildInView(sb, targetId);
+    } else if (isSmoothScrollEnabled()) {
+      animatedScrollChildIntoView(sb, targetId);
     } else {
-      if (animate) animatedScrollChildIntoView(sb, targetId);
-      else scrollChildIntoView(sb, targetId);
+      scrollChildIntoView(sb, targetId);
     }
     return true;
   }

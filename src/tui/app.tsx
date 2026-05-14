@@ -514,9 +514,9 @@ function App(props: AppProps) {
     // useEffect-scheduled scroll (commit-time path) converge on the same
     // tween for a given cursor move without fighting over scrollTop.
     const animate = isSmoothScrollEnabled();
-    const scroll = cursor.kind === "card"
-      ? (animate ? animatedCenterChildInView : centerChildInView)
-      : (animate ? animatedScrollChildIntoView : scrollChildIntoView);
+    const card = animate ? animatedCenterChildInView : centerChildInView;
+    const row = animate ? animatedScrollChildIntoView : scrollChildIntoView;
+    const scroll = cursor.kind === "card" ? card : row;
     const handle = setTimeout(() => scroll(sb, targetId), 0);
     return (): void => clearTimeout(handle);
   }, [cursor, layout]);
