@@ -90,9 +90,8 @@ import {
   jump as jumpDiffPane,
 } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
-import { scrollChildIntoView, centerChildInView } from "./scroll-into-view.js";
+import { scrollChildIntoView } from "./scroll-into-view.js";
 import {
-  animatedCenterChildInView,
   animatedScrollChildIntoView,
   animatedScrollTo,
   isSmoothScrollEnabled,
@@ -476,50 +475,46 @@ function App(props: AppProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursorSlice]);
 
-  // Keep the cursor's row visible. A RowAnchor scrolls its diff/interactive
-  // row with `block:nearest`; a CardAnchor centres its card in the viewport
-  // (matches the prior `currentAnnotationId` UX from PRD #126, issue #128
-  // — cards always get context above and below). `layout` is in deps so a
-  // Shift-L flip — which preserves the anchor but moves the visual
-  // position — re-fires the scroll.
+  // Layout-toggle re-scroll. Issue #296 migrated cursor-driven scrolling
+  // to the reducer's `scrollCursorTarget` intent path (anchor-kind-
+  // agnostic: `placement` discriminates `nearest` vs `center`), so the
+  // surface no longer owns a `[cursor, layout]` effect. `layout.set`
+  // doesn't emit `scrollCursorTarget` (out of scope per the issue), so
+  // this layout-only effect re-fires the same scroll helpers the
+  // adapter would call on a `nearest` intent — preserves the
+  // "Shift-L re-scrolls cursor into view" rule (CONTEXT.md TUI Cursor).
   //
   // Issue #250: defer the scroll call to the next macrotask via
   // `setTimeout(0)`. React's commit runs synchronously, but OpenTUI's
-  // Yoga relayout for the newly-rendered rows runs on a later render tick.
-  // Reading positions inside this effect synchronously sees a stale layout
-  // (most visible when Shift-L flips layout while the cursor is on a card:
-  // `centerChildInView` computed against the previous layout's content
-  // frame parks the viewport on a strip where only annotation cards live,
-  // hiding every diff row). `setTimeout(0)` is what reliably lands the
-  // callback after OpenTUI's render tick — verified empirically.
-  // `requestAnimationFrame` does NOT work here: in bun/node it shims to
-  // `setImmediate` (or similar) and fires BEFORE OpenTUI's render tick,
-  // which keeps the bug. Do not "improve" this back to rAF.
+  // Yoga relayout for the newly-rendered rows runs on a later render
+  // tick. Reading positions inside this effect synchronously sees a
+  // stale layout (most visible when Shift-L flips layout while the
+  // cursor is on a card: position math against the previous layout's
+  // content frame parks the viewport on a strip where only annotation
+  // cards live, hiding every diff row). `setTimeout(0)` is what
+  // reliably lands the callback after OpenTUI's render tick — verified
+  // empirically. `requestAnimationFrame` does NOT work here: in
+  // bun/node it shims to `setImmediate` (or similar) and fires BEFORE
+  // OpenTUI's render tick, which keeps the bug. Do not "improve" this
+  // back to rAF.
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
     const sb = diffScrollRef.current;
-    // RowAnchor uses the culling-safe `scrollChildIntoView`: under
-    // `viewportCulling={true}` opentui leaves stale positions inside
-    // off-screen file subtrees, and a cross-file `n`/`p` jump lands on the
-    // previous file otherwise. CardAnchor uses `centerChildInView` so
-    // cards get context above and below.
+    // `scrollChildIntoView` is culling-safe: under `viewportCulling=true`
+    // opentui leaves stale positions inside off-screen file subtrees, so
+    // a cross-file scroll lands on the previous file otherwise. The
+    // helper force-refreshes the layout chain before reading positions.
     const targetId =
       cursor.kind === "card"
         ? `annotation-${cursor.annotationId}`
         : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
-    // Issue #294 Slice 1: route through the animated wrapper when the
-    // smooth-scroll flag is on (`TOUR_TUI_SMOOTH_SCROLL=1`). Flag off →
-    // identical to today (instant). Interruption is built into the
-    // wrapper, so the adapter-scheduled scroll (intent path) and this
-    // useEffect-scheduled scroll (commit-time path) converge on the same
-    // tween for a given cursor move without fighting over scrollTop.
-    const animate = isSmoothScrollEnabled();
-    const card = animate ? animatedCenterChildInView : centerChildInView;
-    const row = animate ? animatedScrollChildIntoView : scrollChildIntoView;
-    const scroll = cursor.kind === "card" ? card : row;
-    const handle = setTimeout(() => scroll(sb, targetId), 0);
+    const handle = setTimeout(() => {
+      if (isSmoothScrollEnabled()) animatedScrollChildIntoView(sb, targetId);
+      else scrollChildIntoView(sb, targetId);
+    }, 0);
     return (): void => clearTimeout(handle);
-  }, [cursor, layout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
 
   // Sidebar follows the cursor's file. RowAnchor → cursor.file directly;
   // CardAnchor → view.cursor.cardAnnotation.file. Deps key off the

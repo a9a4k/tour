@@ -134,11 +134,18 @@ export function createTuiTourSessionAdapter(
         const sb = deps.diffScrollBoxRef.current;
         if (!sb) return;
         const targetId = `diff-row-${anchor.file}-${anchor.side}-${anchor.lineNumber}`;
-        // Issue #294 Slice 1: animate iff in-flight (placement === "nearest")
-        // and the smooth-scroll flag is on.
-        const animate = mode === "nearest" && isSmoothScrollEnabled();
-        if (animate) animatedScrollChildIntoView(sb, targetId);
-        else scrollChildIntoView(sb, targetId);
+        // Issue #296: placement-driven helper choice, anchor-kind-agnostic
+        // — same shape as `scrollCardOnce`. `center` → centerChildInView
+        // (fresh landings: cursor materialize, send-to-agent recall);
+        // `nearest` → scrollChildIntoView, animated when the smooth-scroll
+        // flag is on (in-flight `j`/`k`/`n`/`p`/click-to-position).
+        if (mode === "center") {
+          centerChildInView(sb, targetId);
+        } else if (isSmoothScrollEnabled()) {
+          animatedScrollChildIntoView(sb, targetId);
+        } else {
+          scrollChildIntoView(sb, targetId);
+        }
       });
     },
     scrollToPickerRow: (idx: number) => {
