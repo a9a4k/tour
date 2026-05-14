@@ -80,7 +80,6 @@ import {
   prevCard,
   preferredSideOf,
   setCursorSide,
-  validateCursor,
   cursorFromAnnotation,
   cursorAtFirstFileRow,
   cursorOnInteractive,
@@ -350,7 +349,13 @@ function App(props: AppProps) {
       loadReplyLock: props.loadReplyLock,
       writeAnnotation: props.writeAnnotation,
     });
-    const runtime = new TourSessionRuntime(store, adapter);
+    // `viewOptions` matches the TUI's `useTourSessionView` call so the
+    // runtime's `revalidateCursor` handler (PRD #278 slice 5) validates
+    // the cursor against the same flat-rows the surface renders.
+    const runtime = new TourSessionRuntime(store, adapter, {
+      hunkHeaderCursorStop: false,
+      emitExpandFileAllAffordance: true,
+    });
     return runtime.start();
   }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeAnnotation]);
 
@@ -627,12 +632,6 @@ function App(props: AppProps) {
   // Refs used by the intent listener to read the latest substrate-derived
   // state without re-registering the listener on every render. Updated
   // inline below as each value is computed.
-  const cursorRef = useRef<Cursor | null>(cursor);
-  cursorRef.current = cursor;
-  const flatRowsRef = useRef<ReadonlyArray<FlatRow>>(flatRowsList);
-  flatRowsRef.current = flatRowsList;
-  const filesRef = useRef<ReadonlyArray<BundleFile>>(files);
-  filesRef.current = files;
   const treeRef = useRef(tree);
   treeRef.current = tree;
   const collapsedFoldersRef = useRef<Set<string>>(collapsedFolders);
@@ -643,30 +642,19 @@ function App(props: AppProps) {
   safeRowIdxRef.current = safeRowIdx;
 
   // Intent listener — realizes the reducer's emitted intents in the TUI
-  // substrate (PRD #207 slice 1 + slice 2 contract). `loadTour` is owned
-  // by the Tour-session runtime (PRD #278 slice 3) — calls `fetchBundle`
-  // → `tour.switched` → `fetchReplyLock` → `replyLock.loaded` through the
-  // adapter; the surface no longer hand-rolls the dispatch sequence.
-  // `scrollPickerRow` scrolls the picker modal scrollbox.
-  // `revalidateCursor` runs `validateCursor` against the substrate-derived
-  // flat-rows and dispatches `cursor.set` / `cursor.clear`.
-  // `scrollCursorTarget` scrolls the diff pane via `scrollChildIntoView` /
-  // `centerChildInView`. `revealSidebarFile` reveals the file's ancestors
-  // and selects its row in the sidebar tree. `mirrorUrl` and `mirrorAnnUrl`
-  // are ignored — the TUI has no URL.
+  // substrate (PRD #207 slice 1 + slice 2 contract). `loadTour` /
+  // `submitAnnotation` / `revalidateCursor` are owned by the Tour-session
+  // runtime (PRD #278 slices 3-5). `scrollPickerRow` scrolls the picker
+  // modal scrollbox. `scrollCursorTarget` scrolls the diff pane via
+  // `scrollChildIntoView` / `centerChildInView`. `revealSidebarFile`
+  // reveals the file's ancestors and selects its row in the sidebar tree.
+  // `mirrorUrl` and `mirrorAnnUrl` are ignored — the TUI has no URL.
   useEffect(() => {
     const unsubscribe = store.onIntent((intent) => {
       if (intent.type === "scrollPickerRow") {
         const sb = pickerScrollRef.current;
         if (!sb) return;
         scrollChildIntoView(sb, `picker-row-${intent.idx}`);
-        return;
-      }
-      if (intent.type === "revalidateCursor") {
-        const c = cursorRef.current;
-        if (c === null) return;
-        const validated = validateCursor(c, flatRowsRef.current, filesRef.current);
-        if (validated !== c) dispatchAnchorOrClear(validated);
         return;
       }
       if (intent.type === "scrollCursorTarget") {
