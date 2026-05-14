@@ -623,11 +623,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // "show me from the top." Smooth scroll over multi-viewport distances
       // is disorienting in a code-review surface.
       if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
-      // Sidebar click is an explicit "show me this file" gesture — issue
-      // #310 split the implicit auto-unfold off the cursor.set side-effect,
-      // so explicit-reveal callsites dispatch `folds.setOverride` directly.
-      // Mirrors the n/p annotation-jump pattern (this file, line ~380).
-      store.dispatch({ type: "folds.setOverride", file: name, value: false });
+      // Sidebar click is a navigation gesture, not an explicit reveal —
+      // issue #313. The cursor lands on the file's first walkable row
+      // (synthetic `collapsed-file` banner when classifier-collapsed; first
+      // diff row otherwise); Enter on the banner is the explicit-reveal
+      // escape hatch. Annotation jumps (n/p, ?ann= restore) still force-
+      // unfold — see this file's `gotoNextCard` / `gotoPrevCard` callsites.
       // Cursor follows the click — matches the TUI rule (PRD US 20). The
       // reducer's `nearest` default for scrollCursorTarget keeps the
       // first-row scroll from fighting the file-block scroll above: the

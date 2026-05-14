@@ -1,5 +1,5 @@
 import type { Annotation } from "./types.js";
-import type { FlatRow, DiffFlatRow, CardFlatRow } from "./flat-rows.js";
+import type { FlatRow, DiffFlatRow, InteractiveFlatRow, CardFlatRow } from "./flat-rows.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 
 /**
@@ -213,19 +213,31 @@ export function validateCursor(
 }
 
 /**
- * Cursor at a file's first annotatable row in stream order, or null when
- * the file has no diff row. Used by sidebar-driven file selection
- * (PRD US 20). Skips interactive rows and card rows.
+ * Cursor at a file's first walkable row in stream order, or null when the
+ * file has no row. Used by sidebar-driven file selection (PRD US 20).
+ * Skips card rows.
+ *
+ * Prefers a diff row so a sidebar click on a non-collapsed file lands the
+ * cursor on real source content. Falls back to the file's first
+ * interactive row when no diff row exists — issue #313: a classifier-
+ * collapsed file's only walkable row is the synthetic `collapsed-file`
+ * interactive banner, and sidebar click must land the cursor there
+ * (Enter then dispatches the explicit reveal).
  */
 export function cursorAtFirstFileRow(
   file: string,
   flatRows: ReadonlyArray<FlatRow>,
 ): RowAnchor | null {
-  const r = flatRows.find(
+  const diff = flatRows.find(
     (row): row is DiffFlatRow => row.kind === "diff" && row.file === file,
   );
-  if (!r) return null;
-  return cursorFromRow(r, r.side) as RowAnchor;
+  if (diff) return cursorFromRow(diff, diff.side) as RowAnchor;
+  const interactive = flatRows.find(
+    (row): row is InteractiveFlatRow =>
+      row.kind === "interactive" && row.file === file,
+  );
+  if (!interactive) return null;
+  return cursorFromRow(interactive, "additions") as RowAnchor;
 }
 
 /**

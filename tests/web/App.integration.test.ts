@@ -535,13 +535,15 @@ describe("App header source pair — WIP tour (Issue #308)", () => {
   });
 });
 
-// Issue #310: cursor traversal into a classifier-collapsed file must not
-// auto-expand it (the synthetic `collapsed-file` row stays visible, `j`
-// advances past it), but an EXPLICIT sidebar click on the same file must
-// still expand it — that's the user's "show me this file" gesture and
-// the existing escape hatch from the classifier's collapse contract.
-// Fixture: a classifier-collapsed lockfile-style entry. The sidebar's
-// `<button.file-entry>` is the explicit-reveal target.
+// Issue #313: sidebar click on a classifier-collapsed file is a navigation
+// gesture, not an explicit-reveal — same rule as `j`/`k` after #310. The
+// click scrolls the file into view, updates sidebar selection, and lands
+// the cursor on the synthetic `··· N hidden — Enter to expand ···` row,
+// but does NOT clear the classifier-collapse override. The synthetic row's
+// Enter affordance is the explicit-reveal path.
+// Fixture: a classifier-collapsed lockfile-style entry. Sidebar click pins
+// the no-auto-expand rule; an Enter keydown after the click pins the
+// explicit-reveal escape hatch.
 
 const lockTourId = "2026-05-14-100000-sidebar-click-collapsed";
 
@@ -587,7 +589,7 @@ const lockBundle = {
   ],
 };
 
-describe("App sidebar click on a classifier-collapsed file (issue #310)", () => {
+describe("App sidebar click on a classifier-collapsed file (issue #313)", () => {
   beforeEach(() => {
     globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
       const u = typeof input === "string" ? input : input.toString();
@@ -624,7 +626,7 @@ describe("App sidebar click on a classifier-collapsed file (issue #310)", () => 
     }) as unknown as typeof fetch;
   });
 
-  it("clicking the sidebar file-entry for a classifier-collapsed file expands its body (explicit-reveal path preserved)", async () => {
+  it("clicking the sidebar file-entry for a classifier-collapsed file does NOT expand its body (#313); Enter on the cursored synthetic row still does", async () => {
     const container = document.getElementById("root")!;
     await act(async () => {
       root = createRoot(container);
@@ -639,13 +641,9 @@ describe("App sidebar click on a classifier-collapsed file (issue #310)", () => 
       '.tour-file-outer[data-file="bun.lock"]',
     );
     expect(fileOuter).not.toBeNull();
-    const preDiffRows = fileOuter!.querySelectorAll(".tour-row");
-    // The synthetic CollapsedFileRow is an interactive .tour-row banner;
-    // the file's actual diff body would add ≥ 1 more row. Pre-click we
-    // expect ONLY the synthetic banner (or zero, depending on emission).
-    const preNonInteractive = Array.from(preDiffRows).filter(
-      (el) => !el.classList.contains("tour-row-interactive"),
-    );
+    const preNonInteractive = Array.from(
+      fileOuter!.querySelectorAll(".tour-row"),
+    ).filter((el) => !el.classList.contains("tour-row-interactive"));
     expect(preNonInteractive.length).toBe(0);
 
     // Find the sidebar row button. <FileRow> renders `<button.file-entry
@@ -660,12 +658,9 @@ describe("App sidebar click on a classifier-collapsed file (issue #310)", () => 
     });
     await flush();
 
-    // Post-click: the explicit-reveal dispatched `folds.setOverride
-    // { value: false }`, which overrides the classifier's collapse verdict
-    // (isClassifierCollapsed returns false when override === false). The
-    // planner now emits the file's actual diff body rows in place of the
-    // synthetic CollapsedFileRow. At least one non-interactive diff row
-    // for bun.lock must be present.
+    // Post-click: sidebar click is a navigation gesture — it must NOT
+    // clear the classifier-collapse override. The file's diff body stays
+    // hidden; only the synthetic CollapsedFileRow remains.
     const postFileOuter = container.querySelector(
       '.tour-file-outer[data-file="bun.lock"]',
     );
@@ -673,6 +668,30 @@ describe("App sidebar click on a classifier-collapsed file (issue #310)", () => 
     const postNonInteractive = Array.from(
       postFileOuter!.querySelectorAll(".tour-row"),
     ).filter((el) => !el.classList.contains("tour-row-interactive"));
-    expect(postNonInteractive.length).toBeGreaterThan(0);
+    expect(postNonInteractive.length).toBe(0);
+    // The synthetic banner is still present (it's the cursor landing).
+    const postInteractive = postFileOuter!.querySelectorAll(
+      ".tour-row.tour-row-interactive",
+    );
+    expect(postInteractive.length).toBeGreaterThan(0);
+
+    // Enter on the cursored collapsed-file synthetic row is the explicit-
+    // reveal escape hatch (issue #280 / #306 / #310 wiring). Pressing Enter
+    // dispatches `expansion.expandFile`, which materialises the diff body.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const afterEnterOuter = container.querySelector(
+      '.tour-file-outer[data-file="bun.lock"]',
+    );
+    expect(afterEnterOuter).not.toBeNull();
+    const afterEnterNonInteractive = Array.from(
+      afterEnterOuter!.querySelectorAll(".tour-row"),
+    ).filter((el) => !el.classList.contains("tour-row-interactive"));
+    expect(afterEnterNonInteractive.length).toBeGreaterThan(0);
   });
 });

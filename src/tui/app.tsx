@@ -1085,11 +1085,12 @@ function App(props: AppProps) {
       if (opts.animate === true) animatedScrollChildIntoView(diffScrollRef.current, targetId);
       else scrollChildIntoView(diffScrollRef.current, targetId);
     }
-    // Sidebar select is an explicit "show me this file" gesture — issue
-    // #310 split the implicit auto-unfold off the cursor.set side-effect,
-    // so explicit-reveal callsites dispatch `folds.setOverride` directly.
-    // Mirrors the n/p annotation-jump pattern (`jumpToAnnotation`).
-    store.dispatch({ type: "folds.setOverride", file: filePath, value: false });
+    // Sidebar select is a navigation gesture, not an explicit reveal —
+    // issue #313. The cursor lands on the file's first walkable row
+    // (synthetic `collapsed-file` banner when classifier-collapsed; first
+    // diff row otherwise); Enter on the banner is the explicit-reveal
+    // escape hatch. Annotation jumps (`jumpToAnnotation`) still force-
+    // unfold — they remain the only "explicit reveal" callsites here.
     dispatchCursor(cursorAtFirstFileRow(filePath, flatRowsList));
   };
 

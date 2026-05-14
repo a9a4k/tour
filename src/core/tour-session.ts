@@ -643,11 +643,12 @@ function enterSubmitting(
 // selection only — issue #310 split `revealSidebarFile` (force-uncollapse +
 // sidebar select) into two semantics so a `j` traversal into a classifier-
 // collapsed file no longer dispatches a `folds.setOverride { value: false }`
-// the user never asked for. Explicit-reveal callsites (sidebar click,
-// annotation jumps, ...) dispatch `folds.setOverride` themselves alongside
-// the `cursor.set`. `mirrorAnnUrl` fires when the annotation-id under the
-// cursor changed (entering, leaving, or switching cards) so the webapp
-// `?ann=` URL stays in sync.
+// the user never asked for. Issue #313 extends the same rule to sidebar
+// click — explicit-reveal is now reserved for annotation jumps (n/p,
+// `?ann=` restore), which dispatch `folds.setOverride` themselves
+// alongside the `cursor.set`. `mirrorAnnUrl` fires when the annotation-id
+// under the cursor changed (entering, leaving, or switching cards) so the
+// webapp `?ann=` URL stays in sync.
 function setCursor(
   state: TourSessionState,
   next: Cursor,
