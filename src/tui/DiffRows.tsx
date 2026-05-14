@@ -201,15 +201,23 @@ export function DiffRows({
           // `boundary-top` / `hunk-separator`); cursor outline paints
           // on the left cell.
           //
-          // `height={1}` on the inner `<text>` glyph + `<text>` header is
-          // a workaround for the same OpenTUI quirk documented at
-          // `DiffLine.tsx` (~L173): a measure-func-backed element
-          // (`<text>` / `<code>`) used as a direct flex child of a
-          // bg-painted flex container reports a phantom extra row,
-          // doubling the cell's terminal height. Explicit `height={1}`
-          // short-circuits the bad measure and pins the row to 1 grid
-          // row. Don't strip it — same trap as PR upstream
-          // anomalyco/opentui#621.
+          // `height={1}` on the inner `<text>` glyph + `<text>` header
+          // defends against wrap-induced sibling stretch. The right cell
+          // can host a long `@@` context (e.g.
+          // `@@ -172,9 +170,10 @@ export function App({ … })`); when
+          // the file card's available width is narrow enough, the
+          // default `wrapMode="word"` wraps that text to 2 visual rows,
+          // and Yoga's default `alignItems: stretch` on the row-direction
+          // parent stretches the button cell to match — banner ends up
+          // visually 2 rows tall for a single planned row. Pinning each
+          // text's height to 1 clips the overflow vertically and keeps
+          // the banner at 1 grid row regardless of `@@` length or
+          // viewport width. `wrapMode="none"` is a viable alternative
+          // (clips horizontally instead) but `height={1}` is the same
+          // workaround DiffLine.tsx uses, so we match it for parity.
+          // Repro verified in-session: a banner with a ~95-char `@@`
+          // header inside a single-bordered file card at 100-col
+          // viewport wraps to 2 rows by default; either fix pins it.
           const interactive = row.primaryExpand !== null;
           const cursorActive =
             interactive &&
@@ -275,8 +283,11 @@ export function DiffRows({
           // cell. The button cell's bg flips to `bg.cursorRow` when
           // cursored, matching the hunk-header banner's left-cell
           // cursor treatment from #280. `height={1}` on the inner
-          // `<text>` glyph is the same OpenTUI phantom-row workaround
-          // applied to the hunk-header banner above; see that comment.
+          // `<text>` glyph defensively pins the cell to 1 grid row —
+          // same shape as the hunk-header banner above; see that
+          // comment. The right cell is empty so wrap can't fire here,
+          // but matching the banner keeps the pattern consistent if
+          // someone later puts text in this cell.
           if (row.subKind === "expand-down") {
             const buttonBg = cursorActive
               ? theme.bg.cursorRow.tui

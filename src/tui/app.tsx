@@ -1430,17 +1430,19 @@ function App(props: AppProps) {
                 SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row, stats),
               );
               return (
-                // `height={1}` on each inner `<text>` is the OpenTUI
-                // phantom-row workaround documented at `DiffLine.tsx`
-                // ~L173 and `DiffRows.tsx`'s hunk-header banner: a
-                // measure-func-backed `<text>` used as a direct flex
-                // child of a `backgroundColor`-painted flex container
-                // doubles its terminal height. Without the pin every
-                // sidebar file row silently rendered at 2 grid rows
-                // tall, leaving a "blank" phantom row below each entry
-                // (folder rows render as `<text bg={bg}>` directly and
-                // never tripped the trap). Don't strip — same upstream
-                // bug as anomalyco/opentui#621.
+                // `height={1}` on each inner `<text>` pins the file row
+                // to 1 grid row. Without the pin every sidebar file row
+                // silently rendered at 2 grid rows tall, leaving a
+                // blank row below each entry (folder rows, rendered as
+                // a single `<text bg={bg}>` directly, never tripped
+                // it). The exact OpenTUI mechanism wasn't fully isolated
+                // — the file row's text segments are short and don't
+                // wrap, so this isn't the same wrap-induced sibling
+                // stretch documented for the hunk-header banner in
+                // DiffRows.tsx. Possibly a measure-path issue specific
+                // to `<text>` as a direct flex child under a
+                // `backgroundColor`-painted parent. `height={1}` works
+                // empirically; leave it in place.
                 <box
                   key={`f:${row.path}`}
                   id={`row-${row.path}`}
