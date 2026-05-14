@@ -199,6 +199,11 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.danger};
   }
 
+  /* Issue 319: min-width pins the button's bounding box so swapping the
+     CopyIcon for a CheckIcon (on a successful clipboard write) doesn't
+     reflow the adjacent filename or right region. 24px = 16px icon + 4px
+     padding × 2 — matches the button's intrinsic width with the copy icon
+     today and absorbs any future icon-size drift between the two glyphs. */
   .tour-file-copy-button {
     background: transparent;
     border: none;
@@ -210,6 +215,7 @@ export const FILE_GRID_CSS = `
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    min-width: 24px;
     font: inherit;
   }
 

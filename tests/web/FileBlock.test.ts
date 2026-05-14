@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { FileBlock, type ExpandAction } from "../../src/web/client/FileBlock.js";
@@ -338,7 +338,7 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
     expect(button.getAttribute("aria-label")).toBe("Copy file path");
   });
 
-  it("copies file.name to the clipboard when the copy button is clicked", () => {
+  it("copies file.name to the clipboard when the copy button is clicked", async () => {
     const writes: string[] = [];
     const savedClipboard = (
       navigator as unknown as { clipboard?: { writeText: (s: string) => Promise<void> } }
@@ -355,9 +355,13 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
     try {
       const c = mount(createElement(FileBlock, defaultProps()));
       const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
-      act(() => {
+      // Issue #319: the click handler now `.then`s the clipboard promise to
+      // set the "copied" state, so the surrounding act must be async to
+      // flush the resulting microtask + re-render.
+      await act(async () => {
         button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
+      await act(async () => {});
       expect(writes).toEqual(["x.ts"]);
     } finally {
       if (savedClipboard) {
@@ -371,7 +375,7 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
     }
   });
 
-  it("does NOT toggle collapse when the copy button is clicked", () => {
+  it("does NOT toggle collapse when the copy button is clicked", async () => {
     let toggled = 0;
     const savedClipboard = (
       navigator as unknown as { clipboard?: { writeText: (s: string) => Promise<void> } }
@@ -388,9 +392,10 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
         ),
       );
       const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
-      act(() => {
+      await act(async () => {
         button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
+      await act(async () => {});
       expect(toggled).toBe(0);
     } finally {
       if (savedClipboard) {
@@ -431,6 +436,233 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
         delete (navigator as unknown as { clipboard?: unknown }).clipboard;
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Copy-path success indicator (#319): icon swaps to a checkmark on a
+// successful clipboard write, then reverts after ~1.2s. Restores the cue
+// originally implemented in #16 that was dropped during the #225 chrome
+// restructure. Failure path is silent (no swap).
+// ---------------------------------------------------------------------------
+
+describe("<FileBlock> — copy-path success indicator (#319)", () => {
+  let savedClipboardRef: { v?: { writeText: (s: string) => Promise<void> } } = {};
+
+  function installClipboard(
+    writeText: (s: string) => Promise<void>,
+  ): void {
+    savedClipboardRef.v = (
+      navigator as unknown as { clipboard?: { writeText: (s: string) => Promise<void> } }
+    ).clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+  }
+
+  function restoreClipboard(): void {
+    if (savedClipboardRef.v) {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: savedClipboardRef.v,
+      });
+    } else {
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+    }
+    savedClipboardRef = {};
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreClipboard();
+  });
+
+  // Resolve any pending microtasks (the `.then` after `writeText`) so the
+  // post-resolution `setState("copied")` lands in the DOM before the
+  // assertions run. `await act(async () => {})` flushes the React work
+  // queue. Two flushes — once for the click handler's microtask, once for
+  // the resulting re-render commit.
+  async function flush(): Promise<void> {
+    await act(async () => {});
+    await act(async () => {});
+  }
+
+  it("renders the copy icon (and not the check icon) before any click", () => {
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    expect(button.querySelector(".octicon-copy")).not.toBeNull();
+    expect(button.querySelector(".octicon-check")).toBeNull();
+  });
+
+  it("swaps to the check icon after a successful clipboard write", async () => {
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    expect(button.querySelector(".octicon-copy")).toBeNull();
+  });
+
+  it("reverts to the copy icon after the 1.2s timer fires", async () => {
+    vi.useFakeTimers();
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200);
+    });
+    expect(button.querySelector(".octicon-copy")).not.toBeNull();
+    expect(button.querySelector(".octicon-check")).toBeNull();
+  });
+
+  it("does NOT revert before 1.2s elapses", async () => {
+    vi.useFakeTimers();
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1199);
+    });
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    expect(button.querySelector(".octicon-copy")).toBeNull();
+  });
+
+  it("rapid re-click restarts the 1.2s timer (icon stays as check past the original window)", async () => {
+    vi.useFakeTimers();
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    // 800 ms into the first window — still showing check.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    // Second click re-arms the timer.
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    // 600 ms after the re-click — original timer would have fired (800 + 600
+    // = 1400 > 1200) but the new timer still has 600 ms left, so check
+    // remains.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    expect(button.querySelector(".octicon-copy")).toBeNull();
+    // Past the new timer's expiry — now reverts.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(button.querySelector(".octicon-copy")).not.toBeNull();
+    expect(button.querySelector(".octicon-check")).toBeNull();
+  });
+
+  it("rapid re-click re-copies on every click (clipboard called twice)", async () => {
+    const writes: string[] = [];
+    installClipboard((s) => {
+      writes.push(s);
+      return Promise.resolve();
+    });
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(writes).toEqual(["x.ts", "x.ts"]);
+  });
+
+  it("does NOT swap the icon when the clipboard call rejects", async () => {
+    installClipboard(() => Promise.reject(new Error("denied")));
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(button.querySelector(".octicon-copy")).not.toBeNull();
+    expect(button.querySelector(".octicon-check")).toBeNull();
+  });
+
+  it("clears the pending revert timer on unmount (no orphan setTimeout fires)", async () => {
+    vi.useFakeTimers();
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(button.querySelector(".octicon-check")).not.toBeNull();
+    // Unmount mid-flight — the pending 1.2s setTimeout must be cleared so it
+    // doesn't fire a setState on an unmounted node.
+    act(() => {
+      root!.unmount();
+      root = null;
+    });
+    // Advancing past the revert window must not throw an unhandled error
+    // ("can't setState on unmounted component") nor fire a leaked callback
+    // against the now-detached fiber.
+    expect(() => {
+      vi.advanceTimersByTime(2000);
+    }).not.toThrow();
+  });
+
+  it("preserves the aria-label across the icon swap", async () => {
+    installClipboard(() => Promise.resolve());
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    expect(button.getAttribute("aria-label")).toBe("Copy file path");
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(button.getAttribute("aria-label")).toBe("Copy file path");
+  });
+
+  it("does NOT toggle collapse when re-clicked during the copied state", async () => {
+    let toggled = 0;
+    installClipboard(() => Promise.resolve());
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ onToggleCollapse: () => (toggled += 1) }),
+      ),
+    );
+    const button = c.querySelector(".tour-file-copy-button") as HTMLButtonElement;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(toggled).toBe(0);
   });
 });
 

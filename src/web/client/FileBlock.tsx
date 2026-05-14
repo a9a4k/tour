@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useRef } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { BundleFile } from "../../core/tour-bundle.js";
 import type {
   PlannedRow,
@@ -20,7 +20,12 @@ import {
   type DiffRowKind,
 } from "./row-components.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
-import { ChevronDownIcon, ChevronRightIcon, CopyIcon } from "./icons.js";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+} from "./icons.js";
 import { fileIcon } from "./file-icon.js";
 import { countDiffStats, proportionSegments } from "../../core/diff-stats.js";
 
@@ -39,6 +44,11 @@ import { countDiffStats, proportionSegments } from "../../core/diff-stats.js";
 
 type Side = "additions" | "deletions";
 type Layout = "split" | "unified";
+
+// Issue #319: revert window for the copy-button success indicator.
+// 1.2 s matches the original #16 implementation and GitHub's observable
+// "copied" cue duration.
+const COPY_REVERT_MS = 1200;
 
 export type ExpandAction =
   | {
@@ -220,9 +230,38 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     [stats.additions, stats.deletions],
   );
 
+  // Issue #319: success indicator on the copy-path button. A successful
+  // clipboard write flips the icon to a checkmark for 1.2 s, then reverts.
+  // Restores the cue originally implemented in #16 (dropped during the #225
+  // chrome restructure). Failure stays silent (no swap, no toast — matches
+  // GitHub). Rapid re-clicks re-copy and re-arm the timer.
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  const revertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (revertTimerRef.current !== null) {
+        clearTimeout(revertTimerRef.current);
+        revertTimerRef.current = null;
+      }
+    };
+  }, []);
   const handleCopyPath = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    void navigator.clipboard?.writeText?.(file.name).catch(() => {});
+    const write = navigator.clipboard?.writeText?.(file.name);
+    if (!write) return;
+    write.then(
+      () => {
+        setCopyState("copied");
+        if (revertTimerRef.current !== null) {
+          clearTimeout(revertTimerRef.current);
+        }
+        revertTimerRef.current = setTimeout(() => {
+          revertTimerRef.current = null;
+          setCopyState("idle");
+        }, COPY_REVERT_MS);
+      },
+      () => {},
+    );
   };
 
   // PRD #270 / issue #274 (Slice 4): per-file Expand-all affordance. The
@@ -246,14 +285,16 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           <RenameHeaderSpan name={file.name} prevName={file.prevName} />
           <span className="tour-file-name">{file.name}</span>
           {/* Issue #317: copy-path button sits next to the filename (GitHub
-              parity). Long-path shrink behaviour lives on `.tour-file-name`. */}
+              parity); long-path shrink behaviour lives on `.tour-file-name`.
+              Issue #319: icon swap state lives at `copyState` above; layout-
+              stability `min-width` lives on `.tour-file-copy-button`. */}
           <button
             type="button"
             className="tour-file-copy-button"
             aria-label="Copy file path"
             onClick={handleCopyPath}
           >
-            <CopyIcon />
+            {copyState === "copied" ? <CheckIcon /> : <CopyIcon />}
           </button>
         </div>
         <div className="tour-file-header-right">
