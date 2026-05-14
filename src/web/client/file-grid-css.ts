@@ -312,24 +312,27 @@ export const FILE_GRID_CSS = `
      tokens readable. Context rows inherit canvas (no rule). */
   .tour-row[data-line-type="addition"] .tour-row-gutter,
   .tour-row[data-line-type="addition"] .tour-row-symbol,
-  .tour-row[data-line-type="change-addition"] .tour-row-gutter,
-  .tour-row[data-line-type="change-addition"] .tour-row-symbol {
+  .tour-row[data-line-type="change-addition"] .tour-row-gutter[data-side="additions"],
+  .tour-row[data-line-type="change-addition"] .tour-row-symbol[data-side="additions"] {
     background-color: ${theme.bg.successRange.web};
   }
 
   .tour-row[data-line-type="addition"] .tour-row-cell,
-  .tour-row[data-line-type="change-addition"] .tour-row-cell {
+  .tour-row[data-line-type="change-addition"] .tour-row-cell[data-side="additions"] {
     background-color: ${theme.bg.successCell.web};
   }
 
   .tour-row[data-line-type="deletion"] .tour-row-gutter,
   .tour-row[data-line-type="deletion"] .tour-row-symbol,
+  .tour-row[data-line-type="change-addition"] .tour-row-gutter[data-side="deletions"],
+  .tour-row[data-line-type="change-addition"] .tour-row-symbol[data-side="deletions"],
   .tour-row[data-line-type="change-deletion"] .tour-row-gutter,
   .tour-row[data-line-type="change-deletion"] .tour-row-symbol {
     background-color: ${theme.bg.dangerRange.web};
   }
 
   .tour-row[data-line-type="deletion"] .tour-row-cell,
+  .tour-row[data-line-type="change-addition"] .tour-row-cell[data-side="deletions"],
   .tour-row[data-line-type="change-deletion"] .tour-row-cell {
     background-color: ${theme.bg.dangerCell.web};
   }

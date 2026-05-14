@@ -94,6 +94,30 @@ describe("FILE_GRID_CSS — line-type backgrounds (two-tone, #221)", () => {
       /\.tour-row\[data-line-type="deletion"\] \.tour-row-cell[\s\S]*?background-color:\s*\$?\{?[^}]*\}?/,
     );
   });
+
+  // A paired change row carries `data-line-type="change-addition"` on the
+  // row but renders BOTH columns in split layout: left `data-side="deletions"`
+  // (the `-` line) and right `data-side="additions"` (the `+` line). The
+  // background tint must therefore be scoped per-column so the deletions
+  // column reads red and the additions column reads green — a row-level
+  // selector would paint both halves green.
+  it("scopes change-addition success tint to the additions column only", () => {
+    expect(FILE_GRID_CSS).toContain(
+      '.tour-row[data-line-type="change-addition"] .tour-row-gutter[data-side="additions"]',
+    );
+    expect(FILE_GRID_CSS).toContain(
+      '.tour-row[data-line-type="change-addition"] .tour-row-cell[data-side="additions"]',
+    );
+  });
+
+  it("paints the deletions column of a change-addition row with the danger tint", () => {
+    expect(FILE_GRID_CSS).toContain(
+      '.tour-row[data-line-type="change-addition"] .tour-row-gutter[data-side="deletions"]',
+    );
+    expect(FILE_GRID_CSS).toContain(
+      '.tour-row[data-line-type="change-addition"] .tour-row-cell[data-side="deletions"]',
+    );
+  });
 });
 
 describe("FILE_GRID_CSS — gutter+symbol foreground on tinted rows (#248)", () => {
