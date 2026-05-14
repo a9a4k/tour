@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **TUI: `[`/`]` sidebar resize no longer drifts the diff viewport (issue
+  #318).** The diff pane is a `flexGrow={1}` sibling of the fixed-width
+  sidebar, so a width change reflows annotation cards (markdown blocks
+  word-wrap to the new pane width). The scrollbox preserved `scrollTop`
+  as a row offset across the re-render, so any card above the viewport
+  that grew / shrank by N rows shifted everything below it by the same
+  delta and the user's visual position drifted. After every `[`/`]`-
+  driven width change, the diff scrollbox now re-anchors to the cursor
+  row when a cursor exists (same culling-safe `scrollChildIntoView`
+  primitive the cursor-tracking effect uses), falling back to the
+  active file's card (`file-card-${activeFile}`) when no cursor is
+  present. Tour-open auto-fit is unaffected: it didn't depend on
+  scrollTop preservation, and the new re-anchor only fires from the
+  keypress path.
+
+  Issue: #318
+
 ### Changed
 
 - **Webapp file header: copy-path button moved next to the filename
