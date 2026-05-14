@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, appendFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, appendFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { stringify as stringifyTOML } from "smol-toml";
@@ -11,6 +11,7 @@ import { readAnnotations } from "../../src/core/annotations-store.js";
 import {
   writeReplyLock,
   readReplyLock,
+  replyLockPath,
 } from "../../src/core/reply-lock.js";
 import type {
   ShippedAdapter,
@@ -65,11 +66,21 @@ interface FixtureAdapter extends ShippedAdapter {
   invocations: SpawnOpts[];
 }
 
+interface GatedFixtureAdapter extends FixtureAdapter {
+  // Resolves the gate so `exit` resolves and `runDispatch` proceeds to
+  // persist + release. Used by the concurrent-busy test to hold the first
+  // dispatch open while the second observes the lock.
+  release: () => void;
+}
+
 // Same per-chunk "wait until listeners attach" pattern as the existing
 // ReplyRunner fixture — the runner's dispatch logger attaches stdout/stderr
 // listeners asynchronously, so the fixture must wait before emitting.
+// When `gate` is supplied, `exit` also awaits the gate so the caller can
+// keep the dispatch open across an arbitrary number of test steps.
 function fixtureAdapter(
   result: SpawnResult & { stderr?: string },
+  gate?: Promise<void>,
 ): FixtureAdapter {
   const invocations: SpawnOpts[] = [];
   return {
@@ -88,6 +99,7 @@ function fixtureAdapter(
       });
       const exit = (async (): Promise<SpawnResult> => {
         await Promise.all([stdoutAttachedP, stderrAttachedP]);
+        if (gate) await gate;
         if (result.stdout)
           for (const cb of stdoutListeners) cb(result.stdout);
         if (result.stderr)
@@ -108,6 +120,57 @@ function fixtureAdapter(
       };
     },
   };
+}
+
+function gatedFixtureAdapter(
+  result: SpawnResult & { stderr?: string },
+): GatedFixtureAdapter {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  // The runner re-writes the lock with the spawned adapter's pid after the
+  // adapter spawns. Use this process's pid so `readReplyLock`'s liveness
+  // probe finds a live process and keeps the lock alive — same reason the
+  // pre-written-lock "busy" test uses `process.pid`. Without this, a dead
+  // pid (e.g. `4321`) would cause `readReplyLock` to self-heal the lock
+  // out from under the second call.
+  const adapter = fixtureAdapter(result, gate);
+  const baseSpawn = adapter.spawn;
+  adapter.spawn = (opts: SpawnOpts): SpawnedAdapter => {
+    const spawned = baseSpawn(opts);
+    return { ...spawned, pid: process.pid };
+  };
+  return Object.assign(adapter, { release });
+}
+
+// Polls the reply-lock file for existence — the deterministic synchronization
+// barrier the concurrent-busy test needs. The original `await Promise.resolve()`
+// gave the first call only one microtask to traverse several internal awaits
+// before writing its placeholder lock, which was empirically insufficient
+// under parallel test load (see issue #279). This helper waits until the lock
+// file actually exists on disk, with a generous timeout to surface the real
+// failure mode (no lock written) instead of the confusing dispatched-vs-busy
+// mismatch the race produced.
+async function waitForLockWritten(
+  cwd: string,
+  tourId: string,
+  timeoutMs: number,
+): Promise<void> {
+  const path = replyLockPath(cwd, tourId);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await stat(path);
+      return;
+    } catch {
+      // not yet written — keep polling
+    }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(
+    `waitForLockWritten: reply lock at ${path} was not written within ${timeoutMs}ms`,
+  );
 }
 
 async function makeRepo(): Promise<string> {
@@ -294,9 +357,22 @@ describe("requestReply", () => {
     // Two requestReply calls fired back-to-back against the same tour. The
     // first acquires the lock and proceeds; the second must observe the
     // lock and return busy without invoking its adapter.
+    //
+    // Synchronization (issue #279): the original test used a single
+    // `await Promise.resolve()` as a barrier between firing `first` and
+    // firing `second`. That gave `first` exactly one microtask to traverse
+    // several internal awaits and reach its lock write — empirically
+    // insufficient under parallel test load. The race was in the test's
+    // sync, not in the production lock primitive.
+    //
+    // The deterministic fix has two parts:
+    //   1. Gate `first`'s adapter on a release promise so the dispatch
+    //      can't complete (and clear the lock) before `second` observes it.
+    //   2. Poll the lock file for existence before firing `second`. With
+    //      the gate, the lock window is unbounded, so the poll is reliable.
     await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     await seedAnnotation(dir, tourId, mkAnn({ id: "ann-2", author_kind: "human" }));
-    const slowAdapter = fixtureAdapter({
+    const slowAdapter = gatedFixtureAdapter({
       code: 0,
       signal: null,
       stdout: "first reply",
@@ -314,11 +390,7 @@ describe("requestReply", () => {
       agent: "fixture",
       adapter: slowAdapter,
     });
-    // Yield a microtask so `first` has a chance to write its placeholder
-    // lock before `second` reads it. (Both calls share the same loop —
-    // the placeholder write inside `first` happens before its await on
-    // spawn.exit hands control back here.)
-    await Promise.resolve();
+    await waitForLockWritten(dir, tourId, 1000);
     const second = await requestReply({
       cwd: dir,
       tourId,
@@ -330,7 +402,8 @@ describe("requestReply", () => {
     expect(second).toEqual({ kind: "busy" });
     expect(fastAdapter.invocations).toHaveLength(0);
 
-    // Wait for the first to finish so we leave a clean filesystem.
+    // Release `first` so it can complete; leaves a clean filesystem.
+    slowAdapter.release();
     expect(await first).toEqual({ kind: "dispatched" });
     expect(slowAdapter.invocations).toHaveLength(1);
   });
