@@ -28,15 +28,22 @@ function refreshLayoutChain(target: unknown, contentRoot: unknown): void {
 }
 
 /**
- * Replacement for `ScrollBoxRenderable.scrollChildIntoView` that is
- * safe under `viewportCulling={true}` — refreshes the target's
- * ancestor chain before applying opentui's `block:"nearest"` math.
+ * Compute the {dx, dy} scroll delta that brings child `childId` into
+ * the scrollbox's viewport with `block:"nearest"` semantics. Returns
+ * `null` when the descendant is missing. Refreshes the ancestor chain
+ * top-down before reading positions so culled subtrees report fresh
+ * Yoga values.
  *
- * Returns true if a scroll occurred.
+ * Shared by `scrollChildIntoView` (instant) and
+ * `animatedScrollChildIntoView` (tweened) so both paths compute the
+ * same target.
  */
-export function scrollChildIntoView(sb: ScrollBoxRenderable, childId: string): boolean {
+export function computeScrollChildIntoViewDelta(
+  sb: ScrollBoxRenderable,
+  childId: string,
+): { dx: number; dy: number } | null {
   const target = sb.content.findDescendantById(childId);
-  if (!target) return false;
+  if (!target) return null;
   refreshLayoutChain(target, sb.content);
 
   const childY = target.y;
@@ -47,8 +54,51 @@ export function scrollChildIntoView(sb: ScrollBoxRenderable, childId: string): b
 
   const dy = nearestDelta(childY, childY + childHeight, viewport.y, viewport.y + viewport.height);
   const dx = nearestDelta(childX, childX + childWidth, viewport.x, viewport.x + viewport.width);
-  if (dx === 0 && dy === 0) return false;
-  sb.scrollBy({ x: dx, y: dy });
+  return { dx, dy };
+}
+
+/**
+ * Compute the absolute `scrollTop` that centers child `childId` in the
+ * scrollbox's viewport. Returns `null` when the descendant is missing.
+ * Refreshes the ancestor chain top-down before reading positions.
+ *
+ * Shared by `centerChildInView` (instant) and `animatedCenterChildInView`
+ * (tweened).
+ */
+export function computeCenterChildScrollTop(
+  sb: ScrollBoxRenderable,
+  childId: string,
+): number | null {
+  const target = sb.content.findDescendantById(childId);
+  if (!target) return null;
+  refreshLayoutChain(target, sb.content);
+
+  // OpenTUI exposes `target.y` and `viewport.y` in absolute screen
+  // coordinates; convert to the content frame `centerScrollTarget`
+  // expects: contentY = child.y - viewport.y + scrollTop.
+  const contentY = target.y - sb.viewport.y + sb.scrollTop;
+  return centerScrollTarget(
+    { y: contentY, height: target.height },
+    {
+      scrollTop: sb.scrollTop,
+      height: sb.viewport.height,
+      contentHeight: sb.scrollHeight,
+    },
+  );
+}
+
+/**
+ * Replacement for `ScrollBoxRenderable.scrollChildIntoView` that is
+ * safe under `viewportCulling={true}` — refreshes the target's
+ * ancestor chain before applying opentui's `block:"nearest"` math.
+ *
+ * Returns true if a scroll occurred.
+ */
+export function scrollChildIntoView(sb: ScrollBoxRenderable, childId: string): boolean {
+  const delta = computeScrollChildIntoViewDelta(sb, childId);
+  if (!delta) return false;
+  if (delta.dx === 0 && delta.dy === 0) return false;
+  sb.scrollBy({ x: delta.dx, y: delta.dy });
   return true;
 }
 
@@ -63,22 +113,8 @@ export function scrollChildIntoView(sb: ScrollBoxRenderable, childId: string): b
  * Returns true if a scroll occurred.
  */
 export function centerChildInView(sb: ScrollBoxRenderable, childId: string): boolean {
-  const target = sb.content.findDescendantById(childId);
-  if (!target) return false;
-  refreshLayoutChain(target, sb.content);
-
-  // OpenTUI exposes `target.y` and `viewport.y` in absolute screen
-  // coordinates; convert to the content frame `centerScrollTarget`
-  // expects: contentY = child.y - viewport.y + scrollTop.
-  const contentY = target.y - sb.viewport.y + sb.scrollTop;
-  const desired = centerScrollTarget(
-    { y: contentY, height: target.height },
-    {
-      scrollTop: sb.scrollTop,
-      height: sb.viewport.height,
-      contentHeight: sb.scrollHeight,
-    },
-  );
+  const desired = computeCenterChildScrollTop(sb, childId);
+  if (desired === null) return false;
   if (desired === sb.scrollTop) return false;
   sb.scrollTo(desired);
   return true;

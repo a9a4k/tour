@@ -22,6 +22,7 @@ import {
   revealAndLocate,
 } from "../core/file-tree.js";
 import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
+import { animatedScrollChildIntoView, isSmoothScrollEnabled } from "./smooth-scroll.js";
 import { requestReply as runRequestReply } from "../core/reply-runner.js";
 
 // TUI substrate dependencies the adapter needs. The renderer-bound
@@ -71,8 +72,17 @@ export function createTuiTourSessionAdapter(
     if (!sb) return false;
     const targetId = `annotation-${id}`;
     if (!sb.content.findDescendantById(targetId)) return false;
-    if (mode === "center") centerChildInView(sb, targetId);
-    else scrollChildIntoView(sb, targetId);
+    // Issue #294 Slice 1: animate when the smooth-scroll flag is on and
+    // this is an in-flight navigation (placement === "nearest"). Fresh
+    // landings (placement === "center" — cursor materialize, URL restore,
+    // tour-switch, send-to-agent recall) stay instant by construction.
+    if (mode === "center") {
+      centerChildInView(sb, targetId);
+    } else if (isSmoothScrollEnabled()) {
+      animatedScrollChildIntoView(sb, targetId);
+    } else {
+      scrollChildIntoView(sb, targetId);
+    }
     return true;
   }
 
@@ -119,14 +129,16 @@ export function createTuiTourSessionAdapter(
       };
       attempt(POST_SUBMIT_SCROLL_RETRY_BUDGET);
     },
-    scrollToRow: (anchor: ScrollRowAnchor, _mode: ScrollPlacement) => {
+    scrollToRow: (anchor: ScrollRowAnchor, mode: ScrollPlacement) => {
       scheduleScroll(() => {
         const sb = deps.diffScrollBoxRef.current;
         if (!sb) return;
-        scrollChildIntoView(
-          sb,
-          `diff-row-${anchor.file}-${anchor.side}-${anchor.lineNumber}`,
-        );
+        const targetId = `diff-row-${anchor.file}-${anchor.side}-${anchor.lineNumber}`;
+        // Issue #294 Slice 1: animate iff in-flight (placement === "nearest")
+        // and the smooth-scroll flag is on.
+        const animate = mode === "nearest" && isSmoothScrollEnabled();
+        if (animate) animatedScrollChildIntoView(sb, targetId);
+        else scrollChildIntoView(sb, targetId);
       });
     },
     scrollToPickerRow: (idx: number) => {
