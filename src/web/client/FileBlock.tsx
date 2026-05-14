@@ -121,12 +121,10 @@ function hunkHeaderDirection(hunkIndex: number): "up" | "both" {
 function interactiveDirection(
   subKind: InteractiveRowKind["subKind"],
 ): "up" | "down" | "both" {
-  // PRD #270 / issue #271 directional family: each row dispatches the
-  // direction named by its label. `expand-all` always reveals the entire
-  // remaining gap (`both` with `count = gapAbove`).
-  if (subKind === "expand-up") return "up";
+  // Issue #280: `expand-up` / `expand-all` are gone from the standalone
+  // interactive vocabulary (now hosted on the hunk-header banner's left
+  // cell). The only standalone `expand-down` row dispatches "down".
   if (subKind === "expand-down") return "down";
-  if (subKind === "expand-all") return "both";
   if (subKind === "boundary-bottom") return "down";
   if (subKind === "boundary-top") return "up";
   // collapsed-file uses `down` as a neutral default; activation routes
@@ -286,7 +284,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
               return [node];
             }
             if (row.kind === "hunk-header") {
-              return [renderHunkHeader(row, idx, file, cursor)];
+              return [renderHunkHeader(row, idx, file, cursor, onDispatchExpand)];
             }
             if (row.kind === "interactive") {
               return [renderInteractive(row, idx, file, cursor, onDispatchExpand)];
@@ -445,35 +443,43 @@ function renderDiffRow(
   );
 }
 
-// PRD #270 Slice 2 / issue #272: the hunk-header banner is display-only —
-// no click / keyboard dispatch. The directional expand affordance is
-// owned by the `<InteractiveRow>` subkinds (`expand-up` / `expand-down` /
-// `expand-all`) emitted by `expandRowsForGap` (Slice 1); the banner
-// itself is rendered for wayfinding only. `cursor` is still passed
-// through so the `.is-cursor` outline rule applies structurally if the
-// cursor were ever placed on the banner — in practice
-// `flatRows` no longer promotes hunk-header rows to interactive
-// flat-rows, so the cursor never walks here.
+// Issue #280: the hunk-header banner's leftmost cell hosts the primary
+// expand affordance (`primaryExpand: "up" | "all" | null`). When non-null
+// the cell is interactive (click + Enter dispatch) and the cursor walks
+// the row via the existing `boundary-top` / `hunk-separator` identity.
+// When null the cell paints an inert `…` placeholder; flat-rows skips
+// the banner from the cursor stream.
 function renderHunkHeader(
   row: HunkHeaderRow,
   idx: number,
   file: BundleFile,
   cursor: Cursor | null,
+  onDispatchExpand: (action: ExpandAction) => void,
 ): React.ReactNode {
-  // hunkIndex === 0 → boundary-top (file-top), boundaryRef "top".
-  // hunkIndex  >  0 → hunk-separator, boundaryRef = hunkIndex.
   const subKind: InteractiveRowKind["subKind"] =
     row.hunkIndex === 0 ? "boundary-top" : "hunk-separator";
   const boundaryRef: BoundaryRef = row.hunkIndex === 0 ? "top" : row.hunkIndex;
   const direction = hunkHeaderDirection(row.hunkIndex);
   const isCursor = interactiveCursorMatches(cursor, file.name, subKind, boundaryRef);
+  const onActivate = (dispatchDirection: "up" | "both", count: number) => {
+    onDispatchExpand({
+      kind: "expand",
+      file: file.name,
+      boundaryRef,
+      direction: dispatchDirection,
+      count,
+    });
+  };
   return (
     <HunkHeaderBanner
       key={`hh-${idx}`}
       header={row.header}
       boundaryRef={boundaryRef}
       direction={direction}
+      primaryExpand={row.primaryExpand}
+      gapAbove={row.gapAbove}
       isCursor={isCursor}
+      onActivate={onActivate}
     />
   );
 }

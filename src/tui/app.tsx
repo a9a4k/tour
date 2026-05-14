@@ -13,7 +13,7 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { planRows } from "../core/diff-rows.js";
+import { planRows, hunkHeaderExpandPlan } from "../core/diff-rows.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
@@ -1118,27 +1118,40 @@ function App(props: AppProps) {
     if (!cursor || cursor.kind !== "row" || !cursor.interactive) return;
     const { subKind, boundaryRef } = cursor.interactive;
     switch (subKind) {
-      case "expand-up":
-        expandDirectional(cursor.file, boundaryRef, "up", "symmetric-20");
-        return;
       case "expand-down":
         expandDirectional(cursor.file, boundaryRef, "down", "symmetric-20");
         return;
-      case "expand-all":
-        // Single Enter reveals the entire remaining gap (PRD #270 /
-        // issue #271).
-        expandDirectional(cursor.file, boundaryRef, "both", "all");
+      case "boundary-top":
+      case "hunk-separator": {
+        // Issue #280: hunk-header banner's left cell. Re-derive the
+        // primary expand subkind from gap size + edge position (same
+        // helper the planner uses for `primaryExpand`); route Up →
+        // EXPANSION_STEP, All → full-gap reveal.
+        const gapSize =
+          boundaryRef === "top"
+            ? boundaryTopGapSize(cursor.file)
+            : typeof boundaryRef === "number"
+              ? hunkSeparatorGapSize(cursor.file, boundaryRef)
+              : 0;
+        if (gapSize === 0) return;
+        const plan = hunkHeaderExpandPlan(gapSize, subKind === "boundary-top");
+        if (plan.primaryExpand === null) return;
+        if (plan.primaryExpand === "up") {
+          expandDirectional(cursor.file, boundaryRef, "up", "symmetric-20");
+        } else {
+          expandDirectional(cursor.file, boundaryRef, "both", "all");
+        }
         return;
+      }
       case "collapsed-file":
         expandCollapsedFile(cursor.file);
         return;
-      // `hunk-separator` / `boundary-top` / `boundary-bottom` are no
-      // longer reachable on the TUI: with hunk-headers display-only,
-      // the cursor never lands on a banner, and the planner emits
-      // file-bottom gaps via `expand-all` / `expand-down` instead of a
-      // lone `boundary-bottom` row (PRD #270, issue #271 + #273).
       case "expand-file-all":
         expandAllInFile(cursor.file);
+        return;
+      // `boundary-bottom` is no longer emitted by the planner — file-
+      // bottom gaps now use a standalone `expand-down` row (issue #280).
+      case "boundary-bottom":
         return;
     }
   };

@@ -437,15 +437,53 @@ export const FILE_GRID_CSS = `
      range, .tour-hunk-header-context) inherit these declarations
      naturally. */
   .tour-hunk-header {
-    /* Override .tour-row's display:grid + subgrid template so the two
-       text segments flow inline as block content instead of slotting
-       into the gutter/symbol tracks (which would force-wrap the text). */
-    display: block;
+    /* Issue 280: two-cell layout. Override .tour-rows display:grid +
+       subgrid template; lay out the left button cell (~44px, saturated
+       accent-emphasis bg) inline with the right text cell (accent-subtle
+       wash). Right cell hosts the range + function-context spans. */
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
     background-color: ${theme.bg.accentSubtle.web};
-    padding: 6px 16px;
     font-family: ${MONO_STACK};
     font-size: 12px;
     line-height: 20px;
+    padding: 0;
+  }
+
+  .tour-hunk-header-button {
+    /* Saturated leftmost cell, matches GitHub's blob-num-expandable
+       block. The cell is interactive when primaryExpand is non-null and
+       paints an inert ellipsis placeholder otherwise. */
+    flex: 0 0 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: ${theme.bg.accentEmphasis};
+    color: ${theme.fg.onEmphasis};
+    user-select: none;
+  }
+
+  .tour-hunk-header-button[role="button"] {
+    cursor: pointer;
+  }
+
+  .tour-hunk-header-button[role="button"]:focus-visible {
+    outline: 2px solid ${theme.fg.accent};
+    outline-offset: -2px;
+  }
+
+  .tour-hunk-header-button.is-placeholder {
+    color: ${theme.fg.onEmphasis};
+    cursor: default;
+  }
+
+  .tour-hunk-header-text {
+    /* Right cell. Inherits the rows accent-subtle wash; matches GitHubs
+       blob-code-hunk inset. */
+    flex: 1 1 auto;
+    padding: 6px 16px;
+    min-width: 0;
   }
 
   .tour-hunk-header-range {

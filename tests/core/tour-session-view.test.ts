@@ -447,10 +447,10 @@ describe("deriveTourSessionView — rows slice", () => {
   // display-only everywhere. `hunkHeaderCursorStop` is vestigial; the
   // default view and the `hunkHeaderCursorStop: false` view emit
   // identical flat-row lists.
-  it("default and hunkHeaderCursorStop: false both suppress hunk-header → cursor stop promotion in the flatRowsList", () => {
+  it("default and hunkHeaderCursorStop: false both promote a hunk-header with primaryExpand !== null to a cursor stop (issue #280)", () => {
     // Bundle with a file-top gap (hunk starts at line 5, lines 1-4
-    // hidden) — pre-PRD #270 this gap would have produced a
-    // `boundary-top` cursor stop. Both surfaces now skip it.
+    // hidden) — issue #280 brought the hunk-header banner back as
+    // cursor-walkable (left cell is interactive).
     const DIFF_WITH_GAP = `diff --git a/c.ts b/c.ts
 --- a/c.ts
 +++ b/c.ts
@@ -491,8 +491,12 @@ describe("deriveTourSessionView — rows slice", () => {
         r.kind === "interactive" &&
         (r.subKind === "boundary-top" || r.subKind === "hunk-separator"),
     );
-    expect(defaultBanners.length).toBe(0);
-    expect(tuiBanners.length).toBe(0);
+    expect(defaultBanners.length).toBe(1);
+    expect(tuiBanners.length).toBe(1);
+    expect(defaultBanners[0].kind).toBe("interactive");
+    if (defaultBanners[0].kind !== "interactive") throw new Error("narrow");
+    expect(defaultBanners[0].subKind).toBe("boundary-top");
+    expect(defaultBanners[0].boundaryRef).toBe("top");
   });
 });
 

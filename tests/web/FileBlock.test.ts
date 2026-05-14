@@ -88,6 +88,7 @@ function rowsCanonical(): PlannedRow[] {
       header: "@@ -1,2 +1,2 @@",
       hunkIndex: 0,
       gapAbove: 0,
+      primaryExpand: null,
     },
     {
       kind: "diff-row",
@@ -563,7 +564,7 @@ describe("<FileBlock> — file diff-stats indicator (#228)", () => {
   it("renders 5 neutral segments and no count text when total === 0", () => {
     // A file with only context rows (e.g. pure rename) — no diff content.
     const rows: PlannedRow[] = [
-      { kind: "hunk-header", header: "@@ A", hunkIndex: 0, gapAbove: 0 },
+      { kind: "hunk-header", header: "@@ A", hunkIndex: 0, gapAbove: 0, primaryExpand: null },
       diffRow("context", 1),
     ];
     const c = mount(createElement(FileBlock, defaultProps({ rows })));
@@ -614,7 +615,7 @@ describe("<FileBlock> — file diff-stats indicator (#228)", () => {
 describe("<FileBlock> — planner walk + dispatch", () => {
   it("walks rows in order, emitting one .tour-row per planner row (plus cards)", () => {
     const rows: PlannedRow[] = [
-      { kind: "hunk-header", header: "@@ A", hunkIndex: 0, gapAbove: 0 },
+      { kind: "hunk-header", header: "@@ A", hunkIndex: 0, gapAbove: 0, primaryExpand: null },
       {
         kind: "diff-row",
         type: "context",
@@ -738,13 +739,19 @@ describe("<FileBlock> — interactive row activation", () => {
     expect(actions[0].kind === "expand" ? actions[0].count : 0).toBeGreaterThan(0);
   });
 
-  it("clicking the hunk-header banner is a no-op — dispatches no expand action (#272)", () => {
-    // PRD #270 Slice 2 / issue #272: the banner becomes display-only.
-    // The directional expand buttons (Slice 1) own the affordance; the
-    // banner text is no longer a click target.
+  it("clicking the hunk-header right cell is a no-op — dispatches no expand action (issue #280)", () => {
+    // Issue #280: clicking the `@@` text (right cell) does nothing, even
+    // when the banner is interactive (primaryExpand !== null). Only the
+    // left button cell dispatches.
     const actions: ExpandAction[] = [];
     const rows: PlannedRow[] = [
-      { kind: "hunk-header", header: "@@ -33,7 +33,7 @@", hunkIndex: 2, gapAbove: 8 },
+      {
+        kind: "hunk-header",
+        header: "@@ -33,7 +33,7 @@",
+        hunkIndex: 2,
+        gapAbove: 8,
+        primaryExpand: "all",
+      },
     ];
     const c = mount(
       createElement(
@@ -752,10 +759,117 @@ describe("<FileBlock> — interactive row activation", () => {
         defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
       ),
     );
-    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
-    expect(row).not.toBeNull();
+    const textCell = c.querySelector(".tour-hunk-header-text") as HTMLElement;
+    expect(textCell).not.toBeNull();
     act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      textCell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions).toEqual([]);
+  });
+
+  it("clicking the hunk-header left button cell with primaryExpand 'up' dispatches direction='up' (issue #280)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "hunk-header",
+        header: "@@ -100,3 +100,3 @@",
+        hunkIndex: 2,
+        gapAbove: 80,
+        primaryExpand: "up",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(btn.getAttribute("role")).toBe("button");
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions).toEqual([
+      { kind: "expand", file: "x.ts", boundaryRef: 2, direction: "up", count: 20 },
+    ]);
+  });
+
+  it("clicking the hunk-header left button cell with primaryExpand 'all' dispatches direction='both' + gapAbove (issue #280)", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "hunk-header",
+        header: "@@ -50,3 +50,3 @@",
+        hunkIndex: 1,
+        gapAbove: 12,
+        primaryExpand: "all",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions).toEqual([
+      { kind: "expand", file: "x.ts", boundaryRef: 1, direction: "both", count: 12 },
+    ]);
+  });
+
+  it("file-top hunk-header (hunkIndex 0) dispatches with boundaryRef='top'", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "hunk-header",
+        header: "@@ -200,3 +200,3 @@",
+        hunkIndex: 0,
+        gapAbove: 199,
+        primaryExpand: "up",
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(actions[0]).toMatchObject({
+      kind: "expand",
+      boundaryRef: "top",
+      direction: "up",
+    });
+  });
+
+  it("hunk-header with primaryExpand null renders an inert `…` placeholder; clicking does nothing", () => {
+    const actions: ExpandAction[] = [];
+    const rows: PlannedRow[] = [
+      {
+        kind: "hunk-header",
+        header: "@@ -1,3 +1,3 @@",
+        hunkIndex: 0,
+        gapAbove: 0,
+        primaryExpand: null,
+      },
+    ];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
+      ),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(btn.textContent).toBe("…");
+    expect(btn.getAttribute("role")).toBeNull();
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(actions).toEqual([]);
   });
@@ -767,6 +881,7 @@ describe("<FileBlock> — interactive row activation", () => {
         header: "@@ -33,7 +33,7 @@ function foo() {",
         hunkIndex: 1,
         gapAbove: 10,
+        primaryExpand: "all",
       },
     ];
     const c = mount(createElement(FileBlock, defaultProps({ rows })));
@@ -806,43 +921,10 @@ describe("<FileBlock> — interactive row activation", () => {
     expect(actions).toEqual([{ kind: "expand-file", file: "x.ts" }]);
   });
 
-  // PRD #270 / issue #271: directional + Expand-All button dispatch.
-  // Each directional subkind dispatches the direction named by its label
-  // through the FileBlock → onDispatchExpand bridge. `expand-all` dispatches
-  // `direction: "both"` with `count = gapAbove` (the full remaining gap).
-  it("forwards `expand-up` click → onDispatchExpand with direction='up' and count=EXPANSION_STEP (PRD #270)", () => {
-    const actions: ExpandAction[] = [];
-    const rows: PlannedRow[] = [
-      {
-        kind: "interactive",
-        subKind: "expand-up",
-        boundaryRef: 1,
-        gapAbove: 73,
-        text: "↑ Expand Up",
-      },
-    ];
-    const c = mount(
-      createElement(
-        FileBlock,
-        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
-      ),
-    );
-    const row = c.querySelector('.tour-row[data-subkind="expand-up"]') as HTMLElement;
-    expect(row).not.toBeNull();
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(actions.length).toBe(1);
-    expect(actions[0]).toEqual({
-      kind: "expand",
-      file: "x.ts",
-      boundaryRef: 1,
-      direction: "up",
-      count: 20,
-    });
-  });
-
-  it("forwards `expand-down` click → onDispatchExpand with direction='down' and count=EXPANSION_STEP (PRD #270)", () => {
+  // Issue #280: only `expand-down` survives as a standalone interactive
+  // row. `expand-up` / `expand-all` are folded onto the hunk-header
+  // banner's left cell (covered by the hunk-header tests above).
+  it("forwards `expand-down` click → onDispatchExpand with direction='down' and count=EXPANSION_STEP", () => {
     const actions: ExpandAction[] = [];
     const rows: PlannedRow[] = [
       {
@@ -871,38 +953,6 @@ describe("<FileBlock> — interactive row activation", () => {
       boundaryRef: 1,
       direction: "down",
       count: 20,
-    });
-  });
-
-  it("forwards `expand-all` click → onDispatchExpand with direction='both' and count=gapAbove (PRD #270)", () => {
-    const actions: ExpandAction[] = [];
-    const rows: PlannedRow[] = [
-      {
-        kind: "interactive",
-        subKind: "expand-all",
-        boundaryRef: 2,
-        gapAbove: 12,
-        text: "↕ Expand All 12 lines",
-      },
-    ];
-    const c = mount(
-      createElement(
-        FileBlock,
-        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
-      ),
-    );
-    const row = c.querySelector('.tour-row[data-subkind="expand-all"]') as HTMLElement;
-    expect(row).not.toBeNull();
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(actions.length).toBe(1);
-    expect(actions[0]).toEqual({
-      kind: "expand",
-      file: "x.ts",
-      boundaryRef: 2,
-      direction: "both",
-      count: 12, // count == gapAbove for expand-all
     });
   });
 
@@ -936,53 +986,6 @@ describe("<FileBlock> — interactive row activation", () => {
     });
   });
 
-  it("file-top `expand-up` dispatches with boundaryRef='top' (PRD #270)", () => {
-    const actions: ExpandAction[] = [];
-    const rows: PlannedRow[] = [
-      {
-        kind: "interactive",
-        subKind: "expand-up",
-        boundaryRef: "top",
-        gapAbove: 100,
-        text: "↑ Expand Up",
-      },
-    ];
-    const c = mount(
-      createElement(
-        FileBlock,
-        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
-      ),
-    );
-    const row = c.querySelector('.tour-row[data-subkind="expand-up"]') as HTMLElement;
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(actions[0]).toEqual({
-      kind: "expand",
-      file: "x.ts",
-      boundaryRef: "top",
-      direction: "up",
-      count: 20,
-    });
-  });
-
-  it("`expand-up` glyph renders the planner-supplied text (`↑ Expand Up`) and data-direction=up (PRD #270)", () => {
-    const rows: PlannedRow[] = [
-      {
-        kind: "interactive",
-        subKind: "expand-up",
-        boundaryRef: 1,
-        gapAbove: 73,
-        text: "↑ Expand Up",
-      },
-    ];
-    const c = mount(createElement(FileBlock, defaultProps({ rows })));
-    const row = c.querySelector('.tour-row[data-subkind="expand-up"]') as HTMLElement;
-    expect(row).not.toBeNull();
-    expect(row.dataset.direction).toBe("up");
-    expect(row.textContent).toContain("↑ Expand Up");
-  });
-
   it("`expand-down` glyph renders the planner-supplied text (`↓ Expand Down`) and data-direction=down (PRD #270)", () => {
     const rows: PlannedRow[] = [
       {
@@ -1000,22 +1003,6 @@ describe("<FileBlock> — interactive row activation", () => {
     expect(row.textContent).toContain("↓ Expand Down");
   });
 
-  it("`expand-all` glyph renders the planner-supplied text (`↕ Expand All N lines`) and data-direction=both (PRD #270)", () => {
-    const rows: PlannedRow[] = [
-      {
-        kind: "interactive",
-        subKind: "expand-all",
-        boundaryRef: 1,
-        gapAbove: 12,
-        text: "↕ Expand All 12 lines",
-      },
-    ];
-    const c = mount(createElement(FileBlock, defaultProps({ rows })));
-    const row = c.querySelector('.tour-row[data-subkind="expand-all"]') as HTMLElement;
-    expect(row).not.toBeNull();
-    expect(row.dataset.direction).toBe("both");
-    expect(row.textContent).toContain("↕ Expand All 12 lines");
-  });
 });
 
 // ---------------------------------------------------------------------------

@@ -24,7 +24,12 @@ import {
   type CanSendToAgentResult,
 } from "../../core/can-send-to-agent.js";
 import { revealAncestors, type VisibleRow } from "../../core/file-tree.js";
-import { planRows, GAP_TWO_ROW_THRESHOLD, type PlannedRow } from "../../core/diff-rows.js";
+import {
+  planRows,
+  GAP_TWO_ROW_THRESHOLD,
+  hunkHeaderExpandPlan,
+  type PlannedRow,
+} from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
 import { emptyExpansion, getBoundary, type OrphanWindow } from "../../core/expansion-state.js";
 import {
@@ -1016,22 +1021,35 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 : 0;
         if (gapSize > 0) {
           e.preventDefault();
-          // PRD #270 / issue #271 directional Enter mapping. The
-          // directional subkinds dispatch their named direction; legacy
-          // `boundary-top` / `boundary-bottom` keep their pre-#270
-          // single-direction routing; `hunk-separator` (still
-          // interactive in slice 1) keeps `both`.
-          const direction: "up" | "down" | "both" =
-            subKind === "boundary-top" || subKind === "expand-up"
-              ? "up"
-              : subKind === "boundary-bottom" || subKind === "expand-down"
-                ? "down"
-                : "both";
-          // `expand-all` reveals the entire remaining gap in one Enter;
-          // every other directional / banner row dispatches
-          // EXPANSION_STEP lines. Shift carries no special meaning
+          // Issue #280: `boundary-top` / `hunk-separator` now address
+          // the hunk-header banner's interactive left cell. Re-derive
+          // its `primaryExpand` from the gap-size + edge position via
+          // the same helper the planner uses; route Up → "up" /
+          // EXPANSION_STEP, All → "both" / gapSize. `boundary-bottom`
+          // keeps "down" routing; standalone `expand-down` keeps its
+          // own per-direction path. Shift carries no special meaning
           // (PRD #270 Slice 5 / issue #275).
-          const count = subKind === "expand-all" ? gapSize : EXPANSION_STEP;
+          let direction: "up" | "down" | "both";
+          let count: number;
+          if (subKind === "boundary-top" || subKind === "hunk-separator") {
+            const plan = hunkHeaderExpandPlan(
+              gapSize,
+              subKind === "boundary-top",
+            );
+            if (plan.primaryExpand === null) return;
+            if (plan.primaryExpand === "up") {
+              direction = "up";
+              count = EXPANSION_STEP;
+            } else {
+              direction = "both";
+              count = gapSize;
+            }
+          } else if (subKind === "boundary-bottom" || subKind === "expand-down") {
+            direction = "down";
+            count = EXPANSION_STEP;
+          } else {
+            return;
+          }
           dispatchExpand({
             kind: "expand",
             file: cursor.file,

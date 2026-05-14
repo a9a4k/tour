@@ -248,17 +248,22 @@ describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
     expect(rule).toContain(`background-color: ${theme.bg.accentSubtle.web}`);
   });
 
-  it("adds vertical padding so banners read as section dividers", () => {
+  it("adds vertical padding so banners read as section dividers (right cell hosts the inset)", () => {
+    // Issue #280: padding moved off `.tour-hunk-header` (now 0) onto the
+    // right text cell `.tour-hunk-header-text` so the saturated left
+    // button cell hugs the row's leading edge with no internal gap.
     expect(FILE_GRID_CSS).toMatch(
-      /\.tour-hunk-header[^{]*\{[^}]*padding:\s*\d+px\s+\d+px/,
+      /\.tour-hunk-header-text[^{]*\{[^}]*padding:\s*\d+px\s+\d+px/,
     );
   });
 
-  it("overrides .tour-row's `display: grid` so banner text flows inline", () => {
-    // Without this override the two text segments slot into the subgrid's
-    // gutter/symbol tracks and force-wrap inside the narrow auto columns.
+  it("overrides .tour-row's `display: grid` so banner cells flow inline (issue #280: flex row)", () => {
+    // Issue #280: banner uses `display: flex` for the two-cell layout —
+    // left button cell + right text cell. Without an override, the
+    // subgrid template would slot the cells into the gutter/symbol
+    // tracks and force-wrap them.
     expect(FILE_GRID_CSS).toMatch(
-      /\.tour-hunk-header[^{]*\{[^}]*display:\s*block/,
+      /\.tour-hunk-header[^{]*\{[^}]*display:\s*flex/,
     );
   });
 
@@ -281,44 +286,42 @@ describe("FILE_GRID_CSS — hunk-header banner (#223)", () => {
   });
 });
 
-describe("FILE_GRID_CSS — hunk-header is display-only (#272 / PRD #270 Slice 2)", () => {
-  // PRD #270 Slice 2 / issue #272: the `…` cue area introduced by #252
-  // is removed entirely. The new directional expand affordance lives in
-  // explicit cursor-walkable buttons emitted by `expandRowsForGap`
-  // (Slice 1); the hunk-header banner becomes a display-only metadata
-  // row showing the parsed range + function-context segments only.
-  // Consequence on CSS: no `::before` rule, no `position: relative`
-  // anchor, and `padding-left` reverts from 60px back to the pre-#252
-  // value (16px, matching the right padding for a symmetric inset).
+describe("FILE_GRID_CSS — hunk-header two-cell layout (issue 280)", () => {
+  // Issue 280: GitHubs `@@` row is two cells — a saturated leftmost
+  // button cell (~44px) + the right text cell. The CSS adds new rules
+  // for `.tour-hunk-header-button` and `.tour-hunk-header-text`; the
+  // outer `.tour-hunk-header` becomes `display: flex` with no internal
+  // padding (the cells own their own insets).
 
   const bannerRuleBody = FILE_GRID_CSS.match(
     /\.tour-hunk-header\s*\{([^}]*)\}/,
   )?.[1] ?? "";
 
-  it("does NOT declare a .tour-hunk-header::before rule (#252 cue removed)", () => {
+  it("does NOT declare a .tour-hunk-header::before rule (252 cue removed by 272 and not reintroduced)", () => {
     expect(FILE_GRID_CSS).not.toContain(".tour-hunk-header::before");
   });
 
-  it("does NOT declare `position: relative` on .tour-hunk-header (no ::before to anchor)", () => {
+  it("does NOT declare `position: relative` on .tour-hunk-header", () => {
     expect(bannerRuleBody).not.toMatch(/position:\s*relative/);
   });
 
-  it("does NOT declare `cursor: pointer` on .tour-hunk-header (banner is display-only)", () => {
-    expect(bannerRuleBody).not.toMatch(/cursor:\s*pointer/);
+  it("declares a `.tour-hunk-header-button` cell with the accent-emphasis background", () => {
+    expect(FILE_GRID_CSS).toContain(".tour-hunk-header-button");
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header-button[^{]*\{[^}]*background-color:\s*#1f6feb/i,
+    );
   });
 
-  it("reverts banner's padding-left to 16px (pre-#252 value)", () => {
-    // Padding is now symmetric — same inset on left and right, no
-    // 44px-cue-area carve-out.
-    const hasFourValue =
-      /padding:\s*\d+px\s+\d+px\s+\d+px\s+16px/.test(bannerRuleBody);
-    const hasShorthand = /padding:\s*\d+px\s+16px(?:\s|;|$)/.test(bannerRuleBody);
-    const hasSeparate = /padding-left:\s*16px/.test(bannerRuleBody);
-    expect(hasFourValue || hasShorthand || hasSeparate).toBe(true);
+  it("declares a fixed width on the left button cell so the text cell takes the remainder", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header-button[^{]*\{[^}]*flex:\s*0\s+0\s+\d+px/,
+    );
   });
 
-  it("does NOT leave any 60px padding-left declaration", () => {
-    expect(bannerRuleBody).not.toMatch(/60px/);
+  it("declares cursor: pointer on the interactive button variant only", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-hunk-header-button\[role="button"\][^{]*\{[^}]*cursor:\s*pointer/,
+    );
   });
 });
 

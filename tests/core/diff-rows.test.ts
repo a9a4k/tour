@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import {
-  expandRowsForGap,
+  hunkHeaderExpandPlan,
   planRows,
   type PlannedRow,
 } from "../../src/core/diff-rows.js";
@@ -638,15 +638,17 @@ index 1..2 100644
     expect(top).toBeUndefined();
   });
 
-  it("emits a directional row for the file-bottom gap when last hunk doesn't reach EOF (PRD #270)", () => {
+  it("emits an expand-down row for the file-bottom gap when last hunk doesn't reach EOF (issue #280)", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split", {
       oldContent: OLD_CONTENT_TWO_HUNK,
       newContent: NEW_CONTENT_TWO_HUNK,
     });
-    // newContent has 16 lines; second hunk's last line is 15; gap = 1 < 40 → expand-all.
+    // newContent has 16 lines; second hunk's last line is 15; gap = 1.
+    // Issue #280: file-bottom is always `expand-down` (GitHub layout) —
+    // size-independent.
     const bottom = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "expand-all" && r.boundaryRef === "bottom",
+      (r) => r.kind === "interactive" && r.subKind === "expand-down" && r.boundaryRef === "bottom",
     );
     expect(bottom).toBeDefined();
     if (bottom?.kind === "interactive") {
@@ -655,7 +657,7 @@ index 1..2 100644
     }
   });
 
-  it("emits gapAbove on the directional rows reflecting the remaining gap size (PRD #270)", () => {
+  it("emits gapAbove on the standalone expand-down row reflecting the remaining gap size (issue #280)", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -670,30 +672,27 @@ index 1..2 100644
     const file = parseFile(diff);
     const rows = planRows(file, [], "split");
     // Mid-file gap: lines 2..49 hidden = 48. > 40 so the planner emits
-    // [expand-down, expand-up]; both carry gapAbove == remaining hidden.
+    // a standalone expand-down + hunk-header[primaryExpand 'up'].
     const down = rows.find(
       (r) => r.kind === "interactive" && r.subKind === "expand-down",
     );
-    const up = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "expand-up",
-    );
     expect(down).toBeDefined();
-    expect(up).toBeDefined();
     if (down?.kind === "interactive") expect(down.gapAbove).toBe(48);
-    if (up?.kind === "interactive") expect(up.gapAbove).toBe(48);
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].primaryExpand).toBe("up");
+    expect(headers[1].gapAbove).toBe(48);
   });
 
-  it("does NOT emit a file-bottom directional row when newContent is missing", () => {
+  it("does NOT emit a file-bottom expand-down row when newContent is missing", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split");
     const bottom = rows.find(
       (r) =>
         r.kind === "interactive" &&
         r.boundaryRef === "bottom" &&
-        (r.subKind === "expand-down" ||
-          r.subKind === "expand-up" ||
-          r.subKind === "expand-all" ||
-          r.subKind === "boundary-bottom"),
+        r.subKind === "expand-down",
     );
     expect(bottom).toBeUndefined();
   });
@@ -725,15 +724,12 @@ index 1..2 100644
       (r) =>
         r.kind === "interactive" &&
         r.boundaryRef === "bottom" &&
-        (r.subKind === "expand-down" ||
-          r.subKind === "expand-up" ||
-          r.subKind === "expand-all" ||
-          r.subKind === "boundary-bottom"),
+        r.subKind === "expand-down",
     );
     expect(bottom).toBeUndefined();
   });
 
-  it("emits expand-all with reduced count when file-bottom gap is partially absorbed (PRD #270)", () => {
+  it("emits expand-down with reduced count when file-bottom gap is partially absorbed (issue #280)", () => {
     // Build a one-hunk diff with a 5-line file-bottom gap (hunk ends at line
     // 3, newContent has 8 lines). Absorb 2 from the bottom → remaining = 3.
     const diff = `diff --git a/x.txt b/x.txt
@@ -761,26 +757,26 @@ index 1..2 100644
       ],
     ]);
     const rows = planRows(file, [], "split", { oldContent, newContent, expansion });
-    // remaining = 3 < 40 → expand-all row carries gapAbove = 3.
+    // remaining = 3 → expand-down row carries gapAbove = 3 (issue #280:
+    // file-bottom always uses Expand Down regardless of size).
     const bottom = rows.find(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
-        r.kind === "interactive" && r.boundaryRef === "bottom" && r.subKind === "expand-all",
+        r.kind === "interactive" && r.boundaryRef === "bottom" && r.subKind === "expand-down",
     );
     expect(bottom).toBeDefined();
     expect(bottom?.gapAbove).toBe(3);
-    expect(bottom?.text).toContain("3");
   });
 
-  it("emits expand-all with the original count when no file-bottom expansion has occurred (PRD #270)", () => {
+  it("emits expand-down with the original count when no file-bottom expansion has occurred (issue #280)", () => {
     const file = parseFile(TWO_HUNK_DIFF);
     const rows = planRows(file, [], "split", {
       oldContent: OLD_CONTENT_TWO_HUNK,
       newContent: NEW_CONTENT_TWO_HUNK,
     });
-    // file-bottom gap = 1 line → expand-all carries gapAbove = 1.
+    // file-bottom gap = 1 line → expand-down carries gapAbove = 1.
     const bottom = rows.find(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> =>
-        r.kind === "interactive" && r.boundaryRef === "bottom" && r.subKind === "expand-all",
+        r.kind === "interactive" && r.boundaryRef === "bottom" && r.subKind === "expand-down",
     );
     expect(bottom).toBeDefined();
     expect(bottom?.gapAbove).toBe(1);
@@ -1058,7 +1054,7 @@ index 1..2 100644
     expect(rows.some((r) => r.kind === "interactive" && r.subKind === "boundary-top")).toBe(false);
   });
 
-  it("first hunk at line > 1 → first hunk-header.gapAbove === firstHunkStart - 1; no boundary-top row", () => {
+  it("first hunk at line > 1 → first hunk-header.gapAbove === firstHunkStart - 1; primaryExpand 'all' (small gap)", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1076,18 +1072,14 @@ index 1..2 100644
     expect(headers[0].hunkIndex).toBe(0);
     expect(headers[0].gapAbove).toBe(9); // lines 1..9 hidden above hunk starting at 10
     expect(rows.some((r) => r.kind === "interactive" && r.subKind === "boundary-top")).toBe(false);
-    // PRD #270: a first-hunk file-top gap of 9 (< 40) emits a single `expand-all`.
-    const expandAll = rows.find(
-      (r) => r.kind === "interactive" && r.subKind === "expand-all",
-    );
-    expect(expandAll).toBeDefined();
-    if (expandAll?.kind === "interactive") {
-      expect(expandAll.boundaryRef).toBe("top");
-      expect(expandAll.gapAbove).toBe(9);
-    }
+    // Issue #280: a first-hunk file-top gap of 9 (< 40) folds onto the
+    // hunk-header banner's `primaryExpand: "all"`; no standalone
+    // interactive row.
+    expect(headers[0].primaryExpand).toBe("all");
+    expect(rows.some((r) => r.kind === "interactive")).toBe(false);
   });
 
-  it("file-top hunk with gap >= 40 emits a single `expand-up` row (PRD #270)", () => {
+  it("file-top hunk with gap >= 40 emits a hunk-header with primaryExpand 'up' (issue #280)", () => {
     // First hunk starts at line 200; file-top gap = 199 (way > 40).
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
@@ -1102,19 +1094,16 @@ index 1..2 100644
     const interactives = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
     );
-    // File-top edge: only one direction is meaningful; no `expand-down`.
-    expect(interactives.some((r) => r.subKind === "expand-down")).toBe(false);
-    const up = interactives.find((r) => r.subKind === "expand-up");
-    expect(up).toBeDefined();
-    expect(up?.boundaryRef).toBe("top");
-    expect(up?.gapAbove).toBe(199);
+    // File-top: no standalone interactive rows (primaryExpand on banner only).
+    expect(interactives.length).toBe(0);
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[0].gapAbove).toBe(199);
+    expect(headers[0].primaryExpand).toBe("up");
   });
 
-  it("mid-file gap of 40 (= 2N) → [expand-down, expand-up] (threshold is `< 40`)", () => {
+  it("mid-file gap of 40 (= 2N) → standalone expand-down + hunk-header[primaryExpand 'up'] (threshold is `< 40`)", () => {
     const { diff } = buildLargeGapDiff(40);
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
@@ -1122,15 +1111,14 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
     );
     expect(interactives.some((r) => r.subKind === "expand-down")).toBe(true);
-    expect(interactives.some((r) => r.subKind === "expand-up")).toBe(true);
-    expect(interactives.some((r) => r.subKind === "expand-all")).toBe(false);
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(40);
+    expect(headers[1].primaryExpand).toBe("up");
   });
 
-  it("mid-file gap of 41 (>= 40) → [expand-down, expand-up] immediately above hunk-header (PRD #270)", () => {
+  it("mid-file gap of 41 (>= 40) → standalone expand-down immediately above hunk-header[primaryExpand 'up'] (issue #280)", () => {
     const { diff } = buildLargeGapDiff(41);
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
@@ -1138,43 +1126,43 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(41);
-    // Two interactive rows above the second hunk-header, in DOM order Down then Up.
+    expect(headers[1].primaryExpand).toBe("up");
+    // One interactive row above the second hunk-header: expand-down.
     const headerIdx = rows.findIndex(
       (r) => r.kind === "hunk-header" && r.hunkIndex === 1,
     );
-    const upRow = rows[headerIdx - 1];
-    const downRow = rows[headerIdx - 2];
+    const downRow = rows[headerIdx - 1];
     expect(downRow.kind).toBe("interactive");
-    expect(upRow.kind).toBe("interactive");
     if (downRow.kind === "interactive") {
       expect(downRow.subKind).toBe("expand-down");
       expect(downRow.boundaryRef).toBe(1);
       expect(downRow.gapAbove).toBe(41);
     }
-    if (upRow.kind === "interactive") {
-      expect(upRow.subKind).toBe("expand-up");
-      expect(upRow.boundaryRef).toBe(1);
-      expect(upRow.gapAbove).toBe(41);
+    // Row just before the expand-down should NOT be interactive — only
+    // ONE leading row in the new model (issue #280).
+    const beforeDown = rows[headerIdx - 2];
+    if (beforeDown.kind === "interactive") {
+      throw new Error("expected at most one interactive row above the hunk-header");
     }
   });
 
-  it("mid-file gap of 39 (< 40) → ONE `expand-all` row (PRD #270)", () => {
+  it("mid-file gap of 39 (< 40) → ONE hunk-header[primaryExpand 'all'] row (issue #280)", () => {
     const { diff } = buildLargeGapDiff(39);
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
     const interactives = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
     );
-    const expandAll = interactives.find((r) => r.subKind === "expand-all");
-    expect(expandAll).toBeDefined();
-    expect(expandAll?.boundaryRef).toBe(1);
-    expect(expandAll?.gapAbove).toBe(39);
-    // No directional rows for a gap below the 40 threshold.
-    expect(interactives.some((r) => r.subKind === "expand-down")).toBe(false);
-    expect(interactives.some((r) => r.subKind === "expand-up")).toBe(false);
+    // No standalone interactive rows for a sub-threshold mid-file gap.
+    expect(interactives.length).toBe(0);
+    const headers = rows.filter(
+      (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
+    );
+    expect(headers[1].gapAbove).toBe(39);
+    expect(headers[1].primaryExpand).toBe("all");
   });
 
-  it("hunk with gapAbove === 0 (adjacent hunks, no hidden context) → ONE inert hunk-header", () => {
+  it("hunk with gapAbove === 0 (adjacent hunks, no hidden context) → ONE inert hunk-header (primaryExpand null)", () => {
     // Two adjacent hunks: hunk 1 ends at line 3, hunk 2 starts at line 4.
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
@@ -1196,37 +1184,29 @@ index 1..2 100644
     );
     expect(headers.length).toBe(2);
     expect(headers[1].gapAbove).toBe(0);
-    // No directional rows for an adjacent-hunks gap of 0.
-    const directional = rows.filter(
-      (r) =>
-        r.kind === "interactive" &&
-        (r.subKind === "expand-up" ||
-          r.subKind === "expand-down" ||
-          r.subKind === "expand-all"),
-    );
-    expect(directional.length).toBe(0);
+    expect(headers[1].primaryExpand).toBe(null);
+    // No standalone interactive rows for an adjacent-hunks gap of 0.
+    expect(rows.some((r) => r.kind === "interactive")).toBe(false);
   });
 
-  it("progressive expand: large → small → zero downgrades directional → expand-all → inert (PRD #270)", () => {
+  it("progressive expand: large → small → zero downgrades expand-down+banner → banner only → inert (issue #280)", () => {
     const { diff, oldContent, newContent } = buildLargeGapDiff(50); // mid-gap = 50 >= 40
     const file = parseLocal(diff);
 
-    const directionalCounts = (rows: PlannedRow[]) => ({
+    const counts = (rows: PlannedRow[]) => ({
       down: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-down").length,
-      up: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-up").length,
-      all: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-all").length,
     });
 
-    // STAGE 1: no expansion → [expand-down, expand-up] + hunk-header.
+    // STAGE 1: no expansion → standalone expand-down + hunk-header(primaryExpand 'up').
     let rows = planRows(file, [], "split", { oldContent, newContent });
     let headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(50);
-    expect(directionalCounts(rows)).toMatchObject({ down: 1, up: 1, all: 0 });
+    expect(headers[1].primaryExpand).toBe("up");
+    expect(counts(rows)).toMatchObject({ down: 1 });
 
-    // STAGE 2: partial expansion brings remaining to 45 (still >= 40) — both
-    // directional rows re-emit with updated gapAbove.
+    // STAGE 2: partial expansion brings remaining to 45 (still >= 40) — same shape.
     const stage2 = new Map([
       [
         "x.txt",
@@ -1241,10 +1221,11 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(45);
-    expect(directionalCounts(rows)).toMatchObject({ down: 1, up: 1, all: 0 });
+    expect(headers[1].primaryExpand).toBe("up");
+    expect(counts(rows)).toMatchObject({ down: 1 });
 
-    // STAGE 3: bring remaining to 39 (< 40) — directional drops out,
-    // single `expand-all` takes over (hunk-header still interactive).
+    // STAGE 3: bring remaining to 39 (< 40) — expand-down drops out;
+    // banner's primaryExpand becomes 'all'.
     const stage3 = new Map([
       [
         "x.txt",
@@ -1259,9 +1240,10 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(39);
-    expect(directionalCounts(rows)).toMatchObject({ down: 0, up: 0, all: 1 });
+    expect(headers[1].primaryExpand).toBe("all");
+    expect(counts(rows)).toMatchObject({ down: 0 });
 
-    // STAGE 4: full expansion → all interactive rows drop out, hunk-header inert.
+    // STAGE 4: full expansion → no interactive rows; banner inert (primaryExpand null).
     const stage4 = new Map([
       [
         "x.txt",
@@ -1276,68 +1258,85 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
     expect(headers[1].gapAbove).toBe(0);
-    expect(directionalCounts(rows)).toMatchObject({ down: 0, up: 0, all: 0 });
+    expect(headers[1].primaryExpand).toBe(null);
+    expect(counts(rows)).toMatchObject({ down: 0 });
   });
 });
 
-// PRD #270 / issue #271: pure helper that decides which directional
-// expand buttons a gap emits. Tested in isolation from the planner
-// because the (gap-size × edge-position) decision is the slice's
-// load-bearing logic — the planner is just a caller.
-describe("expandRowsForGap (PRD #270)", () => {
-  it("returns [] when gapAbove === 0 (no hidden context, no row)", () => {
-    expect(expandRowsForGap(0, false, false)).toEqual([]);
-    expect(expandRowsForGap(0, true, false)).toEqual([]);
-    expect(expandRowsForGap(0, false, true)).toEqual([]);
+// Issue #280: pure helper that decides what a hunk-header banner's
+// primary expand cell carries + whether a standalone Expand Down row
+// is emitted above the banner. The (gap-size × isFirst) decision is
+// the slice's load-bearing logic — the planner is just a caller.
+describe("hunkHeaderExpandPlan (issue #280)", () => {
+  it("returns null + no leading expand-down when gapAbove === 0", () => {
+    expect(hunkHeaderExpandPlan(0, false)).toEqual({
+      primaryExpand: null,
+      emitLeadingExpandDown: false,
+    });
+    expect(hunkHeaderExpandPlan(0, true)).toEqual({
+      primaryExpand: null,
+      emitLeadingExpandDown: false,
+    });
   });
 
-  it("returns [expand-all] for a small mid-file gap (gapAbove < 40)", () => {
-    expect(expandRowsForGap(1, false, false)).toEqual([{ subKind: "expand-all" }]);
-    expect(expandRowsForGap(20, false, false)).toEqual([{ subKind: "expand-all" }]);
-    expect(expandRowsForGap(39, false, false)).toEqual([{ subKind: "expand-all" }]);
+  it("returns 'all' for a small mid-file gap (gapAbove < 40)", () => {
+    expect(hunkHeaderExpandPlan(1, false)).toEqual({
+      primaryExpand: "all",
+      emitLeadingExpandDown: false,
+    });
+    expect(hunkHeaderExpandPlan(20, false)).toEqual({
+      primaryExpand: "all",
+      emitLeadingExpandDown: false,
+    });
+    expect(hunkHeaderExpandPlan(39, false)).toEqual({
+      primaryExpand: "all",
+      emitLeadingExpandDown: false,
+    });
   });
 
-  it("returns [expand-all] for a small file-top gap (gapAbove < 40, isFirst)", () => {
-    expect(expandRowsForGap(9, true, false)).toEqual([{ subKind: "expand-all" }]);
-    expect(expandRowsForGap(39, true, false)).toEqual([{ subKind: "expand-all" }]);
+  it("returns 'all' for a small file-top gap (gapAbove < 40, isFirst)", () => {
+    expect(hunkHeaderExpandPlan(9, true)).toEqual({
+      primaryExpand: "all",
+      emitLeadingExpandDown: false,
+    });
+    expect(hunkHeaderExpandPlan(39, true)).toEqual({
+      primaryExpand: "all",
+      emitLeadingExpandDown: false,
+    });
   });
 
-  it("returns [expand-all] for a small file-bottom gap (gapAbove < 40, isLast)", () => {
-    expect(expandRowsForGap(1, false, true)).toEqual([{ subKind: "expand-all" }]);
-    expect(expandRowsForGap(39, false, true)).toEqual([{ subKind: "expand-all" }]);
+  it("returns 'up' + leading expand-down for a large mid-file gap (gapAbove >= 40, !isFirst)", () => {
+    expect(hunkHeaderExpandPlan(40, false)).toEqual({
+      primaryExpand: "up",
+      emitLeadingExpandDown: true,
+    });
+    expect(hunkHeaderExpandPlan(100, false)).toEqual({
+      primaryExpand: "up",
+      emitLeadingExpandDown: true,
+    });
   });
 
-  it("returns [expand-down, expand-up] for a large mid-file gap (gapAbove >= 40, DOM order Down then Up)", () => {
-    expect(expandRowsForGap(40, false, false)).toEqual([
-      { subKind: "expand-down" },
-      { subKind: "expand-up" },
-    ]);
-    expect(expandRowsForGap(100, false, false)).toEqual([
-      { subKind: "expand-down" },
-      { subKind: "expand-up" },
-    ]);
+  it("returns 'up' + NO leading expand-down for a large file-top gap", () => {
+    expect(hunkHeaderExpandPlan(40, true)).toEqual({
+      primaryExpand: "up",
+      emitLeadingExpandDown: false,
+    });
+    expect(hunkHeaderExpandPlan(199, true)).toEqual({
+      primaryExpand: "up",
+      emitLeadingExpandDown: false,
+    });
   });
 
-  it("returns [expand-up] for a large file-top gap (only the upward direction is available)", () => {
-    expect(expandRowsForGap(40, true, false)).toEqual([{ subKind: "expand-up" }]);
-    expect(expandRowsForGap(199, true, false)).toEqual([{ subKind: "expand-up" }]);
+  it("threshold is strictly `< 40` for 'all'; exactly 40 selects the directional 'up' + leading down", () => {
+    expect(hunkHeaderExpandPlan(39, false).primaryExpand).toBe("all");
+    expect(hunkHeaderExpandPlan(40, false)).toEqual({
+      primaryExpand: "up",
+      emitLeadingExpandDown: true,
+    });
   });
 
-  it("returns [expand-down] for a large file-bottom gap (only the downward direction is available)", () => {
-    expect(expandRowsForGap(40, false, true)).toEqual([{ subKind: "expand-down" }]);
-    expect(expandRowsForGap(500, false, true)).toEqual([{ subKind: "expand-down" }]);
-  });
-
-  it("threshold is strictly `< 40` for expand-all; exactly 40 selects the directional family", () => {
-    expect(expandRowsForGap(39, false, false)).toEqual([{ subKind: "expand-all" }]);
-    expect(expandRowsForGap(40, false, false)).toEqual([
-      { subKind: "expand-down" },
-      { subKind: "expand-up" },
-    ]);
-  });
-
-  it("guards against negative inputs (defensive: gapAbove <= 0 → [])", () => {
-    expect(expandRowsForGap(-1, false, false)).toEqual([]);
+  it("guards against negative inputs (defensive: gapAbove <= 0 → null)", () => {
+    expect(hunkHeaderExpandPlan(-1, false).primaryExpand).toBe(null);
   });
 });
 
