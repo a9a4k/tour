@@ -69,9 +69,7 @@ export class TourSessionRuntime {
     private readonly adapter: TourSessionAdapter,
     // ViewOptions threaded through to `deriveTourSessionView` for the
     // `revalidateCursor` intent (PRD #278 slice 5). The TUI passes
-    // `{ hunkHeaderCursorStop: false, emitExpandFileAllAffordance: true }`
-    // so the validated cursor matches the substrate-derived flat-rows; the
-    // webapp uses defaults.
+    // `{ hunkHeaderCursorStop: false }`; the webapp uses defaults.
     private readonly viewOptions: ViewOptions = {},
   ) {}
 

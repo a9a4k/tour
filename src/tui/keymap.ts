@@ -52,6 +52,7 @@ export type KeyAction =
   | { type: "cursor-side-left" }
   | { type: "cursor-side-right" }
   | { type: "primary-action" }
+  | { type: "expand-file-all" }
   | { type: "noop" }
   | { type: "noop-reply-on-row" }
   | { type: "noop-send-on-row" }
@@ -98,6 +99,15 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "n") return { type: "next-annotation" };
     if (key.name === "p") return { type: "prev-annotation" };
     if (key.name === "t") return { type: "open-picker" };
+    // Issue #297: `e` dispatches per-file Expand-all on the cursored
+    // file. The keyboard path mirrors the file-header's `↕` mouse
+    // affordance — both end on `expansion.expandFileAll(cursor.file)`.
+    // Available in both panes so the user can fire it from either the
+    // sidebar (cursor anchored on a file row) or the diff pane (cursor
+    // anchored on any row inside the file). When no file is in scope
+    // (empty tour, null cursor + sidebar focused on a folder), the
+    // App-side handler is a labelled no-op.
+    if (key.name === "e") return { type: "expand-file-all" };
     // Row-kind-aware action dispatch (PRD #192 / ADR 0022). The unified
     // cursor routes action keys by row kind: `a` is a row-only action,
     // `r` and `s` are card-only actions. Mismatches map to labelled

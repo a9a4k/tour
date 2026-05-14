@@ -13,7 +13,7 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { planRows, hunkHeaderExpandPlan } from "../core/diff-rows.js";
+import { planRows, hunkHeaderExpandPlan, fileHasHiddenGap } from "../core/diff-rows.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
@@ -23,6 +23,7 @@ import {
 import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
+import { FileHeader } from "./FileHeader.js";
 import { withFileSeparators } from "./FileSeparator.js";
 import {
   buildTree,
@@ -253,13 +254,11 @@ function App(props: AppProps) {
   // whenever `primaryExpand !== null`. `hunkHeaderCursorStop: false`
   // is vestigial but still threaded for caller-side clarity.
   //
-  // PRD #270 / issue #274 (Slice 4): opt-in to the planner's per-file
-  // Expand-all-hidden affordance row. The TUI surfaces it as a cursor-
-  // walkable banner at the top of each file with hidden gaps; the web
-  // leaves the option off and uses its header-chrome button instead.
+  // Issue #297: per-file Expand-all moved out of the planner row stream
+  // into the file-header chrome (see `FileHeader` below). No planner
+  // option needed.
   const view = useTourSessionView(store, bundle, {
     hunkHeaderCursorStop: false,
-    emitExpandFileAllAffordance: true,
   });
   // NavBase lives on both branches (issue #246); ok-only slices keep
   // their nullable destructure so hooks below preserve optional-chaining
@@ -355,7 +354,6 @@ function App(props: AppProps) {
     // the cursor against the same flat-rows the surface renders.
     const runtime = new TourSessionRuntime(store, adapter, {
       hunkHeaderCursorStop: false,
-      emitExpandFileAllAffordance: true,
     });
     return runtime.start();
   }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeAnnotation, props.replyAgent]);
@@ -809,12 +807,12 @@ function App(props: AppProps) {
     store.dispatch({ type: "expansion.expandFile", file });
   };
 
-  // PRD #270 / issue #274 (Slice 4): per-file Expand-all dispatch. Walk
-  // every boundary in the file (file-top, mid-file separators, file-
-  // bottom), compute each gap size, and saturate them all in one
-  // reducer hop. After dispatch every gap is zero-sized; the planner
-  // stops emitting the directional family AND the `expand-file-all`
-  // row itself (no work left to do).
+  // PRD #270 / issue #274 (Slice 4); migrated to the file-header chrome
+  // by issue #297. Walk every boundary in the file (file-top, mid-file
+  // separators, file-bottom), compute each gap size, and saturate them
+  // all in one reducer hop. After dispatch every gap is zero-sized; the
+  // planner stops emitting the directional family AND `fileHasHiddenGap`
+  // flips false so the file-header's `↕` affordance disappears.
   const expandAllInFile = (file: string) => {
     const meta = fileMetadata.get(file);
     if (!meta || meta.hunks.length === 0) return;
@@ -867,9 +865,6 @@ function App(props: AppProps) {
       }
       case "collapsed-file":
         expandCollapsedFile(cursor.file);
-        return;
-      case "expand-file-all":
-        expandAllInFile(cursor.file);
         return;
     }
   };
@@ -1298,6 +1293,30 @@ function App(props: AppProps) {
       case "primary-action":
         dispatchPrimaryAction();
         return;
+      case "expand-file-all": {
+        // Issue #297: per-file Expand-all via keyboard. Pick the file
+        // from the cursor (diff-pane RowAnchor / CardAnchor both carry
+        // `file` directly or via the cursored annotation), falling back
+        // to the sidebar's currently-selected file row. No-op when no
+        // file is in scope (null cursor + sidebar parked on a folder).
+        let targetFile: string | null = null;
+        if (cursor) {
+          if (cursor.kind === "row") targetFile = cursor.file;
+          else {
+            const ann = annotations.find((a) => a.id === cursor.annotationId);
+            targetFile = ann?.file ?? null;
+          }
+        }
+        if (targetFile === null && selectedRow?.kind === "file") {
+          targetFile = selectedRow.path;
+        }
+        if (targetFile === null) {
+          setFooterStatus("e: no file under cursor");
+          return;
+        }
+        expandAllInFile(targetFile);
+        return;
+      }
       case "noop-reply-on-row":
         setFooterStatus("r: no annotation under cursor — n/p to navigate");
         return;
@@ -1463,6 +1482,22 @@ function App(props: AppProps) {
                 const collapsed = isFileCollapsed(file.name);
                 const rows = plannedRowsByFile.get(file.name) ?? [];
                 const reason = fileClassification(classifications, file.name).reason;
+                // Issue #297: per-file Expand-all lives in the file-header
+                // chrome. The affordance shows iff the file still has at
+                // least one hidden gap AND the file's body is not
+                // classifier-/user-collapsed (a collapsed file has its
+                // own `collapsed-file` row affordance to expand the body
+                // first; expanding hidden gaps inside a hidden body is
+                // structurally meaningless).
+                const fileMeta = fileMetadata.get(file.name);
+                const hasHiddenGap =
+                  !collapsed &&
+                  fileMeta !== undefined &&
+                  fileHasHiddenGap(
+                    fileMeta,
+                    expansion,
+                    bundleSlice?.fileContents.get(file.name)?.newContent,
+                  );
                 return (
                   <box
                     key={file.name}
@@ -1472,7 +1507,12 @@ function App(props: AppProps) {
                     flexDirection="column"
                     marginBottom={1}
                   >
-                    <text>{fileEntryLabel(file, classifications, annotations)}</text>
+                    <FileHeader
+                      fileName={file.name}
+                      label={fileEntryLabel(file, classifications, annotations)}
+                      hasHiddenGap={hasHiddenGap}
+                      onExpandAll={expandAllInFile}
+                    />
                     {fileCardBody(
                       file.name,
                       collapsed,

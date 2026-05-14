@@ -27,17 +27,12 @@ import { sendTarget, type SendTarget } from "./send-target.js";
 
 /** Surface-controlled view options.
  *
- *  - `emitExpandFileAllAffordance` (PRD #270 / issue #274, Slice 4): the
- *    TUI sets this `true` so the planner emits a cursor-walkable per-file
- *    Expand-all banner row at the top of each file with hidden gaps; the
- *    web leaves it off and uses its header-chrome button instead.
  *  - `hunkHeaderCursorStop` (PRD #270 / issue #273, Slice 3): vestigial.
  *    Issue #280 brought the banner back as a cursor stop when
  *    `primaryExpand !== null` on both surfaces. Kept for caller-side
  *    compatibility (TUI passes `false`); the value is now ignored
  *    downstream. */
 export interface ViewOptions {
-  emitExpandFileAllAffordance?: boolean;
   hunkHeaderCursorStop?: boolean;
 }
 
@@ -240,7 +235,6 @@ function deriveRowsSlice(
         newContent: bf?.newContent,
         expansion,
         classifierCollapsed: isClassifierCollapsed(f.name),
-        emitExpandFileAllAffordance: options.emitExpandFileAllAffordance ?? false,
       }),
     );
   }
@@ -383,13 +377,11 @@ export function useTourSessionView(
   );
 
   const hunkHeaderCursorStop = options.hunkHeaderCursorStop;
-  const emitExpandFileAllAffordance = options.emitExpandFileAllAffordance ?? false;
   const rowsSlice = useMemo<RowsSlice | null>(
     () =>
       isOk
         ? deriveRowsSlice(bundle as OkBundle, state, parsedFiles, {
             hunkHeaderCursorStop,
-            emitExpandFileAllAffordance,
           })
         : null,
     // Only the fields `deriveRowsSlice` reads — listing `state` here
@@ -403,7 +395,6 @@ export function useTourSessionView(
       state.layout,
       parsedFiles,
       hunkHeaderCursorStop,
-      emitExpandFileAllAffordance,
     ],
   );
 

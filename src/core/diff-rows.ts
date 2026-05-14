@@ -72,7 +72,6 @@ export interface AnnotationRow {
 export type InteractiveSubKind =
   | "hunk-separator"
   | "expand-down"
-  | "expand-file-all"
   | "boundary-top"
   | "collapsed-file";
 
@@ -102,15 +101,6 @@ export interface PlanRowsOptions {
    *  layer combines its classifier flags + user-toggle state into this
    *  single boolean so the planner stays a pure mapping. */
   classifierCollapsed?: boolean;
-  /** When `true` AND the file has at least one hidden gap (file-top,
-   *  mid-file, or file-bottom remaining > 0), the planner emits a single
-   *  `expand-file-all` interactive row at the very top of the file's
-   *  PlannedRow[] (before any directional / hunk-header row). PRD #270
-   *  / issue #274 (Slice 4): the TUI surface uses this to expose a
-   *  cursor-walkable per-file Expand-all affordance; the web surface
-   *  uses its own header-chrome button instead and leaves the option
-   *  off, so the row stream stays unchanged on web. */
-  emitExpandFileAllAffordance?: boolean;
 }
 
 export function planRows(
@@ -245,23 +235,6 @@ function walkHunks(
   const rows: PlannedRow[] = [];
   const { oldContent, newContent } = options;
   const newLineCount = newContent !== undefined ? splitLines(newContent).length : 0;
-
-  // PRD #270 / issue #274 (Slice 4) — per-file Expand-all affordance.
-  // Emitted at the very top of the file's PlannedRow[] when the file has
-  // at least one hidden gap AND the caller opted in. After dispatch (every
-  // gap saturated), `fileHasHiddenGap` flips false and the row stops
-  // emitting — same "row gone when nothing to do" rule as the directional
-  // family. The web surface leaves the option off and uses its file-
-  // header-chrome button; the TUI turns it on for a cursor-walkable
-  // banner row.
-  if (options.emitExpandFileAllAffordance && fileHasHiddenGap(file, options, newLineCount)) {
-    rows.push({
-      kind: "interactive",
-      subKind: "expand-file-all",
-      boundaryRef: "top",
-      text: "↕ Expand all hidden",
-    });
-  }
 
   for (let hunkIndex = 0; hunkIndex < file.hunks.length; hunkIndex++) {
     const hunk = file.hunks[hunkIndex];
@@ -447,25 +420,29 @@ function walkHunks(
 }
 
 /** True iff the file has at least one hidden gap (file-top, mid-file, or
- *  file-bottom) after subtracting current expansion. Drives the per-file
- *  `expand-file-all` affordance emission rule — once every gap is
- *  saturated the affordance has nothing to do and stops emitting. */
-function fileHasHiddenGap(
+ *  file-bottom) after subtracting current expansion. Issue #297 promotes
+ *  this helper to a public export so the TUI's file-header chrome can
+ *  decide when to render the `↕` Expand-all affordance from the same
+ *  source of truth that gates the affordance's effect — once every gap
+ *  is saturated the affordance has nothing to do and disappears. */
+export function fileHasHiddenGap(
   file: FileDiffMetadata,
-  options: PlanRowsOptions,
-  newLineCount: number,
+  expansion: ExpansionState | undefined,
+  newContent: string | undefined,
 ): boolean {
+  const opts: PlanRowsOptions = { expansion };
   for (let hunkIndex = 0; hunkIndex < file.hunks.length; hunkIndex++) {
     const isFirst = hunkIndex === 0;
-    const sep = expansionFor(options, file.name, isFirst ? "top" : hunkIndex);
+    const sep = expansionFor(opts, file.name, isFirst ? "top" : hunkIndex);
     const gap = gapBefore(file, hunkIndex);
     if (gap.size - sep.up - sep.down > 0) return true;
   }
+  const newLineCount = newContent !== undefined ? splitLines(newContent).length : 0;
   if (file.hunks.length > 0 && newLineCount > 0) {
     const last = file.hunks[file.hunks.length - 1];
     const lastAdditionEnd = last.additionStart + last.additionCount - 1;
     if (lastAdditionEnd < newLineCount) {
-      const bot = expansionFor(options, file.name, "bottom");
+      const bot = expansionFor(opts, file.name, "bottom");
       const gapSize = newLineCount - lastAdditionEnd;
       if (gapSize - bot.up - bot.down > 0) return true;
     }

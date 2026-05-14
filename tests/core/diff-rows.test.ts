@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import {
+  fileHasHiddenGap,
   hunkHeaderExpandPlan,
   planRows,
   type PlannedRow,
@@ -1340,11 +1341,11 @@ describe("hunkHeaderExpandPlan (issue #280)", () => {
   });
 });
 
-// PRD #270 / issue #274 (Slice 4): per-file Expand-all-hidden affordance.
-// Opt-in `emitExpandFileAllAffordance` so the row only appears on the
-// surface that wants it (TUI). When on, the row goes at the very top of
-// the file and only when at least one hidden gap exists.
-describe("expand-file-all planner row (PRD #270 / issue #274)", () => {
+// Issue #297: the per-file Expand-all-hidden affordance moved from a
+// standalone planner-emitted row to the TUI's file-header chrome,
+// mirroring the web's file-header chrome treatment. The planner no
+// longer emits any row carrying this affordance.
+describe("per-file Expand-all is NOT emitted by the planner (issue #297)", () => {
   const NEW_CONTENT =
     [
       "ctx1",
@@ -1380,33 +1381,74 @@ index 1..2 100644
 +new14
 `;
 
-  it("does NOT emit the row by default (option off)", () => {
+  it("never emits a per-file Expand-all row, even with hidden gaps", () => {
     const file = parseFile(TWO_HUNK_WITH_GAP);
     const rows = planRows(file, [], "split", { newContent: NEW_CONTENT });
+    // No interactive row should carry the retired `expand-file-all`
+    // subkind, nor a planner-emitted "Expand all hidden" text body.
     expect(
-      rows.some((r) => r.kind === "interactive" && r.subKind === "expand-file-all"),
+      rows.some(
+        (r) =>
+          r.kind === "interactive" &&
+          (r.subKind as string) === "expand-file-all",
+      ),
+    ).toBe(false);
+    expect(
+      rows.some(
+        (r) =>
+          r.kind === "interactive" &&
+          typeof r.text === "string" &&
+          r.text.includes("Expand all hidden"),
+      ),
     ).toBe(false);
   });
+});
 
-  it("emits a single expand-file-all row at index 0 when option is on AND a hidden gap exists", () => {
+// Issue #297: `fileHasHiddenGap` is now exported so the TUI's file-header
+// chrome can decide when to render the `↕` Expand-all affordance from
+// the same source of truth the planner used.
+describe("fileHasHiddenGap (issue #297, public export)", () => {
+  const NEW_CONTENT =
+    [
+      "ctx1",
+      "new1",
+      "ctx2",
+      "g4",
+      "g5",
+      "g6",
+      "g7",
+      "g8",
+      "g9",
+      "g10",
+      "g11",
+      "g12",
+      "g13",
+      "ctx14",
+      "new14",
+      "ctx15",
+    ].join("\n") + "\n";
+
+  const TWO_HUNK_WITH_GAP = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old1
++new1
+ ctx2
+@@ -14,2 +14,2 @@
+ ctx14
+-old14
++new14
+`;
+
+  it("returns true when at least one mid-file or file-top gap is hidden", () => {
     const file = parseFile(TWO_HUNK_WITH_GAP);
-    const rows = planRows(file, [], "split", {
-      newContent: NEW_CONTENT,
-      emitExpandFileAllAffordance: true,
-    });
-    expect(rows[0].kind).toBe("interactive");
-    if (rows[0].kind === "interactive") {
-      expect(rows[0].subKind).toBe("expand-file-all");
-      expect(rows[0].boundaryRef).toBe("top");
-      expect(rows[0].text).toContain("Expand all");
-    }
-    const matches = rows.filter(
-      (r) => r.kind === "interactive" && r.subKind === "expand-file-all",
-    );
-    expect(matches.length).toBe(1);
+    expect(fileHasHiddenGap(file, undefined, NEW_CONTENT)).toBe(true);
   });
 
-  it("does NOT emit the row when option is on but the file has NO hidden gap (first hunk at line 1, no file-bottom remainder)", () => {
+  it("returns false when no gap remains hidden (first hunk at line 1, no file-bottom remainder)", () => {
     const noGap = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1418,15 +1460,10 @@ index 1..2 100644
 +added
 `;
     const file = parseFile(noGap);
-    const rows = planRows(file, [], "split", {
-      emitExpandFileAllAffordance: true,
-    });
-    expect(
-      rows.some((r) => r.kind === "interactive" && r.subKind === "expand-file-all"),
-    ).toBe(false);
+    expect(fileHasHiddenGap(file, undefined, undefined)).toBe(false);
   });
 
-  it("does NOT emit the row after every gap has been saturated by expansion", () => {
+  it("returns false after every gap has been saturated by expansion", () => {
     const file = parseFile(TWO_HUNK_WITH_GAP);
     const expansion = new Map([
       [
@@ -1440,17 +1477,10 @@ index 1..2 100644
         },
       ],
     ]);
-    const rows = planRows(file, [], "split", {
-      newContent: NEW_CONTENT,
-      expansion,
-      emitExpandFileAllAffordance: true,
-    });
-    expect(
-      rows.some((r) => r.kind === "interactive" && r.subKind === "expand-file-all"),
-    ).toBe(false);
+    expect(fileHasHiddenGap(file, expansion, NEW_CONTENT)).toBe(false);
   });
 
-  it("emits when only the file-bottom gap has remaining hidden content", () => {
+  it("returns true when only the file-bottom gap has remaining hidden content", () => {
     const noTopOrMidGap = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1461,26 +1491,6 @@ index 1..2 100644
 `;
     const file = parseFile(noTopOrMidGap);
     const newContent = ["new", "tail1", "tail2"].join("\n") + "\n";
-    const rows = planRows(file, [], "split", {
-      newContent,
-      emitExpandFileAllAffordance: true,
-    });
-    expect(
-      rows.some((r) => r.kind === "interactive" && r.subKind === "expand-file-all"),
-    ).toBe(true);
-  });
-
-  it("classifier-collapsed file: option is irrelevant (only the synthetic collapsed-file row is emitted)", () => {
-    const file = parseFile(TWO_HUNK_WITH_GAP);
-    const rows = planRows(file, [], "split", {
-      classifierCollapsed: true,
-      newContent: NEW_CONTENT,
-      emitExpandFileAllAffordance: true,
-    });
-    expect(rows.length).toBe(1);
-    expect(rows[0].kind).toBe("interactive");
-    if (rows[0].kind === "interactive") {
-      expect(rows[0].subKind).toBe("collapsed-file");
-    }
+    expect(fileHasHiddenGap(file, undefined, newContent)).toBe(true);
   });
 });

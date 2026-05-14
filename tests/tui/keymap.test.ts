@@ -319,6 +319,27 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("t"), sidebarFolder).type).toBe("open-picker");
   });
 
+  // Issue #297: per-file Expand-all keyboard binding. Mirrors the
+  // file-header's `↕` mouse affordance — both end on
+  // `expansion.expandFileAll(cursor.file)`. Available in both panes so
+  // the user can fire it from the sidebar (cursor on a file row) or
+  // the diff pane (cursor on any row inside the file).
+  it("e dispatches expand-file-all regardless of pane focus", () => {
+    expect(dispatchKey(k("e"), sidebar).type).toBe("expand-file-all");
+    expect(dispatchKey(k("e"), diffPane).type).toBe("expand-file-all");
+    expect(dispatchKey(k("e"), sidebarFolder).type).toBe("expand-file-all");
+  });
+
+  it("Ctrl+E is not consumed as expand-file-all", () => {
+    expect(dispatchKey(k("e", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("e", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Shift+E is not consumed as expand-file-all", () => {
+    expect(dispatchKey(k("e", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("e", { shift: true }), diffPane).type).toBe("noop");
+  });
+
   it("Ctrl+T is not consumed as open-picker", () => {
     expect(dispatchKey(k("t", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("t", { ctrl: true }), diffPane).type).toBe("noop");
