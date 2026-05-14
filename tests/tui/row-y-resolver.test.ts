@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRowYResolver } from "../../src/tui/row-y-resolver.js";
+import { buildRowYResolver, cursorRowDomId, flatRowId } from "../../src/tui/row-y-resolver.js";
 import { step } from "../../src/core/diff-pane-motion.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
@@ -148,6 +148,96 @@ describe("buildRowYResolver", () => {
     );
     expect(r.cursor?.lineNumber).toBe(2);
     expect(r.scrollTop).toBe(scrollTop - 1);
+  });
+
+  it("flatRowId handles all three flat-row kinds (diff, interactive, card)", () => {
+    const diff: FlatRow = {
+      kind: "diff",
+      file: "x.ts",
+      lineNumber: 8,
+      side: "additions",
+      leftLineNumber: 5,
+      rightLineNumber: 8,
+      paired: true,
+    };
+    const interactive: FlatRow = {
+      kind: "interactive",
+      file: "x.ts",
+      subKind: "hunk-separator",
+      boundaryRef: 1,
+    };
+    const card: FlatRow = {
+      kind: "card",
+      file: "x.ts",
+      side: "additions",
+      lineEnd: 8,
+      annotationId: "ann-7",
+    };
+    expect(flatRowId(diff)).toBe("diff-row-x.ts-additions-8");
+    expect(flatRowId(interactive)).toBe("interactive-row-x.ts-hunk-separator-1");
+    expect(flatRowId(card)).toBe("annotation-ann-7");
+  });
+
+  describe("cursorRowDomId (layout-invariant resolution for preserve-screen-y)", () => {
+    const pairedContext: FlatRow = {
+      kind: "diff",
+      file: "x.ts",
+      lineNumber: 8,
+      side: "additions",
+      leftLineNumber: 5,
+      rightLineNumber: 8,
+      paired: true,
+    };
+    const flatRows = [pairedContext] as ReadonlyArray<FlatRow>;
+
+    it("maps a card cursor to `annotation-${id}` without consulting flatRows", () => {
+      const cursor: Cursor = {
+        kind: "card",
+        annotationId: "ann-3",
+        preferredSide: "additions",
+      };
+      expect(cursorRowDomId(cursor, [])).toBe("annotation-ann-3");
+    });
+
+    it("returns the FlatRow's id (additions side) for a paired-row cursor on the ADDITIONS side", () => {
+      const cursor: Cursor = {
+        kind: "row",
+        file: "x.ts",
+        lineNumber: 8,
+        side: "additions",
+        preferredSide: "additions",
+      };
+      // resolveCursorRowIdx finds the paired row, flatRowId returns the
+      // canonical additions-side id.
+      expect(cursorRowDomId(cursor, flatRows)).toBe("diff-row-x.ts-additions-8");
+    });
+
+    it("returns the SAME id (additions side) for a paired-row cursor on the DELETIONS side", () => {
+      // This is the layout-invariance pin: a cursor on the deletions side
+      // of a paired context row must hand back the same id as the additions
+      // side, because in unified the row is rendered with a single id
+      // anchored to the additions side. Otherwise preserveScreenY would
+      // miss the row across a split→unified toggle.
+      const cursor: Cursor = {
+        kind: "row",
+        file: "x.ts",
+        lineNumber: 5,
+        side: "deletions",
+        preferredSide: "deletions",
+      };
+      expect(cursorRowDomId(cursor, flatRows)).toBe("diff-row-x.ts-additions-8");
+    });
+
+    it("returns null when the cursor doesn't resolve in flatRows", () => {
+      const cursor: Cursor = {
+        kind: "row",
+        file: "missing.ts",
+        lineNumber: 1,
+        side: "additions",
+        preferredSide: "additions",
+      };
+      expect(cursorRowDomId(cursor, flatRows)).toBeNull();
+    });
   });
 
   it("integrates with step('down'): no scroll when cursor is mid-viewport", () => {

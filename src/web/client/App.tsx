@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Annotation, BundleFile, TourBundle, TourSummary } from "./types.js";
 import { fileIcon } from "./file-icon.js";
 import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
@@ -43,9 +43,11 @@ import {
   nextCard,
   prevCard,
   preferredSideOf,
+  resolveCursorRowIdx,
   setCursorSide,
   type Cursor,
 } from "../../core/cursor-state.js";
+import type { FlatRow } from "../../core/flat-rows.js";
 import {
   useTourSessionView,
   type NavBase,
@@ -180,6 +182,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  // Issue #303 preserve-cursor-on-layout-toggle: pre-toggle snapshot of the
+  // cursor row's viewport-y. Populated synchronously inside the toggle-
+  // layout case below, BEFORE `layout.set` dispatches; consumed by the
+  // layout-change useLayoutEffect after React commits the new layout
+  // but BEFORE the browser paints, so the user sees no jump. The snapshot
+  // stores only the screen-y; we re-locate the row after the commit
+  // against the new DOM (row identity changes when the planner emits a
+  // different row sequence). When the row isn't relocatable in the new
+  // layout (rare — interactive rows, paired-deletion cursor against an
+  // unrendered side), the effect skips the adjustment.
+  const layoutToggleSnapshotRef = useRef<{ top: number } | null>(null);
   // Refs holding the latest React-state inputs the intent handlers need.
   // The intent listener fires synchronously inside `store.dispatch`, BEFORE
   // React re-renders, so the listener's closure captures stale values. The
@@ -418,6 +431,46 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [selectedFile]);
 
+  // Issue #303: pin the cursor row at the same on-screen y-coordinate
+  // across a layout toggle (shift+L / header `LayoutToggle`). The
+  // pre-toggle snapshot was captured by `setLayoutChoice` before the
+  // `layout.set` dispatch; here, after React commits the new layout
+  // but BEFORE the browser paints, we re-locate the cursor row, measure
+  // its new viewport-y, and `window.scrollBy(delta)` so it lands at the
+  // captured y. useLayoutEffect (not useEffect) is load-bearing: a
+  // post-paint adjustment would flash the user's eye to the wrong row
+  // for one frame.
+  //
+  // Fallback rules (from the issue brief):
+  //  • No snapshot (no cursor at toggle time, or row not findable
+  //    pre-toggle) → behave as before #303.
+  //  • Row not in the new layout's DOM (cursor anchor doesn't resolve in
+  //    the new flat-rows, or its FlatRow is an interactive row) → skip
+  //    the preserve. The default toggle motion remains.
+  //  • Scroll adjustment pushed past a document bound → the browser
+  //    clamps `window.scrollBy` automatically. If the row's still off-
+  //    screen after the clamp, fall back to
+  //    `scrollIntoView({ block: "center" })`.
+  useLayoutEffect(() => {
+    const snap = layoutToggleSnapshotRef.current;
+    if (!snap) return;
+    layoutToggleSnapshotRef.current = null;
+    if (!cursor || view.kind !== "ok") return;
+    if (typeof window === "undefined") return;
+    const el = findCursorRowEl(cursor, view.rows.flatRowsList);
+    if (!el) return;
+    const newTop = el.getBoundingClientRect().top;
+    const delta = newTop - snap.top;
+    if (delta !== 0) {
+      window.scrollBy({ top: delta, behavior: "instant" });
+    }
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+      el.scrollIntoView({ behavior: "instant", block: "center" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
+
   const restoreFocusAfterPicker = useCallback(() => {
     const back = triggerRef.current ?? pickerButtonRef.current;
     requestAnimationFrame(() => back?.focus());
@@ -505,6 +558,37 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (typeof document === "undefined") return null;
     return document.querySelector<HTMLElement>(`[data-file="${cssEscapeFile(name)}"]`);
   }, []);
+
+  // Issue #303 preserve-cursor-on-layout-toggle: resolve a cursor anchor
+  // to the DOM element that hosts its row. Card cursors return the
+  // annotation card wrapper (registered in `annotationRefs`). Diff
+  // cursors project through `resolveCursorRowIdx` so a paired-context
+  // cursor on EITHER side resolves to the FlatRow's natural side +
+  // lineNumber — that selector exists in both split (additions column)
+  // and unified (the single column) layouts. Interactive rows return
+  // null (no clean DOM hook today; preserve-y skips them, falling back
+  // to today's behaviour).
+  const findCursorRowEl = useCallback(
+    (c: Cursor, flatRows: ReadonlyArray<FlatRow>): HTMLElement | null => {
+      if (typeof document === "undefined") return null;
+      if (c.kind === "card") {
+        return annotationRefs.current.get(c.annotationId) ?? null;
+      }
+      const idx = resolveCursorRowIdx(c, flatRows);
+      if (idx === -1) return null;
+      const r = flatRows[idx];
+      if (r.kind === "card") return annotationRefs.current.get(r.annotationId) ?? null;
+      if (r.kind === "interactive") return null;
+      const block = findFileBlock(r.file);
+      if (!block) return null;
+      const gutter = block.querySelector<HTMLElement>(
+        `.tour-row-gutter[data-side="${r.side}"][data-line-number="${r.lineNumber}"]`,
+      );
+      if (!gutter) return null;
+      return gutter.closest<HTMLElement>(".tour-row") ?? gutter;
+    },
+    [findFileBlock],
+  );
 
   // Keep the intent-handler input ref fresh. The listener fires
   // synchronously inside store.dispatch, BEFORE React re-renders, so its
@@ -855,12 +939,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         case "open-picker":
           openPicker();
           return;
-        case "toggle-layout":
-          store.dispatch({
-            type: "layout.set",
-            layout: store.getState().layout === "split" ? "unified" : "split",
-          });
+        case "toggle-layout": {
+          // Issue #303: `setLayoutChoice` snapshots the cursor row's
+          // pre-toggle viewport-y before dispatching; the layout-change
+          // useLayoutEffect below pins the row at the same screen-y after
+          // React commits the new layout. The header LayoutToggle button
+          // routes through the same callback so both paths preserve.
+          setLayoutChoice(store.getState().layout === "split" ? "unified" : "split");
           return;
+        }
         case "nav-next-annotation":
           navigateBy(1);
           return;
@@ -1088,9 +1175,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const setLayoutChoice = useCallback(
     (next: Layout) => {
+      // Issue #303: capture the cursor row's pre-toggle viewport-y so the
+      // layout-change useLayoutEffect can pin the row at the same screen-y
+      // after React commits the new layout. Mirrors the keymap-driven
+      // toggle path — the header LayoutToggle button reaches the same
+      // dispatch.
+      if (cursor && view.kind === "ok") {
+        const el = findCursorRowEl(cursor, view.rows.flatRowsList);
+        if (el) layoutToggleSnapshotRef.current = { top: el.getBoundingClientRect().top };
+      }
       store.dispatch({ type: "layout.set", layout: next });
     },
-    [store],
+    [store, cursor, view, findCursorRowEl],
   );
 
   if (!bundleLoaded && !tourList) {

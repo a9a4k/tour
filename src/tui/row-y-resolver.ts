@@ -1,10 +1,37 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { FlatRow } from "../core/flat-rows.js";
+import type { Cursor } from "../core/cursor-state.js";
+import { resolveCursorRowIdx } from "../core/cursor-state.js";
 
 export function flatRowId(r: FlatRow): string {
+  if (r.kind === "card") return `annotation-${r.annotationId}`;
   return r.kind === "diff"
     ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
     : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
+}
+
+/**
+ * Layout-invariant DOM id for the cursor's row. Resolves the cursor anchor
+ * against `flatRows` and projects via {@link flatRowId} — so a paired
+ * context row addressed by either side returns the same id (the flat row's
+ * canonical additions-side id), whereas the raw
+ * `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}` would
+ * sometimes miss the unified row when the cursor sits on the deletion side.
+ *
+ * The preserve-screen-y path on layout toggle relies on this invariance:
+ * `sb.content.findDescendantById(cursorRowDomId(cursor, oldFlatRows))`
+ * resolves to the row in BOTH split and unified, so the pre/post snapshot
+ * can read positions through the same id. Returns `null` when the cursor
+ * doesn't resolve in `flatRows`.
+ */
+export function cursorRowDomId(
+  cursor: Cursor,
+  flatRows: ReadonlyArray<FlatRow>,
+): string | null {
+  if (cursor.kind === "card") return `annotation-${cursor.annotationId}`;
+  const idx = resolveCursorRowIdx(cursor, flatRows);
+  if (idx === -1) return null;
+  return flatRowId(flatRows[idx]);
 }
 
 /**

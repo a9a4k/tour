@@ -1,5 +1,8 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
-import { center as centerScrollTarget } from "../core/scroll-target.js";
+import {
+  center as centerScrollTarget,
+  preserveScreenY,
+} from "../core/scroll-target.js";
 
 /**
  * Walk `target`'s ancestor chain up to (but not past) `contentRoot`,
@@ -148,6 +151,76 @@ export function centerChildInView(sb: ScrollBoxRenderable, childId: string): boo
   const desired = computeCenterChildScrollTop(sb, childId);
   if (desired === null) return false;
   if (desired === sb.scrollTop) return false;
+  sb.scrollTo(desired);
+  return true;
+}
+
+/**
+ * Pre-reflow snapshot of a child's position used by
+ * {@link applyPreserveScreenY}. Captured before a content reflow (e.g.
+ * the `shift+L` layout toggle, PRD / issue #303); replayed after the
+ * reflow to pick a scrollTop that pins the child at the same on-screen
+ * y-coordinate.
+ */
+export interface ScreenYSnapshot {
+  /** Child's content-y at snapshot time (`target.y - viewport.y + scrollTop`). */
+  contentY: number;
+  /** Child's height at snapshot time. */
+  height: number;
+  /** Scrollbox's scrollTop at snapshot time. */
+  scrollTop: number;
+}
+
+/**
+ * Read `childId`'s pre-reflow content-y, height, and the scrollbox's
+ * scrollTop. Refreshes the ancestor chain so the read is fresh under
+ * `viewportCulling={true}`. Returns `null` when the descendant is missing
+ * (caller should skip preserve and use a fallback).
+ */
+export function captureScreenYSnapshot(
+  sb: ScrollBoxRenderable,
+  childId: string,
+): ScreenYSnapshot | null {
+  const target = sb.content.findDescendantById(childId);
+  if (!target) return null;
+  refreshLayoutChain(target, sb.content);
+  return {
+    contentY: target.y - sb.viewport.y + sb.scrollTop,
+    height: target.height,
+    scrollTop: sb.scrollTop,
+  };
+}
+
+/**
+ * Apply a {@link ScreenYSnapshot} to `sb` after a content reflow: scrolls
+ * so `childId` (same DOM id, post-reflow) sits at the same screen-y as it
+ * occupied at capture time. Falls back to `center(newChild, viewport)`
+ * when the preserved scrollTop would push the row outside the viewport
+ * (the reflow shrank / grew the content past a document bound).
+ *
+ * Returns `true` when a scrollTo was issued, `false` when the row isn't
+ * in the post-reflow tree (caller should run a `scrollIntoView`-style
+ * fallback).
+ */
+export function applyPreserveScreenY(
+  sb: ScrollBoxRenderable,
+  childId: string,
+  snap: ScreenYSnapshot,
+): boolean {
+  const target = sb.content.findDescendantById(childId);
+  if (!target) return false;
+  refreshLayoutChain(target, sb.content);
+  const newContentY = target.y - sb.viewport.y + sb.scrollTop;
+  const desired = preserveScreenY(
+    { y: snap.contentY, height: snap.height },
+    { y: newContentY, height: target.height },
+    snap.scrollTop,
+    {
+      scrollTop: sb.scrollTop,
+      height: sb.viewport.height,
+      contentHeight: sb.scrollHeight,
+    },
+  );
   sb.scrollTo(desired);
   return true;
 }
