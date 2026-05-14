@@ -343,13 +343,10 @@ function App(props: AppProps) {
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
-  // Issue #326: `y` flashes a `Copied <path>` footer hint that auto-
-  // clears after ~1.2 s. Successive `y` presses overwrite both the
-  // message and the prior pending timer so the visible window matches
-  // the most recent keystroke. The functional setter restores `null`
-  // only when the slot still holds our message — if another action
-  // (e.g. a no-op footer hint) wrote a new status in the interim, it
-  // wins.
+  // Issue #326: tracks the pending `Copied <path>` footer-flash timer so
+  // a fresh `y` press cancels the prior pending clear and the unmount
+  // effect can stop it. Restoration is via a functional setter at the
+  // case site so a newer status (set after our flash) survives.
   const yankFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => (): void => {
@@ -1624,14 +1621,10 @@ function App(props: AppProps) {
         return;
       }
       case "yank-file-path": {
-        // Issue #326: copy the focused file's repo-relative path to the
-        // system clipboard via OSC 52, then flash `Copied <path>` in the
-        // footer for ~1.2 s. Pane-focus picks the source: sidebar focus
-        // → selected file row, diff focus → file under the cursor
-        // (RowAnchor's `file` directly; CardAnchor's annotation's
-        // `file`). Sidebar-focused folder rows / null cursor / cursor
-        // pointing at a missing annotation are all labelled no-ops —
-        // no clipboard write, no footer hint, no error (per brief).
+        // Issue #326: pane focus picks the source — sidebar focus uses
+        // the selected file row, diff focus uses the cursor's file. No
+        // file in scope is a silent no-op per brief (no clipboard write,
+        // no footer hint).
         let targetFile: string | null = null;
         if (sidebarFocused) {
           if (selectedRow?.kind === "file") targetFile = selectedRow.path;

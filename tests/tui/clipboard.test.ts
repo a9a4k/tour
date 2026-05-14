@@ -44,12 +44,12 @@ describe("yankToClipboard (issue #326)", () => {
     expect(sink.emitted[0]).toBe("\x1b]52;c;\x07");
   });
 
+  // A single write keeps the OSC sequence atomic — partial flushes could
+  // interleave with concurrent stdout traffic and corrupt the payload at
+  // the host terminal.
   it("writes the entire sequence in a single sink call (atomic emission)", () => {
     const sink = captureSink();
     yankToClipboard("a/b/c.txt", sink);
-    // A single write keeps the OSC sequence atomic — partial flushes
-    // could interleave with concurrent stdout traffic and corrupt the
-    // payload at the host terminal.
     expect(sink.emitted).toHaveLength(1);
   });
 });
