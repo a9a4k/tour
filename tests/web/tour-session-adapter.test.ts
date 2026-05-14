@@ -19,21 +19,30 @@ import type { Annotation, Tour } from "../../src/core/types.js";
 
 let originalFetch: typeof fetch;
 
+type AdapterCallbacks = {
+  findFileBlock: (name: string) => HTMLElement | null;
+  setSelectedFile: (file: string | null) => void;
+  revealFileAncestors: (file: string) => void;
+};
+
+const noopCallbacks: AdapterCallbacks = {
+  findFileBlock: () => document.createElement("div"),
+  setSelectedFile: () => {},
+  revealFileAncestors: () => {},
+};
+
 function makeAdapter(
   opts: {
+    store?: TourSessionStore;
     annotationRefs?: Map<string, HTMLDivElement>;
-    callbacks?: {
-      findFileBlock: (name: string) => HTMLElement | null;
-      setSelectedFile: (file: string | null) => void;
-      revealFileAncestors: (file: string) => void;
-    } | null;
+    callbacks?: AdapterCallbacks | null;
   } = {},
 ) {
-  const stubStore = {
-    getState: () => ({ currentTourId: null }),
-  } as unknown as TourSessionStore;
+  const store =
+    opts.store ??
+    ({ getState: () => ({ currentTourId: null }) } as unknown as TourSessionStore);
   return createWebTourSessionAdapter({
-    store: stubStore,
+    store,
     annotationRefs: { current: opts.annotationRefs ?? new Map() },
     callbacksRef: { current: opts.callbacks ?? null },
   });
@@ -191,13 +200,9 @@ describe("createWebTourSessionAdapter.requestReply — non-2xx rejection (Issue 
 
 // Issue #324. `composer.recall` (auto-recall on `+`-button click while a
 // Composer is in flight) must reveal its anchor before scrolling. The
-// web adapter's `scrollToComposer` previously queried `findFileBlock` →
-// gutter cell and silently no-op'd when the anchor file's body was not
-// rendered (binary classification, user-folded, or classifier-collapsed).
-// The fix: dispatch `folds.setOverride { value: false }` for the anchor
-// file iff its body is currently hidden, then defer the scroll a frame
-// so React commits the unfolded body. Mirrors the explicit-reveal
-// pattern used by `n`/`p`/URL `?ann=` restore.
+// fix dispatches `folds.setOverride { value: false }` for the anchor
+// file iff its body is currently hidden, then defers the scroll a frame
+// so React commits the unfolded body — mirrors `n`/`p`/URL `?ann=` restore.
 
 function tour(id: string): Tour {
   return {
@@ -227,10 +232,9 @@ function bundleFile(
   };
 }
 
-function okBundle(opts: {
-  files?: BundleFile[];
-  annotations?: Annotation[];
-} = {}): TourBundle {
+function okBundle(
+  opts: { files?: BundleFile[]; annotations?: Annotation[] } = {},
+): TourBundle {
   return {
     kind: "ok",
     tour: tour("tour-a"),
@@ -260,8 +264,8 @@ function storeWithState(partial: Partial<TourSessionState>): TourSessionStore {
   return new TourSessionStore({ ...initialTourSessionState(), ...partial });
 }
 
-function flushRaf2(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+function topLevelTarget(file: string, line = 1): ComposerTarget {
+  return { kind: "top-level", file, side: "additions", line_start: line, line_end: line };
 }
 
 describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll (Issue #324)", () => {
@@ -277,32 +281,15 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    const target: ComposerTarget = {
-      kind: "top-level",
-      file,
-      side: "additions",
-      line_start: 7,
-      line_end: 7,
-    };
-    adapter.scrollToComposer(target);
+    adapter.scrollToComposer(topLevelTarget(file, 7));
     expect(dispatchSpy).toHaveBeenCalledWith({
       type: "folds.setOverride",
       file,
       value: false,
     });
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("dispatches folds.setOverride{false} when the anchor file is binary (no override)", async () => {
@@ -317,102 +304,48 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    adapter.scrollToComposer({
-      kind: "top-level",
-      file,
-      side: "additions",
-      line_start: 3,
-      line_end: 3,
-    });
+    adapter.scrollToComposer(topLevelTarget(file, 3));
     expect(dispatchSpy).toHaveBeenCalledWith({
       type: "folds.setOverride",
       file,
       value: false,
     });
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("dispatches folds.setOverride{false} when the anchor file has a manual user-fold override (true)", async () => {
     const file = "src/a.ts";
     const store = storeWithState({
       currentTourId: "tour-a",
-      bundle: {
-        kind: "ok",
-        value: okBundle({ files: [bundleFile(file)] }),
-      },
+      bundle: { kind: "ok", value: okBundle({ files: [bundleFile(file)] }) },
       collapsedOverrides: { [file]: true },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    adapter.scrollToComposer({
-      kind: "top-level",
-      file,
-      side: "additions",
-      line_start: 2,
-      line_end: 2,
-    });
+    adapter.scrollToComposer(topLevelTarget(file, 2));
     expect(dispatchSpy).toHaveBeenCalledWith({
       type: "folds.setOverride",
       file,
       value: false,
     });
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("does NOT dispatch folds.setOverride when the anchor file is already visible", async () => {
     const file = "src/a.ts";
     const store = storeWithState({
       currentTourId: "tour-a",
-      bundle: {
-        kind: "ok",
-        value: okBundle({ files: [bundleFile(file)] }),
-      },
+      bundle: { kind: "ok", value: okBundle({ files: [bundleFile(file)] }) },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    adapter.scrollToComposer({
-      kind: "top-level",
-      file,
-      side: "additions",
-      line_start: 5,
-      line_end: 5,
-    });
+    adapter.scrollToComposer(topLevelTarget(file, 5));
     expect(dispatchSpy).not.toHaveBeenCalled();
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("does NOT dispatch folds.setOverride when the anchor file has an explicit-false override (already visible)", async () => {
@@ -428,27 +361,11 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       collapsedOverrides: { [file]: false },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    adapter.scrollToComposer({
-      kind: "top-level",
-      file,
-      side: "additions",
-      line_start: 1,
-      line_end: 1,
-    });
+    adapter.scrollToComposer(topLevelTarget(file, 1));
     expect(dispatchSpy).not.toHaveBeenCalled();
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("reply target: dispatches folds.setOverride{false} on the parent annotation's file when that file is folded", async () => {
@@ -458,25 +375,12 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       currentTourId: "tour-a",
       bundle: {
         kind: "ok",
-        value: okBundle({
-          files: [bundleFile(parentFile)],
-          annotations: [parent],
-        }),
+        value: okBundle({ files: [bundleFile(parentFile)], annotations: [parent] }),
       },
       collapsedOverrides: { [parentFile]: true },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
     adapter.scrollToComposer({ kind: "reply", replies_to: parent.id });
     expect(dispatchSpy).toHaveBeenCalledWith({
@@ -484,7 +388,7 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       file: parentFile,
       value: false,
     });
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("reply target: does NOT dispatch when the parent file is already visible", async () => {
@@ -494,28 +398,15 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       currentTourId: "tour-a",
       bundle: {
         kind: "ok",
-        value: okBundle({
-          files: [bundleFile(parentFile)],
-          annotations: [parent],
-        }),
+        value: okBundle({ files: [bundleFile(parentFile)], annotations: [parent] }),
       },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
-      store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => document.createElement("div"),
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
-    });
+    const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
     adapter.scrollToComposer({ kind: "reply", replies_to: parent.id });
     expect(dispatchSpy).not.toHaveBeenCalled();
-    await flushRaf2();
+    await flushRaf();
   });
 
   it("scroll + textarea focus still fire after the unfold dispatch (deferred via rAF)", async () => {
@@ -530,45 +421,24 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       },
     });
 
-    // Set up DOM that mimics what React would render AFTER the unfold:
-    // the file block now contains the anchor row's gutter cell and a
-    // Composer card with a textarea.
-    const fileBlock = document.createElement("div");
-    const cell = document.createElement("div");
-    cell.classList.add("tour-row-gutter");
-    cell.setAttribute("data-side", "additions");
-    cell.setAttribute("data-line-number", "7");
-    fileBlock.appendChild(cell);
+    // DOM mimics what React would render AFTER the unfold: file block now
+    // contains the anchor row's gutter cell and a Composer card with a textarea.
+    const { fileBlock, scrollSpy } = makeRowDom();
     const composerCard = document.createElement("div");
     composerCard.classList.add("tour-card");
     composerCard.setAttribute("data-composer", "true");
     const textarea = document.createElement("textarea");
     composerCard.appendChild(textarea);
     fileBlock.appendChild(composerCard);
-    const scrollSpy = vi.fn();
-    cell.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
     const focusSpy = vi.spyOn(textarea, "focus");
 
-    const adapter = createWebTourSessionAdapter({
+    const adapter = makeAdapter({
       store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => fileBlock,
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
+      callbacks: { ...noopCallbacks, findFileBlock: () => fileBlock },
     });
 
-    adapter.scrollToComposer({
-      kind: "top-level",
-      file,
-      side: "additions",
-      line_start: 7,
-      line_end: 7,
-    });
-    await flushRaf2();
+    adapter.scrollToComposer(topLevelTarget(file, 7));
+    await flushRaf();
 
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "instant", block: "center" });
     expect(focusSpy).toHaveBeenCalled();
@@ -577,28 +447,18 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
   it("does not throw and does not loop when the parent annotation is missing from the bundle (honest unreachable)", async () => {
     const store = storeWithState({
       currentTourId: "tour-a",
-      bundle: {
-        kind: "ok",
-        value: okBundle({ files: [], annotations: [] }),
-      },
+      bundle: { kind: "ok", value: okBundle() },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
-    const adapter = createWebTourSessionAdapter({
+    const adapter = makeAdapter({
       store,
-      annotationRefs: { current: new Map() },
-      callbacksRef: {
-        current: {
-          findFileBlock: () => null,
-          setSelectedFile: () => {},
-          revealFileAncestors: () => {},
-        },
-      },
+      callbacks: { ...noopCallbacks, findFileBlock: () => null },
     });
 
     expect(() =>
       adapter.scrollToComposer({ kind: "reply", replies_to: "missing-id" }),
     ).not.toThrow();
     expect(dispatchSpy).not.toHaveBeenCalled();
-    await flushRaf2();
+    await flushRaf();
   });
 });

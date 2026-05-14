@@ -42,13 +42,8 @@ function behaviorFor(mode: ScrollPlacement): ScrollBehavior {
   return mode === "nearest" ? "smooth" : "instant";
 }
 
-// Issue #324: a file's body is hidden (no diff rows rendered) when the user
-// has folded it manually OR when its classification carries `collapsed:
-// true` (binary or classifier-collapsed banner) and there's no explicit
-// `false` override. Mirrors the view's `isFileFolded || isClassifierCollapsed`
-// rule. The `scrollToComposer` recall path uses this to decide whether to
-// dispatch `folds.setOverride { value: false }` before scrolling — the
-// row markup must land in the DOM before the gutter-cell query succeeds.
+// Mirror of the view's `isFileFolded || isClassifierCollapsed` rule —
+// true when the file's diff rows aren't rendered. (issue #324)
 function isFileBodyHidden(
   state: TourSessionState,
   bundle: TourBundle,
@@ -161,17 +156,11 @@ export function createWebTourSessionAdapter(
     },
     scrollToComposer: (target) => {
       // Issue #320: scroll the anchor row in + focus the inline Composer's
-      // textarea so the user can resume typing. Top-level anchors at a
-      // (file, side, line_end) gutter cell (mirroring `scrollToRow`); reply
-      // anchors at the parent annotation's card via the annotation refs.
-      //
-      // Issue #324: if the anchor file is folded (manual fold override,
-      // binary classification, or classifier-collapsed banner) the row
-      // markup isn't in the DOM and the scroll silently no-ops. Dispatch
-      // `folds.setOverride { value: false }` to force-reveal first, then
-      // defer the scroll one rAF so React commits the unfolded body before
-      // we try to find the row. Mirrors the explicit-reveal pattern that
-      // `n` / `p` / URL `?ann=` restore use on the cursor-navigation path.
+      // textarea. Top-level anchors at a (file, side, line_end) gutter cell;
+      // reply anchors at the parent annotation's card via the annotation refs.
+      // Issue #324: if the anchor file is folded, force-reveal first so React
+      // commits the body before the rAF-deferred gutter-cell query lands —
+      // same explicit-reveal pattern as `n`/`p`/URL `?ann=` restore.
       if (typeof document === "undefined") return;
       const state = deps.store.getState();
       const bundle = isBundleResolved(state);
