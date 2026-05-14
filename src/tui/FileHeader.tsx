@@ -15,7 +15,6 @@ import { theme } from "../core/theme.js";
 // the `e` keymap binding on any diff-pane cursor inside the file is the
 // keyboard path to the same dispatch (see `keymap.ts` + `app.tsx`).
 export const EXPAND_ALL_GLYPH = "↕";
-export const EXPAND_ALL_LABEL = "Expand all hidden";
 
 export function fileHeaderExpandAllId(fileName: string): string {
   return `file-header-expand-all-${fileName}`;
