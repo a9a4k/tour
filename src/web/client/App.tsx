@@ -24,6 +24,8 @@ import {
   type CanSendToAgentResult,
 } from "../../core/can-send-to-agent.js";
 import { revealAncestors, type VisibleRow } from "../../core/file-tree.js";
+import { TourSessionRuntime } from "../../core/tour-session-runtime.js";
+import { createWebTourSessionAdapter } from "./tour-session-adapter.js";
 import {
   planRows,
   GAP_TWO_ROW_THRESHOLD,
@@ -482,10 +484,25 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     setSelectedFile(null);
   }, [tourId]);
 
+  // Tour-session runtime (PRD #278 slice 2). Subscribes to SSE via the
+  // web adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
+  // on tour events. The runtime re-subscribes itself when `currentTourId`
+  // changes, so this effect runs once at mount and tears down at unmount.
+  useEffect(() => {
+    const adapter = createWebTourSessionAdapter();
+    const runtime = new TourSessionRuntime(store, adapter);
+    return runtime.start();
+  }, [store]);
+
+  // Mount-time / tour-switch seed of the reply-lock slice. `tour.switched`
+  // resets the slice to `{ kind: "idle" }`; this effect fetches the current
+  // lock and dispatches `replyLock.loaded` so the pill state is accurate
+  // on first paint of every tour. Slice 3 lifts this into the runtime's
+  // `loadTour` intent handler.
   useEffect(() => {
     if (!tourId) return;
     let cancelled = false;
-    const refetchLock = async () => {
+    void (async () => {
       try {
         const res = await fetch(`/api/tours/${tourId}/reply-lock`);
         const data = (await res.json()) as ReplyLock | { error: string } | null;
@@ -501,31 +518,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       } catch {
         // transient — keep current pill state
       }
-    };
-    void refetchLock();
-
-    const evtSource = new EventSource(`/api/tours/${tourId}/events`);
-    evtSource.onmessage = async (event) => {
-      const msg = JSON.parse(event.data) as { type: string };
-      if (msg.type === "annotation-changed") {
-        const res = await fetch(`/api/tours/${tourId}`);
-        const data = (await res.json()) as TourBundle | { error: string };
-        if (cancelled) return;
-        if ("error" in data) return;
-        // Same-tour refresh (issue #211): dispatch `bundle.refreshed`
-        // (NOT `tour.switched`) so the SSE refresh doesn't trigger the
-        // CONTEXT-pinned Tour-switch reset cascade (picker close +
-        // replyLock idle).
-        store.dispatch({ type: "bundle.refreshed", bundle: data });
-      } else if (msg.type === "reply-in-flight" || msg.type === "reply-cleared") {
-        await refetchLock();
-      }
-    };
+    })();
     return () => {
       cancelled = true;
-      evtSource.close();
     };
-  }, [tourId]);
+  }, [tourId, store]);
 
   const tourMeta = bundle?.tour ?? null;
   // Tour-session view (PRD #242 / issue #245). Per-namespace memoised

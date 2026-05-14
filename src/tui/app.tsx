@@ -68,7 +68,8 @@ import {
   fileRowFixedCost,
 } from "./sidebar-row-label.js";
 import { countDiffStats } from "../core/diff-stats.js";
-import { TourWatcher } from "../core/watcher.js";
+import { TourSessionRuntime } from "../core/tour-session-runtime.js";
+import { createTuiTourSessionAdapter } from "./tour-session-adapter.js";
 import { requestReply } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import { canSendToAgent } from "../core/can-send-to-agent.js";
@@ -335,64 +336,24 @@ function App(props: AppProps) {
     return () => clearInterval(handle);
   }, [replyLock]);
 
-  // Per-tour file watcher: drives the bundle reload (so newly-written
-  // Annotations show up) and the reply-lock state (so the in-flight pill
-  // appears and disappears). The watcher's role is state observation only;
-  // reply-agent dispatch is now explicit — pressing `s` calls
-  // `requestReply` in-process (ADR 0021, issue #184). Inert when no
-  // loadTour is wired.
+  // Tour-session runtime (PRD #278 slice 2). Subscribes to the watcher via
+  // the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
+  // on tour events. The runtime re-subscribes itself when `currentTourId`
+  // changes (tour-switch), so this effect runs once at mount and tears
+  // down at unmount.
   useEffect(() => {
-    if (!props.cwd || !props.loadTour) return;
-    const watcher = new TourWatcher(props.cwd, bundle.tour.id);
-
-    let cancelled = false;
-    const reload = async () => {
-      if (!props.loadTour || cancelled) return;
-      try {
-        const next = await props.loadTour(bundle.tour.id);
-        if (cancelled) return;
-        // Same-tour refresh (issue #211): dispatch `bundle.refreshed`
-        // (NOT `tour.switched`) so the watcher reload doesn't trigger
-        // the CONTEXT-pinned Tour-switch reset cascade (picker close +
-        // replyLock idle). Orphan-window seeding is folded into the
-        // reducer (PRD #278 slice 1) — `bundle.refreshed` unions the
-        // inbound `bundle.files[*].orphanWindows` into the expansion
-        // slice via per-side max, preserving manual user expansion.
-        store.dispatch({ type: "bundle.refreshed", bundle: next });
-      } catch {
-        // transient — keep current bundle
-      }
-    };
-    const reloadLock = async () => {
-      if (!props.loadReplyLock || cancelled) return;
-      try {
-        const next = await props.loadReplyLock(bundle.tour.id);
-        if (cancelled) return;
-        store.dispatch({ type: "replyLock.loaded", replyLock: next });
-      } catch {
-        // transient — keep current pill state
-      }
-    };
-
-    watcher.on((event) => {
-      if (event.type === "annotation-changed") {
-        void reload();
-        void reloadLock();
-      } else if (event.type === "reply-in-flight" || event.type === "reply-cleared") {
-        // Lock is OUT of the bundle (PRD #135) — fetched separately so a
-        // lock change doesn't trigger a full hydrate of diff + per-file
-        // contents. The whole-bundle reload on these events that this
-        // refactor exposes is left as a follow-up perf fix.
-        void reloadLock();
-      }
+    if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeAnnotation) {
+      return;
+    }
+    const adapter = createTuiTourSessionAdapter({
+      cwd: props.cwd,
+      loadTour: props.loadTour,
+      loadReplyLock: props.loadReplyLock,
+      writeAnnotation: props.writeAnnotation,
     });
-    watcher.start();
-
-    return () => {
-      cancelled = true;
-      watcher.stop();
-    };
-  }, [bundle.tour.id, props.cwd, props.loadTour]);
+    const runtime = new TourSessionRuntime(store, adapter);
+    return runtime.start();
+  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeAnnotation]);
 
   // Sorted file list for diff-pane render order. `view.rows.plannedRowsByFile`
   // is keyed by name; we still need the ordered file list for the JSX.
