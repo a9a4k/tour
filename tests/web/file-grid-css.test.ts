@@ -737,26 +737,14 @@ describe("FILE_GRID_CSS — annotate `+` button (#320)", () => {
 });
 
 describe("FILE_GRID_CSS — annotate `+` button per-side hover (#325)", () => {
-  // Pre-#325 the hover-reveal rule was row-scoped:
-  //   .tour-row:hover .tour-row-annotate-btn { display: inline-flex; }
-  // The descendant combinator matched every `.tour-row-annotate-btn` inside
-  // the row, so hovering anywhere on a split-layout row revealed BOTH
-  // gutters' buttons. The cursor-side reveal rules were already correctly
-  // per-side via :has(.tour-row-cell[data-side="X"].is-cursor); only the
-  // hover branch regressed. The fix scopes hover via :has() on a
-  // [data-side="X"]:hover descendant, so only the side under the cursor
-  // reveals its button.
+  // Mechanism + rationale live on the CSS rule's comment block in
+  // file-grid-css.ts; these tests pin the resulting selector shape.
 
   it("does NOT use the row-scoped .tour-row:hover descendant selector for reveal", () => {
-    // Pin the regression: the row-scoped selector is the bug (#325).
     expect(FILE_GRID_CSS).not.toContain(".tour-row:hover .tour-row-annotate-btn");
   });
 
   it("reveals only the additions-side button when an additions-side cell is hovered", () => {
-    // The :has() target list covers gutter / symbol / cell on the additions
-    // side; the matched gutter is `[data-side="additions"]` so only its
-    // descendant button reveals. Button-hover bubbles up to gutter-hover
-    // naturally (button is a descendant of gutter).
     expect(FILE_GRID_CSS).toMatch(
       /:has\([^)]*\.tour-row-cell\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
     );

@@ -580,7 +580,7 @@ export const FILE_GRID_CSS = `
      data-side but lives inside the gutter, so button-hover bubbles to
      gutter-hover and the rule keeps firing while the pointer sits on
      the button. A row-scoped .tour-row:hover descendant selector would
-     match both gutters' buttons in split layout — see issue tracker. */
+     match both gutters' buttons in split layout (issue 325). */
   .tour-row:has(.tour-row-gutter[data-side="additions"]:hover, .tour-row-symbol[data-side="additions"]:hover, .tour-row-cell[data-side="additions"]:hover)
     .tour-row-gutter[data-side="additions"]
     .tour-row-annotate-btn,
