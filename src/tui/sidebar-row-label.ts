@@ -44,7 +44,13 @@ const LEADING = 1;
 const TRAILING = 1;
 const CARET_AND_SPACE = 2; // "▾ " or "▸ "
 const ICON_AND_SPACE = 2;  // "M " etc.
-const INDENT_PER_DEPTH = 2;
+// Issue #312: dropped from 2 → 1. With a depth-5 monorepo the prior
+// `2 * depth` ate 10 of 28 usable sidebar cols; halving the indent
+// is the only knob that helps when the 40% terminal-width cap binds
+// (narrow terminals + deep trees). The constant stays static — a
+// dynamic per-tour indent would optimise the comfortable case at
+// the cost of an API change to four exported functions.
+const INDENT_PER_DEPTH = 1;
 
 function badgeFor(annotationCount: number): string {
   return annotationCount > 0 ? ` [${annotationCount}]` : "";
