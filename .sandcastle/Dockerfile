@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
   git \
   curl \
   jq \
+  unzip \
   && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
@@ -28,8 +29,12 @@ USER ${AGENT_UID}:${AGENT_GID}
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Add Claude to PATH
-ENV PATH="/home/agent/.local/bin:$PATH"
+# Install bun (runtime that `tour` ships with — required by integration tests
+# that spawn `bun <CLI> serve …`; without it those tests fail with ENOENT).
+RUN curl -fsSL https://bun.sh/install | bash
+
+# Add Claude and bun to PATH
+ENV PATH="/home/agent/.local/bin:/home/agent/.bun/bin:$PATH"
 
 WORKDIR /home/agent
 
