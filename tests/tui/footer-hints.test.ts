@@ -38,6 +38,13 @@ describe("TUI_FOOTER_HINTS", () => {
     expect(TUI_FOOTER_HINTS).toContain("q: quit");
   });
 
+  // Issue #312: `[`/`]` resize the sidebar by ±2 cols within
+  // `[SIDEBAR_MIN_WIDTH, floor(termW * 0.4)]`. The hint sits next to
+  // `Tab: pane` — both are pane-affecting global actions.
+  it("surfaces `[/]: width` as a persistent hint", () => {
+    expect(TUI_FOOTER_HINTS).toContain("[/]: width");
+  });
+
   it("omits the `s: send to {agent}` hint by default (no reply-agent configured)", () => {
     expect(TUI_FOOTER_HINTS).not.toContain("s: send to");
   });

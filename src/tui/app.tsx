@@ -75,6 +75,13 @@ import {
   folderRowFixedCost,
   fileRowFixedCost,
 } from "./sidebar-row-label.js";
+import {
+  SIDEBAR_BORDER,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_RESIZE_STEP,
+  clampSidebarWidth,
+  computeAutoFitWidth,
+} from "./sidebar-width.js";
 import { sidebarCursorPaint } from "./sidebar-cursor-paint.js";
 import { countDiffStats } from "../core/diff-stats.js";
 import { TourSessionRuntime } from "../core/tour-session-runtime.js";
@@ -205,12 +212,15 @@ function fileCardBody(
   );
 }
 
-// Sidebar box is 30 cols wide with a 1-cell border on each side; usable
-// inner width is 28. Row labels are middle-truncated to this width so
-// long names never wrap (issue #156).
-const SIDEBAR_WIDTH = 30;
-const SIDEBAR_BORDER = 2;
-const SIDEBAR_CONTENT_WIDTH = SIDEBAR_WIDTH - SIDEBAR_BORDER;
+// Sidebar width is now per-tour state (issue #312). On every tour
+// switch the auto-fit helper picks the minimum width that lets every
+// visible row render without middle-truncation, clamped to
+// `[SIDEBAR_MIN_WIDTH, floor(terminalWidth * SIDEBAR_MAX_FRAC)]`.
+// `[`/`]` adjust the width by `SIDEBAR_RESIZE_STEP` within the same
+// range; the adjustment is session-local and resets on the next
+// tour switch (auto-fit is the source of truth per-tour). Row labels
+// still middle-truncate to whatever `sidebarWidth - SIDEBAR_BORDER`
+// is at render time so long names never wrap (issue #156).
 
 function App(props: AppProps) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
@@ -340,6 +350,15 @@ function App(props: AppProps) {
   // ref is keyed on `bundle.tour.id` so `bundle.refreshed` does NOT
   // re-seed — user motion taken before a watcher reload survives.
   const seededTourIdRef = useRef<string | null>(null);
+
+  // Sidebar width (issue #312). Per-tour auto-fit + `[`/`]` resize.
+  // `lastFittedTourIdRef` mirrors `seededTourIdRef`'s once-per-tour
+  // guard: auto-fit runs on every tour switch but NOT on
+  // `bundle.refreshed` of the same tour (a mid-session refit would be
+  // jarring). The fit effect lives below the row-derivation pipeline
+  // so `visibleRows` is in scope.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
+  const lastFittedTourIdRef = useRef<string | null>(null);
 
   // Issue #303 preserve-cursor-on-layout-toggle: pre-toggle snapshot of the
   // cursor row's position. Populated synchronously inside the toggle-layout
@@ -623,6 +642,29 @@ function App(props: AppProps) {
     if (!row || !sidebarScrollRef.current) return;
     sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
   }, [safeRowIdx, visibleRows]);
+
+  // Sidebar auto-fit (issue #312). On every tour-id change (NOT on
+  // `bundle.refreshed` of the same tour), recompute the minimum width
+  // that fits the deepest visible row. Gated on `visibleRows.length`
+  // so the first paint — where the row pipeline is still empty —
+  // doesn't lock in the default width; the next render with
+  // populated rows triggers the fit. The manual `[`/`]` override is
+  // session-local: the next tour switch re-runs auto-fit and the
+  // override doesn't carry over.
+  useEffect(() => {
+    if (lastFittedTourIdRef.current === bundle.tour.id) return;
+    if (visibleRows.length === 0) return;
+    lastFittedTourIdRef.current = bundle.tour.id;
+    const fitted = computeAutoFitWidth(
+      visibleRows,
+      (path) => countDiffStats(plannedRowsByFile.get(path) ?? []),
+      renderer.terminalWidth,
+    );
+    setSidebarWidth(fitted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundle.tour.id, visibleRows]);
+
+  const sidebarContentWidth = sidebarWidth - SIDEBAR_BORDER;
 
   const sendHintVerdict =
     sendTargetVal !== null
@@ -1201,6 +1243,20 @@ function App(props: AppProps) {
       return;
     }
 
+    // Issue #312: `[`/`]` resize the sidebar within
+    // `[SIDEBAR_MIN_WIDTH, floor(termW * SIDEBAR_MAX_FRAC)]`. Handled
+    // here so the composer / picker early-returns above swallow
+    // brackets while typing or navigating the tour picker. The
+    // adjustment is session-local — the next tour switch re-runs
+    // auto-fit and the override doesn't carry over.
+    if (!key.ctrl && !key.shift && (key.name === "[" || key.name === "]")) {
+      const delta = key.name === "[" ? -SIDEBAR_RESIZE_STEP : SIDEBAR_RESIZE_STEP;
+      const next = clampSidebarWidth(sidebarWidth + delta, renderer.terminalWidth);
+      setSidebarWidth(next);
+      setFooterStatus(`sidebar: ${next} cols`);
+      return;
+    }
+
     const action = dispatchKey(
       { name: key.name, ctrl: key.ctrl, shift: key.shift },
       {
@@ -1524,7 +1580,7 @@ function App(props: AppProps) {
       <box flexGrow={1} width="100%" flexDirection="row">
         {/* Sidebar */}
         <box
-          width={SIDEBAR_WIDTH}
+          width={sidebarWidth}
           borderStyle="single"
           borderColor={sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Files "
@@ -1572,7 +1628,7 @@ function App(props: AppProps) {
                 // `theme.fg.cursor` while the rest of the row keeps its
                 // muted folder colour. `height={1}` on inner texts mirrors
                 // the file-row treatment so the row stays at 1 grid row.
-                const label = folderRowLabel(row, SIDEBAR_CONTENT_WIDTH - folderRowFixedCost(row));
+                const label = folderRowLabel(row, sidebarContentWidth - folderRowFixedCost(row));
                 const labelText = showGlyph ? label.slice(1) : label;
                 return (
                   <box
@@ -1603,7 +1659,7 @@ function App(props: AppProps) {
               const segs = fileRowSegments(
                 row,
                 stats,
-                SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row, stats),
+                sidebarContentWidth - fileRowFixedCost(row, stats),
               );
               // Issue #305: when the sidebar is focused on this row, the
               // ❯ glyph rides in front of the leading segment. The row-
@@ -1611,7 +1667,7 @@ function App(props: AppProps) {
               // leading space) inside `segs.leading`; the glyph overwrites
               // that one char so the middle-truncation budget for the
               // name is not affected and the row's total width stays at
-              // SIDEBAR_CONTENT_WIDTH.
+              // `sidebarContentWidth`.
               const leadingText = showGlyph ? segs.leading.slice(1) : segs.leading;
               return (
                 // `height={1}` on each inner `<text>` pins the file row

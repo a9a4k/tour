@@ -60,9 +60,9 @@ describe("folderRowLabel", () => {
       .toBe(" ▸ src ");
   });
 
-  it("indents two spaces per depth", () => {
+  it("indents one space per depth (issue #312)", () => {
     expect(folderRowLabel(folder({ displayName: "deep", depth: 3 }), 100))
-      .toBe("       ▾ deep ");
+      .toBe("    ▾ deep ");
   });
 
   it("truncates the name slot to the supplied budget, leaving the rest intact", () => {
@@ -100,9 +100,9 @@ describe("fileRowSegments (issue #265)", () => {
       });
   });
 
-  it("indents two spaces per depth on the leading segment", () => {
+  it("indents one space per depth on the leading segment (issue #312)", () => {
     const out = fileRowSegments(file({ displayName: "a.ts", depth: 2 }), NO_STATS, 100);
-    expect(out.leading).toBe("     M a.ts");
+    expect(out.leading).toBe("   M a.ts");
   });
 
   it("appends [N] badge segment when annotationCount > 0", () => {
@@ -198,8 +198,8 @@ describe("folderRowFixedCost", () => {
     expect(folderRowFixedCost(folder({ depth: 0 }))).toBe(4);
   });
 
-  it("adds 2 columns per depth level", () => {
-    expect(folderRowFixedCost(folder({ depth: 3 }))).toBe(4 + 6);
+  it("adds 1 column per depth level (issue #312)", () => {
+    expect(folderRowFixedCost(folder({ depth: 3 }))).toBe(4 + 3);
   });
 
   it("is independent of caret direction (collapsed vs expanded)", () => {
@@ -214,8 +214,8 @@ describe("fileRowFixedCost", () => {
     expect(fileRowFixedCost(file({ depth: 0, annotationCount: 0 }), NO_STATS)).toBe(4);
   });
 
-  it("adds 2 columns per depth level", () => {
-    expect(fileRowFixedCost(file({ depth: 2, annotationCount: 0 }), NO_STATS)).toBe(4 + 4);
+  it("adds 1 column per depth level (issue #312)", () => {
+    expect(fileRowFixedCost(file({ depth: 2, annotationCount: 0 }), NO_STATS)).toBe(4 + 2);
   });
 
   it("adds the badge width ' [N]' when annotationCount > 0", () => {
