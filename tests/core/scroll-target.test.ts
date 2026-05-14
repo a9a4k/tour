@@ -185,10 +185,8 @@ describe("scroll-target", () => {
       // viewport.height=20, contentHeight=200 → maxScrollTop=180.
       // Before: contentY=195, scrollTop=180 → screenY=15.
       // After:  contentY=210 (diff grew). desired = 210 - 15 = 195 → clamp to 180.
-      // Row at contentY=210 with scrollTop=180 → screenY=30 → past viewport bottom
-      // (height 20) → fallback to center(newChild). center → 210 - 9.5 = 200.5 → floor
-      // not used; center math is `child.y - (viewport.height - child.height) / 2` =
-      // 210 - 9.5 = 200.5; clamped to 180 since max=180.
+      // childTop = 210 - 180 = 30 → past viewport bottom → center fallback;
+      // center math = 210 - 9.5 = 200.5 → clamped to 180.
       expect(
         preserveScreenY(
           { y: 195, height: 1 },
@@ -199,41 +197,12 @@ describe("scroll-target", () => {
       ).toBe(180);
     });
 
-    it("falls back to center when the preserved scrollTop would leave the row offscreen", () => {
-      // Before: contentY=50, scrollTop=40 → screenY=10. Viewport [40, 60).
-      // After:  contentY=500 (huge reflow downward). desired = 500 - 10 = 490.
-      // After clamp (maxScrollTop=200-20=180? — let's use contentHeight=1000 →
-      // max=980, so desired=490 stays). Row top = 500 - 490 = 10 (in viewport).
-      // To exercise the off-screen branch, push contentHeight = 510 so
-      // max=490 stays; row still visible. Use contentHeight smaller than
-      // needed instead: contentHeight=500, max=480, desired=490 clamps to
-      // 480, row at contentY=500 - 480 = 20 (still in [0,20))? 20 == viewport.height,
-      // so off-screen. Center → child.y - (20 - 1)/2 = 500 - 9.5 = 490.5 → clamp to 480.
-      // Simpler scenario: row near top of new content, viewport scrolled far down.
-      expect(
-        preserveScreenY(
-          { y: 100, height: 1 },
-          { y: 5, height: 1 },
-          0,
-          { scrollTop: 0, height: 20, contentHeight: 500 },
-        ),
-        // screenY=100, desired = 5 - 100 = -95 → clamp to 0. childTop = 5 - 0 = 5 in [0,20) → visible.
-      ).toBe(0);
-    });
-
     it("centers when the clamped preserve would leave the row off the bottom of the viewport", () => {
-      // Before: contentY=200, scrollTop=190 → screenY=10. Viewport [190,210).
-      // After:  contentY=15. The diff shrank dramatically. desired = 15 - 10 = 5;
-      // clamp to [0, 480] = 5. childTop = 15 - 5 = 10 → still in viewport.
-      // Re-engineer: screenY large, newChild.y small → desired negative → clamp to 0.
-      // newChild at y=15 with scrollTop=0 → childTop=15 → in [0,20). No center needed.
-      //
-      // The real off-screen scenario is when contentHeight shrinks so that
-      // newChild sits below the new max-scrollable viewport. Old contentY=500,
-      // scrollTop=480, viewport=20, screenY=20. New contentHeight=100,
-      // newChild.y=95. maxScrollTop=80. desired=95-20=75; clamp→75. childTop=20 →
-      // exactly at viewport.height boundary → off-screen → center(newChild) =
-      // 95 - 9.5 = 85.5 → clamp to 80.
+      // The reflow shrank contentHeight so newChild sits below the new max-
+      // scrollable viewport. Old contentY=500, scrollTop=480, viewport=20,
+      // screenY=20. New contentHeight=100, newChild.y=95. maxScrollTop=80;
+      // desired=95-20=75 (in range). childTop = 95 - 75 = 20 = viewport.height
+      // → off-screen → center(newChild) = 95 - 9.5 = 85.5 → clamp to 80.
       expect(
         preserveScreenY(
           { y: 500, height: 1 },
@@ -245,12 +214,10 @@ describe("scroll-target", () => {
     });
 
     it("centers when the clamped preserve would leave the row above the viewport top", () => {
-      // Before: contentY=100, scrollTop=0 → screenY=100 (cursor far below viewport,
-      // a degenerate state — but possible if the user wheel-scrolled the cursor
-      // off-screen). After: contentY=50, scrollTop=0 → desired = 50 - 100 = -50 →
-      // clamp to 0. childTop = 50 - 0 = 50, viewport.height=20 → off-screen (childTop
-      // >= viewport.height). Center → child.y - (20 - 1)/2 = 50 - 9.5 = 40.5 → 40.5,
-      // contentHeight=200, max=180, no further clamp.
+      // Before: contentY=100, scrollTop=0 → screenY=100 (cursor far below viewport).
+      // After: contentY=50, scrollTop=0 → desired = 50 - 100 = -50 → clamp to 0.
+      // childTop = 50 → off-screen (childTop >= viewport.height=20) → center:
+      // 50 - (20 - 1)/2 = 40.5; contentHeight=200, max=180, no further clamp.
       expect(
         preserveScreenY(
           { y: 100, height: 1 },

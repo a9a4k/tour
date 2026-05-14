@@ -424,8 +424,8 @@ describe("applyPreserveScreenY", () => {
   it("pins the row at the same screen-y after a content reflow that moves the row down", () => {
     // Pre-reflow snapshot: contentY=110, scrollTop=100 → screenY=10 (mid-viewport).
     // Post-reflow: row at screen-y=70 (viewport.y=50, scrollTop=100), contentY = 70-50+100 = 120.
-    // Desired scrollTop = 120 - 10 = 110. preserveScreenY clamps to [0, max=480].
-    const { sb } = makeFakeScrollbox({
+    // Desired scrollTop = 120 - 10 = 110.
+    const fake = makeFakeScrollbox({
       viewportY: 50,
       viewportHeight: 20,
       scrollTop: 100,
@@ -436,17 +436,15 @@ describe("applyPreserveScreenY", () => {
       freshChildHeight: 4,
     });
     const snap = { contentY: 110, height: 4, scrollTop: 100 };
-    const applied = applyPreserveScreenY(sb as unknown as ScrollBoxRenderable, "target", snap);
+    const applied = applyPreserveScreenY(fake.sb as unknown as ScrollBoxRenderable, "target", snap);
     expect(applied).toBe(true);
-    // contentY post = 70 - 50 + 100 = 120; screenY = 10; desired = 120 - 10 = 110.
-    expect((sb as unknown as { scrollTo: { value?: number } & FakeScrollBox }).scrollTo).toBeTypeOf("function");
+    expect(fake.scrollTarget).toEqual({ type: "to", value: 110 });
   });
 
-  it("issues scrollTo(desired) where desired pins the row at the captured screen-y", () => {
+  it("pins the row at the same screen-y when the row's content-y is stable across reflow", () => {
     // Pre snapshot: contentY=200, scrollTop=190 → screenY=10 (mid-viewport).
     // Post-reflow row at screen-y=60, viewport.y=50, scrollTop=190 → contentY=200.
-    // Desired = 200 - 10 = 190. Row stable across reflow → scrollTop unchanged
-    // (still issues scrollTo — no minimal-motion shortcut).
+    // Desired = 200 - 10 = 190.
     const fake = makeFakeScrollbox({
       viewportY: 50,
       viewportHeight: 20,
