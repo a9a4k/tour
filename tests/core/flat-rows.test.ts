@@ -286,7 +286,7 @@ describe("flatRows interactive rows (PRD #107)", () => {
     const rows: PlannedRow[] = [
       interactive({ subKind: "boundary-top", boundaryRef: "top" }),
       interactive({ subKind: "hunk-separator", boundaryRef: 1 }),
-      interactive({ subKind: "boundary-bottom", boundaryRef: "bottom" }),
+      interactive({ subKind: "expand-down", boundaryRef: "bottom" }),
       interactive({ subKind: "collapsed-file", boundaryRef: "top" }),
     ];
     const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
@@ -296,7 +296,7 @@ describe("flatRows interactive rows (PRD #107)", () => {
     expect(subKinds).toEqual([
       "boundary-top",
       "hunk-separator",
-      "boundary-bottom",
+      "expand-down",
       "collapsed-file",
     ]);
   });
@@ -333,7 +333,7 @@ describe("flatRows interactive rows (PRD #107)", () => {
     const rows: PlannedRow[] = [
       ...plannedFor(SIMPLE_DIFF, [], "split"),
       interactive({ subKind: "hunk-separator", boundaryRef: 0 }),
-      interactive({ subKind: "boundary-bottom", boundaryRef: "bottom" }),
+      interactive({ subKind: "expand-down", boundaryRef: "bottom" }),
     ];
     const flat = flatRows([f], new Map([["x.txt", rows]]), () => true);
     expect(flat).toEqual([]);

@@ -634,8 +634,8 @@ describe("<FileBlock> — planner walk + dispatch", () => {
       },
       {
         kind: "interactive",
-        subKind: "boundary-bottom",
-        boundaryRef: "bottom",
+        subKind: "boundary-top",
+        boundaryRef: "top",
         gapAbove: 5,
         text: "··· 5 hidden ···",
       },
@@ -650,7 +650,7 @@ describe("<FileBlock> — planner walk + dispatch", () => {
     expect((tourRows[1] as HTMLElement).dataset.lineType).toBe("context");
     expect((tourRows[2] as HTMLElement).dataset.lineType).toBe("addition");
     // Interactive row last.
-    expect((tourRows[3] as HTMLElement).dataset.subkind).toBe("boundary-bottom");
+    expect((tourRows[3] as HTMLElement).dataset.subkind).toBe("boundary-top");
   });
 
   it("dispatches annotation rows to <CardRow>, anchored after the matching diff row", () => {
@@ -713,8 +713,8 @@ describe("<FileBlock> — interactive row activation", () => {
     const rows: PlannedRow[] = [
       {
         kind: "interactive",
-        subKind: "boundary-bottom",
-        boundaryRef: "bottom",
+        subKind: "boundary-top",
+        boundaryRef: "top",
         gapAbove: 12,
         text: "··· 12 hidden ···",
       },
@@ -725,7 +725,7 @@ describe("<FileBlock> — interactive row activation", () => {
         defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
       ),
     );
-    const row = c.querySelector('.tour-row[data-subkind="boundary-bottom"]') as HTMLElement;
+    const row = c.querySelector('.tour-row[data-subkind="boundary-top"]') as HTMLElement;
     act(() => {
       row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -733,8 +733,8 @@ describe("<FileBlock> — interactive row activation", () => {
     expect(actions[0]).toMatchObject({
       kind: "expand",
       file: "x.ts",
-      boundaryRef: "bottom",
-      direction: "down",
+      boundaryRef: "top",
+      direction: "up",
     });
     expect(actions[0].kind === "expand" ? actions[0].count : 0).toBeGreaterThan(0);
   });
@@ -1101,8 +1101,8 @@ describe("<FileBlock> — isCursor flow", () => {
     const rows: PlannedRow[] = [
       {
         kind: "interactive",
-        subKind: "boundary-bottom",
-        boundaryRef: "bottom",
+        subKind: "boundary-top",
+        boundaryRef: "top",
         gapAbove: 12,
         text: "···",
       },
@@ -1113,10 +1113,10 @@ describe("<FileBlock> — isCursor flow", () => {
       lineNumber: 0,
       side: "additions",
       preferredSide: "additions",
-      interactive: { subKind: "boundary-bottom", boundaryRef: "bottom" },
+      interactive: { subKind: "boundary-top", boundaryRef: "top" },
     };
     const c = mount(createElement(FileBlock, defaultProps({ rows, cursor })));
-    const row = c.querySelector('.tour-row[data-subkind="boundary-bottom"]') as HTMLElement;
+    const row = c.querySelector('.tour-row[data-subkind="boundary-top"]') as HTMLElement;
     expect(row.classList.contains("is-cursor")).toBe(true);
   });
 

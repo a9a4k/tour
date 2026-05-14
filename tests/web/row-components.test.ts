@@ -1008,9 +1008,9 @@ describe("<InteractiveRow>", () => {
   it("applies .is-cursor when isCursor is true", () => {
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "boundary-bottom",
-        boundaryRef: "bottom",
-        direction: "down",
+        subKind: "boundary-top",
+        boundaryRef: "top",
+        direction: "up",
         gapAbove: 3,
         isCursor: true,
         onActivate: () => {},

@@ -1417,7 +1417,7 @@ index 1..2 100644
 
     it("mouse click dispatches onInteractiveClick(file, subKind, boundaryRef)", () => {
       const rows: PlannedRow[] = [
-        { kind: "interactive", subKind: "boundary-bottom", boundaryRef: "bottom" },
+        { kind: "interactive", subKind: "collapsed-file", boundaryRef: "top" },
       ];
       const onInteractiveClick = vi.fn();
       const tree = DiffRows({
@@ -1428,15 +1428,15 @@ index 1..2 100644
         cursor: null,
         onInteractiveClick,
       });
-      const wrapper = findIdElement(tree, "interactive-row-x.txt-boundary-bottom-bottom");
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-collapsed-file-top");
       expect(wrapper).toBeDefined();
       const handler = wrapper!.props["onMouseDown"];
       expect(typeof handler).toBe("function");
       (handler as () => void)();
       expect(onInteractiveClick).toHaveBeenCalledWith(
         "x.txt",
-        "boundary-bottom",
-        "bottom",
+        "collapsed-file",
+        "top",
       );
     });
 

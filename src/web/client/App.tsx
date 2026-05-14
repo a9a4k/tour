@@ -761,24 +761,25 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           dispatchExpand({ kind: "expand-file", file: cursor.file });
           return;
         }
-        const gapSize =
-          subKind === "boundary-top"
-            ? boundaryTopGapSize(cursor.file)
-            : subKind === "boundary-bottom" || boundaryRef === "bottom"
-              ? boundaryBottomGapSize(cursor.file)
-              : typeof boundaryRef === "number"
-                ? hunkSeparatorGapSize(cursor.file, boundaryRef)
-                : 0;
+        let gapSize: number;
+        if (subKind === "boundary-top") {
+          gapSize = boundaryTopGapSize(cursor.file);
+        } else if (boundaryRef === "bottom") {
+          gapSize = boundaryBottomGapSize(cursor.file);
+        } else if (typeof boundaryRef === "number") {
+          gapSize = hunkSeparatorGapSize(cursor.file, boundaryRef);
+        } else {
+          gapSize = 0;
+        }
         if (gapSize > 0) {
           e.preventDefault();
           // Issue #280: `boundary-top` / `hunk-separator` now address
           // the hunk-header banner's interactive left cell. Re-derive
           // its `primaryExpand` from the gap-size + edge position via
           // the same helper the planner uses; route Up → "up" /
-          // EXPANSION_STEP, All → "both" / gapSize. `boundary-bottom`
-          // keeps "down" routing; standalone `expand-down` keeps its
-          // own per-direction path. Shift carries no special meaning
-          // (PRD #270 Slice 5 / issue #275).
+          // EXPANSION_STEP, All → "both" / gapSize. Standalone
+          // `expand-down` keeps its own per-direction path. Shift
+          // carries no special meaning (PRD #270 Slice 5 / issue #275).
           let direction: "up" | "down" | "both";
           let count: number;
           if (subKind === "boundary-top" || subKind === "hunk-separator") {
@@ -794,7 +795,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               direction = "both";
               count = gapSize;
             }
-          } else if (subKind === "boundary-bottom" || subKind === "expand-down") {
+          } else if (subKind === "expand-down") {
             direction = "down";
             count = EXPANSION_STEP;
           } else {

@@ -53,7 +53,7 @@ function pairedFlat(file: string, left: number, right: number): FlatRow {
 
 function interactiveFlat(parts: {
   file: string;
-  subKind: "hunk-separator" | "boundary-top" | "boundary-bottom" | "collapsed-file";
+  subKind: "hunk-separator" | "boundary-top" | "collapsed-file";
   boundaryRef: number | "top" | "bottom";
 }): FlatRow {
   return {
