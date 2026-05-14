@@ -1492,7 +1492,6 @@ function App(props: AppProps) {
         currentAnnotationIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         tourStats={tourStats}
-        selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
         onPrevAnnotation={gotoPrevAnnotation}
         onNextAnnotation={gotoNextAnnotation}

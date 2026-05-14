@@ -10,9 +10,9 @@ import type { Tour } from "../../src/core/types.js";
 // right cluster drops to its own row in narrow terminals; no Tour short-id
 // in the header; pill hidden when there are no top-level annotations.
 //
-// After the row-2 split, `render()` returns the outer column container —
-// the existing row-1 box is its first child. Tests asserting row-1 shape
-// (flexWrap, two clusters, marginLeft="auto") walk through `row1Of(root)`.
+// After issue #311 retired the cursor-file path row, `render()` returns the
+// row directly (no outer column container). The tree is the row's two
+// clusters under a single flex row.
 
 interface AnyElement {
   type: unknown;
@@ -32,12 +32,6 @@ function childrenOf(el: AnyElement): unknown[] {
   const c = el.props.children;
   if (c === undefined || c === null) return [];
   return Array.isArray(c) ? c : [c];
-}
-
-function row1Of(root: AnyElement): AnyElement {
-  const first = childrenOf(root).filter(isElement)[0];
-  if (!first) throw new Error("expected row-1 child inside header outer box");
-  return first;
 }
 
 function walk(node: unknown): AnyElement[] {
@@ -105,24 +99,21 @@ function render(
 }
 
 describe("TopHeaderTui (issue #93)", () => {
-  it("row-1 is a flex row with flexWrap='wrap' so the right cluster can drop in 80-col terminals", () => {
+  it("is a flex row with flexWrap='wrap' so the right cluster can drop in 80-col terminals", () => {
     const root = render();
-    const row1 = row1Of(root);
-    expect(row1.props["flexDirection"]).toBe("row");
-    expect(row1.props["flexWrap"]).toBe("wrap");
+    expect(root.props["flexDirection"]).toBe("row");
+    expect(root.props["flexWrap"]).toBe("wrap");
   });
 
-  it("renders exactly two flex children inside row-1 (left cluster + right cluster) for group-wrap, not element-wrap", () => {
+  it("renders exactly two flex children (left cluster + right cluster) for group-wrap, not element-wrap", () => {
     const root = render();
-    const row1 = row1Of(root);
-    const directChildren = childrenOf(row1).filter(isElement);
+    const directChildren = childrenOf(root).filter(isElement);
     expect(directChildren).toHaveLength(2);
   });
 
   it("the right cluster pushes itself to the right edge via marginLeft='auto'", () => {
     const root = render();
-    const row1 = row1Of(root);
-    const [, right] = childrenOf(row1).filter(isElement);
+    const [, right] = childrenOf(root).filter(isElement);
     expect(right.props["marginLeft"]).toBe("auto");
   });
 
@@ -140,14 +131,14 @@ describe("TopHeaderTui (issue #93)", () => {
 
   it("renders the title text inside the left cluster", () => {
     const root = render({ tour: { ...tour, title: "Add foo" } });
-    const [left] = childrenOf(row1Of(root)).filter(isElement);
+    const [left] = childrenOf(root).filter(isElement);
     const leftText = walk(left).filter((e) => e.type === "text").map(textChildOf).join(" | ");
     expect(leftText).toContain("Add foo");
   });
 
   it("renders the source pair as short SHAs ('<base[:7]> ← <head[:7]>') inside the left cluster (issue #308)", () => {
     const root = render();
-    const [left] = childrenOf(row1Of(root)).filter(isElement);
+    const [left] = childrenOf(root).filter(isElement);
     const leftText = walk(left).filter((e) => e.type === "text").map(textChildOf).join(" | ");
     expect(leftText).toContain("cafebab ← deadbee");
   });
@@ -178,7 +169,7 @@ describe("TopHeaderTui (issue #93)", () => {
         wip_snapshot: true,
       },
     });
-    const leftText = walk(row1Of(root))
+    const leftText = walk(root)
       .filter((e) => e.type === "text")
       .map(textChildOf)
       .join(" | ");
@@ -198,7 +189,7 @@ describe("TopHeaderTui (issue #93)", () => {
 
   it("places the HamburgerButtonTui inside the left cluster (not the right)", () => {
     const root = render();
-    const [left, right] = childrenOf(row1Of(root)).filter(isElement);
+    const [left, right] = childrenOf(root).filter(isElement);
     const inLeft = walk(left).some((e) => e.type === HamburgerButtonTui);
     const inRight = walk(right).some((e) => e.type === HamburgerButtonTui);
     expect(inLeft).toBe(true);
@@ -270,108 +261,19 @@ describe("TopHeaderTui (issue #93)", () => {
     expect(headerText).toContain("Unified");
   });
 
-  it("renders the full untruncated selectedPath in the header when provided (issue #156)", () => {
-    const root = render({
-      selectedPath: "supabase/migrations/20260508144406_setup_public_api.sql",
-    });
+  // Issue #311 retired the cursor-file path row. The "what file am I in"
+  // affordance is now owned by the pane-top active-file header (issue
+  // #307); the "what file is selected" affordance is owned by the
+  // sidebar's row-highlight. The header is single-row in all states.
+  it("does not render a cursor-file path row alongside the main bar (issue #311)", () => {
+    const root = render();
     const headerText = walk(root)
       .filter((e) => e.type === "text")
       .map(textChildOf)
       .join(" | ");
-    expect(headerText).toContain(
-      "supabase/migrations/20260508144406_setup_public_api.sql",
-    );
-  });
-
-  it("does not render a selected-path slot when selectedPath is undefined (issue #156)", () => {
-    const root = render({ selectedPath: undefined });
-    const headerText = walk(root)
-      .filter((e) => e.type === "text")
-      .map(textChildOf)
-      .join(" | ");
-    // The slot renders `  · ${path}` — `·` (U+00B7) is unique to the slot;
-    // the rest of the header uses `|`, `[`, `]`, `←` as separators.
+    // The retired slot rendered `· ${path}` — `·` (U+00B7) was unique to
+    // it; the rest of the header uses `|`, `[`, `]`, `←` as separators.
     expect(headerText).not.toContain("·");
-  });
-
-  it("does not render a selected-path slot when selectedPath is an empty string (issue #156)", () => {
-    const root = render({ selectedPath: "" });
-    const headerText = walk(root)
-      .filter((e) => e.type === "text")
-      .map(textChildOf)
-      .join(" | ");
-    expect(headerText).not.toContain("·");
-  });
-
-  // Row-2 split: when a path is selected, the path renders in its own row
-  // (a sibling of the row-1 box, inside an outer column container) so a
-  // long path no longer competes with title / sources / controls for row-1
-  // width. When no path is selected, the header keeps its existing
-  // single-row footprint.
-  describe("row-2 split when selectedPath is present", () => {
-    it("outer container is a column so the path-row can sit below row-1", () => {
-      const root = render({ selectedPath: "src/x.ts" });
-      expect(root.props["flexDirection"]).toBe("column");
-    });
-
-    it("renders the path in a sibling of row-1 (not inside the row-1 left cluster)", () => {
-      const root = render({
-        selectedPath: "supabase/migrations/20260508144406_setup_public_api.sql",
-      });
-      const row1 = row1Of(root);
-      const row1Text = walk(row1)
-        .filter((e) => e.type === "text")
-        .map(textChildOf)
-        .join(" | ");
-      // The `·` separator (U+00B7) is unique to the path slot; if the slot
-      // had stayed inside row-1, it would show up in row1Text.
-      expect(row1Text).not.toContain("·");
-      expect(row1Text).not.toContain(
-        "supabase/migrations/20260508144406_setup_public_api.sql",
-      );
-      // …and it DOES show up in the outer tree.
-      const allText = walk(root)
-        .filter((e) => e.type === "text")
-        .map(textChildOf)
-        .join(" | ");
-      expect(allText).toContain(
-        "supabase/migrations/20260508144406_setup_public_api.sql",
-      );
-    });
-
-    it("path text on row-2 has no maxWidth so it can use the full header width", () => {
-      const root = render({
-        selectedPath: "supabase/migrations/20260508144406_setup_public_api.sql",
-      });
-      const pathNode = walk(root).find(
-        (e) =>
-          e.type === "text" &&
-          typeof e.props.children === "string" &&
-          (e.props.children as string).includes(
-            "supabase/migrations/20260508144406_setup_public_api.sql",
-          ),
-      );
-      expect(pathNode).toBeDefined();
-      // Row-1 title / sources still cap at maxWidth={60}; row-2 path must
-      // not — it's meant to overflow at the terminal's right edge, not at
-      // an artificial 80-col cap.
-      expect(pathNode!.props["maxWidth"]).toBeUndefined();
-      expect(pathNode!.props["truncate"]).toBe(true);
-    });
-
-    it("outer container has only row-1 as a child when selectedPath is unset (one-row header)", () => {
-      const root = render({ selectedPath: undefined });
-      const directChildren = childrenOf(root).filter(isElement);
-      // No row-2 box — the empty / pre-interaction state pays no extra
-      // vertical cost when the user has not yet interacted with the sidebar.
-      expect(directChildren).toHaveLength(1);
-    });
-
-    it("outer container has two children (row-1 + row-2) when selectedPath is truthy", () => {
-      const root = render({ selectedPath: "src/x.ts" });
-      const directChildren = childrenOf(root).filter(isElement);
-      expect(directChildren).toHaveLength(2);
-    });
   });
 
   // Tour-level diff stats — `+N -M` in the right cluster (issue #266 /
@@ -399,7 +301,7 @@ describe("TopHeaderTui (issue #93)", () => {
 
     it("renders `+N` and `-M` text in the right cluster on a mixed bundle", () => {
       const root = render({ tourStats: { additions: 12, deletions: 7 } });
-      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const [, right] = childrenOf(root).filter(isElement);
       const rightText = walk(right)
         .filter((e) => e.type === "text")
         .map(textChildOf)
@@ -446,7 +348,7 @@ describe("TopHeaderTui (issue #93)", () => {
 
     it("places the indicator inside the right cluster, not the left", () => {
       const root = render({ tourStats: { additions: 3, deletions: 2 } });
-      const [left, right] = childrenOf(row1Of(root)).filter(isElement);
+      const [left, right] = childrenOf(root).filter(isElement);
       const inLeft = walk(left).some(
         (e) =>
           e.type === "text" &&
@@ -487,7 +389,7 @@ describe("TopHeaderTui (issue #93)", () => {
         topLevelTotal: 3,
         currentAnnotationIdx: 0,
       });
-      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
         .filter((e) => e.type === "text")
         .map(textChildOf);
@@ -507,7 +409,7 @@ describe("TopHeaderTui (issue #93)", () => {
         topLevelTotal: 2,
         currentAnnotationIdx: 0,
       });
-      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
         .filter((e) => e.type === "text")
         .map(textChildOf);
@@ -523,7 +425,7 @@ describe("TopHeaderTui (issue #93)", () => {
         topLevelTotal: 2,
         currentAnnotationIdx: 0,
       });
-      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
         .filter((e) => e.type === "text")
         .map(textChildOf);
@@ -539,7 +441,7 @@ describe("TopHeaderTui (issue #93)", () => {
         topLevelTotal: 2,
         currentAnnotationIdx: 0,
       });
-      const [, right] = childrenOf(row1Of(root)).filter(isElement);
+      const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
         .filter((e) => e.type === "text")
         .map(textChildOf)

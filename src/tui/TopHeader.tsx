@@ -13,10 +13,6 @@ interface TopHeaderTuiProps {
   // / webapp parity #233). Zero totals render no indicator. Pure-addition
   // / pure-deletion tours render only the non-zero side.
   tourStats: DiffStats;
-  // Full untruncated path of the row currently selected in the sidebar.
-  // Surfaces information that the sidebar's middle-truncation may have
-  // chipped away (issue #156). Renders nothing when undefined or empty.
-  selectedPath?: string;
   onOpenPicker: () => void;
   onPrevAnnotation: () => void;
   onNextAnnotation: () => void;
@@ -24,18 +20,13 @@ interface TopHeaderTuiProps {
   onUnified: () => void;
 }
 
-// Single-line header per parent PRD #91 / #93, with a row-2 split for the
-// selected-path slot. Two flex children inside row-1 — left cluster
-// (hamburger + title + sources) anchored to the left edge, right cluster
-// (tour-level diff stats + annotation-nav pill + layout toggle, in that
-// reading order per issue #277) pushed right via marginLeft="auto".
-// Row-1 keeps `flexWrap="wrap"` as a safety net for sub-100-col terminals
-// where row-1 itself can't fit. Title and sources clip with truncate +
-// maxWidth so a long title can never push controls off-screen.
-//
-// When `selectedPath` is truthy, a second row renders below row-1 with
-// the full path — no maxWidth cap, allowed to overflow at the terminal's
-// right edge instead of competing with title / sources / controls.
+// Single-line header per parent PRD #91 / #93. Two flex children inside
+// the row — left cluster (hamburger + title + sources) anchored to the
+// left edge, right cluster (tour-level diff stats + annotation-nav pill +
+// layout toggle, in that reading order per issue #277) pushed right via
+// marginLeft="auto". `flexWrap="wrap"` is a safety net for sub-100-col
+// terminals where the row itself can't fit. Title and sources clip with
+// truncate + maxWidth so a long title can never push controls off-screen.
 //
 // The Tour short-id is intentionally omitted (disambiguation lives in the
 // Tour picker and `tour list`).
@@ -46,7 +37,6 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
     currentAnnotationIdx,
     topLevelTotal,
     tourStats,
-    selectedPath,
     onOpenPicker,
     onPrevAnnotation,
     onNextAnnotation,
@@ -54,50 +44,41 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
     onUnified,
   } = props;
   return (
-    <box width="100%" flexDirection="column">
-      <box width="100%" flexDirection="row" flexWrap="wrap" paddingX={1}>
-        <box flexDirection="row" alignItems="center" flexShrink={1}>
-          <HamburgerButtonTui onOpen={onOpenPicker} />
-          <box flexDirection="row" alignItems="center" paddingX={1} flexShrink={1}>
-            <text
-              bold
-              fg={tour.title ? theme.fg.default : theme.fg.muted}
-              truncate
-              maxWidth={60}
-            >
-              {tour.title || "(untitled)"}
-            </text>
-            <text
-              fg={theme.fg.muted}
-              truncate
-              maxWidth={60}
-            >
-              {`  ${headerSourcePair(tour)}`}
-            </text>
-          </box>
-        </box>
-        <box flexDirection="row" alignItems="center" marginLeft="auto">
-          <TourStatsIndicatorTui
-            additions={tourStats.additions}
-            deletions={tourStats.deletions}
-          />
-          <SequencePillTui
-            idx={currentAnnotationIdx}
-            total={topLevelTotal}
-            onPrev={onPrevAnnotation}
-            onNext={onNextAnnotation}
-          />
-          <box width={1} />
-          <LayoutToggleTui layout={layout} onSplit={onSplit} onUnified={onUnified} />
-        </box>
-      </box>
-      {selectedPath ? (
-        <box width="100%" paddingX={1}>
-          <text fg={theme.fg.muted} truncate>
-            {`· ${selectedPath}`}
+    <box width="100%" flexDirection="row" flexWrap="wrap" paddingX={1}>
+      <box flexDirection="row" alignItems="center" flexShrink={1}>
+        <HamburgerButtonTui onOpen={onOpenPicker} />
+        <box flexDirection="row" alignItems="center" paddingX={1} flexShrink={1}>
+          <text
+            bold
+            fg={tour.title ? theme.fg.default : theme.fg.muted}
+            truncate
+            maxWidth={60}
+          >
+            {tour.title || "(untitled)"}
+          </text>
+          <text
+            fg={theme.fg.muted}
+            truncate
+            maxWidth={60}
+          >
+            {`  ${headerSourcePair(tour)}`}
           </text>
         </box>
-      ) : null}
+      </box>
+      <box flexDirection="row" alignItems="center" marginLeft="auto">
+        <TourStatsIndicatorTui
+          additions={tourStats.additions}
+          deletions={tourStats.deletions}
+        />
+        <SequencePillTui
+          idx={currentAnnotationIdx}
+          total={topLevelTotal}
+          onPrev={onPrevAnnotation}
+          onNext={onNextAnnotation}
+        />
+        <box width={1} />
+        <LayoutToggleTui layout={layout} onSplit={onSplit} onUnified={onUnified} />
+      </box>
     </box>
   );
 }
