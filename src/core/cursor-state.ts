@@ -376,7 +376,8 @@ export function cursorAfterExpand(
   // Fallback: try the opposite direction within the same file (covers the
   // pathological case where the orphan is the only walkable row of its
   // kind ahead and the file has nothing behind it).
-  const fallback = nearestDiffRowInFile(flatRowsBefore, file, idx, -direction as 1 | -1);
+  const opposite: 1 | -1 = direction === 1 ? -1 : 1;
+  const fallback = nearestDiffRowInFile(flatRowsBefore, file, idx, opposite);
   if (fallback) return cursorFromRow(fallback, preferredSide);
 
   return cursor;
