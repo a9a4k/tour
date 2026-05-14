@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { PickerRow } from "./tour-list.js";
-import type { TourBundle } from "./tour-bundle.js";
+import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
 import type { Annotation, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
@@ -201,12 +201,7 @@ const NO_INTENTS: Intent[] = [];
 // flat `OrphanWindow[]` shape `expansionSeedFromOrphans` consumes. Used by
 // the `tour.switched` and `bundle.refreshed` branches to fold orphan-window
 // seeding into the reducer (PRD #278 slice 1).
-function flattenOrphanWindows(
-  files: ReadonlyArray<{
-    name: string;
-    orphanWindows: ReadonlyArray<{ ref: BoundaryRef; fromStart: number; fromEnd: number }>;
-  }>,
-): OrphanWindow[] {
+function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] {
   const out: OrphanWindow[] = [];
   for (const f of files) {
     for (const w of f.orphanWindows) {
