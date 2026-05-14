@@ -12,6 +12,7 @@ import {
   buildWriteAnnotationInput,
   type WriteAnnotationInput,
 } from "./write-annotation-input.js";
+import { deriveTourSessionView, type ViewOptions } from "./tour-session-view.js";
 
 // The TourEvent vocabulary is the existing watcher / SSE event set. The
 // adapter normalises both the TUI's `TourWatcher` events and the web's
@@ -66,6 +67,12 @@ export class TourSessionRuntime {
   constructor(
     private readonly store: TourSessionStore,
     private readonly adapter: TourSessionAdapter,
+    // ViewOptions threaded through to `deriveTourSessionView` for the
+    // `revalidateCursor` intent (PRD #278 slice 5). The TUI passes
+    // `{ hunkHeaderCursorStop: false, emitExpandFileAllAffordance: true }`
+    // so the validated cursor matches the substrate-derived flat-rows; the
+    // webapp uses defaults.
+    private readonly viewOptions: ViewOptions = {},
   ) {}
 
   /**
@@ -79,6 +86,8 @@ export class TourSessionRuntime {
         void this.handleLoadTour(intent.tourId);
       } else if (intent.type === "submitAnnotation") {
         this.handleSubmitAnnotation(intent.tourId, intent.target, intent.body);
+      } else if (intent.type === "revalidateCursor") {
+        this.handleRevalidateCursor();
       }
     });
 
@@ -181,6 +190,30 @@ export class TourSessionRuntime {
       return;
     }
     this.store.dispatch({ type: "composer.submitted", annotation: created });
+  }
+
+  // Realises the `revalidateCursor` intent (PRD #278 slice 5). Fires
+  // synchronously inside `bundle.refreshed`'s dispatch — React hasn't
+  // re-rendered, so any surface closure over the prior flat-rows would be
+  // stale. The runtime reads `store.getState()` directly and re-derives the
+  // view pure-fn against the fresh bundle + state, then dispatches
+  // `cursor.set` (anchor changed) / `cursor.clear` (anchor went null) /
+  // no-op (anchor still resolves to the same ref).
+  private handleRevalidateCursor(): void {
+    const state = this.store.getState();
+    const cursor = state.cursor;
+    if (cursor === null) return;
+    const bundle = isBundleResolved(state);
+    if (!bundle || bundle.kind !== "ok") return;
+    const fresh = deriveTourSessionView(bundle, state, this.viewOptions);
+    if (fresh.kind !== "ok") return;
+    const validated = fresh.cursor.anchor;
+    if (validated === cursor) return;
+    if (validated === null) {
+      this.store.dispatch({ type: "cursor.clear" });
+    } else {
+      this.store.dispatch({ type: "cursor.set", anchor: validated });
+    }
   }
 
   // Re-subscribes to the watcher when the current tour id changes. Other

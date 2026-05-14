@@ -10,10 +10,11 @@ import {
   type TourEventHandler,
   type TourSessionAdapter,
 } from "../../src/core/tour-session-runtime.js";
-import type { TourBundle } from "../../src/core/tour-bundle.js";
+import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import type { ReplyLock } from "../../src/core/reply-lock.js";
 import type { Tour, Annotation } from "../../src/core/types.js";
 import type { WriteAnnotationInput } from "../../src/core/write-annotation-input.js";
+import type { Cursor } from "../../src/core/cursor-state.js";
 
 function tour(id: string): Tour {
   return {
@@ -41,6 +42,49 @@ function okBundle(id: string, annotations: Annotation[] = []): TourBundle {
     annotations,
     diff: "",
     files: [],
+  };
+}
+
+// A real one-hunk diff + matching BundleFile for revalidateCursor tests —
+// `okBundle` produces an empty diff/files which can't host a RowAnchor.
+const DIFF_A = `diff --git a/a.ts b/a.ts
+--- a/a.ts
++++ b/a.ts
+@@ -1,1 +1,1 @@
+-old
++new
+`;
+
+function fileA(): BundleFile {
+  return {
+    name: "a.ts",
+    type: "change",
+    hunks: [
+      {
+        additionStart: 1,
+        additionCount: 1,
+        deletionStart: 1,
+        deletionCount: 1,
+        content: [],
+      },
+    ],
+    oldContent: "old\n",
+    newContent: "new\n",
+    classification: { collapsed: false },
+    orphanWindows: [],
+  };
+}
+
+function bundleWithFileA(
+  id: string,
+  annotations: Annotation[] = [],
+): TourBundle {
+  return {
+    kind: "ok",
+    tour: tour(id),
+    annotations,
+    diff: DIFF_A,
+    files: [fileA()],
   };
 }
 
@@ -760,6 +804,120 @@ describe("TourSessionRuntime", () => {
       if (composer.kind === "errored") {
         expect(composer.error).toBe("Parent annotation no longer exists");
       }
+      stop();
+    });
+  });
+
+  describe("revalidateCursor intent (PRD #278 slice 5)", () => {
+    function annotationOnA(id: string): Annotation {
+      return {
+        id,
+        file: "a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "body",
+        author: "human",
+        author_kind: "human",
+        created_at: "2026-05-14T00:00:00Z",
+      };
+    }
+
+    function cardCursor(annotationId: string): Cursor {
+      return { kind: "card", annotationId, preferredSide: "additions" };
+    }
+
+    function rowCursor(file: string, lineNumber: number): Cursor {
+      return {
+        kind: "row",
+        file,
+        lineNumber,
+        side: "additions",
+        preferredSide: "additions",
+      };
+    }
+
+    it("dispatches cursor.clear when a stale CardAnchor's annotation has been deleted", () => {
+      const store = storeWithTour("tour-a");
+      const initialBundle = bundleWithFileA("tour-a", [annotationOnA("t1")]);
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle: initialBundle });
+      store.dispatch({ type: "cursor.set", anchor: cardCursor("t1") });
+      expect(store.getState().cursor).toEqual(cardCursor("t1"));
+
+      // Refresh the bundle with t1 removed → card row vanishes from flatRows.
+      // The reducer emits revalidateCursor; the runtime handles it and
+      // dispatches cursor.clear because the CardAnchor no longer resolves.
+      store.dispatch({
+        type: "bundle.refreshed",
+        bundle: bundleWithFileA("tour-a", []),
+      });
+
+      expect(store.getState().cursor).toBeNull();
+      stop();
+    });
+
+    it("dispatches cursor.set with the snapped anchor when a stale RowAnchor's specific row vanished but the file still has rows", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: bundleWithFileA("tour-a"),
+      });
+      // RowAnchor at a line the diff doesn't have — the file is in the
+      // bundle and has rows, but line 999 is missing, so validateCursor
+      // snaps to the file's first row (a.ts line 1).
+      store.dispatch({ type: "cursor.set", anchor: rowCursor("a.ts", 999) });
+
+      // Trigger bundle.refreshed (same bundle shape) so revalidateCursor fires.
+      store.dispatch({
+        type: "bundle.refreshed",
+        bundle: bundleWithFileA("tour-a"),
+      });
+
+      const next = store.getState().cursor;
+      expect(next).not.toBeNull();
+      if (next === null) throw new Error("unreachable");
+      expect(next.kind).toBe("row");
+      if (next.kind !== "row") throw new Error("unreachable");
+      expect(next.file).toBe("a.ts");
+      expect(next.lineNumber).toBe(1);
+      stop();
+    });
+
+    it("does not dispatch when the cursor anchor is still valid (same-ref short-circuit)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: bundleWithFileA("tour-a"),
+      });
+      // RowAnchor at a line the diff DOES have (line 1).
+      const anchor = rowCursor("a.ts", 1);
+      store.dispatch({ type: "cursor.set", anchor });
+      const before = store.getState().cursor;
+
+      // Count subsequent dispatches by snapshotting state ref before / after
+      // bundle.refreshed. validateCursor returns the same anchor ref, so the
+      // runtime's `validated === cursor` short-circuit fires — no dispatch,
+      // cursor slice stays referentially equal.
+      store.dispatch({
+        type: "bundle.refreshed",
+        bundle: bundleWithFileA("tour-a"),
+      });
+
+      expect(store.getState().cursor).toBe(before);
       stop();
     });
   });

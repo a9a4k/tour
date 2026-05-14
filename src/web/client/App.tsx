@@ -46,7 +46,6 @@ import {
   type Cursor,
 } from "../../core/cursor-state.js";
 import {
-  deriveTourSessionView,
   useTourSessionView,
   type NavBase,
   type TourSessionView,
@@ -218,29 +217,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             );
           }
           break;
-        case "revalidateCursor": {
-          // Bundle just landed (watcher SSE refresh). Re-derive the view
-          // pure-fn against the fresh bundle + state so the cursor anchor
-          // is validated against the new flat-rows. Inline because React
-          // hasn't re-rendered yet — `useTourSessionView`'s memo still
-          // reflects the old bundle.
-          const state = store.getState();
-          const cursor = state.cursor;
-          if (cursor === null) break;
-          const bundle =
-            state.bundle.kind === "ok" ? state.bundle.value : null;
-          if (!bundle || bundle.kind !== "ok") break;
-          const fresh = deriveTourSessionView(bundle, state);
-          if (fresh.kind !== "ok") break;
-          const validated = fresh.cursor.anchor;
-          if (validated === cursor) break;
-          if (validated === null) {
-            store.dispatch({ type: "cursor.clear" });
-          } else {
-            store.dispatch({ type: "cursor.set", anchor: validated });
-          }
-          break;
-        }
         case "scrollCursorTarget": {
           // Defer to RAF so cursor.set landing under a fresh bundle waits
           // for React's commit before querying DOM — matches the existing
