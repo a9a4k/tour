@@ -761,14 +761,16 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           dispatchExpand({ kind: "expand-file", file: cursor.file });
           return;
         }
-        const gapSize =
-          subKind === "boundary-top"
-            ? boundaryTopGapSize(cursor.file)
-            : boundaryRef === "bottom"
-              ? boundaryBottomGapSize(cursor.file)
-              : typeof boundaryRef === "number"
-                ? hunkSeparatorGapSize(cursor.file, boundaryRef)
-                : 0;
+        let gapSize: number;
+        if (subKind === "boundary-top") {
+          gapSize = boundaryTopGapSize(cursor.file);
+        } else if (boundaryRef === "bottom") {
+          gapSize = boundaryBottomGapSize(cursor.file);
+        } else if (typeof boundaryRef === "number") {
+          gapSize = hunkSeparatorGapSize(cursor.file, boundaryRef);
+        } else {
+          gapSize = 0;
+        }
         if (gapSize > 0) {
           e.preventDefault();
           // Issue #280: `boundary-top` / `hunk-separator` now address
