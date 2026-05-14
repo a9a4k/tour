@@ -6,7 +6,12 @@ import type {
 import type { TourBundle } from "../../core/tour-bundle.js";
 import type { ReplyLock } from "../../core/reply-lock.js";
 import type { Annotation } from "../../core/types.js";
-import type { ScrollPlacement, TourSessionStore } from "../../core/tour-session.js";
+import {
+  isBundleResolved,
+  type ScrollPlacement,
+  type TourSessionState,
+  type TourSessionStore,
+} from "../../core/tour-session.js";
 import type { WriteAnnotationInput } from "../../core/write-annotation-input.js";
 import { composeUrl } from "./url-routing.js";
 
@@ -35,6 +40,27 @@ export interface WebTourSessionAdapterDeps {
 // reference to preserve.
 function behaviorFor(mode: ScrollPlacement): ScrollBehavior {
   return mode === "nearest" ? "smooth" : "instant";
+}
+
+// Issue #324: a file's body is hidden (no diff rows rendered) when the user
+// has folded it manually OR when its classification carries `collapsed:
+// true` (binary or classifier-collapsed banner) and there's no explicit
+// `false` override. Mirrors the view's `isFileFolded || isClassifierCollapsed`
+// rule. The `scrollToComposer` recall path uses this to decide whether to
+// dispatch `folds.setOverride { value: false }` before scrolling — the
+// row markup must land in the DOM before the gutter-cell query succeeds.
+function isFileBodyHidden(
+  state: TourSessionState,
+  bundle: TourBundle,
+  fileName: string,
+): boolean {
+  const override = state.collapsedOverrides[fileName];
+  if (override === true) return true;
+  if (override === false) return false;
+  if (bundle.kind !== "ok") return false;
+  const f = bundle.files.find((x) => x.name === fileName);
+  if (!f) return false;
+  return f.classification.collapsed === true;
 }
 
 // `TourSessionAdapter` implemented against the webapp's substrate
@@ -138,7 +164,37 @@ export function createWebTourSessionAdapter(
       // textarea so the user can resume typing. Top-level anchors at a
       // (file, side, line_end) gutter cell (mirroring `scrollToRow`); reply
       // anchors at the parent annotation's card via the annotation refs.
+      //
+      // Issue #324: if the anchor file is folded (manual fold override,
+      // binary classification, or classifier-collapsed banner) the row
+      // markup isn't in the DOM and the scroll silently no-ops. Dispatch
+      // `folds.setOverride { value: false }` to force-reveal first, then
+      // defer the scroll one rAF so React commits the unfolded body before
+      // we try to find the row. Mirrors the explicit-reveal pattern that
+      // `n` / `p` / URL `?ann=` restore use on the cursor-navigation path.
       if (typeof document === "undefined") return;
+      const state = deps.store.getState();
+      const bundle = isBundleResolved(state);
+      let anchorFile: string | null = null;
+      if (target.kind === "reply") {
+        if (bundle !== null && bundle.kind === "ok") {
+          const parent = bundle.annotations.find((a) => a.id === target.replies_to);
+          anchorFile = parent?.file ?? null;
+        }
+      } else {
+        anchorFile = target.file;
+      }
+      if (
+        anchorFile !== null &&
+        bundle !== null &&
+        isFileBodyHidden(state, bundle, anchorFile)
+      ) {
+        deps.store.dispatch({
+          type: "folds.setOverride",
+          file: anchorFile,
+          value: false,
+        });
+      }
       requestAnimationFrame(() => {
         const cbs = deps.callbacksRef.current;
         if (!cbs) return;

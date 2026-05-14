@@ -41,6 +41,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp Composer auto-recall: unfold the anchor file before scrolling
+  (issue #324, #320 follow-up).** When a Composer was open and the
+  reviewer clicked a ghost `+` button while the in-flight Composer's
+  anchor file was folded (manual user-fold, binary classification, or
+  classifier-collapsed banner), the recall silently no-op'd — the web
+  adapter's `scrollToComposer` queried the gutter cell inside the file
+  block, the cell didn't exist because the rows weren't rendered, and
+  the textarea-focus fallback was scoped to the same block. The user
+  saw nothing happen and had to scroll or unfold manually to find the
+  in-flight Composer.
+
+  The adapter now follows the explicit-reveal pattern already used by
+  `n` / `p` / URL `?ann=` restore: if the anchor file's body is hidden
+  at recall time, dispatch `folds.setOverride { value: false }` to
+  unfold first, then defer the scroll one rAF so React commits the
+  unfolded body before the gutter-cell query runs. Visible files skip
+  the dispatch (no redundant state churn). Reply targets inherit the
+  same fix — the recall reads the parent annotation's file from the
+  bundle and unfolds it the same way. Honest unreachable cases (parent
+  annotation removed from the bundle between Composer-open and recall)
+  remain a defensive no-op. PRD #320's *Further Notes* called this
+  sequencing out explicitly; the shipped #320 implementation skipped it.
+
+  Issue: #324
+
 - **Annotation submit on large tours: new card renders in the same commit as
   composer dismissal (issue #322).** Before: the `composer.submitted`
   reducer transitioned the composer slice to `closed` (textarea removed
