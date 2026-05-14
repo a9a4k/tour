@@ -239,11 +239,8 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           <StatusIcon className={`tour-file-status-icon ${statusClass}`} />
           <RenameHeaderSpan name={file.name} prevName={file.prevName} />
           <span className="tour-file-name">{file.name}</span>
-          {/* Issue #317: copy-path button lives next to the filename (GitHub
-              parity). The rename indicator + filename above shrink (.tour-
-              file-name has min-width:0 + ellipsis); this button + the icons
-              stay flex-shrink:0 so a very long path truncates the filename
-              instead of pushing the button or the right region off-row. */}
+          {/* Issue #317: copy-path button sits next to the filename (GitHub
+              parity). Long-path shrink behaviour lives on `.tour-file-name`. */}
           <button
             type="button"
             className="tour-file-copy-button"
