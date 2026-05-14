@@ -204,6 +204,7 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
     expect(r.intents).toContainEqual({
       type: "scrollCursorTarget",
       target: { kind: "card", annotationId: "a1" },
+      placement: "center",
     });
   });
 });
