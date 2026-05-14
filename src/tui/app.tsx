@@ -1259,20 +1259,12 @@ function App(props: AppProps) {
     // tour picker. The adjustment is session-local — the next tour
     // switch re-runs auto-fit and the override doesn't carry over.
     //
-    // Issue #318: the diff pane is a `flexGrow={1}` sibling of the
-    // fixed-width sidebar, so a width change reflows annotation cards
-    // (markdown blocks word-wrap to the new pane width). The scrollbox
-    // preserves `scrollTop` as a row offset across the re-render, so
-    // any card above the viewport that grows / shrinks by N rows
-    // shifts everything below it by the same delta and the user's
-    // visual position drifts. Re-anchor to a "where the user was
-    // looking" target after the resize: cursor row first, falling
-    // back to the active file's card. Deferred via setTimeout(0) so
-    // OpenTUI's Yoga relayout has measured the new card heights
-    // before we ask for the scroll — same trick the layout-toggle
-    // effect uses (setImmediate-equivalent rAF in bun fires too
-    // early). No-op when the clamp wall pinned the width (no reflow)
-    // or when neither a cursor nor an active file exists.
+    // Issue #318: a width change reflows annotation cards, drifting
+    // the diff viewport's visual position. Re-anchor via
+    // `resizeReanchorTargetId` + `scrollChildIntoView`; deferred via
+    // `setTimeout(0)` for the reasons documented at the layout-toggle
+    // effect above (rAF fires before OpenTUI's render tick in bun).
+    // No-op when the clamp pinned the width (no reflow).
     if (!key.ctrl && !key.shift && (key.name === "[" || key.name === "]")) {
       const delta = key.name === "[" ? -SIDEBAR_RESIZE_STEP : SIDEBAR_RESIZE_STEP;
       const next = clampSidebarWidthManual(
