@@ -667,6 +667,36 @@ describe("cursorAtFirstFileRow", () => {
     expect(c?.preferredSide).toBe("deletions");
     expect(c?.lineNumber).toBe(5);
   });
+
+  // Issue #313: sidebar click on a classifier-collapsed file must land
+  // the cursor on the synthetic `collapsed-file` interactive row (the only
+  // walkable row for the file). The Enter affordance is then the explicit-
+  // reveal escape hatch.
+  it("falls back to the file's first interactive row when no diff row exists (issue #313 — classifier-collapsed file)", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("a.txt", 1, 1),
+      interactiveFlat({
+        file: "bun.lock",
+        subKind: "collapsed-file",
+        boundaryRef: "top",
+      }),
+    ];
+    const c = cursorAtFirstFileRow("bun.lock", rows);
+    expect(c).not.toBeNull();
+    expect(c?.file).toBe("bun.lock");
+    expect(c?.interactive).toEqual({ subKind: "collapsed-file", boundaryRef: "top" });
+  });
+
+  it("prefers a diff row over an interactive row for the same file", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+      pairedFlat("x.txt", 5, 7),
+    ];
+    const c = cursorAtFirstFileRow("x.txt", rows);
+    expect(c).not.toBeNull();
+    expect(c?.interactive).toBeUndefined();
+    expect(c?.lineNumber).toBe(7);
+  });
 });
 
 // PRD #192 / ADR 0022 (revised by ADR 0023, issue #200):

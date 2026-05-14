@@ -62,6 +62,7 @@ Existing scroll machinery (`scrollChildIntoView`, smooth-scroll, scroll-into-vie
 - The 50ms scroll poll is the only ongoing per-frame work introduced. Measured cost: a single tree walk over file-card children (10s of nodes at worst) + a small loop in `deriveActiveFile`. Negligible vs. OpenTUI's render loop.
 - Surface parity with the web's existing sticky-header behaviour is now intentional. The webapp's separate sticky bug (`overflow: hidden` on `.tour-file-outer`) is tracked as a follow-up.
 - Issue #311 retired the `TopHeaderTui.selectedPath` cursor-file path row as redundant: the sidebar row-highlight remains the sole surface for cursor location, and the pane-top header introduced here is now the sole surface for the scroll-active file.
+- Issue #314 retired the `FileSeparator` rule row introduced by #263 — its premise (single outer `┌─ Diff ─┐` box with no per-file borders) was undone here when each file card gained its own labeled `borderStyle="single"` frame; the inter-card horizontal rule duplicated the boundary cue the frames already carry. Card `marginBottom={1}` remains the sole source of inter-card breathing room.
 
 ## References
 
