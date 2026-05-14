@@ -17,11 +17,12 @@ import {
   type TourSummary,
 } from "../../src/core/tour-session.js";
 import type { PickerRow } from "../../src/core/tour-list.js";
-import type { TourBundle } from "../../src/core/tour-bundle.js";
+import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import type { Tour, Annotation } from "../../src/core/types.js";
 import type { Cursor, RowAnchor, CardAnchor } from "../../src/core/cursor-state.js";
 import { validateCursor, cursorAtFirstFileRow } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
+import type { BoundaryRef } from "../../src/core/expansion-state.js";
 
 function pickerRow(id: string, over: Partial<PickerRow> = {}): PickerRow {
   return {
@@ -52,6 +53,32 @@ function tour(over: Partial<Tour> & { id: string }): Tour {
 
 function mkBundle(id: string): TourBundle {
   return { kind: "snapshot-lost", tour: tour({ id }), annotations: [] as Annotation[] };
+}
+
+function bundleFile(
+  name: string,
+  orphanWindows: ReadonlyArray<{ ref: BoundaryRef; fromStart: number; fromEnd: number }> = [],
+): BundleFile {
+  return {
+    name,
+    type: "change",
+    hunks: [],
+    classification: { collapsed: false },
+    orphanWindows,
+  };
+}
+
+function okBundle(
+  id: string,
+  files: BundleFile[] = [],
+): Extract<TourBundle, { kind: "ok" }> {
+  return {
+    kind: "ok",
+    tour: tour({ id }),
+    annotations: [] as Annotation[],
+    diff: "",
+    files,
+  };
 }
 
 describe("RemoteData<T> helpers", () => {
@@ -243,6 +270,94 @@ describe("reduce — bundle slice", () => {
     expect(r.state.cursor).toBeNull();
     expect(r.state.expansion).toEqual(new Map());
     expect(r.intents).toEqual([]);
+  });
+
+  it("tour.switched with non-empty orphanWindows in the inbound bundle seeds the expansion slice (PRD #278 slice 1)", () => {
+    // Manual user expansion present BEFORE the switch: should be wiped per
+    // the CONTEXT-pinned reset cascade. Seeding then runs from a fresh
+    // empty slice, populating only the orphan-anchored boundaries from
+    // the inbound bundle.
+    let s = initialTourSessionState();
+    s = reduce(s, { type: "expansion.expandFile", file: "old.ts" }).state;
+    const b = okBundle("a", [
+      bundleFile("foo.ts", [{ ref: "top", fromStart: 4, fromEnd: 0 }]),
+      bundleFile("bar.ts", [{ ref: 1, fromStart: 0, fromEnd: 7 }]),
+    ]);
+    const r = reduce(s, { type: "tour.switched", tourId: "a", bundle: b });
+    expect(r.state.expansion.get("old.ts")).toBeUndefined();
+    expect(r.state.expansion.get("foo.ts")?.boundaries.get("top")).toEqual({
+      up: 4,
+      down: 0,
+    });
+    expect(r.state.expansion.get("bar.ts")?.boundaries.get(1)).toEqual({
+      up: 0,
+      down: 7,
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("tour.switched with a snapshot-lost bundle resets expansion to empty (no files → nothing to seed)", () => {
+    let s = initialTourSessionState();
+    s = reduce(s, { type: "expansion.expandFile", file: "old.ts" }).state;
+    const r = reduce(s, { type: "tour.switched", tourId: "a", bundle: mkBundle("a") });
+    expect(r.state.expansion).toEqual(new Map());
+  });
+
+  it("bundle.refreshed with new orphan windows unions with the existing expansion slice (per-side max — PRD #278 slice 1)", () => {
+    // Manual user expansion on foo.ts/top at up=10. Orphan window seed
+    // tries up=4 → preserved at 10 (max). Orphan window for bar.ts/1 at
+    // down=5 has no prior, so it lands as { up: 0, down: 5 }.
+    let s = initialTourSessionState();
+    s = reduce(s, {
+      type: "expansion.expandTop",
+      file: "foo.ts",
+      mode: "symmetric-20",
+      gapSize: 100,
+    }).state;
+    // Sanity: prior manual expansion took us to up=20 on foo.ts/top.
+    expect(s.expansion.get("foo.ts")?.boundaries.get("top")).toEqual({ up: 20, down: 0 });
+    const b = okBundle("a", [
+      bundleFile("foo.ts", [{ ref: "top", fromStart: 4, fromEnd: 0 }]),
+      bundleFile("bar.ts", [{ ref: 1, fromStart: 0, fromEnd: 5 }]),
+    ]);
+    const r = reduce(s, { type: "bundle.refreshed", bundle: b });
+    // Manual expansion preserved (20 > 4).
+    expect(r.state.expansion.get("foo.ts")?.boundaries.get("top")).toEqual({
+      up: 20,
+      down: 0,
+    });
+    // New file seeded from orphan window.
+    expect(r.state.expansion.get("bar.ts")?.boundaries.get(1)).toEqual({
+      up: 0,
+      down: 5,
+    });
+  });
+
+  it("bundle.refreshed with empty orphanWindows leaves the expansion slice ref-equal (same-ref short-circuit — PRD #278 slice 1)", () => {
+    let s = initialTourSessionState();
+    s = reduce(s, {
+      type: "expansion.expandTop",
+      file: "foo.ts",
+      mode: "symmetric-20",
+      gapSize: 100,
+    }).state;
+    const beforeExpansion = s.expansion;
+    const b = okBundle("a", [bundleFile("foo.ts", []), bundleFile("bar.ts", [])]);
+    const r = reduce(s, { type: "bundle.refreshed", bundle: b });
+    expect(r.state.expansion).toBe(beforeExpansion);
+  });
+
+  it("bundle.refreshed with a snapshot-lost bundle leaves the expansion slice ref-equal (no files to seed)", () => {
+    let s = initialTourSessionState();
+    s = reduce(s, {
+      type: "expansion.expandTop",
+      file: "foo.ts",
+      mode: "symmetric-20",
+      gapSize: 100,
+    }).state;
+    const beforeExpansion = s.expansion;
+    const r = reduce(s, { type: "bundle.refreshed", bundle: mkBundle("a") });
+    expect(r.state.expansion).toBe(beforeExpansion);
   });
 
   it("bundle.failed puts bundle into err(...) and leaves currentTourId in place", () => {
