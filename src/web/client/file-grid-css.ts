@@ -572,12 +572,21 @@ export const FILE_GRID_CSS = `
     z-index: 2;
   }
 
-  /* Reveal on row hover OR when the gutter's matching cell carries the
-     cursor outline. The :has() selector lets us match "this row has a
-     cursored cell on the same side as this gutter" without per-row React
-     state; the .tour-row-cell.is-cursor selector keyed by data-side is
-     the ground-truth visual signal. */
-  .tour-row:hover .tour-row-annotate-btn,
+  /* Reveal on per-side hover OR when the gutter's matching cell carries
+     the cursor outline. Hover is scoped per-side via :has() on a
+     [data-side]:hover descendant — the gutter, symbol, and code cell of
+     each half all carry data-side, so any of them under the pointer
+     selects only that side's gutter + button. The button itself has no
+     data-side but lives inside the gutter, so button-hover bubbles to
+     gutter-hover and the rule keeps firing while the pointer sits on
+     the button. A row-scoped .tour-row:hover descendant selector would
+     match both gutters' buttons in split layout (issue 325). */
+  .tour-row:has(.tour-row-gutter[data-side="additions"]:hover, .tour-row-symbol[data-side="additions"]:hover, .tour-row-cell[data-side="additions"]:hover)
+    .tour-row-gutter[data-side="additions"]
+    .tour-row-annotate-btn,
+  .tour-row:has(.tour-row-gutter[data-side="deletions"]:hover, .tour-row-symbol[data-side="deletions"]:hover, .tour-row-cell[data-side="deletions"]:hover)
+    .tour-row-gutter[data-side="deletions"]
+    .tour-row-annotate-btn,
   .tour-row:has(.tour-row-cell[data-side="additions"].is-cursor)
     .tour-row-gutter[data-side="additions"]
     .tour-row-annotate-btn,

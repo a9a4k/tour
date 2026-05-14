@@ -714,11 +714,10 @@ describe("FILE_GRID_CSS — annotate `+` button (#320)", () => {
     );
   });
 
-  it("hides the button by default (display: none) and reveals on row hover", () => {
+  it("hides the button by default (display: none)", () => {
     expect(FILE_GRID_CSS).toMatch(
       /\.tour-row-annotate-btn\s*\{[^}]*display:\s*none/i,
     );
-    expect(FILE_GRID_CSS).toContain(".tour-row:hover .tour-row-annotate-btn");
   });
 
   it("reveals the button on the cursored side via :has() selector", () => {
@@ -733,6 +732,39 @@ describe("FILE_GRID_CSS — annotate `+` button (#320)", () => {
   it("paints the ghost state when [data-composer-open] is set on an ancestor", () => {
     expect(FILE_GRID_CSS).toMatch(
       /\[data-composer-open\]\s+\.tour-row-annotate-btn\s*\{[^}]*opacity:\s*0\.4/i,
+    );
+  });
+});
+
+describe("FILE_GRID_CSS — annotate `+` button per-side hover (#325)", () => {
+  // Mechanism + rationale live on the CSS rule's comment block in
+  // file-grid-css.ts; these tests pin the resulting selector shape.
+
+  it("does NOT use the row-scoped .tour-row:hover descendant selector for reveal", () => {
+    expect(FILE_GRID_CSS).not.toContain(".tour-row:hover .tour-row-annotate-btn");
+  });
+
+  it("reveals only the additions-side button when an additions-side cell is hovered", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-cell\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-gutter\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-symbol\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
+    );
+  });
+
+  it("reveals only the deletions-side button when a deletions-side cell is hovered", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-cell\[data-side="deletions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="deletions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-gutter\[data-side="deletions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="deletions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-symbol\[data-side="deletions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="deletions"\][^{]*\.tour-row-annotate-btn/,
     );
   });
 });
