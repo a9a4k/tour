@@ -69,7 +69,6 @@ import {
 import { countDiffStats } from "../core/diff-stats.js";
 import { TourSessionRuntime } from "../core/tour-session-runtime.js";
 import { createTuiTourSessionAdapter } from "./tour-session-adapter.js";
-import { requestReply } from "../core/reply-runner.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import { canSendToAgent } from "../core/can-send-to-agent.js";
 import type { FlatRow } from "../core/flat-rows.js";
@@ -344,6 +343,7 @@ function App(props: AppProps) {
       diffScrollBoxRef: diffScrollRef,
       pickerScrollBoxRef: pickerScrollRef,
       setSelectedRowIdx,
+      replyAgent: props.replyAgent,
     });
     // `viewOptions` matches the TUI's `useTourSessionView` call so the
     // runtime's `revalidateCursor` handler (PRD #278 slice 5) validates
@@ -353,7 +353,7 @@ function App(props: AppProps) {
       emitExpandFileAllAffordance: true,
     });
     return runtime.start();
-  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeAnnotation]);
+  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeAnnotation, props.replyAgent]);
 
   // Sorted file list for diff-pane render order. `view.rows.plannedRowsByFile`
   // is keyed by name; we still need the ordered file list for the JSX.
@@ -947,10 +947,11 @@ function App(props: AppProps) {
   //  - the latest turn in the focused Thread is agent-authored,
   //  - `--reply-agent` is unset,
   //  - the lock is held by another in-flight dispatch on this tour.
-  // The dispatch itself is fire-and-forget — the watcher's lock + bundle
-  // events drive the in-flight pill and the landed Reply into view.
+  // The dispatch chain (Tour-session runtime → adapter → reply-runner) is
+  // fire-and-forget — the watcher's lock + bundle events drive the in-
+  // flight pill and the landed Reply into view. PRD #278 slice 7.
   const sendCurrentToAgent = () => {
-    if (!props.cwd || !props.replyAgent) return;
+    if (!props.replyAgent) return;
     // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
     // row case to a footer-hint no-op; this defends in depth.
     if (!cursorCardAnnotation) {
@@ -968,20 +969,10 @@ function App(props: AppProps) {
     }
     if (!sendTargetVal) return;
     setFooterStatus(null);
-    // Auto-recall (PRD #192 user story 14): pull the focused card into
-    // view before dispatching so the user sees the card the agent is
-    // about to act on when the next render lands. The card the cursor
-    // is on (top-level) is the anchor — the leaf is rendered inline
-    // inside the same card's Thread.
-    const sb = diffScrollRef.current;
-    if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
-    void requestReply({
-      cwd: props.cwd,
+    store.dispatch({
+      type: "send-to-agent",
       tourId: bundle.tour.id,
       annotationId: sendTargetVal.leafId,
-      agent: props.replyAgent,
-    }).catch(() => {
-      // transient — the watcher's reload will surface any state change
     });
   };
 

@@ -94,6 +94,7 @@ interface FakeAdapter extends TourSessionAdapter {
   bundleCalls: string[];
   lockCalls: string[];
   writeCalls: Array<{ tourId: string; input: WriteAnnotationInput }>;
+  requestReplyCalls: Array<{ tourId: string; annotationId: string }>;
   scrollCardCalls: Array<{ id: string; mode: ScrollPlacement }>;
   scrollRowCalls: Array<{ anchor: ScrollRowAnchor; mode: ScrollPlacement }>;
   scrollPickerCalls: number[];
@@ -111,12 +112,14 @@ interface FakeAdapterOptions {
   fetchReplyLockError?: boolean;
   writeAnnotationError?: string;
   writeAnnotationResult?: Annotation;
+  requestReplyError?: string;
 }
 
 function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const bundleCalls: string[] = [];
   const lockCalls: string[] = [];
   const writeCalls: FakeAdapter["writeCalls"] = [];
+  const requestReplyCalls: FakeAdapter["requestReplyCalls"] = [];
   const scrollCardCalls: FakeAdapter["scrollCardCalls"] = [];
   const scrollRowCalls: FakeAdapter["scrollRowCalls"] = [];
   const scrollPickerCalls: number[] = [];
@@ -129,6 +132,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     bundleCalls,
     lockCalls,
     writeCalls,
+    requestReplyCalls,
     scrollCardCalls,
     scrollRowCalls,
     scrollPickerCalls,
@@ -162,8 +166,9 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         ...(input.kind === "reply" ? { replies_to: input.parent.id } : {}),
       };
     },
-    requestReply: async () => {
-      throw new Error("not implemented");
+    requestReply: async ({ tourId, annotationId }) => {
+      requestReplyCalls.push({ tourId, annotationId });
+      if (opts.requestReplyError) throw new Error(opts.requestReplyError);
     },
     subscribeTourEvents: (tourId, handler) => {
       const entry = { tourId, handler, unsubscribed: false };
@@ -1124,6 +1129,84 @@ describe("TourSessionRuntime", () => {
       store.dispatch({ type: "cursor.clear" });
 
       expect(adapter.mirrorAnnCalls).toEqual(["ann1", null]);
+      stop();
+    });
+
+    it("requestReply intent → adapter.requestReply with { tourId, annotationId }", () => {
+      // send-to-agent (PRD #278 slice 7) is the reducer's entry point;
+      // the runtime listens for the emitted requestReply intent and routes
+      // it to the adapter. The auto-recall scrollCursorTarget intent fires
+      // as a sibling — both are dispatched in order.
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      store.dispatch({
+        type: "cursor.set",
+        anchor: { kind: "card", annotationId: "root", preferredSide: "additions" },
+      });
+
+      store.dispatch({
+        type: "send-to-agent",
+        tourId: "tour-a",
+        annotationId: "leaf",
+      });
+
+      expect(adapter.requestReplyCalls).toEqual([
+        { tourId: "tour-a", annotationId: "leaf" },
+      ]);
+      // Auto-recall: the runtime also scrolled the focused card to centre
+      // before dispatching. Filter to send-to-agent's recall (cursor.set
+      // earlier in the test also emitted a card scroll with placement
+      // "nearest"); the auto-recall is the "center" one.
+      expect(
+        adapter.scrollCardCalls.filter((c) => c.id === "root" && c.mode === "center"),
+      ).toEqual([{ id: "root", mode: "center" }]);
+      stop();
+    });
+
+    it("requestReply intent is fire-and-forget — adapter rejection does not throw to the store", async () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter({ requestReplyError: "transient" });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      store.dispatch({
+        type: "cursor.set",
+        anchor: { kind: "card", annotationId: "root", preferredSide: "additions" },
+      });
+
+      expect(() =>
+        store.dispatch({
+          type: "send-to-agent",
+          tourId: "tour-a",
+          annotationId: "leaf",
+        }),
+      ).not.toThrow();
+      // Drain the rejected promise so vitest's unhandled-rejection guard
+      // doesn't fail the run.
+      await flush();
+      expect(adapter.requestReplyCalls).toEqual([
+        { tourId: "tour-a", annotationId: "leaf" },
+      ]);
+      stop();
+    });
+
+    it("send-to-agent on a null cursor is a no-op — no requestReply intent fired", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "send-to-agent",
+        tourId: "tour-a",
+        annotationId: "leaf",
+      });
+
+      expect(adapter.requestReplyCalls).toEqual([]);
+      expect(
+        adapter.scrollCardCalls.filter((c) => c.mode === "center"),
+      ).toEqual([]);
       stop();
     });
 

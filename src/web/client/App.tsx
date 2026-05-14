@@ -946,6 +946,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // cases (agent-card, already-replied, lock-held, no agent
           // configured) are silently skipped — the verdict gate is the
           // existing per-card `canSendToAgent` predicate.
+          //
+          // PRD #278 slice 7: the dispatch goes through the Tour-session
+          // runtime via the `send-to-agent` reducer action, which emits the
+          // auto-recall `scrollCursorTarget` + `requestReply` intent pair.
           if (view.kind !== "ok") return;
           if (!tourId || !replyAgent) return;
           const target = view.nav.sendTarget;
@@ -957,16 +961,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             hasReply: false,
           });
           if (!verdict.enabled) return;
-          const cardId = view.cursor.cardId;
-          if (!cardId) return;
-          recallCardThen(cardId, () => {
-            void fetch(`/api/tours/${tourId}/request-reply`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ annotation_id: target.leafId }),
-            }).catch(() => {
-              // Network transient — watcher events stay the source of truth.
-            });
+          store.dispatch({
+            type: "send-to-agent",
+            tourId,
+            annotationId: target.leafId,
           });
           return;
         }
@@ -1038,25 +1036,19 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   // Explicit reply-agent dispatch (issue #184, ADR 0021). Fired by the
-  // `Send to {agent}` button below each human Annotation card. Hits the
-  // `POST /api/tours/:id/request-reply` endpoint which routes through
-  // `requestReply` in core. We don't await the result for UX — the
-  // watcher's reply-lock SSE event surfaces the in-flight pill within
-  // a debounce tick; on completion, the annotation-changed event brings
-  // in the landed Reply. Network errors are silent here; the user's
-  // visible signal is the pill (or absence of one).
+  // `Send to {agent}` button below each human Annotation card. Dispatches
+  // the `send-to-agent` reducer action; the Tour-session runtime + web
+  // adapter chain emits the auto-recall `scrollCursorTarget` intent and
+  // POSTs `/api/tours/:id/request-reply` (PRD #278 slice 7). Fire-and-
+  // forget — the watcher's `reply-in-flight` SSE event surfaces the in-
+  // flight pill; on completion, `annotation-changed` brings in the
+  // landed Reply.
   const sendToAgent = useCallback(
     (annotationId: string) => {
       if (!tourId) return;
-      void fetch(`/api/tours/${tourId}/request-reply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ annotation_id: annotationId }),
-      }).catch(() => {
-        // Network transient — watcher events stay the source of truth.
-      });
+      store.dispatch({ type: "send-to-agent", tourId, annotationId });
     },
-    [tourId],
+    [tourId, store],
   );
 
   // Submit-or-retry dispatcher (PRD #234 slice 3, issue #238). Reads the

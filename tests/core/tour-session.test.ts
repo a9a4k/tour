@@ -1581,6 +1581,95 @@ describe("reduce — layout slice (slice 3 foundation)", () => {
   });
 });
 
+describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
+  it("on a CardAnchor with lock not held → emits scrollCursorTarget (auto-recall) then requestReply", () => {
+    let s = initialTourSessionState();
+    s = { ...s, currentTourId: "tour-a", replyLock: { kind: "ok", value: null } };
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ annotationId: "root" }) }).state;
+    const r = reduce(s, {
+      type: "send-to-agent",
+      tourId: "tour-a",
+      annotationId: "leaf",
+    });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", annotationId: "root" },
+        placement: "center",
+      },
+      { type: "requestReply", tourId: "tour-a", annotationId: "leaf" },
+    ]);
+  });
+
+  it("no-op when cursor is null", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, {
+      type: "send-to-agent",
+      tourId: "tour-a",
+      annotationId: "leaf",
+    });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("no-op when cursor is a RowAnchor (not on a card)", () => {
+    let s = initialTourSessionState();
+    s = reduce(s, { type: "cursor.set", anchor: rowAnchor({ file: "foo.ts" }) }).state;
+    const r = reduce(s, {
+      type: "send-to-agent",
+      tourId: "tour-a",
+      annotationId: "leaf",
+    });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("no-op when the reply-lock is held by another in-flight dispatch", () => {
+    let s = initialTourSessionState();
+    s = {
+      ...s,
+      replyLock: {
+        kind: "ok",
+        value: {
+          agent: "claude",
+          responding_to: "x",
+          started_at: "2026-05-14T00:00:00Z",
+          pid: 1,
+        },
+      },
+    };
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ annotationId: "root" }) }).state;
+    const r = reduce(s, {
+      type: "send-to-agent",
+      tourId: "tour-a",
+      annotationId: "leaf",
+    });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("uses the cursor's CardAnchor for auto-recall, not the action's annotationId (leaf may differ from root)", () => {
+    let s = initialTourSessionState();
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ annotationId: "root" }) }).state;
+    const r = reduce(s, {
+      type: "send-to-agent",
+      tourId: "tour-a",
+      annotationId: "leaf-reply",
+    });
+    expect(r.intents[0]).toEqual({
+      type: "scrollCursorTarget",
+      target: { kind: "card", annotationId: "root" },
+      placement: "center",
+    });
+    expect(r.intents[1]).toEqual({
+      type: "requestReply",
+      tourId: "tour-a",
+      annotationId: "leaf-reply",
+    });
+  });
+});
+
 describe("reduce — tour.switched reset cascade (slice 3 extension)", () => {
   it("tour.switched resets composer → closed, folds → empty Set + empty Record; layout preserved", () => {
     let s = stateWithTourLoaded("tour-a");

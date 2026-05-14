@@ -119,6 +119,17 @@ export class TourSessionRuntime {
         case "revalidateCursor":
           this.handleRevalidateCursor();
           return;
+        case "requestReply":
+          // Fire-and-forget — the watcher's reply-* events drive the in-flight
+          // pill and the landed Reply Annotation. Adapter rejections are
+          // swallowed at the seam (transient transport failures shouldn't
+          // escape to the React layer). PRD #278 slice 7.
+          this.adapter
+            .requestReply({ tourId: intent.tourId, annotationId: intent.annotationId })
+            .catch(() => {
+              // transient — the watcher's reload surfaces any state change
+            });
+          return;
       }
     });
 

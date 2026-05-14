@@ -22,6 +22,7 @@ import {
   revealAndLocate,
 } from "../core/file-tree.js";
 import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
+import { requestReply as runRequestReply } from "../core/reply-runner.js";
 
 // TUI substrate dependencies the adapter needs. The renderer-bound
 // ScrollBoxRenderable refs are filled lazily by `<scrollbox ref={...}>`
@@ -38,6 +39,11 @@ export interface TuiTourSessionAdapterDeps {
   diffScrollBoxRef: { current: ScrollBoxRenderable | null };
   pickerScrollBoxRef: { current: ScrollBoxRenderable | null };
   setSelectedRowIdx: (idx: number) => void;
+  // The renderer-configured reply-agent name (`--reply-agent`). Absent or
+  // empty means the renderer was launched without a reply-agent; the
+  // `requestReply` adapter call no-ops, mirroring `core/reply-runner`'s
+  // `no-reply-agent` seam.
+  replyAgent: string | undefined;
 }
 
 // Post-submit scroll retry budget. The watcher's `bundle.refreshed` lands
@@ -74,8 +80,21 @@ export function createTuiTourSessionAdapter(
     fetchBundle: (id) => deps.loadTour(id),
     fetchReplyLock: (id) => deps.loadReplyLock(id),
     writeAnnotation: (tourId, input) => deps.writeAnnotation(tourId, input),
-    requestReply: async () => {
-      // Slice 7 wires the explicit reply-agent send path through the runtime.
+    requestReply: async ({ tourId, annotationId }) => {
+      // Fire-and-forget dispatch. The watcher's reply-* events drive the
+      // in-flight pill and the landed Reply Annotation; the adapter swallows
+      // transient transport errors. PRD #278 slice 7.
+      if (!deps.replyAgent) return;
+      try {
+        await runRequestReply({
+          cwd: deps.cwd,
+          tourId,
+          annotationId,
+          agent: deps.replyAgent,
+        });
+      } catch {
+        // transient — the watcher's reload surfaces any state change
+      }
     },
     subscribeTourEvents: (tourId, handler: TourEventHandler) => {
       const watcher = new TourWatcher(deps.cwd, tourId);

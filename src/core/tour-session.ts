@@ -151,7 +151,8 @@ export type Action =
   | { type: "folds.setOverride"; file: string; value: boolean }
   | { type: "folds.clearOverride"; file: string }
   | { type: "folds.clearAll" }
-  | { type: "layout.set"; layout: Layout };
+  | { type: "layout.set"; layout: Layout }
+  | { type: "send-to-agent"; tourId: string; annotationId: string };
 
 export type ScrollCursorTarget =
   | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
@@ -172,7 +173,8 @@ export type Intent =
   | { type: "revealSidebarFile"; file: string }
   | { type: "mirrorAnnUrl"; annotationId: string | null }
   | { type: "submitAnnotation"; tourId: string; target: ComposerTarget; body: string }
-  | { type: "scrollToAnnotation"; annotationId: string };
+  | { type: "scrollToAnnotation"; annotationId: string }
+  | { type: "requestReply"; tourId: string; annotationId: string };
 
 export interface ReduceResult {
   state: TourSessionState;
@@ -551,6 +553,33 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "layout.set":
       if (state.layout === action.layout) return { state, intents: NO_INTENTS };
       return { state: { ...state, layout: action.layout }, intents: NO_INTENTS };
+
+    case "send-to-agent": {
+      // Holds no state — the action's job is to emit the auto-recall + dispatch
+      // intent pair (mirrors `composer.submit` → `submitAnnotation`). Defended
+      // in depth: cursor must be on a CardAnchor and the reply-lock must not be
+      // held. The full `canSendToAgent` verdict (author-kind, hasReply,
+      // replyAgentConfigured) is gated upstream by the surface affordance —
+      // the surface only dispatches when the verdict is `enabled`. PRD #278
+      // slice 7.
+      if (state.cursor === null || state.cursor.kind !== "card") {
+        return { state, intents: NO_INTENTS };
+      }
+      if (state.replyLock.kind === "ok" && state.replyLock.value !== null) {
+        return { state, intents: NO_INTENTS };
+      }
+      return {
+        state,
+        intents: [
+          {
+            type: "scrollCursorTarget",
+            target: { kind: "card", annotationId: state.cursor.annotationId },
+            placement: "center",
+          },
+          { type: "requestReply", tourId: action.tourId, annotationId: action.annotationId },
+        ],
+      };
+    }
   }
 }
 
