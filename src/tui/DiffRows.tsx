@@ -109,22 +109,32 @@ function interactiveRowId(
   return `interactive-row-${file}-${subKind}-${boundaryRef}`;
 }
 
+// Issue #280: hunk-header banner is interactive when primaryExpand is
+// non-null. Its cursor id mirrors the flat-rows projection — file-top
+// banner uses `boundary-top`, mid-file uses `hunk-separator`.
+function hunkHeaderRowId(
+  file: string,
+  hunkIndex: number,
+): string {
+  const subKind: InteractiveSubKind =
+    hunkIndex === 0 ? "boundary-top" : "hunk-separator";
+  const boundaryRef: BoundaryRef = hunkIndex === 0 ? "top" : hunkIndex;
+  return interactiveRowId(file, subKind, boundaryRef);
+}
+
 // Match the split-side gutter footprint (LINE_NUMBER_WIDTH + " " + sign
 // + " " — post-#257) so the interactive row's text aligns with the diff
 // column on its right.
 const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 3);
 
-// Issue #264 — hunk-header expand-affordance cue. `…` (U+2026 HORIZONTAL
-// ELLIPSIS) painted in `theme.fg.accent` at the leftmost edge of every
-// hunk-header row tells the reviewer "this row is interactive — cursor +
-// Enter expands hidden context" (parity with webapp #252's 44px
-// accentEmphasis block with `…` dots in white). Applies to both the
-// inert (`gapAbove === 0`) and the interactive (`gapAbove > 0`) paths;
-// the cursor + Enter behavior is unchanged (the glyph is decorative).
-// Path B from the brief: render the glyph as a separate <text> element
-// so it keeps the accent color while the header text stays muted —
-// the contrast IS the affordance signal.
-const HUNK_HEADER_GLYPH = "…";
+// Issue #280: hunk-header banner left-cell glyph. `↑` for `primaryExpand`
+// = "up", `↕` for "all", `…` for the inert placeholder. The cell is
+// cursor-walkable + Enter-dispatches when primaryExpand !== null.
+function hunkHeaderGlyph(primaryExpand: "up" | "all" | null): string {
+  if (primaryExpand === "up") return "↑";
+  if (primaryExpand === "all") return "↕";
+  return "…";
+}
 
 function splitClickTarget(
   row: DiffRow,
@@ -183,19 +193,58 @@ export function DiffRows({
       {rows.map((row, idx) => {
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
-          // PRD #270 / issue #273 — the hunk-header banner is a display-
-          // only metadata row. The cursor walks past it (flat-rows
-          // suppresses the cursor-stop promotion when the TUI requests
-          // `hunkHeaderCursorStop: false`); the directional `expand-up`
-          // / `expand-down` / `expand-all` rows the planner emits
-          // adjacent to the banner carry the affordance + Enter
-          // dispatch. The leading `…` glyph in `theme.fg.accent` stays
-          // (issue #264) as a low-key visual marker; the header text
-          // renders muted (GitHub-equivalent grey).
+          // Issue #280: two-cell banner mirroring the webapp. Left cell
+          // hosts the primary expand affordance (`↑` / `↕` / inert `…`)
+          // with saturated `bg.accentEmphasis` background; right cell
+          // hosts the muted `@@` text. The whole row is cursor-walkable
+          // iff `primaryExpand !== null` (flat-rows projects to
+          // `boundary-top` / `hunk-separator`); cursor outline paints
+          // on the left cell.
+          const interactive = row.primaryExpand !== null;
+          const cursorActive =
+            interactive &&
+            rowCursor != null &&
+            rowCursor.file === fileName &&
+            rowCursor.interactive != null &&
+            (rowCursor.interactive.subKind === "boundary-top" ||
+              rowCursor.interactive.subKind === "hunk-separator") &&
+            rowCursor.interactive.boundaryRef ===
+              (row.hunkIndex === 0 ? "top" : row.hunkIndex);
+          const id = hunkHeaderRowId(fileName, row.hunkIndex);
+          const onMouseDown =
+            interactive && onInteractiveClick
+              ? () =>
+                  onInteractiveClick(
+                    fileName,
+                    row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
+                    row.hunkIndex === 0 ? "top" : row.hunkIndex,
+                  )
+              : undefined;
+          const buttonBg = cursorActive
+            ? theme.bg.cursorRow.tui
+            : theme.bg.accentEmphasis;
+          const textBg = theme.bg.accentSubtle.tui;
           return (
-            <box key={key} flexDirection="row" width="100%">
-              <text fg={theme.fg.accent}>{HUNK_HEADER_GLYPH}</text>
-              <text fg={theme.fg.muted}>{` ${row.header}`}</text>
+            <box
+              key={key}
+              id={id}
+              flexDirection="row"
+              width="100%"
+              onMouseDown={onMouseDown}
+            >
+              <box
+                flexShrink={0}
+                paddingLeft={2}
+                paddingRight={2}
+                backgroundColor={buttonBg}
+              >
+                <text fg={theme.fg.onEmphasis}>
+                  {hunkHeaderGlyph(row.primaryExpand)}
+                </text>
+              </box>
+              <box flexGrow={1} backgroundColor={textBg} paddingLeft={1}>
+                <text fg={theme.fg.muted}>{row.header}</text>
+              </box>
             </box>
           );
         }

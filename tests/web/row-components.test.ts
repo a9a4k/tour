@@ -880,17 +880,17 @@ describe("<InteractiveRow>", () => {
   it("renders the glyph when provided", () => {
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "expand-up",
+        subKind: "expand-down",
         boundaryRef: 2,
-        direction: "up",
+        direction: "down",
         gapAbove: 12,
-        glyph: "↑",
+        glyph: "↓",
         isCursor: false,
         onActivate: () => {},
       }),
     );
     const row = c.querySelector(".tour-row") as HTMLElement;
-    expect(row.textContent).toContain("↑");
+    expect(row.textContent).toContain("↓");
   });
 
   it("calls onActivate(EXPANSION_STEP) on a plain click", () => {
@@ -983,9 +983,9 @@ describe("<InteractiveRow>", () => {
     const calls: number[] = [];
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "expand-up",
+        subKind: "expand-down",
         boundaryRef: 2,
-        direction: "up",
+        direction: "down",
         gapAbove: 99,
         isCursor: true,
         onActivate: (count: number) => calls.push(count),
@@ -1026,11 +1026,11 @@ describe("<InteractiveRow>", () => {
     // display:grid, no grid-template-columns — mirroring <HunkHeaderBanner>.
     const c = mount(
       createElement(InteractiveRow, {
-        subKind: "expand-up",
+        subKind: "expand-down",
         boundaryRef: 1,
-        direction: "up",
+        direction: "down",
         gapAbove: 12,
-        glyph: "↑ Expand Up",
+        glyph: "↓ Expand Down",
         isCursor: false,
         onActivate: () => {},
       }),
@@ -1040,75 +1040,6 @@ describe("<InteractiveRow>", () => {
     expect(row.style.gridColumn).toMatch(/1\s*\/\s*-1/);
     expect(row.style.display).not.toBe("grid");
     expect(row.style.gridTemplateColumns).toBe("");
-  });
-
-  // PRD #270 / issue #271: `expand-all` always reveals the entire
-  // remaining gap in one Enter — the button's label IS the contract.
-  // Click + Enter (with or without Shift) dispatches `count = gapAbove`,
-  // never EXPANSION_STEP.
-  it("`expand-all` click always dispatches count = gapAbove regardless of Shift (PRD #270)", () => {
-    const calls: number[] = [];
-    const c = mount(
-      createElement(InteractiveRow, {
-        subKind: "expand-all",
-        boundaryRef: 1,
-        direction: "both",
-        gapAbove: 12,
-        glyph: "↕ Expand All 12 lines",
-        isCursor: false,
-        onActivate: (count: number) => calls.push(count),
-      }),
-    );
-    const row = c.querySelector(".tour-row") as HTMLElement;
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
-    });
-    expect(calls).toEqual([12, 12]);
-  });
-
-  it("`expand-all` Enter while isCursor dispatches count = gapAbove (PRD #270)", () => {
-    const calls: number[] = [];
-    const c = mount(
-      createElement(InteractiveRow, {
-        subKind: "expand-all",
-        boundaryRef: 2,
-        direction: "both",
-        gapAbove: 37,
-        glyph: "↕ Expand All 37 lines",
-        isCursor: true,
-        onActivate: (count: number) => calls.push(count),
-      }),
-    );
-    const row = c.querySelector(".tour-row") as HTMLElement;
-    act(() => {
-      row.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-      );
-    });
-    expect(calls).toEqual([37]);
-  });
-
-  it("`expand-up` click dispatches count = EXPANSION_STEP (not the full gap) on a plain click (PRD #270)", () => {
-    const calls: number[] = [];
-    const c = mount(
-      createElement(InteractiveRow, {
-        subKind: "expand-up",
-        boundaryRef: 1,
-        direction: "up",
-        gapAbove: 100,
-        glyph: "↑ Expand Up",
-        isCursor: false,
-        onActivate: (count: number) => calls.push(count),
-      }),
-    );
-    const row = c.querySelector(".tour-row") as HTMLElement;
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(calls).toEqual([EXPANSION_STEP]);
   });
 
   // PRD #270 Slice 5 / issue #275: Shift no longer escalates an
@@ -1204,13 +1135,15 @@ describe("parseHunkHeader (#223)", () => {
 // HunkHeaderBanner (#223; display-only per #272 / PRD #270 Slice 2)
 // ---------------------------------------------------------------------------
 
-describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
+describe("<HunkHeaderBanner> (#223; two-cell layout per issue #280)", () => {
   it("renders a full-width tour-row with the tour-hunk-header class", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -33,7 +33,7 @@ import {",
         boundaryRef: 1,
         direction: "both",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
@@ -1225,6 +1158,8 @@ describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
         header: "@@ -33,7 +33,7 @@ import {",
         boundaryRef: 1,
         direction: "both",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
@@ -1242,6 +1177,8 @@ describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
@@ -1257,6 +1194,8 @@ describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
         header: "garbled header",
         boundaryRef: 1,
         direction: "both",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
@@ -1272,6 +1211,8 @@ describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
@@ -1287,6 +1228,8 @@ describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
         header: "@@ -33,7 +33,7 @@",
         boundaryRef: 2,
         direction: "both",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
@@ -1295,88 +1238,196 @@ describe("<HunkHeaderBanner> (#223; display-only per #272)", () => {
     expect(row.dataset.boundaryRef).toBe("2");
   });
 
-  // PRD #270 Slice 2 / issue #272: the banner is a pure display
-  // component — no click handler, no keyboard handler, no role,
-  // no tabIndex. The directional expand buttons emitted by
-  // `expandRowsForGap` (Slice 1) are the only affordance.
-  it("carries no role='button' attribute (display-only per #272)", () => {
+  // Issue #280: the outer `.tour-hunk-header` row is not itself a button
+  // — the interactive affordance lives on the inner `.tour-hunk-header-
+  // button` left cell. Right-cell click does nothing (matches GitHub).
+  it("the outer row carries no role / tabindex (left cell hosts them when interactive)", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
+        primaryExpand: null,
+        gapAbove: 0,
         isCursor: false,
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
     expect(row.getAttribute("role")).toBeNull();
-  });
-
-  it("carries no tabindex attribute (display-only per #272)", () => {
-    const c = mount(
-      createElement(HunkHeaderBanner, {
-        header: "@@ -1,4 +1,4 @@",
-        boundaryRef: "top",
-        direction: "up",
-        isCursor: false,
-      }),
-    );
-    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
     expect(row.getAttribute("tabindex")).toBeNull();
   });
 
-  it("clicking the banner is a no-op — does not bubble through to a handler nor dispatch (#272)", () => {
-    // Wrap the banner in a div that records clicks; the banner's own
-    // click handler is gone, so any synthetic click only registers via
-    // bubbling. We don't intercept it (no e.stopPropagation), but no
-    // dispatch happens because there is no onActivate prop.
-    const c = mount(
-      createElement(HunkHeaderBanner, {
-        header: "@@ -33,7 +33,7 @@",
-        boundaryRef: 1,
-        direction: "both",
-        isCursor: false,
-      }),
-    );
-    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
-    // No throw; no listener attached on the banner element. We verify
-    // shape (no onclick prop) rather than absence-of-effect (which
-    // would require a parent recorder — banner has no side-effect
-    // contract anymore).
-    expect((row as unknown as { onclick: unknown }).onclick).toBeNull();
-    act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-  });
-
-  it("pressing Enter on the banner is a no-op (#272 — no keyboard handler)", () => {
+  it("applies .is-cursor on the row when isCursor is true", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {
         header: "@@ -1,4 +1,4 @@",
         boundaryRef: "top",
         direction: "up",
-        isCursor: true,
-      }),
-    );
-    const row = c.querySelector(".tour-hunk-header") as HTMLElement;
-    expect((row as unknown as { onkeydown: unknown }).onkeydown).toBeNull();
-    act(() => {
-      row.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-      );
-    });
-  });
-
-  it("applies .is-cursor on the row when isCursor is true (structural; cursor no longer walks here)", () => {
-    const c = mount(
-      createElement(HunkHeaderBanner, {
-        header: "@@ -1,4 +1,4 @@",
-        boundaryRef: "top",
-        direction: "up",
+        primaryExpand: "all",
+        gapAbove: 5,
         isCursor: true,
       }),
     );
     const row = c.querySelector(".tour-hunk-header") as HTMLElement;
     expect(row.classList.contains("is-cursor")).toBe(true);
+  });
+
+  it("renders the inert `…` placeholder + no role/tabindex on the button cell when primaryExpand === null", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -1,4 +1,4 @@",
+        boundaryRef: "top",
+        direction: "up",
+        primaryExpand: null,
+        gapAbove: 0,
+        isCursor: false,
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(btn).not.toBeNull();
+    expect(btn.textContent).toBe("…");
+    expect(btn.classList.contains("is-placeholder")).toBe(true);
+    expect(btn.getAttribute("role")).toBeNull();
+    expect(btn.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("renders an interactive `↑` button cell when primaryExpand === 'up'", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -50,3 +50,3 @@",
+        boundaryRef: 1,
+        direction: "both",
+        primaryExpand: "up",
+        gapAbove: 80,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(btn.textContent).toBe("↑");
+    expect(btn.getAttribute("role")).toBe("button");
+    expect(btn.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("renders an interactive `↕` button cell when primaryExpand === 'all'", () => {
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -10,3 +10,3 @@",
+        boundaryRef: 1,
+        direction: "both",
+        primaryExpand: "all",
+        gapAbove: 12,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(btn.textContent).toBe("↕");
+    expect(btn.getAttribute("role")).toBe("button");
+    expect(btn.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("clicking the button cell with primaryExpand 'up' dispatches direction='up' + EXPANSION_STEP", () => {
+    const calls: Array<{ direction: "up" | "both"; count: number }> = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -50,3 +50,3 @@",
+        boundaryRef: 1,
+        direction: "both",
+        primaryExpand: "up",
+        gapAbove: 80,
+        isCursor: false,
+        onActivate: (direction, count) => calls.push({ direction, count }),
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([{ direction: "up", count: EXPANSION_STEP }]);
+  });
+
+  it("clicking the button cell with primaryExpand 'all' dispatches direction='both' + gapAbove", () => {
+    const calls: Array<{ direction: "up" | "both"; count: number }> = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -10,3 +10,3 @@",
+        boundaryRef: 1,
+        direction: "both",
+        primaryExpand: "all",
+        gapAbove: 12,
+        isCursor: false,
+        onActivate: (direction, count) => calls.push({ direction, count }),
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([{ direction: "both", count: 12 }]);
+  });
+
+  it("clicking the right cell (range/context text) does NOT dispatch (matches GitHub)", () => {
+    const calls: Array<{ direction: "up" | "both"; count: number }> = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -50,3 +50,3 @@",
+        boundaryRef: 1,
+        direction: "both",
+        primaryExpand: "up",
+        gapAbove: 80,
+        isCursor: false,
+        onActivate: (direction, count) => calls.push({ direction, count }),
+      }),
+    );
+    const text = c.querySelector(".tour-hunk-header-text") as HTMLElement;
+    act(() => {
+      text.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("Enter on the button cell with primaryExpand 'all' + isCursor=true dispatches direction='both' + gapAbove", () => {
+    const calls: Array<{ direction: "up" | "both"; count: number }> = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -10,3 +10,3 @@",
+        boundaryRef: 2,
+        direction: "both",
+        primaryExpand: "all",
+        gapAbove: 37,
+        isCursor: true,
+        onActivate: (direction, count) => calls.push({ direction, count }),
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      btn.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([{ direction: "both", count: 37 }]);
+  });
+
+  it("Enter on the button cell with primaryExpand !== null but isCursor=false does NOT dispatch", () => {
+    const calls: Array<{ direction: "up" | "both"; count: number }> = [];
+    const c = mount(
+      createElement(HunkHeaderBanner, {
+        header: "@@ -10,3 +10,3 @@",
+        boundaryRef: 2,
+        direction: "both",
+        primaryExpand: "all",
+        gapAbove: 37,
+        isCursor: false,
+        onActivate: (direction, count) => calls.push({ direction, count }),
+      }),
+    );
+    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      btn.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([]);
   });
 });

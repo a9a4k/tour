@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Hunk-header banner is now a two-cell layout with the primary expand
+  button on the leftmost cell (issue #280).** GitHub puts Expand Up /
+  Expand All on the same row as the `@@` text — only the second
+  `Expand Down` for mid-file large gaps is a standalone row above the
+  banner. Tour was emitting one extra row per hunk vs GitHub (3 rows
+  instead of 2 for mid-file large gaps; 2 rows instead of 1 for small
+  gaps and file-top). This release folds `Up` / `All` onto the
+  banner's left cell and keeps `expand-down` as the only standalone
+  interactive row. `HunkHeaderRow` gains a
+  `primaryExpand: "up" | "all" | null` field; `InteractiveSubKind`
+  loses `expand-up` and `expand-all`; the file-bottom path always
+  emits a single `expand-down` row regardless of gap size. The web
+  banner exposes `role="button"` / `tabIndex={0}` on the left cell
+  only — clicking the `@@` text does nothing (matches GitHub). The
+  TUI mirrors the same shape with a saturated `bg.accentEmphasis`
+  left cell carrying `↑` / `↕` / `…`. Cursor walks the banner via the
+  existing `boundary-top` / `hunk-separator` identity whenever
+  `primaryExpand !== null`.
+
+  Issue: #280
+
 ## [2.0.0] — 2026-05-12
 
 ### Removed

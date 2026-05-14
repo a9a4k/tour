@@ -441,25 +441,12 @@ export interface InteractiveRowProps {
   gapAbove: number;
   isCursor: boolean;
   /** Dispatches the expand action into `core/expansion-state.ts`'s
-   *  reducer. The component computes `count`: `expand-all` reveals the
-   *  entire remaining gap in one click; every other directional /
-   *  banner row uses `EXPANSION_STEP`. The Shift modifier carries no
-   *  special meaning (PRD #270 Slice 5 / issue #275). */
+   *  reducer. The component always passes `EXPANSION_STEP` — issue #280
+   *  removed `expand-all` from the standalone `InteractiveSubKind`
+   *  vocabulary (now hosted on the hunk-header banner's left cell). The
+   *  Shift modifier carries no special meaning (PRD #270 Slice 5 / issue
+   *  #275). */
   onActivate: (count: number) => void;
-}
-
-// PRD #270 / issue #271: `expand-all` always reveals the entire remaining
-// gap in one Enter — the button's label IS the contract ("Expand All
-// ${gapAbove} lines"). Every other directional / banner row dispatches
-// `EXPANSION_STEP` lines regardless of the Shift modifier (PRD #270
-// Slice 5 / issue #275 — the per-file Expand-all chrome button is the
-// whole-file escape hatch).
-function interactiveRowCount(
-  subKind: InteractiveSubKind,
-  gapAbove: number,
-): number {
-  if (subKind === "expand-all") return gapAbove;
-  return EXPANSION_STEP;
 }
 
 function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
@@ -468,7 +455,6 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
     boundaryRef,
     direction,
     glyph,
-    gapAbove,
     isCursor,
     onActivate,
   } = props;
@@ -476,13 +462,13 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
   if (isCursor) classes.push("is-cursor");
   const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onActivate(interactiveRowCount(subKind, gapAbove));
+    onActivate(EXPANSION_STEP);
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isCursor) return;
     if (e.key !== "Enter") return;
     e.preventDefault();
-    onActivate(interactiveRowCount(subKind, gapAbove));
+    onActivate(EXPANSION_STEP);
   };
   return (
     <div
@@ -528,10 +514,24 @@ export interface HunkHeaderBannerProps {
   header: string;
   boundaryRef: BoundaryRef;
   direction: "up" | "both";
-  /** Structurally retained so the `.is-cursor` outline rule still applies
-   *  on banners — in practice always `false` after PRD #270 Slice 2 /
-   *  issue #272 because the cursor no longer walks the hunk-header row. */
+  /** Issue #280: when set the banner's left cell is an interactive
+   *  expand button. `"up"` paints `↑` and dispatches `direction: "up"`
+   *  with `count = EXPANSION_STEP`; `"all"` paints `↕` and dispatches
+   *  `direction: "both"` with `count = gapAbove`. `null` paints an inert
+   *  `…` placeholder; the row is not cursor-walkable. */
+  primaryExpand: "up" | "all" | null;
+  /** Remaining hidden gap above this hunk-header. Threaded so the `all`
+   *  dispatch can carry `count = gapAbove` (single-Enter full reveal). */
+  gapAbove: number;
+  /** `.is-cursor` outline applies when the cursor lands on this banner —
+   *  reachable iff `primaryExpand !== null` (`flat-rows` skips banners
+   *  with a null primaryExpand). */
   isCursor: boolean;
+  /** Dispatches the expand action when the left cell is clicked or
+   *  Enter is pressed while cursored. Called with `direction` (matching
+   *  `primaryExpand`) and `count` (`EXPANSION_STEP` for "up", `gapAbove`
+   *  for "all"). No-op when `primaryExpand === null`. */
+  onActivate?: (direction: "up" | "both", count: number) => void;
 }
 
 // `data-subkind` derives from `boundaryRef`: `"top"` (file-top) maps to
@@ -544,33 +544,76 @@ function hunkHeaderSubKind(
   return boundaryRef === "top" ? "boundary-top" : "hunk-separator";
 }
 
-// PRD #270 Slice 2 / issue #272: HunkHeaderBanner is a pure display
-// component — no `onClick`, no `onKeyDown`, no `role="button"`, no
-// `tabIndex`. The directional expand affordance is owned by the
-// `<InteractiveRow>` subkinds (`expand-up` / `expand-down` /
-// `expand-all`) emitted by `expandRowsForGap` (Slice 1). The banner
-// continues to render the parsed range + function-context spans for
-// reviewer wayfinding; the `data-*` attributes are decorative
-// (kept for selectors / debugging).
+// Issue #280: two-cell banner matching GitHub's `@@` row structure.
+//   Left cell  — ~44px, saturated `bg.accentEmphasis` background.
+//                Carries the `↑` / `↕` glyph when `primaryExpand !== null`
+//                AND `role="button"` / `tabIndex={0}` for click + Enter
+//                dispatch. When `primaryExpand === null` paints an inert
+//                `…` placeholder; no click target, no cursor walk.
+//   Right cell — accent-subtle wash, range + function-context spans.
+//                Always display-only (matches GitHub: clicking the `@@`
+//                text does nothing).
+// `.is-cursor` outlines the whole row when set (cursored hunk-headers
+// only reach this branch when `primaryExpand !== null`; flat-rows skips
+// banners with a null primaryExpand).
 function HunkHeaderBannerImpl(
   props: HunkHeaderBannerProps,
 ): React.JSX.Element {
-  const { header, boundaryRef, direction, isCursor } = props;
+  const { header, boundaryRef, direction, primaryExpand, gapAbove, isCursor, onActivate } = props;
   const classes = ["tour-row", "tour-hunk-header"];
   if (isCursor) classes.push("is-cursor");
   const { range, context } = parseHunkHeader(header);
+  const interactive = primaryExpand !== null;
+  const buttonGlyph =
+    primaryExpand === "up" ? "↑" : primaryExpand === "all" ? "↕" : "…";
+  const dispatch = () => {
+    if (!interactive || !onActivate) return;
+    if (primaryExpand === "up") onActivate("up", EXPANSION_STEP);
+    else onActivate("both", gapAbove);
+  };
+  const onButtonClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    dispatch();
+  };
+  const onButtonKeyDown = (e: React.KeyboardEvent) => {
+    if (!isCursor || e.key !== "Enter") return;
+    e.preventDefault();
+    dispatch();
+  };
+  const buttonClasses = ["tour-hunk-header-button"];
+  if (!interactive) buttonClasses.push("is-placeholder");
   return (
     <div
       className={classes.join(" ")}
       data-subkind={hunkHeaderSubKind(boundaryRef)}
       data-direction={direction}
       data-boundary-ref={String(boundaryRef)}
+      data-primary-expand={primaryExpand ?? "none"}
       style={BANNER_STYLE}
     >
-      <span className="tour-hunk-header-range">{range}</span>
-      {context ? (
-        <span className="tour-hunk-header-context">{context}</span>
-      ) : null}
+      <span
+        className={buttonClasses.join(" ")}
+        data-primary-expand={primaryExpand ?? "none"}
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        aria-label={
+          primaryExpand === "up"
+            ? "Expand Up"
+            : primaryExpand === "all"
+              ? `Expand All ${gapAbove} lines`
+              : undefined
+        }
+        onClick={interactive ? onButtonClick : undefined}
+        onKeyDown={interactive ? onButtonKeyDown : undefined}
+      >
+        {buttonGlyph}
+      </span>
+      <span className="tour-hunk-header-text">
+        <span className="tour-hunk-header-range">{range}</span>
+        {context ? (
+          <span className="tour-hunk-header-context">{context}</span>
+        ) : null}
+      </span>
     </div>
   );
 }

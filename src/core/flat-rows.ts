@@ -71,11 +71,10 @@ export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 
 /** Options for `flatRows`. */
 export interface FlatRowsOptions {
-  /** Vestigial. PRD #270 Slices 2 & 3 (issues #272, #273) collapsed both
-   *  surfaces onto unconditional skip of `hunk-header` rows from the cursor
-   *  stream — the banner is display-only everywhere. The option is kept
-   *  for caller-side compatibility (TUI passes `false`); the value is now
-   *  ignored. */
+  /** Vestigial. Issue #280 brought the hunk-header banner back as a
+   *  cursor stop when `primaryExpand !== null`, with both surfaces
+   *  following the same rule. The option is kept for caller-side
+   *  compatibility (TUI passes `false`); the value is now ignored. */
   hunkHeaderCursorStop?: boolean;
 }
 
@@ -137,14 +136,25 @@ export function flatRows(
         continue;
       }
       if (row.kind === "hunk-header") {
-        // PRD #270 Slices 2 & 3 (issues #272, #273): hunk-header rows are
-        // display-only on both surfaces — the cursor no longer walks them.
-        // The directional expand affordance lives in the
-        // `expand-up` / `expand-down` / `expand-all` interactive rows
-        // emitted by `expandRowsForGap` (Slice 1). Skip the banner
-        // entirely from the cursor stream regardless of the (now
-        // vestigial) `hunkHeaderCursorStop` option, which remains for
-        // caller-side compatibility.
+        // Issue #280: the banner's left cell hosts the primary expand
+        // affordance (`primaryExpand: "up" | "all"`); the cursor walks
+        // the row whenever the cell is interactive. Identity uses the
+        // existing `boundary-top` (file-top, hunkIndex 0) /
+        // `hunk-separator` (mid-file) subkinds so existing matching
+        // logic in FileBlock + TUI cursor visuals composes unchanged.
+        // When `primaryExpand === null` the cell paints an inert `…`
+        // placeholder and the row stays out of the cursor stream.
+        if (row.primaryExpand === null) continue;
+        const subKind: InteractiveSubKind =
+          row.hunkIndex === 0 ? "boundary-top" : "hunk-separator";
+        const boundaryRef: BoundaryRef =
+          row.hunkIndex === 0 ? "top" : row.hunkIndex;
+        out.push({
+          kind: "interactive",
+          file: file.name,
+          subKind,
+          boundaryRef,
+        });
         continue;
       }
       if (row.kind === "annotation") {

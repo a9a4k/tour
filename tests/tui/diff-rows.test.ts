@@ -389,6 +389,7 @@ index 1..2 100644
         header: "@@ -10,3 +10,3 @@",
         hunkIndex: 1,
         gapAbove: 12,
+        primaryExpand: "all",
       };
       const treeInteractive = callDiffRows({ rows: [interactiveHunkRow], layout: "split" });
       expect(flatten(treeInteractive).some(isDivider)).toBe(false);
@@ -398,6 +399,7 @@ index 1..2 100644
         header: "@@ -1,3 +1,3 @@",
         hunkIndex: 0,
         gapAbove: 0,
+        primaryExpand: null,
       };
       const treeInert = callDiffRows({ rows: [inertHunkRow], layout: "split" });
       expect(flatten(treeInert).some(isDivider)).toBe(false);
@@ -625,6 +627,7 @@ index 1..2 100644
         header: "@@ -10,3 +10,3 @@",
         hunkIndex: 1,
         gapAbove: 12,
+        primaryExpand: "all",
       };
       const treeInteractive = callDiffRows({ rows: [interactiveHunkRow], layout: "split" });
       const interactiveCells = diffLineCellsOf(treeInteractive);
@@ -1590,30 +1593,9 @@ index 1..2 100644
       expect(cells[0].props["gutterAccent"]).toBe(false);
     });
 
-    // PRD #270 / issue #273 (TUI Slice 3). The directional `expand-up` /
-    // `expand-down` / `expand-all` rows render through the same generic
-    // interactive-row pipeline as `collapsed-file`. The planner's
-    // `expandRowText` formats each row's body text with the directional
-    // glyph + label (`↑ Expand Up` / `↓ Expand Down` / `↕ Expand All
-    // N lines`); the TUI paints `row.text` on DiffLine, so the glyph
-    // arrives for free.
-    it("renders an expand-up row with the planner's `↑ Expand Up` text and a stable id", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "interactive",
-          subKind: "expand-up",
-          boundaryRef: "top",
-          text: "↑ Expand Up",
-          gapAbove: 80,
-        },
-      ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      const cells = diffLineCellsOf(tree);
-      expect(cells.length).toBe(1);
-      expect(cells[0].props["text"]).toBe("↑ Expand Up");
-      expect(findIdElement(tree, "interactive-row-x.txt-expand-up-top")).toBeDefined();
-    });
-
+    // Issue #280: only `expand-down` survives as a standalone interactive
+    // row — `expand-up` / `expand-all` are folded onto the hunk-header
+    // banner's left cell (tested below).
     it("renders an expand-down row with the planner's `↓ Expand Down` text and a stable id", () => {
       const rows: PlannedRow[] = [
         {
@@ -1631,30 +1613,13 @@ index 1..2 100644
       expect(findIdElement(tree, "interactive-row-x.txt-expand-down-2")).toBeDefined();
     });
 
-    it("renders an expand-all row with the planner's `↕ Expand All N lines` text and a stable id", () => {
+    it("mouse click on an expand-down row dispatches onInteractiveClick(file, subKind, boundaryRef)", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
-          subKind: "expand-all",
-          boundaryRef: "bottom",
-          text: "↕ Expand All 12 lines",
-          gapAbove: 12,
-        },
-      ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      const cells = diffLineCellsOf(tree);
-      expect(cells.length).toBe(1);
-      expect(cells[0].props["text"]).toBe("↕ Expand All 12 lines");
-      expect(findIdElement(tree, "interactive-row-x.txt-expand-all-bottom")).toBeDefined();
-    });
-
-    it("mouse click on a directional row dispatches onInteractiveClick(file, subKind, boundaryRef)", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "interactive",
-          subKind: "expand-up",
+          subKind: "expand-down",
           boundaryRef: 2,
-          text: "↑ Expand Up",
+          text: "↓ Expand Down",
           gapAbove: 60,
         },
       ];
@@ -1667,21 +1632,21 @@ index 1..2 100644
         cursor: null,
         onInteractiveClick,
       });
-      const wrapper = findIdElement(tree, "interactive-row-x.txt-expand-up-2");
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-expand-down-2");
       expect(wrapper).toBeDefined();
       const handler = wrapper!.props["onMouseDown"];
       expect(typeof handler).toBe("function");
       (handler as () => void)();
-      expect(onInteractiveClick).toHaveBeenCalledWith("x.txt", "expand-up", 2);
+      expect(onInteractiveClick).toHaveBeenCalledWith("x.txt", "expand-down", 2);
     });
 
-    it("lights up cursor on a directional row when the cursor's interactive anchor matches", () => {
+    it("lights up cursor on an expand-down row when the cursor's interactive anchor matches", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
-          subKind: "expand-all",
-          boundaryRef: "top",
-          text: "↕ Expand All 12 lines",
+          subKind: "expand-down",
+          boundaryRef: "bottom",
+          text: "↓ Expand Down",
           gapAbove: 12,
         },
       ];
@@ -1691,7 +1656,7 @@ index 1..2 100644
         lineNumber: 0,
         side: "additions" as const,
         preferredSide: "additions" as const,
-        interactive: { subKind: "expand-all" as const, boundaryRef: "top" as const },
+        interactive: { subKind: "expand-down" as const, boundaryRef: "bottom" as const },
       };
       const tree = callDiffRows({ rows, layout: "split", cursor });
       const cells = diffLineCellsOf(tree);
@@ -1699,54 +1664,54 @@ index 1..2 100644
     });
   });
 
-  // PRD #270 / issue #273 (TUI Slice 3). Pre-#273 the hunk-header was a
-  // first-class interactive row when `gapAbove > 0` — DiffLine pipeline,
-  // cursor visual, click handler, `··· N hidden ···` suffix on the body
-  // text. Post-#273 the hunk-header is always display-only on the TUI:
-  // the directional `expand-up` / `expand-down` / `expand-all` rows the
-  // planner emits adjacent to the banner carry the affordance + Enter
-  // dispatch. The banner itself is two muted text siblings (the `…`
-  // accent glyph + the bare `@@ ...` header text), regardless of
-  // `gapAbove`.
-  describe("hunk-header banner is always display-only (PRD #270 / issue #273)", () => {
+  // Issue #280 — TUI hunk-header banner two-cell layout. The banner
+  // mirrors the webapp's `[button cell][text cell]` shape: left cell is
+  // a saturated `bg.accentEmphasis` block carrying `↑` / `↕` / `…`
+  // (depending on `primaryExpand`), right cell carries the muted
+  // `@@ ...` text on `bg.accentSubtle` wash. When `primaryExpand !==
+  // null` the row is cursor-walkable + click-dispatches.
+  describe("hunk-header banner (issue #280 two-cell layout)", () => {
     function findText(tree: unknown, predicate: (s: string) => boolean): AnyElement | undefined {
       return flatten(tree).find(
         (el) => typeof el.props.children === "string" && predicate(el.props.children as string),
       );
     }
 
-    it("renders the header text in theme.fg.muted with no DiffLine cell when gapAbove > 0", () => {
+    function findGlyph(tree: unknown, glyph: string): AnyElement | undefined {
+      return flatten(tree).find(
+        (el) =>
+          typeof el.props.children === "string" &&
+          (el.props.children as string) === glyph &&
+          el.props.fg === theme.fg.onEmphasis,
+      );
+    }
+
+    it("renders the header text in theme.fg.muted with no DiffLine cell when primaryExpand !== null", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
           header: "@@ -10,3 +10,3 @@",
           hunkIndex: 1,
           gapAbove: 12,
+          primaryExpand: "all",
         },
       ];
       const tree = callDiffRows({ rows, layout: "split" });
-      // No DiffLine — the banner is a plain pair of <text> siblings.
+      // No DiffLine — the banner is plain <text> siblings inside two cells.
       expect(diffLineCellsOf(tree).length).toBe(0);
       const node = findText(tree, (s) => s.includes("@@ -10,3 +10,3 @@"));
       expect(node).toBeDefined();
       expect(node!.props.fg).toBe(theme.fg.muted);
-      // The `··· N hidden ···` suffix moved to the directional rows; the
-      // banner text is the bare hunk-header itself.
-      const anyHiddenSuffix = flatten(tree).find(
-        (el) =>
-          typeof el.props.children === "string" &&
-          (el.props.children as string).includes("hidden"),
-      );
-      expect(anyHiddenSuffix).toBeUndefined();
     });
 
-    it("renders the header text in theme.fg.muted with no DiffLine cell when gapAbove === 0", () => {
+    it("renders the header text + inert `…` left cell when primaryExpand === null", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
           header: "@@ -1,3 +1,3 @@",
           hunkIndex: 0,
           gapAbove: 0,
+          primaryExpand: null,
         },
       ];
       const tree = callDiffRows({ rows, layout: "split" });
@@ -1754,15 +1719,75 @@ index 1..2 100644
       const node = findText(tree, (s) => s.includes("@@ -1,3 +1,3 @@"));
       expect(node).toBeDefined();
       expect(node!.props.fg).toBe(theme.fg.muted);
+      expect(findGlyph(tree, "…")).toBeDefined();
     });
 
-    it("does NOT attach onMouseDown to the banner (banner is non-interactive)", () => {
+    it("renders `↑` in the left cell when primaryExpand === 'up'", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
-          header: "@@ -65,6 +65,46 @@ import {",
+          header: "@@ -100,3 +100,3 @@",
           hunkIndex: 1,
-          gapAbove: 5,
+          gapAbove: 80,
+          primaryExpand: "up",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      expect(findGlyph(tree, "↑")).toBeDefined();
+    });
+
+    it("renders `↕` in the left cell when primaryExpand === 'all'", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      expect(findGlyph(tree, "↕")).toBeDefined();
+    });
+
+    it("attaches onMouseDown when primaryExpand !== null; click dispatches onInteractiveClick with hunk-separator subkind", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -65,6 +65,46 @@",
+          hunkIndex: 2,
+          gapAbove: 8,
+          primaryExpand: "all",
+        },
+      ];
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.ts",
+        rows,
+        layout: "split",
+        cursorCardId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      // Find the outer banner box (the wrapper carrying onMouseDown).
+      const handler = flatten(tree)
+        .map((el) => el.props["onMouseDown"])
+        .find((h) => typeof h === "function") as
+        | (() => void)
+        | undefined;
+      expect(handler).toBeDefined();
+      handler!();
+      expect(onInteractiveClick).toHaveBeenCalledWith("x.ts", "hunk-separator", 2);
+    });
+
+    it("does NOT attach onMouseDown when primaryExpand === null", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -1,3 +1,3 @@",
+          hunkIndex: 0,
+          gapAbove: 0,
+          primaryExpand: null,
         },
       ];
       const onInteractiveClick = vi.fn();
@@ -1779,132 +1804,33 @@ index 1..2 100644
       }
     });
 
-    it("does NOT light up a cursor visual on the banner (cursor never lands here under hunkHeaderCursorStop: false)", () => {
+    it("file-top hunk dispatches onInteractiveClick with boundary-top + 'top'", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
-          header: "@@ -10,3 +10,3 @@",
-          hunkIndex: 1,
-          gapAbove: 12,
-        },
-      ];
-      // A stale cursor pointing at the legacy `hunk-separator` subkind:
-      // the banner must still render display-only.
-      const cursor = {
-        kind: "row" as const,
-        file: "x.txt",
-        lineNumber: 0,
-        side: "additions" as const,
-        preferredSide: "additions" as const,
-        interactive: { subKind: "hunk-separator" as const, boundaryRef: 1 },
-      };
-      const tree = callDiffRows({ rows, layout: "split", cursor });
-      // No DiffLine cell ⇒ no `cursorActive` prop to inspect; cursor
-      // visual cannot light up on a row with no cursor pipeline.
-      expect(diffLineCellsOf(tree).length).toBe(0);
-    });
-  });
-
-  // Issue #264 — TUI hunk-header expand affordance. The webapp #252
-  // paints a 44px accentEmphasis block with `…` dots in white at the
-  // leftmost edge of the hunk-header banner as the rest-state cue
-  // "this row is interactive — cursor + Enter expands hidden context."
-  // The TUI's terminal-native equivalent: prepend a `…` glyph painted
-  // in theme.fg.accent at the leftmost edge of every hunk-header row
-  // (both expandable `gapAbove > 0` and inert `gapAbove === 0` paths).
-  // The cursor + Enter interaction itself is unchanged; the glyph is
-  // purely a decorative affordance hint.
-  describe("hunk-header expand affordance glyph (issue #264)", () => {
-    const HUNK_HEADER_GLYPH = "…";
-
-    function findAccentGlyph(tree: unknown): AnyElement | undefined {
-      return flatten(tree).find(
-        (el) =>
-          typeof el.props.children === "string" &&
-          (el.props.children as string) === HUNK_HEADER_GLYPH &&
-          el.props.fg === theme.fg.accent,
-      );
-    }
-
-    it("renders a `…` glyph in theme.fg.accent at the leftmost edge of an inert hunk-header (gapAbove === 0)", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -1,3 +1,3 @@",
+          header: "@@ -200,3 +200,3 @@",
           hunkIndex: 0,
-          gapAbove: 0,
+          gapAbove: 199,
+          primaryExpand: "up",
         },
       ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      const glyph = findAccentGlyph(tree);
-      expect(glyph).toBeDefined();
-    });
-
-    it("renders a `…` glyph in theme.fg.accent at the leftmost edge of an interactive hunk-header (gapAbove > 0)", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -10,3 +10,3 @@",
-          hunkIndex: 1,
-          gapAbove: 12,
-        },
-      ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      const glyph = findAccentGlyph(tree);
-      expect(glyph).toBeDefined();
-    });
-
-    it("the inert hunk-header still preserves the header text in theme.fg.muted next to the glyph", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -1,3 +1,3 @@",
-          hunkIndex: 0,
-          gapAbove: 0,
-        },
-      ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      const headerText = flatten(tree).find(
-        (el) =>
-          typeof el.props.children === "string" &&
-          (el.props.children as string).includes("@@ -1,3 +1,3 @@") &&
-          el.props.fg === theme.fg.muted,
-      );
-      expect(headerText).toBeDefined();
-    });
-
-    it("the gapAbove > 0 banner still preserves the header text in theme.fg.muted next to the glyph (display-only post-#273)", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -10,3 +10,3 @@",
-          hunkIndex: 1,
-          gapAbove: 12,
-        },
-      ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      const headerText = flatten(tree).find(
-        (el) =>
-          typeof el.props.children === "string" &&
-          (el.props.children as string).includes("@@ -10,3 +10,3 @@") &&
-          el.props.fg === theme.fg.muted,
-      );
-      expect(headerText).toBeDefined();
-    });
-
-    it("glyph appears on both unified and split layouts (banner row, layout-agnostic)", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -10,3 +10,3 @@",
-          hunkIndex: 1,
-          gapAbove: 12,
-        },
-      ];
-      const splitTree = callDiffRows({ rows, layout: "split" });
-      const unifiedTree = callDiffRows({ rows, layout: "unified" });
-      expect(findAccentGlyph(splitTree)).toBeDefined();
-      expect(findAccentGlyph(unifiedTree)).toBeDefined();
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.ts",
+        rows,
+        layout: "split",
+        cursorCardId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      const handler = flatten(tree)
+        .map((el) => el.props["onMouseDown"])
+        .find((h) => typeof h === "function") as
+        | (() => void)
+        | undefined;
+      expect(handler).toBeDefined();
+      handler!();
+      expect(onInteractiveClick).toHaveBeenCalledWith("x.ts", "boundary-top", "top");
     });
   });
 

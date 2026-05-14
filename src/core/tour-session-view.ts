@@ -32,9 +32,10 @@ import { sendTarget, type SendTarget } from "./send-target.js";
  *    Expand-all banner row at the top of each file with hidden gaps; the
  *    web leaves it off and uses its header-chrome button instead.
  *  - `hunkHeaderCursorStop` (PRD #270 / issue #273, Slice 3): vestigial.
- *    Slices 2 & 3 collapsed both surfaces onto unconditional skip of
- *    hunk-header rows. Kept for caller-side compatibility (TUI passes
- *    `false`); the value is now ignored downstream. */
+ *    Issue #280 brought the banner back as a cursor stop when
+ *    `primaryExpand !== null` on both surfaces. Kept for caller-side
+ *    compatibility (TUI passes `false`); the value is now ignored
+ *    downstream. */
 export interface ViewOptions {
   emitExpandFileAllAffordance?: boolean;
   hunkHeaderCursorStop?: boolean;
@@ -246,10 +247,10 @@ function deriveRowsSlice(
 
   // flatRows iterates the (sorted) parsed-file list and skips folded files;
   // it only needs `{name}` from each DiffFile-shaped entry. Mirror the
-  // webapp's `parsedFiles.map(...)` adapter so both surfaces' slice-2/3
-  // migrations land on the same iteration order. The `hunkHeaderCursorStop`
-  // surface option (PRD #270, issue #273) is forwarded so the TUI walks
-  // past hunk-header rows while the web (Slice 1/2) still promotes them.
+  // webapp's `parsedFiles.map(...)` adapter so both surfaces land on the
+  // same iteration order. The `hunkHeaderCursorStop` option is vestigial
+  // (issue #280 — see FlatRowsOptions) but still forwarded for caller-
+  // side clarity.
   const flatRowsList = flatRows(
     parsedFiles.map((f) => ({ name: f.name, type: "change", hunks: [] })),
     plannedRowsByFile,
