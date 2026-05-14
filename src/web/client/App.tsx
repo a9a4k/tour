@@ -682,11 +682,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  // Drag handle callbacks. The handle emits raw (un-clamped) widths;
-  // we clamp via the MANUAL clamp (lets the user push past the
-  // auto-fit floor and squeeze the diff to its hard floor), capture
-  // the cursor row's on-screen y BEFORE the React commit, and let
-  // the resize-apply useLayoutEffect above pin the row's y after.
+  // Drag uses the manual clamp (see `clampSidebarWidthManualPx`); the
+  // capture-before-commit / apply-after-commit pattern is owned by
+  // `resizeSnapshotRef` + the resize-apply useLayoutEffect above.
   const handleSidebarResize = useCallback(
     (rawWidth: number) => {
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;

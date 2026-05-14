@@ -133,10 +133,9 @@ describe("computeAutoFitWidthPx", () => {
   });
 
   it("fits the longest visible row exactly when it's wider than MIN", () => {
-    // A long folder name at depth 3: fixed cost = 16 + 48 + 16+8+16+8+16 =
-    // 128. displayName "ai-moderator-service" = 20 chars × 7.2 = 144 px.
-    // Total = 128 + 144 = 272. vw=1500 → auto cap = 900. 272 < MIN=240
-    // ... wait, 272 > 240, so result is 272.
+    // Folder at depth 3 with a 20-char displayName lands above MIN (240)
+    // and below the auto-fit cap (900 at vw=1500), so the result is the
+    // computed fitted width rather than either bound.
     const rows = [folder({ displayName: "ai-moderator-service", depth: 3 })];
     const fixed = folderRowFixedPx(3);
     const expected = fixed + Math.ceil("ai-moderator-service".length * SIDEBAR_CHAR_PX);
