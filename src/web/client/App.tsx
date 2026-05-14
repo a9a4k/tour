@@ -1159,6 +1159,58 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [store],
   );
 
+  // Issue #320: soft-modal `+` button. Closed → seed cursor + open at
+  // `line_start == line_end` (parity with the keyboard `a` flow). Non-closed
+  // → `composer.recall` so the in-flight Composer comes back to the user
+  // instead of a second one opening (see the reducer's `composer.recall`
+  // branch for the recall mechanics).
+  const openComposerOnRow = useCallback(
+    (anchor: { file: string; side: "additions" | "deletions"; lineNumber: number }) => {
+      const c = store.getState().composer;
+      if (c.kind === "closed") {
+        store.dispatch({
+          type: "cursor.set",
+          anchor: {
+            kind: "row",
+            file: anchor.file,
+            lineNumber: anchor.lineNumber,
+            side: anchor.side,
+            preferredSide: anchor.side,
+          },
+        });
+        store.dispatch({
+          type: "composer.open",
+          target: {
+            kind: "top-level",
+            file: anchor.file,
+            side: anchor.side,
+            line_start: anchor.lineNumber,
+            line_end: anchor.lineNumber,
+          },
+        });
+        return;
+      }
+      store.dispatch({ type: "composer.recall" });
+    },
+    [store],
+  );
+
+  // Issue #320: `data-composer-open` on <html> is the single CSS hook every
+  // `+` button reads to switch between normal-accent and ghost appearance.
+  // Mirrors the validated `composer.kind !== "closed"` state.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (composer.kind === "closed") {
+      root.removeAttribute("data-composer-open");
+    } else {
+      root.setAttribute("data-composer-open", "true");
+    }
+    return () => {
+      root.removeAttribute("data-composer-open");
+    };
+  }, [composer.kind]);
+
   // Click anywhere on an Annotation card → lands the cursor on that card
   // (PRD #192 / ADR 0022 slice 2). Mouse-driven path matches keyboard
   // n/p: both write a CardAnchor for the clicked / nav'd top-level
@@ -1419,6 +1471,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                     onRowClick={({ file, side, lineNumber }) =>
                       setCursorFromRowClick(file, side, lineNumber)
                     }
+                    onAnnotate={openComposerOnRow}
                     onCardClick={setCursorFromCardClick}
                     annotationProps={{
                       registerRef: registerAnnotationRef,

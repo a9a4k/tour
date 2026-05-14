@@ -193,6 +193,30 @@ export function createTuiTourSessionAdapter(
         scrollByPlacement(sb, targetId, mode);
       });
     },
+    scrollToComposer: (target) => {
+      // Issue #320: TUI v1 mirrors `scrollToRow` (top-level) /
+      // `scrollToCard` (reply) — textarea focus is a TUI follow-up.
+      // Nothing in the TUI dispatches `composer.recall` today (the
+      // ghost `+` is mouse-only on the webapp), so this is a defensive
+      // implementation against the runtime contract.
+      if (target.kind === "reply") {
+        scheduleScroll(() => {
+          const sb = deps.diffScrollBoxRef.current;
+          if (!sb) return;
+          const targetId = `annotation-${target.replies_to}`;
+          if (sb.content.findDescendantById(targetId)) {
+            centerChildInView(sb, targetId);
+          }
+        });
+        return;
+      }
+      scheduleScroll(() => {
+        const sb = deps.diffScrollBoxRef.current;
+        if (!sb) return;
+        const targetId = `diff-row-${target.file}-${target.side}-${target.line_end}`;
+        centerChildInView(sb, targetId);
+      });
+    },
     scrollToPickerRow: (idx: number) => {
       const sb = deps.pickerScrollBoxRef.current;
       if (!sb) return;

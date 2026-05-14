@@ -65,6 +65,11 @@ export interface DiffRowProps {
    *  Line cursor for annotation creation. */
   onClick?: (side: Side) => void;
   onMouseEnter?: () => void;
+  /** Issue #320: GitHub-style `+` annotate button. When wired, each gutter
+   *  with a line number renders a `+`; clicking calls onAnnotate(side,
+   *  lineNumber). Visibility is CSS-driven; omit the prop to hide the
+   *  button on every gutter (used by rows that can't anchor annotations). */
+  onAnnotate?: (side: Side, lineNumber: number) => void;
 }
 
 // `display: grid` + `grid-template-columns: subgrid` + `grid-column: 1 / -1`
@@ -184,6 +189,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     preferredSide,
     onClick,
     onMouseEnter,
+    onAnnotate,
   } = props;
 
   // `.is-cursor` and `.in-range` live per-cell so split layout scopes both
@@ -249,6 +255,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           isInRange={range.left}
           hasStripe={stripeSide === "deletions"}
           onClick={onClick ? handleColumnClick("deletions") : undefined}
+          onAnnotate={onAnnotate}
         />
         <Column
           side="additions"
@@ -260,6 +267,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           isInRange={range.right}
           hasStripe={stripeSide === "additions"}
           onClick={onClick ? handleColumnClick("additions") : undefined}
+          onAnnotate={onAnnotate}
         />
       </div>
     );
@@ -295,6 +303,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
         isInRange={unifiedInRange}
         hasStripe={unifiedInRange}
         onClick={onClick ? handleColumnClick(sideForClick) : undefined}
+        onAnnotate={onAnnotate}
       />
     </div>
   );
@@ -310,6 +319,7 @@ interface ColumnProps {
   isInRange: boolean;
   hasStripe: boolean;
   onClick?: (e: React.MouseEvent) => void;
+  onAnnotate?: (side: Side, lineNumber: number) => void;
 }
 
 function Column({
@@ -322,6 +332,7 @@ function Column({
   isInRange,
   hasStripe,
   onClick,
+  onAnnotate,
 }: ColumnProps): React.JSX.Element {
   const html = lineNumber != null ? tokens?.get(lineNumber) : undefined;
   const gutterClasses = ["tour-row-gutter"];
@@ -332,6 +343,16 @@ function Column({
   const cellClasses = ["tour-row-cell"];
   if (isCursor) cellClasses.push("is-cursor");
   if (isInRange) cellClasses.push("in-range");
+  // Issue #320: `tabIndex={-1}` keeps the button out of Tab order (the
+  // keyboard `a` shortcut is the canonical keyboard path); `stopPropagation`
+  // stops the cell's row-click handler from seeding the cursor before the
+  // App-level annotate branch runs. Visibility is CSS-driven — see
+  // `.tour-row-annotate-btn` in file-grid-css.
+  const showAnnotateButton = onAnnotate !== undefined && lineNumber != null;
+  const handleAnnotateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onAnnotate && lineNumber != null) onAnnotate(side, lineNumber);
+  };
   return (
     <>
       <span
@@ -340,6 +361,17 @@ function Column({
         data-line-number={lineNumber ?? ""}
       >
         {lineNumber ?? ""}
+        {showAnnotateButton ? (
+          <button
+            type="button"
+            className="tour-row-annotate-btn"
+            tabIndex={-1}
+            aria-label={`Add comment on line ${lineNumber}`}
+            onClick={handleAnnotateClick}
+          >
+            +
+          </button>
+        ) : null}
       </span>
       <span className={symbolClasses.join(" ")} data-side={side} aria-hidden="true">
         {symbol}

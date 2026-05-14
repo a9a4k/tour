@@ -133,6 +133,37 @@ export function createWebTourSessionAdapter(
         cell?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
       });
     },
+    scrollToComposer: (target) => {
+      // Issue #320: scroll the anchor row in + focus the inline Composer's
+      // textarea so the user can resume typing. Top-level anchors at a
+      // (file, side, line_end) gutter cell (mirroring `scrollToRow`); reply
+      // anchors at the parent annotation's card via the annotation refs.
+      if (typeof document === "undefined") return;
+      requestAnimationFrame(() => {
+        const cbs = deps.callbacksRef.current;
+        if (!cbs) return;
+        if (target.kind === "reply") {
+          const replyAnchor = deps.annotationRefs.current.get(target.replies_to);
+          replyAnchor?.scrollIntoView({ behavior: "instant", block: "center" });
+          replyAnchor
+            ?.querySelector<HTMLTextAreaElement>("textarea")
+            ?.focus();
+          return;
+        }
+        const block = cbs.findFileBlock(target.file);
+        if (!block) return;
+        const cell = block.querySelector<HTMLElement>(
+          `.tour-row-gutter[data-side="${target.side}"][data-line-number="${target.line_end}"]`,
+        );
+        cell?.scrollIntoView({ behavior: "instant", block: "center" });
+        const composerCard = block.querySelector<HTMLElement>(
+          '.tour-card[data-composer="true"]',
+        );
+        composerCard
+          ?.querySelector<HTMLTextAreaElement>("textarea")
+          ?.focus();
+      });
+    },
     scrollToPickerRow: (idx: number) => {
       if (typeof document === "undefined") return;
       const el = document.querySelector(`[data-picker-row-idx="${idx}"]`);

@@ -681,9 +681,47 @@ describe("FILE_GRID_CSS — file diff-stats indicator (#228)", () => {
   });
 });
 
-describe("FILE_GRID_CSS — comment-affordance pointer", () => {
-  it("paints the click affordance on annotatable diff lines", () => {
-    expect(FILE_GRID_CSS).toContain("cursor: pointer");
+describe("FILE_GRID_CSS — comment-affordance pointer (#320 removal)", () => {
+  it("no longer paints cursor:pointer on the annotatable .tour-row data-line-type rule", () => {
+    // Issue #320 removed the row-level hover hint; the GitHub-style `+`
+    // button is now the only "click me" cue on a diff row. The row CSS
+    // must not advertise itself with a pointer-cursor.
+    expect(FILE_GRID_CSS).not.toMatch(
+      /\.tour-row\[data-line-type="addition"\][^{]*\{[^}]*cursor:\s*pointer/i,
+    );
+    expect(FILE_GRID_CSS).not.toMatch(
+      /\.tour-row\[data-line-type="deletion"\][^{]*\{[^}]*cursor:\s*pointer/i,
+    );
+  });
+});
+
+describe("FILE_GRID_CSS — annotate `+` button (#320)", () => {
+  it("declares .tour-row-annotate-btn with width, height, border-radius, and accent background", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-annotate-btn\s*\{[^}]*width:\s*24px[^}]*height:\s*24px[^}]*border-radius:\s*5px/i,
+    );
+  });
+
+  it("hides the button by default (display: none) and reveals on row hover", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-row-annotate-btn\s*\{[^}]*display:\s*none/i,
+    );
+    expect(FILE_GRID_CSS).toContain(".tour-row:hover .tour-row-annotate-btn");
+  });
+
+  it("reveals the button on the cursored side via :has() selector", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\(\.tour-row-cell\[data-side="additions"\]\.is-cursor\)[^{]*\.tour-row-gutter\[data-side="additions"\]/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\(\.tour-row-cell\[data-side="deletions"\]\.is-cursor\)[^{]*\.tour-row-gutter\[data-side="deletions"\]/,
+    );
+  });
+
+  it("paints the ghost state when [data-composer-open] is set on an ancestor", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\[data-composer-open\]\s+\.tour-row-annotate-btn\s*\{[^}]*opacity:\s*0\.4/i,
+    );
   });
 });
 

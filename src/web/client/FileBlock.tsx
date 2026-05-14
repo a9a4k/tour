@@ -85,6 +85,11 @@ export interface FileBlockProps {
   cursor: Cursor | null;
   onDispatchExpand: (action: ExpandAction) => void;
   onRowClick: (anchor: RowClickAnchor) => void;
+  /** Issue #320: GitHub-style `+` annotate button on diff rows. Threaded
+   *  through to each gutter; always-wired so Composer-state transitions
+   *  don't re-render the file block (visibility / ghost state are CSS-
+   *  driven via `[data-composer-open]` on `<html>`). */
+  onAnnotate?: (anchor: RowClickAnchor) => void;
   onCardClick: (annotationId: string) => void;
   annotationProps?: AnnotationProps;
   isCollapsed: boolean;
@@ -179,6 +184,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     cursor,
     onDispatchExpand,
     onRowClick,
+    onAnnotate,
     onCardClick,
     annotationProps,
     isCollapsed,
@@ -286,6 +292,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
                 tokensLeft,
                 tokensRight,
                 onRowClick,
+                onAnnotate,
               );
               // Composer renders directly after its anchor row — the diff row
               // whose `(side, lineNumber)` matches composerAnchor.
@@ -408,6 +415,7 @@ function renderDiffRow(
   tokensLeft: ReturnType<typeof useLazyHighlight>,
   tokensRight: ReturnType<typeof useLazyHighlight>,
   onRowClick: (anchor: RowClickAnchor) => void,
+  onAnnotate?: (anchor: RowClickAnchor) => void,
 ): React.ReactNode {
   const kind = diffRowKindFor(row.type);
   // Cursor matches whichever side's lineNumber agrees. h/l toggles
@@ -437,6 +445,11 @@ function renderDiffRow(
     if (lineNumber == null) return;
     onRowClick({ file: file.name, side, lineNumber });
   };
+  const handleAnnotate = onAnnotate
+    ? (side: Side, lineNumber: number) => {
+        onAnnotate({ file: file.name, side, lineNumber });
+      }
+    : undefined;
   return (
     <DiffRow
       key={`row-${idx}`}
@@ -453,6 +466,7 @@ function renderDiffRow(
       leftInRange={!!row.leftTinted}
       rightInRange={!!row.rightTinted}
       onClick={handleClick}
+      onAnnotate={handleAnnotate}
     />
   );
 }

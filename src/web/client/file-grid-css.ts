@@ -373,13 +373,12 @@ export const FILE_GRID_CSS = `
     color: ${theme.fg.default};
   }
 
-  /* Comment-affordance pointer on annotatable diff lines. */
-  .tour-row[data-line-type="addition"],
-  .tour-row[data-line-type="deletion"],
-  .tour-row[data-line-type="change-addition"],
-  .tour-row[data-line-type="change-deletion"] {
-    cursor: pointer;
-  }
+  /* Issue 320: the GitHub-style `+` button is now the only "click me" cue
+     on a diff row. The historical row-level cursor:pointer rule has been
+     removed — a hover hint on the whole row competed with the per-row
+     `+` button affordance and over-advertised the row-click behaviour
+     (row click only seeds the cursor; no Composer opens until the user
+     clicks the `+`). */
 
   /* Empty-side neutral fill: in split layout, the three cells of a
      single-side diff row recede behind canvas.inset so each row reads
@@ -530,5 +529,66 @@ export const FILE_GRID_CSS = `
 
   .tour-file-block[data-layout="split"] .tour-card[data-side="additions"] {
     grid-column: 4 / -1;
+  }
+
+  /* GitHub-style annotate + button (issue 320). The gutter cell hosts a
+     positioned button that overlays the gutter/cell boundary: ~85% of the
+     button sits over the row's highlight rail, ~15% nests back into the
+     gutter. Visibility is CSS-driven so no per-row React re-render fires
+     on hover. The gutter's position:relative is supplied here (not on
+     the base rule) so it's scoped to rows that actually carry the button. */
+  .tour-row-gutter:has(.tour-row-annotate-btn) {
+    position: relative;
+  }
+
+  .tour-row-annotate-btn {
+    /* Square chip floating over the gutter/cell boundary. */
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translate(85%, -50%);
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background-color: ${theme.fg.accent};
+    color: ${theme.fg.onEmphasis};
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    user-select: none;
+    z-index: 2;
+  }
+
+  /* Reveal on row hover OR when the gutter's matching cell carries the
+     cursor outline. The :has() selector lets us match "this row has a
+     cursored cell on the same side as this gutter" without per-row React
+     state; the .tour-row-cell.is-cursor selector keyed by data-side is
+     the ground-truth visual signal. */
+  .tour-row:hover .tour-row-annotate-btn,
+  .tour-row:has(.tour-row-cell[data-side="additions"].is-cursor)
+    .tour-row-gutter[data-side="additions"]
+    .tour-row-annotate-btn,
+  .tour-row:has(.tour-row-cell[data-side="deletions"].is-cursor)
+    .tour-row-gutter[data-side="deletions"]
+    .tour-row-annotate-btn {
+    display: inline-flex;
+  }
+
+  /* Ghost state: when a Composer is open anywhere on the page, every +
+     button reads as muted. Clicking still works (auto-recall) but the
+     visual transition advertises the one-Composer-at-a-time rule. The
+     [data-composer-open] attribute is set on the html element by App.tsx
+     whenever composer.kind is non-closed. */
+  [data-composer-open] .tour-row-annotate-btn {
+    background-color: ${theme.fg.muted};
+    opacity: 0.4;
+    box-shadow: none;
   }
 `;

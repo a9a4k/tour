@@ -1451,6 +1451,59 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
+  // ------------------------------------------------------------------
+  // composer.recall (issue #320)
+  // ------------------------------------------------------------------
+
+  it("composer.recall on open emits scrollToComposer with the open target (no state change)", () => {
+    let s = stateWithTourLoaded();
+    const target = topLevelTarget({ file: "foo.ts", line_start: 42, line_end: 42 });
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "in flight" }).state;
+    const r = reduce(s, { type: "composer.recall" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([{ type: "scrollToComposer", target }]);
+  });
+
+  it("composer.recall on submitting emits scrollToComposer with the submitting target", () => {
+    let s = stateWithTourLoaded();
+    const target = topLevelTarget({ file: "bar.ts", line_start: 7, line_end: 7 });
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    expect(s.composer.kind).toBe("submitting");
+    const r = reduce(s, { type: "composer.recall" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([{ type: "scrollToComposer", target }]);
+  });
+
+  it("composer.recall on errored emits scrollToComposer with the errored target", () => {
+    let s = stateWithTourLoaded();
+    const target = topLevelTarget();
+    s = reduce(s, { type: "composer.open", target }).state;
+    s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+    s = reduce(s, { type: "composer.submit" }).state;
+    s = reduce(s, { type: "composer.failed", error: "boom" }).state;
+    const r = reduce(s, { type: "composer.recall" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([{ type: "scrollToComposer", target }]);
+  });
+
+  it("composer.recall while closed is a state no-op and emits no intent (defensive guard)", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "composer.recall" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.recall on a reply composer emits the reply target verbatim", () => {
+    let s = stateWithTourLoaded();
+    const target = replyTarget("ann-42");
+    s = reduce(s, { type: "composer.open", target }).state;
+    const r = reduce(s, { type: "composer.recall" });
+    expect(r.intents).toEqual([{ type: "scrollToComposer", target }]);
+  });
+
   it("bundle.refreshed does not touch composer (kind / target / body all preserved)", () => {
     let s = stateWithTourLoaded("tour-a");
     const target = topLevelTarget({ file: "foo.ts", line_start: 5, line_end: 5 });

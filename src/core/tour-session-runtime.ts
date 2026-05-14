@@ -43,6 +43,9 @@ export interface TourSessionAdapter {
   subscribeTourEvents(tourId: string, handler: TourEventHandler): () => void;
   scrollToCard(id: string, mode: ScrollPlacement): void;
   scrollToRow(anchor: ScrollRowAnchor, mode: ScrollPlacement): void;
+  /** Issue #320: pulls an in-flight Composer back into view (scroll +
+   *  textarea focus). Dispatched by `composer.recall`. */
+  scrollToComposer(target: ComposerTarget): void;
   scrollToPickerRow(idx: number): void;
   revealFileInSidebar(file: string): void;
   mirrorTourUrl(id: string): void;
@@ -99,6 +102,9 @@ export class TourSessionRuntime {
           return;
         case "scrollToAnnotation":
           this.adapter.scrollToCard(intent.annotationId, "center");
+          return;
+        case "scrollToComposer":
+          this.adapter.scrollToComposer(intent.target);
           return;
         case "mirrorUrl":
           this.adapter.mirrorTourUrl(intent.tourId);
