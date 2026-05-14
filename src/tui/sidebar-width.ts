@@ -7,7 +7,7 @@ import {
 } from "./sidebar-row-label.js";
 
 // Sidebar auto-fit width (issue #312; cap formula retuned in issue
-// #315). Three composable knobs let deep trees render readable
+// #315). Four composable knobs let deep trees render readable
 // filenames without forcing the user to guess a fixed column count:
 //
 //   * `computeAutoFitWidth(rows, statsFor, terminalWidth)` runs on
