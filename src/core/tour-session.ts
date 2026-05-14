@@ -255,13 +255,18 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     }
 
     case "bundle.loading":
+      // Emits `loadTour` so the surface entry points (popstate / auto-pick /
+      // initial mount) can route through the Tour-session runtime instead of
+      // calling their own fetcher. `picker.commit` separately emits its own
+      // `loadTour` (alongside `mirrorUrl`) — it does NOT dispatch
+      // `bundle.loading` so there's no double-emit. PRD #278 slice 3.
       return {
         state: {
           ...state,
           bundle: { kind: "loading" },
           currentTourId: action.tourId,
         },
-        intents: NO_INTENTS,
+        intents: [{ type: "loadTour", tourId: action.tourId }],
       };
 
     case "bundle.refreshed": {

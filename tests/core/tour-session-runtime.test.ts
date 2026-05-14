@@ -364,4 +364,178 @@ describe("TourSessionRuntime", () => {
       stop();
     });
   });
+
+  describe("loadTour intent (PRD #278 slice 3)", () => {
+    it("calls adapter.fetchBundle, dispatches tour.switched, then fetches reply-lock and dispatches replyLock.loaded", async () => {
+      const store = storeWithTour(null);
+      const fresh = okBundle("tour-a");
+      const lock: ReplyLock = {
+        agent: "x",
+        responding_to: "a1",
+        started_at: "2026-05-14T00:00:00Z",
+        pid: 1,
+      };
+      const adapter = createFakeAdapter({
+        bundleByTour: { "tour-a": fresh },
+        lockByTour: { "tour-a": lock },
+      });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      await flush();
+
+      expect(adapter.bundleCalls).toEqual(["tour-a"]);
+      expect(adapter.lockCalls).toEqual(["tour-a"]);
+      expect(store.getState().bundle).toEqual({ kind: "ok", value: fresh });
+      expect(store.getState().currentTourId).toBe("tour-a");
+      expect(store.getState().replyLock).toEqual({ kind: "ok", value: lock });
+      stop();
+    });
+
+    it("dispatches bundle.failed on fetchBundle rejection and does NOT fetch reply-lock", async () => {
+      const store = storeWithTour(null);
+      const adapter = createFakeAdapter({ fetchBundleError: true });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      await flush();
+
+      expect(adapter.bundleCalls).toEqual(["tour-a"]);
+      expect(adapter.lockCalls).toEqual([]);
+      expect(store.getState().bundle).toEqual({ kind: "err", error: "transport" });
+      stop();
+    });
+
+    it("swallows fetchReplyLock errors (transient — keeps current pill state)", async () => {
+      const store = storeWithTour(null);
+      const adapter = createFakeAdapter({
+        bundleByTour: { "tour-a": okBundle("tour-a") },
+        fetchReplyLockError: true,
+      });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      await flush();
+
+      expect(adapter.lockCalls).toEqual(["tour-a"]);
+      // Reply-lock fetch error → keep current pill state. The tour-switched
+      // cascade already reset replyLock to idle; the failure leaves it there.
+      expect(store.getState().replyLock).toEqual({ kind: "idle" });
+      stop();
+    });
+
+    it("stale-response guard: drops tour.switched when the user has moved to a different tour", async () => {
+      const store = storeWithTour(null);
+      const adapter = createFakeAdapter();
+      let resolveBundle: ((b: TourBundle) => void) | null = null;
+      adapter.fetchBundle = (id) => {
+        adapter.bundleCalls.push(id);
+        return new Promise<TourBundle>((resolve) => {
+          resolveBundle = resolve;
+        });
+      };
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      // Switch to tour-b before tour-a's fetch resolves.
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-b",
+        bundle: snapshotLostBundle("tour-b"),
+      });
+      // Now resolve tour-a's bundle.
+      resolveBundle?.(okBundle("tour-a"));
+      await flush();
+
+      // Bundle slice still reflects tour-b — stale tour.switched dispatch dropped.
+      expect(store.getState().bundle).toEqual({
+        kind: "ok",
+        value: snapshotLostBundle("tour-b"),
+      });
+      // The runtime followed the tour-switched store change and started a
+      // new subscription for tour-b. Reply-lock fetches that fired before
+      // the switch are NOT for tour-a (the runtime guards with the live
+      // currentTourId).
+      stop();
+    });
+
+    it("stale-response guard: drops bundle.failed when the user has moved to a different tour", async () => {
+      const store = storeWithTour(null);
+      const adapter = createFakeAdapter();
+      let rejectBundle: ((err: Error) => void) | null = null;
+      adapter.fetchBundle = (id) => {
+        adapter.bundleCalls.push(id);
+        return new Promise<TourBundle>((_resolve, reject) => {
+          rejectBundle = reject;
+        });
+      };
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      // Switch to tour-b before tour-a's fetch rejects.
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-b",
+        bundle: snapshotLostBundle("tour-b"),
+      });
+      rejectBundle?.(new Error("late-failure"));
+      await flush();
+
+      // Bundle slice still reflects tour-b — stale bundle.failed dispatch dropped.
+      expect(store.getState().bundle).toEqual({
+        kind: "ok",
+        value: snapshotLostBundle("tour-b"),
+      });
+      stop();
+    });
+
+    it("stale-response guard: drops replyLock.loaded when tour has changed before the lock fetch resolves", async () => {
+      const store = storeWithTour(null);
+      const adapter = createFakeAdapter({
+        bundleByTour: { "tour-a": okBundle("tour-a") },
+      });
+      const lock: ReplyLock = {
+        agent: "x",
+        responding_to: "a1",
+        started_at: "2026-05-14T00:00:00Z",
+        pid: 1,
+      };
+      let resolveLock: ((l: ReplyLock | null) => void) | null = null;
+      adapter.fetchReplyLock = (id) => {
+        adapter.lockCalls.push(id);
+        return new Promise<ReplyLock | null>((resolve) => {
+          resolveLock = resolve;
+        });
+      };
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      // Let fetchBundle resolve and tour.switched dispatch run.
+      await Promise.resolve();
+      await Promise.resolve();
+      // Switch tours before the reply-lock fetch resolves.
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-b",
+        bundle: snapshotLostBundle("tour-b"),
+      });
+      // Now resolve tour-a's reply-lock.
+      resolveLock?.(lock);
+      await flush();
+
+      // Reply-lock for tour-a was dropped — tour-b's slice is still idle
+      // (from the tour-switched reset) modulo whatever the runtime's
+      // tour-b reply-lock fetch yields. Since we haven't supplied a lock
+      // for tour-b, it resolves to null after the fetch.
+      // The key assertion: the tour-a lock did NOT clobber tour-b state.
+      expect(store.getState().replyLock).not.toEqual({ kind: "ok", value: lock });
+      stop();
+    });
+  });
 });
