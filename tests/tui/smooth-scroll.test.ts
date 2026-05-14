@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // @opentui/core eagerly loads tree-sitter highlights `.scm` assets at
 // module-init, which esbuild can't transform under vitest. The smooth-
@@ -10,7 +10,6 @@ vi.mock("@opentui/core", () => ({
 
 import type { ScrollBoxRenderable } from "@opentui/core";
 import {
-  isSmoothScrollEnabled,
   animatedScrollTo,
   animatedScrollChildIntoView,
   animatedCenterChildInView,
@@ -183,38 +182,6 @@ function makeFakeScrollBox(opts: {
   };
   return sb;
 }
-
-const originalEnv = process.env.TOUR_TUI_SMOOTH_SCROLL;
-beforeEach(() => {
-  delete process.env.TOUR_TUI_SMOOTH_SCROLL;
-});
-afterEach(() => {
-  if (originalEnv === undefined) delete process.env.TOUR_TUI_SMOOTH_SCROLL;
-  else process.env.TOUR_TUI_SMOOTH_SCROLL = originalEnv;
-});
-
-describe("isSmoothScrollEnabled", () => {
-  it("returns false when TOUR_TUI_SMOOTH_SCROLL is unset", () => {
-    expect(isSmoothScrollEnabled({})).toBe(false);
-  });
-  it("returns true when TOUR_TUI_SMOOTH_SCROLL=1", () => {
-    expect(isSmoothScrollEnabled({ TOUR_TUI_SMOOTH_SCROLL: "1" })).toBe(true);
-  });
-  it("returns true when TOUR_TUI_SMOOTH_SCROLL=true", () => {
-    expect(isSmoothScrollEnabled({ TOUR_TUI_SMOOTH_SCROLL: "true" })).toBe(true);
-  });
-  it("returns false on other values", () => {
-    expect(isSmoothScrollEnabled({ TOUR_TUI_SMOOTH_SCROLL: "0" })).toBe(false);
-    expect(isSmoothScrollEnabled({ TOUR_TUI_SMOOTH_SCROLL: "off" })).toBe(false);
-    expect(isSmoothScrollEnabled({ TOUR_TUI_SMOOTH_SCROLL: "" })).toBe(false);
-  });
-  it("reads from process.env by default", () => {
-    process.env.TOUR_TUI_SMOOTH_SCROLL = "1";
-    expect(isSmoothScrollEnabled()).toBe(true);
-    delete process.env.TOUR_TUI_SMOOTH_SCROLL;
-    expect(isSmoothScrollEnabled()).toBe(false);
-  });
-});
 
 describe("animatedScrollTo", () => {
   it("no-ops when target equals current scrollTop", () => {

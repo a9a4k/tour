@@ -10,12 +10,10 @@ import {
 } from "./scroll-into-view.js";
 
 /**
- * Issue #294 Slice 1: animated smooth scroll for in-flight TUI cursor
- * navigation (`n`/`p`, `j`/`k`, click-to-position, keyboard
- * `select-file`). Gated behind the `TOUR_TUI_SMOOTH_SCROLL` env var
- * (default off) so the change can be dogfooded on tmux / SSH / varied
- * terminals before promotion to default. With the flag off, callers
- * fall back to the instant scroll path byte-for-byte.
+ * Animated smooth scroll for in-flight TUI cursor navigation (`n`/`p`,
+ * `j`/`k`, click-to-position, keyboard `select-file`) — issue #294
+ * shipped the implementation, issue #299 promoted it to the only path
+ * for `nearest` placement.
  *
  * The animation runs through OpenTUI's `createTimeline` engine, which
  * is already attached to the renderer's frame callback and manages live
@@ -34,20 +32,12 @@ import {
 export const SMOOTH_SCROLL_DEFAULT_DURATION_MS = 200;
 export const SMOOTH_SCROLL_DEFAULT_EASE: EasingFunctions = "outQuad";
 
-const FEATURE_FLAG_ENV = "TOUR_TUI_SMOOTH_SCROLL";
-
-/** Reads the feature-flag env var. `"1"` or `"true"` enables. */
-export function isSmoothScrollEnabled(env?: { [k: string]: string | undefined }): boolean {
-  const v = (env ?? process.env)[FEATURE_FLAG_ENV];
-  return v === "1" || v === "true";
-}
-
 export interface SmoothScrollOptions {
   duration?: number;
   ease?: EasingFunctions;
-  // `false` forces the instant write path even when the flag is on —
-  // used by callers that decide based on placement (e.g. fresh landings
-  // stay instant) without re-checking the env var themselves.
+  // `false` forces the instant write path — used by callers that have a
+  // standing reason to skip the tween (e.g. the post-submit retry-budget
+  // loop) without forcing the smooth path on every other caller.
   animate?: boolean;
   // Injection seam for tests. Defaults to `@opentui/core`'s
   // `createTimeline`. The real engine attaches to the renderer's frame
@@ -64,7 +54,7 @@ const inFlight = new WeakMap<object, Timeline>();
  * Animate `sb.scrollTop` from its current value to `targetTop` using
  * OpenTUI's Timeline engine. No-ops when already at target. Cancels any
  * prior in-flight tween on this scrollbox. With `animate: false`,
- * writes the target instantly.
+ * writes the target instantly (caller-level escape hatch).
  */
 export function animatedScrollTo(
   sb: ScrollBoxRenderable,

@@ -22,7 +22,7 @@ import {
   revealAndLocate,
 } from "../core/file-tree.js";
 import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
-import { animatedScrollChildIntoView, isSmoothScrollEnabled } from "./smooth-scroll.js";
+import { animatedScrollChildIntoView } from "./smooth-scroll.js";
 import { requestReply as runRequestReply } from "../core/reply-runner.js";
 
 // TUI substrate dependencies the adapter needs. The renderer-bound
@@ -70,8 +70,8 @@ export function createTuiTourSessionAdapter(
   // Issue #296: placement-driven helper choice, anchor-kind-agnostic.
   // `center` → instant frame (fresh landings: cursor materialize, URL
   // restore, tour-switch, send-to-agent recall). `nearest` → in-flight
-  // navigation (`j`/`k`/`n`/`p`/click-to-position), animated when the
-  // smooth-scroll flag is on (issue #294 Slice 1) and instant otherwise.
+  // navigation (`j`/`k`/`n`/`p`/click-to-position), always animated
+  // (issue #299 retired the `TOUR_TUI_SMOOTH_SCROLL` env-var gate).
   function scrollByPlacement(
     sb: ScrollBoxRenderable,
     targetId: string,
@@ -79,10 +79,8 @@ export function createTuiTourSessionAdapter(
   ): void {
     if (mode === "center") {
       centerChildInView(sb, targetId);
-    } else if (isSmoothScrollEnabled()) {
-      animatedScrollChildIntoView(sb, targetId);
     } else {
-      scrollChildIntoView(sb, targetId);
+      animatedScrollChildIntoView(sb, targetId);
     }
   }
 

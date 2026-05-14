@@ -95,7 +95,6 @@ import { scrollChildIntoView } from "./scroll-into-view.js";
 import {
   animatedScrollChildIntoView,
   animatedScrollTo,
-  isSmoothScrollEnabled,
 } from "./smooth-scroll.js";
 import { buildRowYResolver } from "./row-y-resolver.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
@@ -507,8 +506,7 @@ function App(props: AppProps) {
         ? `annotation-${cursor.annotationId}`
         : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
     const handle = setTimeout(() => {
-      if (isSmoothScrollEnabled()) animatedScrollChildIntoView(sb, targetId);
-      else scrollChildIntoView(sb, targetId);
+      animatedScrollChildIntoView(sb, targetId);
     }, 0);
     return (): void => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -892,9 +890,8 @@ function App(props: AppProps) {
       // (default false). Per the brief, sidebar mouse-click on a file is a
       // random-access jump that would slog under animation; keyboard select-
       // file is the in-flight cursor gesture that benefits from smooth motion.
-      const animate = opts.animate === true && isSmoothScrollEnabled();
       const targetId = `file-card-${filePath}`;
-      if (animate) animatedScrollChildIntoView(diffScrollRef.current, targetId);
+      if (opts.animate === true) animatedScrollChildIntoView(diffScrollRef.current, targetId);
       else scrollChildIntoView(diffScrollRef.current, targetId);
     }
     dispatchCursor(cursorAtFirstFileRow(filePath, flatRowsList));
@@ -1274,13 +1271,12 @@ function App(props: AppProps) {
         );
         dispatchCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {
-          // Issue #294 Slice 1: j/k crossing the edge margin tweens the
-          // one-row shift when the smooth-scroll flag is on. The cursor-
-          // follow useEffect's block:nearest scroll is a no-op for j/k
-          // (the new row sits at the edge, already in viewport), so this
-          // direct scroll is the only animation hook for the gesture.
-          if (isSmoothScrollEnabled()) animatedScrollTo(sb, result.scrollTop);
-          else sb.scrollTo(result.scrollTop);
+          // Issue #294 Slice 1 / #299: j/k crossing the edge margin tweens
+          // the one-row shift. The cursor-follow useEffect's block:nearest
+          // scroll is a no-op for j/k (the new row sits at the edge,
+          // already in viewport), so this direct scroll is the only
+          // animation hook for the gesture.
+          animatedScrollTo(sb, result.scrollTop);
         }
         return;
       }

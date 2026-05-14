@@ -1,13 +1,21 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // `@opentui/core` eagerly loads tree-sitter grammar `.scm` assets at
 // module-init, which esbuild can't transform under vitest. The adapter
 // only needs the renderable's interface; the smooth-scroll module's
-// `createTimeline` is the only concrete dependency on `@opentui/core`,
-// and the tests below disable the smooth-scroll flag so the animated
-// path never instantiates a timeline.
+// `createTimeline` is the only concrete dependency on `@opentui/core`.
+// The `createTimelineSpy` hoisted spy lets nearest-placement tests assert
+// the animated path was taken (timeline was instantiated) without
+// driving the tween — the stub `add` is a no-op so `sb.scrollTop` is
+// never written under the stub.
+const { createTimelineSpy } = vi.hoisted(() => ({
+  createTimelineSpy: vi.fn(),
+}));
 vi.mock("@opentui/core", () => ({
-  createTimeline: () => ({ add: () => ({}), pause: () => ({}), play: () => ({}) }),
+  createTimeline: (opts?: { autoplay?: boolean }) => {
+    createTimelineSpy(opts);
+    return { add: () => ({}), pause: () => ({}), play: () => ({}) };
+  },
 }));
 
 import type { ScrollBoxRenderable } from "@opentui/core";
@@ -97,13 +105,8 @@ async function flushMacrotask(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-const originalEnv = process.env.TOUR_TUI_SMOOTH_SCROLL;
 beforeEach(() => {
-  delete process.env.TOUR_TUI_SMOOTH_SCROLL;
-});
-afterEach(() => {
-  if (originalEnv === undefined) delete process.env.TOUR_TUI_SMOOTH_SCROLL;
-  else process.env.TOUR_TUI_SMOOTH_SCROLL = originalEnv;
+  createTimelineSpy.mockClear();
 });
 
 // Issue #296: the TUI cursor-scroll path used to live in a surface-side
@@ -113,10 +116,15 @@ afterEach(() => {
 // (`"nearest"` for in-flight `n`/`p`/`j`/`k`/click, `"center"` for fresh
 // landings — materialize / URL restore / send-to-agent recall). The migration
 // moves the choice from anchor kind to `placement`, anchor-kind-agnostic
-// across both surfaces. These tests pin the adapter's placement → scroll-
-// helper mapping for both card and row targets.
+// across both surfaces.
+//
+// Issue #299 retired the `TOUR_TUI_SMOOTH_SCROLL` env var: the `nearest`
+// branch now always animates via `animatedScrollChildIntoView` (which
+// instantiates a `createTimeline` via `@opentui/core`). These tests pin
+// the adapter's placement → scroll-helper mapping: `center` →
+// `sb.scrollTo` (instant); `nearest` → animated path (timeline created).
 
-describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper choice (Issue #296)", () => {
+describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper choice", () => {
   it("placement: 'center' calls centerChildInView (sb.scrollTo) on the card", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
@@ -129,9 +137,10 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
     await flushMacrotask();
     expect(sb.scrollTo).toHaveBeenCalledTimes(1);
     expect(sb.scrollBy).not.toHaveBeenCalled();
+    expect(createTimelineSpy).not.toHaveBeenCalled();
   });
 
-  it("placement: 'nearest' calls scrollChildIntoView (sb.scrollBy) on the off-viewport card", async () => {
+  it("placement: 'nearest' takes the animated path (timeline instantiated) on the off-viewport card", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
       scrollTop: 0,
@@ -141,12 +150,13 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
     const adapter = makeAdapter(sb);
     adapter.scrollToCard("ann1", "nearest");
     await flushMacrotask();
-    expect(sb.scrollBy).toHaveBeenCalledTimes(1);
+    expect(createTimelineSpy).toHaveBeenCalledTimes(1);
     expect(sb.scrollTo).not.toHaveBeenCalled();
+    expect(sb.scrollBy).not.toHaveBeenCalled();
   });
 });
 
-describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper choice (Issue #296)", () => {
+describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper choice", () => {
   it("placement: 'center' centers the row (sb.scrollTo) — matches the webapp's center semantics", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
@@ -162,9 +172,10 @@ describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper ch
     await flushMacrotask();
     expect(sb.scrollTo).toHaveBeenCalledTimes(1);
     expect(sb.scrollBy).not.toHaveBeenCalled();
+    expect(createTimelineSpy).not.toHaveBeenCalled();
   });
 
-  it("placement: 'nearest' nearest-scrolls the row (sb.scrollBy) on an off-viewport row", async () => {
+  it("placement: 'nearest' takes the animated path (timeline instantiated) on an off-viewport row", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
       scrollTop: 0,
@@ -177,8 +188,9 @@ describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper ch
       "nearest",
     );
     await flushMacrotask();
-    expect(sb.scrollBy).toHaveBeenCalledTimes(1);
+    expect(createTimelineSpy).toHaveBeenCalledTimes(1);
     expect(sb.scrollTo).not.toHaveBeenCalled();
+    expect(sb.scrollBy).not.toHaveBeenCalled();
   });
 });
 
