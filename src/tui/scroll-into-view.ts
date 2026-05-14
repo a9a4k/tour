@@ -88,6 +88,38 @@ export function computeCenterChildScrollTop(
 }
 
 /**
+ * Pixel-position probe for the footer-hint "is the card in view" check
+ * (issue #302). Resolves the child's rendered Y range and intersects
+ * it with the scrollbox's viewport rect. Returns:
+ *
+ *   `"in"`    — the child's box intersects the viewport rect (including
+ *               partial overlap at either edge).
+ *   `"above"` — the child's bottom is at or above the viewport top.
+ *   `"below"` — the child's top is at or below the viewport bottom.
+ *   `null`    — the descendant isn't in the tree (pre-mount, or under
+ *               viewport culling the subtree is detached). The caller
+ *               should omit any direction-hint suffix in that case.
+ *
+ * Uses the same `refreshLayoutChain` path as the scroll-into-view
+ * helpers, so it's safe under `viewportCulling={true}`.
+ */
+export function computeCardViewportPosition(
+  sb: ScrollBoxRenderable,
+  childId: string,
+): "in" | "above" | "below" | null {
+  const target = sb.content.findDescendantById(childId);
+  if (!target) return null;
+  refreshLayoutChain(target, sb.content);
+  const childTop = target.y;
+  const childBottom = target.y + target.height;
+  const viewportTop = sb.viewport.y;
+  const viewportBottom = sb.viewport.y + sb.viewport.height;
+  if (childBottom <= viewportTop) return "above";
+  if (childTop >= viewportBottom) return "below";
+  return "in";
+}
+
+/**
  * Replacement for `ScrollBoxRenderable.scrollChildIntoView` that is
  * safe under `viewportCulling={true}` — refreshes the target's
  * ancestor chain before applying opentui's `block:"nearest"` math.

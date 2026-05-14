@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { centerChildInView, scrollChildIntoView } from "../../src/tui/scroll-into-view.js";
+import {
+  centerChildInView,
+  computeCardViewportPosition,
+  scrollChildIntoView,
+} from "../../src/tui/scroll-into-view.js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 
 type FakeNode = {
@@ -232,5 +236,129 @@ describe("scrollChildIntoView", () => {
     });
     scrollChildIntoView(sb as unknown as ScrollBoxRenderable, "target");
     expect(refreshOrder).toEqual(["content", "file", "child"]);
+  });
+});
+
+// Issue #302: the footer-hint "is the card in view" probe was driven by
+// a uniform-row-height index approximation (`avg = scrollHeight / rows`)
+// that mis-reports tall annotation cards as off-screen whenever the
+// prefix is enriched with already-passed cards. The fix is a true
+// pixel-position probe: ask the scrollbox for the rendered card's
+// layout box and intersect it with the viewport rect. The helper
+// shares the same culling-safe layout-refresh path as the other
+// scroll-into-view primitives.
+describe("computeCardViewportPosition", () => {
+  it("returns `\"in\"` when the child's box intersects the viewport rect", () => {
+    // viewport [50, 70). child [60, 64). Fully inside.
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 60,
+      freshChildHeight: 4,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
+    expect(out).toBe("in");
+  });
+
+  it("returns `\"above\"` when the child sits entirely above the viewport top", () => {
+    // viewport [50, 70). child [40, 44). Entirely above.
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 40,
+      freshChildHeight: 4,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
+    expect(out).toBe("above");
+  });
+
+  it("returns `\"below\"` when the child sits entirely below the viewport bottom", () => {
+    // viewport [50, 70). child [80, 84). Entirely below.
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 80,
+      freshChildHeight: 4,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
+    expect(out).toBe("below");
+  });
+
+  it("returns `\"in\"` when the child straddles the viewport top (partially in view)", () => {
+    // viewport [50, 70). child [48, 54). Partially in view at the top.
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 48,
+      freshChildHeight: 6,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
+    expect(out).toBe("in");
+  });
+
+  it("returns `\"in\"` when the child straddles the viewport bottom (partially in view)", () => {
+    // viewport [50, 70). child [66, 74). Partially in view at the bottom.
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 66,
+      freshChildHeight: 8,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
+    expect(out).toBe("in");
+  });
+
+  it("returns null when the descendant isn't found (pre-mount / culled)", () => {
+    const { sb } = makeFakeScrollbox({
+      viewportY: 0,
+      viewportHeight: 20,
+      scrollTop: 0,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 0,
+      freshChildHeight: 0,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "missing");
+    expect(out).toBeNull();
+  });
+
+  it("refreshes the ancestor chain top-down before reading positions (culling-safe)", () => {
+    // Without the refresh, stale child.y (0) would land "above" viewport
+    // [50, 70). After the refresh, child.y = 60 lands "in" — the fresh
+    // value is what we want.
+    const { sb, refreshOrder } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 4,
+      freshChildY: 60,
+      freshChildHeight: 4,
+    });
+    const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
+    expect(refreshOrder).toEqual(["content", "file", "child"]);
+    expect(out).toBe("in");
   });
 });

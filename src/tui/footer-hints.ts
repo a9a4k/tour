@@ -46,15 +46,22 @@ function truncateTitle(s: string): string {
 export interface FooterPreviewOptions {
   cursor: Cursor | null;
   annotations: ReadonlyArray<Annotation>;
-  /** Index range of the visible viewport in the flat-row stream, half-
-   *  open `[start, end)`. The cursor's row index is compared to this so
-   *  off-screen direction can be appended. When unknown, leave undefined
-   *  — the function omits the direction suffix. */
-  viewportRange?: { start: number; end: number };
-  /** Index of the cursor in the flat-row stream, or -1 when unresolved.
-   *  Computed by the caller (`resolveCursorRowIdx`) so this helper stays
-   *  pure and doesn't need the flat-row array. */
-  cursorRowIdx?: number;
+  /**
+   * The rendered card's position relative to the diff scrollbox's
+   * viewport rect — `"in"` when the card's box intersects the
+   * viewport (including partial overlap), `"above"` / `"below"` when
+   * it sits entirely outside. Undefined when the probe couldn't
+   * resolve (pre-mount, or descendant culled): the helper omits the
+   * direction suffix in that case.
+   *
+   * Issue #302: this replaces the prior `viewportRange` /
+   * `cursorRowIdx` pair, which used a uniform-row-height index
+   * approximation (`avg = scrollHeight / rows`) that mis-reports
+   * visible cards as off-screen whenever tall cards skew prefix
+   * density. The probe is computed at the App-shell call site via
+   * `computeCardViewportPosition` against the rendered card's Y range.
+   */
+  cardViewportPosition?: "in" | "above" | "below";
 }
 
 /**
@@ -71,7 +78,7 @@ export interface FooterPreviewOptions {
  * already a labelled no-op so the user knows nothing will happen.
  */
 export function composeFooterPreview(opts: FooterPreviewOptions): string {
-  const { cursor, annotations, viewportRange, cursorRowIdx } = opts;
+  const { cursor, annotations, cardViewportPosition } = opts;
   if (!cursor || cursor.kind !== "card") {
     return `r: — (no annotation under cursor)`;
   }
@@ -79,14 +86,7 @@ export function composeFooterPreview(opts: FooterPreviewOptions): string {
   if (!ann) return `r: — (no annotation under cursor)`;
   const title = truncateTitle(ann.body);
   const base = `r: reply to "${title}"`;
-  if (
-    viewportRange === undefined ||
-    cursorRowIdx === undefined ||
-    cursorRowIdx === -1
-  ) {
-    return base;
-  }
-  if (cursorRowIdx < viewportRange.start) return `${base}  (cursor ↑ above viewport)`;
-  if (cursorRowIdx >= viewportRange.end) return `${base}  (cursor ↓ below viewport)`;
+  if (cardViewportPosition === "above") return `${base}  (cursor ↑ above viewport)`;
+  if (cardViewportPosition === "below") return `${base}  (cursor ↓ below viewport)`;
   return base;
 }
