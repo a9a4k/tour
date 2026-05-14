@@ -714,11 +714,10 @@ describe("FILE_GRID_CSS — annotate `+` button (#320)", () => {
     );
   });
 
-  it("hides the button by default (display: none) and reveals on row hover", () => {
+  it("hides the button by default (display: none)", () => {
     expect(FILE_GRID_CSS).toMatch(
       /\.tour-row-annotate-btn\s*\{[^}]*display:\s*none/i,
     );
-    expect(FILE_GRID_CSS).toContain(".tour-row:hover .tour-row-annotate-btn");
   });
 
   it("reveals the button on the cursored side via :has() selector", () => {
@@ -733,6 +732,51 @@ describe("FILE_GRID_CSS — annotate `+` button (#320)", () => {
   it("paints the ghost state when [data-composer-open] is set on an ancestor", () => {
     expect(FILE_GRID_CSS).toMatch(
       /\[data-composer-open\]\s+\.tour-row-annotate-btn\s*\{[^}]*opacity:\s*0\.4/i,
+    );
+  });
+});
+
+describe("FILE_GRID_CSS — annotate `+` button per-side hover (#325)", () => {
+  // Pre-#325 the hover-reveal rule was row-scoped:
+  //   .tour-row:hover .tour-row-annotate-btn { display: inline-flex; }
+  // The descendant combinator matched every `.tour-row-annotate-btn` inside
+  // the row, so hovering anywhere on a split-layout row revealed BOTH
+  // gutters' buttons. The cursor-side reveal rules were already correctly
+  // per-side via :has(.tour-row-cell[data-side="X"].is-cursor); only the
+  // hover branch regressed. The fix scopes hover via :has() on a
+  // [data-side="X"]:hover descendant, so only the side under the cursor
+  // reveals its button.
+
+  it("does NOT use the row-scoped .tour-row:hover descendant selector for reveal", () => {
+    // Pin the regression: the row-scoped selector is the bug (#325).
+    expect(FILE_GRID_CSS).not.toContain(".tour-row:hover .tour-row-annotate-btn");
+  });
+
+  it("reveals only the additions-side button when an additions-side cell is hovered", () => {
+    // The :has() target list covers gutter / symbol / cell on the additions
+    // side; the matched gutter is `[data-side="additions"]` so only its
+    // descendant button reveals. Button-hover bubbles up to gutter-hover
+    // naturally (button is a descendant of gutter).
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-cell\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-gutter\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-symbol\[data-side="additions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="additions"\][^{]*\.tour-row-annotate-btn/,
+    );
+  });
+
+  it("reveals only the deletions-side button when a deletions-side cell is hovered", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-cell\[data-side="deletions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="deletions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-gutter\[data-side="deletions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="deletions"\][^{]*\.tour-row-annotate-btn/,
+    );
+    expect(FILE_GRID_CSS).toMatch(
+      /:has\([^)]*\.tour-row-symbol\[data-side="deletions"\]:hover[^)]*\)[^{]*\.tour-row-gutter\[data-side="deletions"\][^{]*\.tour-row-annotate-btn/,
     );
   });
 });

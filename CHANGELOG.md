@@ -78,6 +78,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp annotate `+` button: per-side hover reveal in split layout
+  (issue #325, #320 follow-up).** The hover-reveal rule was row-scoped
+  (`.tour-row:hover .tour-row-annotate-btn`), so the descendant
+  combinator matched every `.tour-row-annotate-btn` inside the hovered
+  row — and in split layout that's two buttons, one per gutter.
+  Hovering anywhere on a row revealed both `+`s simultaneously, against
+  the locked per-side semantics from PRD #320's prototype phase and
+  against GitHub's actual behaviour. The cursor-side reveal was already
+  correctly side-scoped via `:has(.tour-row-cell[data-side="X"]
+  .is-cursor)`; only the hover branch regressed. The fix scopes hover
+  via `:has()` on a `[data-side]:hover` descendant — the gutter, symbol,
+  and code cell on each half all carry `data-side`, so any of them
+  under the pointer selects only that side's gutter + button. The
+  button itself has no `data-side` but lives inside the gutter, so
+  button-hover bubbles to gutter-hover and the rule keeps firing while
+  the pointer sits on the button. Unified layout is unaffected (a
+  single side per row). Ghost state inherits the same per-side reveal
+  selectors via the `[data-composer-open]` attribute on `<html>`.
+
+  Issue: #325
+
 - **Webapp Composer auto-recall: unfold the anchor file before scrolling
   (issue #324, #320 follow-up).** When a Composer was open and the
   reviewer clicked a ghost `+` button while the in-flight Composer's
