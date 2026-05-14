@@ -81,20 +81,16 @@ export function createTuiTourSessionAdapter(
     fetchReplyLock: (id) => deps.loadReplyLock(id),
     writeAnnotation: (tourId, input) => deps.writeAnnotation(tourId, input),
     requestReply: async ({ tourId, annotationId }) => {
-      // Fire-and-forget dispatch. The watcher's reply-* events drive the
-      // in-flight pill and the landed Reply Annotation; the adapter swallows
-      // transient transport errors. PRD #278 slice 7.
+      // No-op when `--reply-agent` wasn't passed, mirroring `core/reply-
+      // runner`'s `no-reply-agent` seam. Rejections propagate; the runtime's
+      // intent listener owns the fire-and-forget catch. PRD #278 slice 7.
       if (!deps.replyAgent) return;
-      try {
-        await runRequestReply({
-          cwd: deps.cwd,
-          tourId,
-          annotationId,
-          agent: deps.replyAgent,
-        });
-      } catch {
-        // transient — the watcher's reload surfaces any state change
-      }
+      await runRequestReply({
+        cwd: deps.cwd,
+        tourId,
+        annotationId,
+        agent: deps.replyAgent,
+      });
     },
     subscribeTourEvents: (tourId, handler: TourEventHandler) => {
       const watcher = new TourWatcher(deps.cwd, tourId);

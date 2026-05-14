@@ -68,18 +68,14 @@ export function createWebTourSessionAdapter(
       return (await res.json()) as Annotation;
     },
     requestReply: async ({ tourId, annotationId }) => {
-      // Fire-and-forget POST. The SSE `reply-in-flight` / `reply-cleared`
-      // events drive the in-flight pill; transport errors are silent here.
-      // PRD #278 slice 7.
-      try {
-        await fetch(`/api/tours/${tourId}/request-reply`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ annotation_id: annotationId }),
-        });
-      } catch {
-        // Network transient — watcher events stay the source of truth.
-      }
+      // SSE `reply-in-flight` / `reply-cleared` events drive the in-flight
+      // pill; network rejections propagate to the runtime's fire-and-forget
+      // catch. PRD #278 slice 7.
+      await fetch(`/api/tours/${tourId}/request-reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ annotation_id: annotationId }),
+      });
     },
     subscribeTourEvents: (tourId, handler: TourEventHandler) => {
       const evtSource = new EventSource(`/api/tours/${tourId}/events`);
