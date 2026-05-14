@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import {
+  fileExpandableGapCount,
   fileHasHiddenGap,
   hunkHeaderExpandPlan,
   planRows,
@@ -1492,5 +1493,261 @@ index 1..2 100644
     const file = parseFile(noTopOrMidGap);
     const newContent = ["new", "tail1", "tail2"].join("\n") + "\n";
     expect(fileHasHiddenGap(file, undefined, newContent)).toBe(true);
+  });
+});
+
+// Issue #298: the file-header chrome `↕` Expand-all affordance renders
+// iff the file has ≥ 2 distinct expandable gaps. A single-gap file is
+// already covered by its per-hunk banner button (or standalone
+// expand-down for file-bottom); showing the chrome would stack a
+// redundant second `↕`. The new pure helper counts the gaps that still
+// have hidden content after current expansion.
+describe("fileExpandableGapCount (issue #298)", () => {
+  const TWO_HUNK_WITH_TWO_GAPS = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,3 +5,3 @@
+ ctx5
+-old5
++new5
+ ctx6
+@@ -14,2 +14,2 @@
+ ctx14
+-old14
++new14
+`;
+
+  const NEW_CONTENT_TWO_GAPS =
+    [
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "ctx5",
+      "new5",
+      "ctx6",
+      "g8",
+      "g9",
+      "g10",
+      "g11",
+      "g12",
+      "g13",
+      "ctx14",
+      "new14",
+      "ctx15",
+    ].join("\n") + "\n";
+
+  it("returns 0 when the file has no hunks", () => {
+    const noHunks: FileDiffMetadata = {
+      name: "x.txt",
+      type: "modified",
+      hunks: [],
+      additionLines: [],
+      deletionLines: [],
+    } as unknown as FileDiffMetadata;
+    expect(fileExpandableGapCount(noHunks, undefined, undefined)).toBe(0);
+  });
+
+  it("returns 0 for a one-hunk file with no hidden content (hunk covers whole file)", () => {
+    const noGap = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,4 @@
+ ctx
+-old
++new
++added
+`;
+    const file = parseFile(noGap);
+    // newContent has 4 lines, hunk covers 1..4 → no file-bottom gap.
+    const newContent = ["ctx", "new", "added", "tail-but-also-in-hunk"].slice(0, 3).join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(0);
+  });
+
+  it("returns 1 for a one-hunk file with hidden content above only", () => {
+    const aboveOnly = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,3 +5,3 @@
+ ctx5
+-old5
++new5
+ ctx6
+`;
+    const file = parseFile(aboveOnly);
+    // newContent: 7 lines total, hunk covers 5..7 → no file-bottom gap;
+    // file-top gap = 4 lines (1..4).
+    const newContent = ["h1", "h2", "h3", "h4", "ctx5", "new5", "ctx6"].join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(1);
+  });
+
+  it("returns 1 for a one-hunk file with hidden content below only", () => {
+    const belowOnly = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old2
++new2
+ ctx3
+`;
+    const file = parseFile(belowOnly);
+    // hunk covers lines 1..3; newContent has 5 lines → file-bottom gap = 2.
+    const newContent = ["ctx1", "new2", "ctx3", "tail4", "tail5"].join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(1);
+  });
+
+  it("returns 2 for a one-hunk file with hidden content above AND below", () => {
+    const aboveAndBelow = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,3 +5,3 @@
+ ctx5
+-old5
++new5
+ ctx6
+`;
+    const file = parseFile(aboveAndBelow);
+    // file-top gap = 4 (lines 1..4); hunk covers 5..7; file-bottom gap = 3 (lines 8..10).
+    const newContent =
+      ["h1", "h2", "h3", "h4", "ctx5", "new5", "ctx6", "t8", "t9", "t10"].join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(2);
+  });
+
+  it("returns 1 for two adjacent hunks (between-gap = 0) with no other hidden content", () => {
+    const twoAdjacent = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,3 +5,3 @@
+ ctx5
+-old5
++new5
+ ctx6
+@@ -8,2 +8,2 @@
+-old8
++new8
+ ctx9
+`;
+    const file = parseFile(twoAdjacent);
+    // file-top gap = 4 (lines 1..4); hunks cover 5..9; no file-bottom gap.
+    const newContent =
+      ["h1", "h2", "h3", "h4", "ctx5", "new5", "ctx6", "new8", "ctx9"].join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(1);
+  });
+
+  it("returns 1 for two hunks with hidden content only between them (no top / bottom gap)", () => {
+    const onlyMidGap = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old2
++new2
+ ctx3
+@@ -14,2 +14,2 @@
+ ctx14
+-old14
++new14
+`;
+    const file = parseFile(onlyMidGap);
+    // file-top gap = 0; mid gap (4..13) = 10; file-bottom gap = 0 — last
+    // hunk covers 14..15 and newContent has exactly 15 lines.
+    const newContent =
+      [
+        "ctx1",
+        "new2",
+        "ctx3",
+        "g4",
+        "g5",
+        "g6",
+        "g7",
+        "g8",
+        "g9",
+        "g10",
+        "g11",
+        "g12",
+        "g13",
+        "ctx14",
+        "new14",
+      ].join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(1);
+  });
+
+  it("returns 2 for two hunks with hidden content between AND a file-top gap", () => {
+    const file = parseFile(TWO_HUNK_WITH_TWO_GAPS);
+    // file-top gap = 4 (lines 1..4); mid gap (8..13) = 6; file-bottom = 1 (line 16).
+    expect(fileExpandableGapCount(file, undefined, NEW_CONTENT_TWO_GAPS)).toBe(3);
+  });
+
+  it("returns 3 for three+ hunks with multiple gaps", () => {
+    const threeHunks = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,1 +5,1 @@
+-old5
++new5
+@@ -20,1 +20,1 @@
+-old20
++new20
+@@ -40,1 +40,1 @@
+-old40
++new40
+`;
+    const file = parseFile(threeHunks);
+    // file-top gap = 4 (1..4); mid 1 = 14 (6..19); mid 2 = 19 (21..39);
+    // file-bottom: newContent has 45 lines → 5 (41..45). All four gaps present.
+    const lines: string[] = [];
+    for (let i = 1; i <= 45; i++) {
+      if (i === 5) lines.push("new5");
+      else if (i === 20) lines.push("new20");
+      else if (i === 40) lines.push("new40");
+      else lines.push(`l${i}`);
+    }
+    const newContent = lines.join("\n") + "\n";
+    expect(fileExpandableGapCount(file, undefined, newContent)).toBe(4);
+  });
+
+  it("drops back to 1 after partial expansion fully reveals one of two gaps", () => {
+    const file = parseFile(TWO_HUNK_WITH_TWO_GAPS);
+    // Starts at 3 gaps (top/mid/bottom). Saturate the file-top gap by
+    // expanding 4 lines from the file-top boundary's `down` side.
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map<number | "top" | "bottom", { up: number; down: number }>([
+            ["top", { up: 0, down: 4 }],
+          ]),
+        },
+      ],
+    ]);
+    expect(fileExpandableGapCount(file, expansion, NEW_CONTENT_TWO_GAPS)).toBe(2);
+  });
+
+  it("drops to 0 once every gap is saturated", () => {
+    const file = parseFile(TWO_HUNK_WITH_TWO_GAPS);
+    const expansion = new Map([
+      [
+        "x.txt",
+        {
+          fileExpanded: false,
+          boundaries: new Map<number | "top" | "bottom", { up: number; down: number }>([
+            ["top", { up: 0, down: 4 }],
+            [1, { up: 3, down: 3 }],
+            ["bottom", { up: 0, down: 1 }],
+          ]),
+        },
+      ],
+    ]);
+    expect(fileExpandableGapCount(file, expansion, NEW_CONTENT_TWO_GAPS)).toBe(0);
   });
 });

@@ -30,6 +30,7 @@ import {
   planRows,
   GAP_TWO_ROW_THRESHOLD,
   hunkHeaderExpandPlan,
+  fileExpandableGapCount,
   type PlannedRow,
 } from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
@@ -308,6 +309,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (!bundle || bundle.kind !== "ok") return [];
     return parseFileDiffMetadata(bundle.diff);
   }, [bundle]);
+  // Name-keyed lookup so the per-file Expand-all chrome gate (issue
+  // #298) can call `fileExpandableGapCount(meta, expansion, newContent)`
+  // in O(1) per render-pass file.
+  const parsedFilesByName = useMemo<ReadonlyMap<string, FileDiffMetadata>>(() => {
+    const m = new Map<string, FileDiffMetadata>();
+    for (const f of parsedFiles) m.set(f.name, f);
+    return m;
+  }, [parsedFiles]);
 
   const revealFileAncestors = useCallback(
     (filePath: string) => {
@@ -1214,6 +1223,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               {Array.from(view.rows.plannedRowsByFile, ([fileName, rows]) => {
                 const bf = view.bundle.filesByName.get(fileName);
                 if (!bf) return null;
+                // Issue #298: the file-header chrome `↕` button shows
+                // iff the file has ≥ 2 distinct expandable gaps. With
+                // ≤ 1 gap the per-hunk banner button (or standalone
+                // expand-down for file-bottom) is exactly sufficient.
+                const meta = parsedFilesByName.get(fileName);
+                const hasMultipleHiddenGaps =
+                  meta !== undefined &&
+                  fileExpandableGapCount(meta, expansion, bf.newContent) >= 2;
                 const topLevelComposer =
                   composerTarget &&
                   composerTarget.kind === "top-level" &&
@@ -1265,6 +1282,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                     }}
                     isCollapsed={isCollapsed(fileName)}
                     onToggleCollapse={() => toggleCollapsed(fileName)}
+                    hasMultipleHiddenGaps={hasMultipleHiddenGaps}
                     composerAnchor={composerAnchor}
                     composerSlot={composerSlot}
                   />

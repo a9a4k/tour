@@ -430,12 +430,32 @@ export function fileHasHiddenGap(
   expansion: ExpansionState | undefined,
   newContent: string | undefined,
 ): boolean {
+  return fileExpandableGapCount(file, expansion, newContent) > 0;
+}
+
+/** Count of distinct expandable gaps remaining in `file` after applying
+ *  `expansion`. A *gap* is a contiguous run of hidden lines bounded by a
+ *  file edge or a hunk: file-top (above first hunk), mid-file (between
+ *  adjacent hunks), and file-bottom (after last hunk). Each contributes
+ *  +1 to the count iff its remaining size (`gap.size - up - down`) is
+ *  strictly positive.
+ *
+ *  Issue #298: the file-header chrome `↕` Expand-all affordance renders
+ *  iff `gapCount >= 2`. With ≤ 1 gap, the per-hunk banner button (or
+ *  standalone `expand-down` row for file-bottom) is exactly sufficient
+ *  and the chrome affordance would be a redundant second `↕`. */
+export function fileExpandableGapCount(
+  file: FileDiffMetadata,
+  expansion: ExpansionState | undefined,
+  newContent: string | undefined,
+): number {
   const opts: PlanRowsOptions = { expansion };
+  let count = 0;
   for (let hunkIndex = 0; hunkIndex < file.hunks.length; hunkIndex++) {
     const isFirst = hunkIndex === 0;
     const sep = expansionFor(opts, file.name, isFirst ? "top" : hunkIndex);
     const gap = gapBefore(file, hunkIndex);
-    if (gap.size - sep.up - sep.down > 0) return true;
+    if (gap.size - sep.up - sep.down > 0) count++;
   }
   const newLineCount = newContent !== undefined ? splitLines(newContent).length : 0;
   if (file.hunks.length > 0 && newLineCount > 0) {
@@ -444,10 +464,10 @@ export function fileHasHiddenGap(
     if (lastAdditionEnd < newLineCount) {
       const bot = expansionFor(opts, file.name, "bottom");
       const gapSize = newLineCount - lastAdditionEnd;
-      if (gapSize - bot.up - bot.down > 0) return true;
+      if (gapSize - bot.up - bot.down > 0) count++;
     }
   }
-  return false;
+  return count;
 }
 
 /** Per-direction expansion step (N). The two-row threshold is 2N. Matches

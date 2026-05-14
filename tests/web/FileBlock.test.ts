@@ -144,6 +144,9 @@ function defaultProps(overrides: Partial<Parameters<typeof FileBlock>[0]> = {}) 
     onCardClick: () => {},
     isCollapsed: false,
     onToggleCollapse: () => {},
+    // Issue #298 default: tests opt in to the chrome by passing the
+    // flag explicitly; the off-path is the new common case.
+    hasMultipleHiddenGaps: true,
     ...overrides,
   };
 }
@@ -393,12 +396,13 @@ describe("<FileBlock> — GitHub-style header chrome (#225)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Per-file Expand-all-hidden button (PRD #270 / issue #274 — Slice 4)
+// Per-file Expand-all-hidden button (PRD #270 / issue #274 — Slice 4;
+// gated to ≥ 2 hidden gaps per issue #298)
 // ---------------------------------------------------------------------------
 
-describe("<FileBlock> — per-file Expand-all-hidden button (#274)", () => {
-  it("renders a chrome button with the documented aria-label between diff-stats and copy-path", () => {
-    const c = mount(createElement(FileBlock, defaultProps()));
+describe("<FileBlock> — per-file Expand-all-hidden button (#274 / #298)", () => {
+  it("renders a chrome button with the documented aria-label between diff-stats and copy-path (when hasMultipleHiddenGaps)", () => {
+    const c = mount(createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: true })));
     const right = c.querySelector(".tour-file-header-right") as HTMLElement;
     expect(right).not.toBeNull();
     const expandButton = right.querySelector(".tour-file-expand-all-button") as HTMLButtonElement;
@@ -456,6 +460,24 @@ describe("<FileBlock> — per-file Expand-all-hidden button (#274)", () => {
     const button = c.querySelector(".tour-file-expand-all-button") as HTMLButtonElement;
     // The button contains visible text content (the up/down arrow glyph).
     expect((button.textContent ?? "").trim().length).toBeGreaterThan(0);
+  });
+
+  // Issue #298: with ≤ 1 hidden gap the chrome `↕` is redundant with
+  // the per-hunk banner button (or standalone expand-down for file-
+  // bottom). Suppress the chrome cell entirely in that case so the
+  // header doesn't stack two `↕` affordances at the top of the file.
+  it("does NOT render the chrome button when hasMultipleHiddenGaps is false (issue #298)", () => {
+    const c = mount(
+      createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: false })),
+    );
+    expect(c.querySelector(".tour-file-expand-all-button")).toBeNull();
+  });
+
+  it("re-renders the chrome button when hasMultipleHiddenGaps flips false → true", () => {
+    mount(createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: false })));
+    expect(container.querySelector(".tour-file-expand-all-button")).toBeNull();
+    rerender(createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: true })));
+    expect(container.querySelector(".tour-file-expand-all-button")).not.toBeNull();
   });
 });
 

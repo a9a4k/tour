@@ -13,7 +13,7 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { planRows, hunkHeaderExpandPlan, fileHasHiddenGap } from "../core/diff-rows.js";
+import { planRows, hunkHeaderExpandPlan, fileExpandableGapCount } from "../core/diff-rows.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
@@ -811,8 +811,8 @@ function App(props: AppProps) {
   // by issue #297. Walk every boundary in the file (file-top, mid-file
   // separators, file-bottom), compute each gap size, and saturate them
   // all in one reducer hop. After dispatch every gap is zero-sized; the
-  // planner stops emitting the directional family AND `fileHasHiddenGap`
-  // flips false so the file-header's `↕` affordance disappears.
+  // planner stops emitting the directional family AND the chrome's
+  // `↕` affordance disappears (gapCount drops below 2 per issue #298).
   const expandAllInFile = (file: string) => {
     const meta = fileMetadata.get(file);
     if (!meta || meta.hunks.length === 0) return;
@@ -1483,21 +1483,23 @@ function App(props: AppProps) {
                 const rows = plannedRowsByFile.get(file.name) ?? [];
                 const reason = fileClassification(classifications, file.name).reason;
                 // Issue #297: per-file Expand-all lives in the file-header
-                // chrome. The affordance shows iff the file still has at
-                // least one hidden gap AND the file's body is not
-                // classifier-/user-collapsed (a collapsed file has its
-                // own `collapsed-file` row affordance to expand the body
-                // first; expanding hidden gaps inside a hidden body is
-                // structurally meaningless).
+                // chrome. Issue #298 tightens the visibility rule from
+                // "any hidden gap" to "≥ 2 hidden gaps" — a single-gap
+                // file is already covered by its per-hunk banner button
+                // (or standalone expand-down for file-bottom), so showing
+                // the chrome would stack a redundant second `↕`. The
+                // body-collapsed clause (classifier or user `c` toggle)
+                // still wins: a hidden body's `collapsed-file` row
+                // reveals the body before any in-body gaps matter.
                 const fileMeta = fileMetadata.get(file.name);
-                const hasHiddenGap =
+                const hasMultipleHiddenGaps =
                   !collapsed &&
                   fileMeta !== undefined &&
-                  fileHasHiddenGap(
+                  fileExpandableGapCount(
                     fileMeta,
                     expansion,
                     bundleSlice?.fileContents.get(file.name)?.newContent,
-                  );
+                  ) >= 2;
                 return (
                   <box
                     key={file.name}
@@ -1510,7 +1512,7 @@ function App(props: AppProps) {
                     <FileHeader
                       fileName={file.name}
                       label={fileEntryLabel(file, classifications, annotations)}
-                      hasHiddenGap={hasHiddenGap}
+                      hasMultipleHiddenGaps={hasMultipleHiddenGaps}
                       onExpandAll={expandAllInFile}
                     />
                     {fileCardBody(

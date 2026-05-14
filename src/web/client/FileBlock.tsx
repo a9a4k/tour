@@ -89,6 +89,13 @@ export interface FileBlockProps {
   annotationProps?: AnnotationProps;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  /** Issue #298: the file-header chrome `↕` Expand-all button renders
+   *  iff the file has ≥ 2 distinct expandable gaps. App computes this
+   *  per file via `fileExpandableGapCount` (core/diff-rows.ts). With
+   *  ≤ 1 gap the per-hunk banner button (or standalone `expand-down`
+   *  row for file-bottom) is already exactly sufficient and a chrome
+   *  `↕` would just stack a redundant duplicate. */
+  hasMultipleHiddenGaps: boolean;
   /** When set + matching a diff row in this file, the composerSlot renders
    *  inline at that row's position via a `.tour-card`-positioned wrapper. */
   composerAnchor?: { side: Side; line_end: number } | null;
@@ -176,6 +183,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     annotationProps,
     isCollapsed,
     onToggleCollapse,
+    hasMultipleHiddenGaps,
     composerAnchor,
     composerSlot,
   } = props;
@@ -215,7 +223,9 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
   // header is also the toggle-collapse target, so `event.stopPropagation`
   // here mirrors the copy-path button's pattern from #225 — clicking the
   // expand-all button reveals every hidden gap in the file without
-  // toggling the file's collapsed state.
+  // toggling the file's collapsed state. Issue #298 gates rendering on
+  // `hasMultipleHiddenGaps` so single-gap files don't double up with
+  // their per-hunk banner button.
   const handleExpandAll = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onDispatchExpand({ kind: "expand-file-all", file: file.name });
@@ -237,14 +247,16 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
             deletions={stats.deletions}
             segments={segments}
           />
-          <button
-            type="button"
-            className="tour-file-expand-all-button"
-            aria-label="Expand all hidden context in this file"
-            onClick={handleExpandAll}
-          >
-            ↕
-          </button>
+          {hasMultipleHiddenGaps ? (
+            <button
+              type="button"
+              className="tour-file-expand-all-button"
+              aria-label="Expand all hidden context in this file"
+              onClick={handleExpandAll}
+            >
+              ↕
+            </button>
+          ) : null}
           <button
             type="button"
             className="tour-file-copy-button"
