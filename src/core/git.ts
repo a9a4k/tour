@@ -133,9 +133,7 @@ export async function resolveDefaultBase(
     const originHead = await resolveOriginHead(cwd);
     if (originHead) anchors.push(originHead);
     for (const ref of ["origin/main", "origin/master"]) {
-      if (!anchors.includes(ref) && (await isValidRef(ref, cwd))) {
-        anchors.push(ref);
-      }
+      if (!anchors.includes(ref)) anchors.push(ref);
     }
     for (const anchor of anchors) {
       const anchorSha = await resolveRef(anchor, cwd).catch(() => null);
