@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DiffLine, ACCENT_FG, TINT_BG, CURSOR_FG, CURSOR_ROW_BG, CURSOR_GLYPH } from "../../src/tui/DiffLine.js";
+import { DiffLine, ACCENT_FG, TINT_BG, CURSOR_FG, CURSOR_ROW_BG, CURSOR_ROW_PARKED_BG, CURSOR_GLYPH } from "../../src/tui/DiffLine.js";
 import { theme } from "../../src/core/theme.js";
 
 // DiffLine is a function component; calling it directly returns a React
@@ -287,6 +287,73 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
   it("paints cursorRow bg on the content cell when cursorActive=true (overrides annotation content tint)", () => {
     const root = render({ cursorActive: true, gutterTinted: true, contentTinted: true } as never);
     expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
+  });
+});
+
+// Issue #305: focus-aware cursor. The cursored row pairs a bg-intensity
+// level with the chevron glyph: focused pane → bright cursorRow.tui +
+// `❯` glyph (existing ADR 0011 treatment); unfocused pane → dim
+// accentCursor.tui + no glyph, with the gutter restored to full width
+// so line numbers / sign columns do not shift across focus transitions.
+describe("DiffLine paneFocused (issue #305)", () => {
+  function gutterInnerTextsOf(root: AnyElement): AnyElement[] {
+    const gutterCell = childrenOf(root).filter(isElement)[1]!;
+    return childrenOf(gutterCell).filter((c) => isElement(c) && c.type === "text") as AnyElement[];
+  }
+
+  it("paints the bright cursorRow bg on gutter + content when paneFocused=true (default)", () => {
+    const root = render({ cursorActive: true } as never);
+    expect(gutterBgOf(root)).toBe(CURSOR_ROW_BG);
+    expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
+  });
+
+  it("paints the dim accentCursor bg on gutter + content when paneFocused=false", () => {
+    const root = render({ cursorActive: true, paneFocused: false } as never);
+    expect(gutterBgOf(root)).toBe(CURSOR_ROW_PARKED_BG);
+    expect(contentBgOf(root)).toBe(CURSOR_ROW_PARKED_BG);
+  });
+
+  it("renders the ❯ glyph when cursorActive=true and paneFocused=true", () => {
+    const root = render({ cursorActive: true, paneFocused: true } as never);
+    const glyph = gutterInnerTextsOf(root).find((t) => t.props.children === CURSOR_GLYPH);
+    expect(glyph).toBeDefined();
+    expect(glyph!.props["fg"]).toBe(CURSOR_FG);
+  });
+
+  it("suppresses the ❯ glyph when cursorActive=true and paneFocused=false", () => {
+    const root = render({ cursorActive: true, paneFocused: false } as never);
+    const glyph = gutterInnerTextsOf(root).find((t) => t.props.children === CURSOR_GLYPH);
+    expect(glyph).toBeUndefined();
+  });
+
+  it("keeps the full gutter text width when paneFocused=false (no leading-char slice)", () => {
+    // With glyph hidden, the line number / sign columns must not shift —
+    // assert the inner number text equals the original gutter exactly.
+    const root = render({ cursorActive: true, paneFocused: false, gutter: "   42 " } as never);
+    const number = gutterInnerTextsOf(root).find((t) => typeof t.props.children === "string");
+    expect(number).toBeDefined();
+    expect((number!.props.children as string).length).toBe(6);
+    expect(number!.props.children).toBe("   42 ");
+  });
+
+  it("dim bg still wins over annotation tint and diff +/- bg when paneFocused=false", () => {
+    const root = render({
+      cursorActive: true,
+      paneFocused: false,
+      gutterTinted: true,
+      contentTinted: true,
+      diffBg: "addition",
+    } as never);
+    expect(gutterBgOf(root)).toBe(CURSOR_ROW_PARKED_BG);
+    expect(contentBgOf(root)).toBe(CURSOR_ROW_PARKED_BG);
+  });
+
+  it("paneFocused has no effect when cursorActive=false (no cursor → no bg, no glyph)", () => {
+    const root = render({ cursorActive: false, paneFocused: false } as never);
+    expect(gutterBgOf(root)).toBeFalsy();
+    expect(contentBgOf(root)).toBeFalsy();
+    const glyph = gutterInnerTextsOf(root).find((t) => t.props.children === CURSOR_GLYPH);
+    expect(glyph).toBeUndefined();
   });
 });
 

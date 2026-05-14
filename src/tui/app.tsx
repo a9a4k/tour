@@ -23,6 +23,7 @@ import {
 import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
+import { CURSOR_FG, CURSOR_GLYPH } from "./DiffLine.js";
 import { FileHeader } from "./FileHeader.js";
 import { withFileSeparators } from "./FileSeparator.js";
 import {
@@ -170,6 +171,7 @@ function fileCardBody(
   now: number,
   navIndexById: ReadonlyMap<string, number>,
   navTotal: number,
+  paneFocused: boolean,
 ) {
   const placeholder = fileCardPlaceholder(collapsed, hasHunks, reason);
   if (placeholder !== null) return <text fg={theme.fg.muted}>{placeholder}</text>;
@@ -188,6 +190,7 @@ function fileCardBody(
       now={now}
       navIndexById={navIndexById}
       navTotal={navTotal}
+      paneFocused={paneFocused}
     />
   );
 }
@@ -1424,7 +1427,21 @@ function App(props: AppProps) {
           <scrollbox ref={sidebarScrollRef} height="100%">
             {visibleRows.map((row, idx) => {
               const isSelected = idx === safeRowIdx;
-              const bg = isSelected ? theme.bg.accentCursor.tui : undefined;
+              // Issue #305: focus-aware cursor on the sidebar selection.
+              // When the sidebar holds focus, the selected row paints the
+              // bright `cursorRow.tui` plate + overlays a `❯` glyph in
+              // `theme.fg.cursor` in the leading column. When the sidebar
+              // is parked (diff pane holds focus), the row dims to the
+              // softer `accentCursor.tui` plate and the glyph is hidden;
+              // row width and label position do not shift across focus
+              // because the glyph overwrites the leading space that the
+              // row-label module already budgets for. Bold is dropped on
+              // both states — the bg-intensity + glyph cues carry focus
+              // and selection without a second weight cue.
+              const bg = isSelected
+                ? (sidebarFocused ? theme.bg.cursorRow.tui : theme.bg.accentCursor.tui)
+                : undefined;
+              const showGlyph = isSelected && sidebarFocused;
               const onRowMouseDown = (event: { stopPropagation: () => void }) => {
                 // OpenTUI mouse events bubble (Renderable.processMouseEvent
                 // calls parent unless `propagationStopped`). Without this
@@ -1444,18 +1461,28 @@ function App(props: AppProps) {
                 }
               };
               if (row.kind === "folder") {
+                // Folder row is now a flex-row box (was a single <text>) so
+                // the cursor glyph can overlay the leading-space slot in
+                // `theme.fg.cursor` while the rest of the row keeps its
+                // muted folder colour. `height={1}` on inner texts mirrors
+                // the file-row treatment so the row stays at 1 grid row.
+                const label = folderRowLabel(row, SIDEBAR_CONTENT_WIDTH - folderRowFixedCost(row));
+                const labelText = showGlyph ? label.slice(1) : label;
                 return (
-                  <text
+                  <box
                     key={`d:${row.path}`}
                     id={`row-${row.path}`}
-                    fg={theme.fg.muted}
-                    bg={bg}
-                    bold={isSelected}
-                    selectable={false}
+                    flexDirection="row"
+                    backgroundColor={bg}
                     onMouseDown={onRowMouseDown}
                   >
-                    {folderRowLabel(row, SIDEBAR_CONTENT_WIDTH - folderRowFixedCost(row))}
-                  </text>
+                    {showGlyph && (
+                      <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
+                    )}
+                    <text height={1} fg={theme.fg.muted} selectable={false}>
+                      {labelText}
+                    </text>
+                  </box>
                 );
               }
               // Per-file diff stats (#265): `+N` in fg.success and `-M`
@@ -1472,6 +1499,14 @@ function App(props: AppProps) {
                 stats,
                 SIDEBAR_CONTENT_WIDTH - fileRowFixedCost(row, stats),
               );
+              // Issue #305: when the sidebar is focused on this row, the
+              // ❯ glyph rides in front of the leading segment. The row-
+              // label module already budgets `LEADING = 1` (a single
+              // leading space) inside `segs.leading`; the glyph overwrites
+              // that one char so the middle-truncation budget for the
+              // name is not affected and the row's total width stays at
+              // SIDEBAR_CONTENT_WIDTH.
+              const leadingText = showGlyph ? segs.leading.slice(1) : segs.leading;
               return (
                 // `height={1}` on each inner `<text>` pins the file row
                 // to 1 grid row. Without the pin every sidebar file row
@@ -1493,25 +1528,28 @@ function App(props: AppProps) {
                   backgroundColor={bg}
                   onMouseDown={onRowMouseDown}
                 >
-                  <text height={1} fg={theme.fg.default} bold={isSelected} selectable={false}>
-                    {segs.leading}
+                  {showGlyph && (
+                    <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
+                  )}
+                  <text height={1} fg={theme.fg.default} selectable={false}>
+                    {leadingText}
                   </text>
                   {segs.additions.length > 0 && (
-                    <text height={1} fg={theme.fg.success} bold={isSelected} selectable={false}>
+                    <text height={1} fg={theme.fg.success} selectable={false}>
                       {segs.additions}
                     </text>
                   )}
                   {segs.deletions.length > 0 && (
-                    <text height={1} fg={theme.fg.danger} bold={isSelected} selectable={false}>
+                    <text height={1} fg={theme.fg.danger} selectable={false}>
                       {segs.deletions}
                     </text>
                   )}
                   {segs.badge.length > 0 && (
-                    <text height={1} fg={theme.fg.default} bold={isSelected} selectable={false}>
+                    <text height={1} fg={theme.fg.default} selectable={false}>
                       {segs.badge}
                     </text>
                   )}
-                  <text height={1} fg={theme.fg.default} bold={isSelected} selectable={false}>
+                  <text height={1} fg={theme.fg.default} selectable={false}>
                     {segs.trailing}
                   </text>
                 </box>
@@ -1599,6 +1637,7 @@ function App(props: AppProps) {
                       now,
                       nav.navIndexById,
                       nav.navTotal,
+                      !sidebarFocused,
                     )}
                   </box>
                 );

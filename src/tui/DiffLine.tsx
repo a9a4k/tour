@@ -27,6 +27,10 @@ export const TINT_BG = theme.bg.accentRange.tui;
 export const ACCENT_FG = theme.fg.accent;
 export const CURSOR_FG = theme.fg.cursor;
 export const CURSOR_ROW_BG = theme.bg.cursorRow.tui;
+// Issue #305: parked-cursor bg used when the diff pane is unfocused.
+// Dimmer than CURSOR_ROW_BG so the focused pane's cursor reads as the
+// single "live" cursor; the parked one stays visible as a place-marker.
+export const CURSOR_ROW_PARKED_BG = theme.bg.accentCursor.tui;
 export const CURSOR_GLYPH = "❯";
 
 interface DiffLineProps {
@@ -60,6 +64,13 @@ interface DiffLineProps {
   // is the TUI-native analogue of the web's outlined-row focus — terminals
   // can't do outlines without taking extra rows, so we use a solid fill.
   cursorActive?: boolean;
+  // Issue #305: focus-aware cursor. When the diff pane is focused (default)
+  // the cursored row paints the bright `cursorRow.tui` plate + ❯ glyph;
+  // when the diff pane is unfocused (sidebar holds focus) the cursored row
+  // dims to `accentCursor.tui` and the glyph is suppressed so the gutter
+  // width does not shift across focus transitions. Defaults to `true` so
+  // pre-#305 callers (and most tests) get the historic bright treatment.
+  paneFocused?: boolean;
   filetype: string | undefined;
   syntaxStyle: SyntaxStyle;
   // Hunk-header / metadata text (issue #259). When true, skip the
@@ -103,6 +114,7 @@ export function DiffLine({
   gutterAccent,
   diffBg,
   cursorActive,
+  paneFocused = true,
   filetype,
   syntaxStyle,
   mutedText,
@@ -111,6 +123,12 @@ export function DiffLine({
 }: DiffLineProps) {
   const diffTones = diffBgTones(diffBg);
   const emptySideBg = emptySide ? theme.canvas.inset : undefined;
+  // Issue #305: focused vs parked cursor bg. Focused diff pane → bright
+  // `cursorRow.tui` plate + glyph (existing ADR 0011 treatment); unfocused
+  // diff pane → dim `accentCursor.tui` plate + no glyph so the gutter
+  // width does not shift on focus change.
+  const cursorBg = paneFocused ? CURSOR_ROW_BG : CURSOR_ROW_PARKED_BG;
+  const showCursorGlyph = cursorActive && paneFocused;
   // Composition rule (ADR 0011 + #260 + #262): cursor bg > annotation
   // tint > +/- bg (two-tone: bright rail on gutter, soft wash on content)
   // > empty-side neutral fill. Cursor bg fills both gutter and content so
@@ -120,19 +138,21 @@ export function DiffLine({
   // cell, which on a single-side row's blank half is always (no cursor /
   // no range / no diff bg apply).
   const gutterBg = cursorActive
-    ? CURSOR_ROW_BG
+    ? cursorBg
     : gutterTinted
       ? TINT_BG
       : (diffTones.gutter ?? emptySideBg);
   const contentBg = cursorActive
-    ? CURSOR_ROW_BG
+    ? cursorBg
     : contentTinted
       ? TINT_BG
       : (diffTones.content ?? emptySideBg);
   const showCode = !!filetype && text.length > 0 && !mutedText;
   // Drop one leading char so the total gutter width is preserved when the
-  // cursor glyph rides in front of the line number.
-  const gutterText = cursorActive && gutter.length > 0 ? gutter.slice(1) : gutter;
+  // cursor glyph rides in front of the line number. When the glyph is
+  // suppressed (issue #305: parked cursor in the unfocused pane) we keep
+  // the full gutter so line numbers / sign columns do not shift.
+  const gutterText = showCursorGlyph && gutter.length > 0 ? gutter.slice(1) : gutter;
   // Issue #268 — context rows mute the gutter line-number + sign cell
   // so the bright-on-tinted contrast emerges naturally. Tinted rows
   // (addition / deletion) keep fg.default so numbers stay readable
@@ -165,7 +185,7 @@ export function DiffLine({
         flexDirection="row"
         backgroundColor={gutterBg}
       >
-        {cursorActive && (
+        {showCursorGlyph && (
           <text height={1} flexShrink={0} fg={CURSOR_FG}>{CURSOR_GLYPH}</text>
         )}
         <text height={1} flexShrink={0} fg={gutterFg}>{gutterText}</text>

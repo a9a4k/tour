@@ -57,6 +57,12 @@ interface DiffRowsProps {
    *  counter in each AnnotationCard header. */
   navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
+  /** Issue #305: focus-aware cursor. `true` when the diff pane holds focus
+   *  → cursored row + interactive button cells paint the bright
+   *  `cursorRow.tui` + `❯` glyph; `false` when the sidebar has focus →
+   *  dim `accentCursor.tui` + no glyph. Defaults to `true` so test
+   *  callers and pre-#305 fixtures see the historic bright treatment. */
+  paneFocused?: boolean;
 }
 
 const LINE_NUMBER_WIDTH = 5;
@@ -180,6 +186,7 @@ export function DiffRows({
   now,
   navIndexById,
   navTotal,
+  paneFocused = true,
 }: DiffRowsProps) {
   // Narrow once: row-shaped cursor is the only kind that drives the per-
   // row outline. A CardAnchor's per-card outline is handled by
@@ -238,8 +245,14 @@ export function DiffRows({
                     row.hunkIndex === 0 ? "top" : row.hunkIndex,
                   )
               : undefined;
+          // Issue #305: cursor's button-cell bg flips with focus —
+          // bright `cursorRow.tui` when the diff pane is focused, dim
+          // `accentCursor.tui` when parked (sidebar holds focus). No
+          // gutter column on the banner, so the `❯` glyph rule does not
+          // apply here — the focus signal is bg-intensity only, layered
+          // on top of the existing `↑` / `↕` / `…` button glyph.
           const buttonBg = cursorActive
-            ? theme.bg.cursorRow.tui
+            ? (paneFocused ? theme.bg.cursorRow.tui : theme.bg.accentCursor.tui)
             : theme.bg.accentEmphasis;
           const textBg = theme.bg.accentSubtle.tui;
           return (
@@ -289,8 +302,13 @@ export function DiffRows({
           // but matching the banner keeps the pattern consistent if
           // someone later puts text in this cell.
           if (row.subKind === "expand-down") {
+            // Issue #305: same focus-aware bg flip as the hunk-header
+            // banner button cell — bright cursorRow.tui when diff pane
+            // is focused, dim accentCursor.tui when parked. The button's
+            // `↓` glyph stays as-is; no separate `❯` since the row has
+            // no gutter column to host it.
             const buttonBg = cursorActive
-              ? theme.bg.cursorRow.tui
+              ? (paneFocused ? theme.bg.cursorRow.tui : theme.bg.accentCursor.tui)
               : theme.bg.accentEmphasis;
             const textBg = theme.bg.accentSubtle.tui;
             return (
@@ -326,6 +344,7 @@ export function DiffRows({
                 contentTinted={false}
                 gutterAccent={false}
                 cursorActive={cursorActive}
+                paneFocused={paneFocused}
                 filetype={filetype}
                 syntaxStyle={syntaxStyle}
                 width="100%"
@@ -456,6 +475,7 @@ export function DiffRows({
                   diffBg={leftDiffBg}
                   emptySide={leftEmptySide}
                   cursorActive={leftCursorActive}
+                  paneFocused={paneFocused}
                   filetype={filetype}
                   syntaxStyle={syntaxStyle}
                   width="100%"
@@ -496,6 +516,7 @@ export function DiffRows({
                   diffBg={rightDiffBg}
                   emptySide={rightEmptySide}
                   cursorActive={rightCursorActive}
+                  paneFocused={paneFocused}
                   filetype={filetype}
                   syntaxStyle={syntaxStyle}
                   width="100%"
@@ -531,6 +552,7 @@ export function DiffRows({
               gutterAccent={!!row.rightGutter}
               diffBg={unifiedDiffBg}
               cursorActive={unifiedCursorActive}
+              paneFocused={paneFocused}
               filetype={filetype}
               syntaxStyle={syntaxStyle}
               width="100%"

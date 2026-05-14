@@ -58,6 +58,7 @@ function callDiffRows(args: {
   layout: "split" | "unified";
   cursor?: import("../../src/core/cursor-state.js").Cursor | null;
   fileName?: string;
+  paneFocused?: boolean;
   onCursorClick?: (
     file: string,
     side: "additions" | "deletions",
@@ -71,6 +72,7 @@ function callDiffRows(args: {
     layout: args.layout,
     cursorCardId: null,
     cursor: args.cursor ?? null,
+    paneFocused: args.paneFocused,
     onCursorClick: args.onCursorClick,
     onCardClick: args.onCardClick,
   });
@@ -1773,6 +1775,179 @@ index 1..2 100644
       expect(handler).toBeDefined();
       handler!();
       expect(onInteractiveClick).toHaveBeenCalledWith("x.ts", "boundary-top", "top");
+    });
+  });
+
+  // Issue #305 — focus-aware cursor primitive. The `paneFocused` flag
+  // flows from the App shell (`!sidebarFocused`) through DiffRows to:
+  //   - DiffLine (content rows + interactive rows) — drives bg intensity
+  //     and the `❯` glyph (asserted directly in diff-line.test.ts);
+  //   - the hunk-header banner button cell — bright `cursorRow.tui` when
+  //     diff pane is focused, dim `accentCursor.tui` when parked;
+  //   - the standalone `expand-down` button cell — same rule.
+  // The button-cell tests here pin the focus-aware bg flip; the cursor
+  // glyph rule for content rows is pinned in diff-line.test.ts via the
+  // forwarded `paneFocused` prop.
+  describe("paneFocused (issue #305)", () => {
+    it("forwards paneFocused=true (default) to content-row DiffLine cells", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({ rows: rows.slice(ctxIdx, ctxIdx + 1), layout: "unified" });
+      const cells = diffLineCellsOf(tree);
+      // Default is `true` so pre-#305 tests stay passing — assert the
+      // prop is either omitted (undefined → DiffLine default true) or
+      // explicitly true.
+      const v = cells[0].props["paneFocused"];
+      expect(v === undefined || v === true).toBe(true);
+    });
+
+    it("forwards paneFocused=false explicitly to content-row DiffLine cells", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "split");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "split",
+        paneFocused: false,
+      });
+      const cells = diffLineCellsOf(tree);
+      for (const cell of cells) {
+        expect(cell.props["paneFocused"]).toBe(false);
+      }
+    });
+
+    it("forwards paneFocused to the interactive-row DiffLine cell", () => {
+      const rows: PlannedRow[] = [
+        { kind: "interactive", subKind: "hunk-separator", boundaryRef: 1, text: "··· N ···" },
+      ];
+      const tree = callDiffRows({ rows, layout: "split", paneFocused: false });
+      const cells = diffLineCellsOf(tree);
+      expect(cells.length).toBe(1);
+      expect(cells[0].props["paneFocused"]).toBe(false);
+    });
+
+    it("hunk-header banner button cell paints bright cursorRow.tui when paneFocused=true (default) and cursor matches", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const cursor = {
+        kind: "row" as const,
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "hunk-separator" as const, boundaryRef: 1 },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const bgs = flatten(tree)
+        .map((el) => el.props["backgroundColor"])
+        .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.cursorRow.tui);
+      expect(bgs).not.toContain(theme.bg.accentCursor.tui);
+    });
+
+    it("hunk-header banner button cell paints dim accentCursor.tui when paneFocused=false and cursor matches", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const cursor = {
+        kind: "row" as const,
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "hunk-separator" as const, boundaryRef: 1 },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor, paneFocused: false });
+      const bgs = flatten(tree)
+        .map((el) => el.props["backgroundColor"])
+        .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentCursor.tui);
+      expect(bgs).not.toContain(theme.bg.cursorRow.tui);
+    });
+
+    it("hunk-header banner button cell stays accentEmphasis when no cursor (paneFocused irrelevant)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split", paneFocused: false });
+      const bgs = flatten(tree)
+        .map((el) => el.props["backgroundColor"])
+        .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentEmphasis);
+      expect(bgs).not.toContain(theme.bg.cursorRow.tui);
+      expect(bgs).not.toContain(theme.bg.accentCursor.tui);
+    });
+
+    it("expand-down button cell paints bright cursorRow.tui when paneFocused=true (default) and cursor matches", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: "bottom",
+          text: "↓",
+          gapAbove: 5,
+        },
+      ];
+      const cursor = {
+        kind: "row" as const,
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "expand-down" as const, boundaryRef: "bottom" as const },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor });
+      const bgs = flatten(tree)
+        .map((el) => el.props["backgroundColor"])
+        .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.cursorRow.tui);
+      expect(bgs).not.toContain(theme.bg.accentCursor.tui);
+    });
+
+    it("expand-down button cell paints dim accentCursor.tui when paneFocused=false and cursor matches", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: "bottom",
+          text: "↓",
+          gapAbove: 5,
+        },
+      ];
+      const cursor = {
+        kind: "row" as const,
+        file: "x.txt",
+        lineNumber: 0,
+        side: "additions" as const,
+        preferredSide: "additions" as const,
+        interactive: { subKind: "expand-down" as const, boundaryRef: "bottom" as const },
+      };
+      const tree = callDiffRows({ rows, layout: "split", cursor, paneFocused: false });
+      const bgs = flatten(tree)
+        .map((el) => el.props["backgroundColor"])
+        .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentCursor.tui);
+      expect(bgs).not.toContain(theme.bg.cursorRow.tui);
     });
   });
 
