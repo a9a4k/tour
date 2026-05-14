@@ -16,6 +16,7 @@ import {
   CardRow,
   InteractiveRow,
   HunkHeaderBanner,
+  ExpandDownStandalone,
   type DiffRowKind,
 } from "./row-components.js";
 import { RenameHeaderSpan, RenamePlaceholderBody } from "./rename-display.js";
@@ -512,6 +513,20 @@ function renderInteractive(
       count,
     });
   };
+  // Issue #292: standalone `expand-down` rows render as a two-cell banner
+  // matching `<HunkHeaderBanner>`'s layout (44px saturated button cell +
+  // empty accent-subtle right cell). Mid-file-large-gap + file-bottom
+  // cases both flow through here.
+  if (row.subKind === "expand-down") {
+    return (
+      <ExpandDownStandalone
+        key={`int-${idx}`}
+        boundaryRef={row.boundaryRef}
+        isCursor={isCursor}
+        onActivate={onActivate}
+      />
+    );
+  }
   return (
     <InteractiveRow
       key={`int-${idx}`}

@@ -7,6 +7,7 @@ import {
   CardRow,
   InteractiveRow,
   HunkHeaderBanner,
+  ExpandDownStandalone,
   EXPANSION_STEP,
   parseHunkHeader,
 } from "../../src/web/client/row-components.js";
@@ -1080,6 +1081,154 @@ describe("<InteractiveRow>", () => {
     const row = c.querySelector(".tour-row-interactive") as HTMLElement;
     expect(row.getAttribute("role")).toBe("button");
     expect(row.getAttribute("tabindex")).toBe("0");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ExpandDownStandalone (issue #292)
+// ---------------------------------------------------------------------------
+
+// Issue #292: standalone `expand-down` row matches the hunk-header banner's
+// two-cell layout (44px saturated button cell + accent-subtle right cell).
+// Mirrors GitHub's `tr.js-expandable-line` shape and the banner's left-cell
+// interactivity model from #280 — only the button cell is clickable / Enter-
+// dispatchable; the right cell is decorative.
+describe("<ExpandDownStandalone> (issue #292 two-cell layout)", () => {
+  it("renders a tour-row carrying the tour-hunk-header class so it inherits the accent-subtle wash + flex two-cell layout", () => {
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 1,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-row.tour-hunk-header") as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.style.gridColumn).toMatch(/1\s*\/\s*-1/);
+    expect(row.dataset.subkind).toBe("expand-down");
+    expect(row.dataset.direction).toBe("down");
+    expect(row.dataset.boundaryRef).toBe("1");
+  });
+
+  it("renders the button cell with the `↓` glyph + role=button + tabindex=0 + aria-label", () => {
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: "bottom",
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const button = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(button).not.toBeNull();
+    expect(button.textContent).toBe("↓");
+    expect(button.getAttribute("role")).toBe("button");
+    expect(button.getAttribute("tabindex")).toBe("0");
+    expect(button.getAttribute("aria-label")).toBe("Expand Down");
+  });
+
+  it("renders an empty right cell carrying tour-hunk-header-text class (no range / context spans, no header text)", () => {
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 2,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const text = c.querySelector(".tour-hunk-header-text") as HTMLElement;
+    expect(text).not.toBeNull();
+    expect(text.textContent).toBe("");
+    expect(c.querySelector(".tour-hunk-header-range")).toBeNull();
+    expect(c.querySelector(".tour-hunk-header-context")).toBeNull();
+  });
+
+  it("right cell is non-interactive (no role=button, no tabindex, no aria-label)", () => {
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 1,
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const text = c.querySelector(".tour-hunk-header-text") as HTMLElement;
+    expect(text.getAttribute("role")).toBeNull();
+    expect(text.getAttribute("tabindex")).toBeNull();
+    expect(text.getAttribute("aria-label")).toBeNull();
+  });
+
+  it("click on the button cell dispatches onActivate(EXPANSION_STEP)", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 1,
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const button = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([EXPANSION_STEP]);
+  });
+
+  it("Enter on the button cell dispatches onActivate(EXPANSION_STEP) when isCursor is true", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 1,
+        isCursor: true,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const button = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([EXPANSION_STEP]);
+  });
+
+  it("does NOT dispatch on Enter when isCursor is false", () => {
+    const calls: number[] = [];
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 1,
+        isCursor: false,
+        onActivate: (count: number) => calls.push(count),
+      }),
+    );
+    const button = c.querySelector(".tour-hunk-header-button") as HTMLElement;
+    act(() => {
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("applies .is-cursor to the row container when isCursor is true (mirrors HunkHeaderBanner's outline scope)", () => {
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: 1,
+        isCursor: true,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-row.tour-hunk-header") as HTMLElement;
+    expect(row.classList.contains("is-cursor")).toBe(true);
+  });
+
+  it("data-boundary-ref renders the string 'bottom' for the file-bottom case", () => {
+    const c = mount(
+      createElement(ExpandDownStandalone, {
+        boundaryRef: "bottom",
+        isCursor: false,
+        onActivate: () => {},
+      }),
+    );
+    const row = c.querySelector(".tour-row.tour-hunk-header") as HTMLElement;
+    expect(row.dataset.boundaryRef).toBe("bottom");
   });
 });
 

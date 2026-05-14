@@ -921,10 +921,11 @@ describe("<FileBlock> — interactive row activation", () => {
     expect(actions).toEqual([{ kind: "expand-file", file: "x.ts" }]);
   });
 
-  // Issue #280: only `expand-down` survives as a standalone interactive
-  // row. `expand-up` / `expand-all` are folded onto the hunk-header
-  // banner's left cell (covered by the hunk-header tests above).
-  it("forwards `expand-down` click → onDispatchExpand with direction='down' and count=EXPANSION_STEP", () => {
+  // Issue #292: the standalone `expand-down` row renders via
+  // `<ExpandDownStandalone>` (two-cell layout matching the hunk-header
+  // banner). The outer row is decorative; the saturated 44px button cell
+  // hosts the click/Enter handler.
+  it("forwards `expand-down` click on the button cell → onDispatchExpand with direction='down' and count=EXPANSION_STEP", () => {
     const actions: ExpandAction[] = [];
     const rows: PlannedRow[] = [
       {
@@ -943,8 +944,10 @@ describe("<FileBlock> — interactive row activation", () => {
     );
     const row = c.querySelector('.tour-row[data-subkind="expand-down"]') as HTMLElement;
     expect(row).not.toBeNull();
+    const button = row.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(button).not.toBeNull();
     act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(actions.length).toBe(1);
     expect(actions[0]).toEqual({
@@ -956,7 +959,7 @@ describe("<FileBlock> — interactive row activation", () => {
     });
   });
 
-  it("file-bottom `expand-down` dispatches with boundaryRef='bottom' (PRD #270)", () => {
+  it("file-bottom `expand-down` dispatches with boundaryRef='bottom' (issue #292)", () => {
     const actions: ExpandAction[] = [];
     const rows: PlannedRow[] = [
       {
@@ -974,8 +977,9 @@ describe("<FileBlock> — interactive row activation", () => {
       ),
     );
     const row = c.querySelector('.tour-row[data-subkind="expand-down"]') as HTMLElement;
+    const button = row.querySelector(".tour-hunk-header-button") as HTMLElement;
     act(() => {
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(actions[0]).toEqual({
       kind: "expand",
@@ -986,7 +990,7 @@ describe("<FileBlock> — interactive row activation", () => {
     });
   });
 
-  it("`expand-down` glyph renders the planner-supplied text (`↓ Expand Down`) and data-direction=down (PRD #270)", () => {
+  it("`expand-down` renders as the two-cell banner shape (44px button + empty accent-subtle right cell) per issue #292", () => {
     const rows: PlannedRow[] = [
       {
         kind: "interactive",
@@ -999,8 +1003,17 @@ describe("<FileBlock> — interactive row activation", () => {
     const c = mount(createElement(FileBlock, defaultProps({ rows })));
     const row = c.querySelector('.tour-row[data-subkind="expand-down"]') as HTMLElement;
     expect(row).not.toBeNull();
+    // Reuses .tour-hunk-header so it inherits the accent-subtle wash + flex
+    // two-cell layout — the buttons line up vertically with the banner's
+    // Up button in the mid-file-large-gap case.
+    expect(row.classList.contains("tour-hunk-header")).toBe(true);
     expect(row.dataset.direction).toBe("down");
-    expect(row.textContent).toContain("↓ Expand Down");
+    const button = row.querySelector(".tour-hunk-header-button") as HTMLElement;
+    expect(button.textContent).toBe("↓");
+    expect(button.getAttribute("aria-label")).toBe("Expand Down");
+    const text = row.querySelector(".tour-hunk-header-text") as HTMLElement;
+    expect(text).not.toBeNull();
+    expect(text.textContent).toBe("");
   });
 
 });
