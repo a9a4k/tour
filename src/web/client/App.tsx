@@ -1159,16 +1159,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [store],
   );
 
-  // Issue #320: GitHub-style `+` button on diff rows. Click branches on the
-  // composer's current state:
-  //   * closed → seed cursor + dispatch `composer.open` with
-  //     line_start == line_end (parity with the keyboard `a` flow).
-  //   * open / submitting / errored → dispatch `composer.recall` (no state
-  //     change; the runtime translates the emitted `scrollToComposer`
-  //     intent into "scroll the anchor row + focus the textarea" via the
-  //     adapter). Soft-modal: one Composer at a time; the second `+`
-  //     click pulls the in-flight Composer back to the user instead of
-  //     opening a new one.
+  // Issue #320: soft-modal `+` button. Closed → seed cursor + open at
+  // `line_start == line_end` (parity with the keyboard `a` flow). Non-closed
+  // → `composer.recall` so the in-flight Composer comes back to the user
+  // instead of a second one opening (see the reducer's `composer.recall`
+  // branch for the recall mechanics).
   const openComposerOnRow = useCallback(
     (anchor: { file: string; side: "additions" | "deletions"; lineNumber: number }) => {
       const c = store.getState().composer;

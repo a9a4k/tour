@@ -85,12 +85,10 @@ export interface FileBlockProps {
   cursor: Cursor | null;
   onDispatchExpand: (action: ExpandAction) => void;
   onRowClick: (anchor: RowClickAnchor) => void;
-  /** Issue #320: GitHub-style `+` annotate button on diff rows. The
-   *  branch between "open Composer" and "recall in-flight Composer" lives
-   *  in the App-level callback — this prop is always-wired so the CSS
-   *  visibility rule (data-composer-open on <html> + row hover / cursored
-   *  side) drives appearance without re-rendering the entire file block
-   *  on Composer state transitions. */
+  /** Issue #320: GitHub-style `+` annotate button on diff rows. Threaded
+   *  through to each gutter; always-wired so Composer-state transitions
+   *  don't re-render the file block (visibility / ghost state are CSS-
+   *  driven via `[data-composer-open]` on `<html>`). */
   onAnnotate?: (anchor: RowClickAnchor) => void;
   onCardClick: (annotationId: string) => void;
   annotationProps?: AnnotationProps;

@@ -43,10 +43,8 @@ export interface TourSessionAdapter {
   subscribeTourEvents(tourId: string, handler: TourEventHandler): () => void;
   scrollToCard(id: string, mode: ScrollPlacement): void;
   scrollToRow(anchor: ScrollRowAnchor, mode: ScrollPlacement): void;
-  // Issue #320: auto-recall for an in-flight Composer scrolled off-screen.
-  // Web realises this as "scroll the anchor row into view + focus the
-  // inline Composer's textarea." TUI v1 may no-op (nothing in the TUI
-  // dispatches `composer.recall` today).
+  /** Issue #320: pulls an in-flight Composer back into view (scroll +
+   *  textarea focus). Dispatched by `composer.recall`. */
   scrollToComposer(target: ComposerTarget): void;
   scrollToPickerRow(idx: number): void;
   revealFileInSidebar(file: string): void;
@@ -106,10 +104,6 @@ export class TourSessionRuntime {
           this.adapter.scrollToCard(intent.annotationId, "center");
           return;
         case "scrollToComposer":
-          // Issue #320: pulled off the auto-recall family — the in-flight
-          // composer's anchor row + textarea come back to the user when a
-          // ghost `+` is clicked. The adapter owns the realisation (scroll
-          // + textarea focus on web; opaque no-op on TUI in v1).
           this.adapter.scrollToComposer(intent.target);
           return;
         case "mirrorUrl":

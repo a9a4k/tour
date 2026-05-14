@@ -65,13 +65,10 @@ export interface DiffRowProps {
    *  Line cursor for annotation creation. */
   onClick?: (side: Side) => void;
   onMouseEnter?: () => void;
-  /** Issue #320: GitHub-style `+` annotate button. When wired, every
-   *  gutter that carries a line number renders a `+` button overlaying
-   *  the gutter/cell boundary. Visibility is CSS-driven (row hover +
-   *  cursored side); App-level routing branches on composer state to
-   *  open-vs-recall. Omitting this prop hides the button on every
-   *  gutter — used by the file-cards / interactive rows that do not
-   *  support annotation anchoring. */
+  /** Issue #320: GitHub-style `+` annotate button. When wired, each gutter
+   *  with a line number renders a `+`; clicking calls onAnnotate(side,
+   *  lineNumber). Visibility is CSS-driven; omit the prop to hide the
+   *  button on every gutter (used by rows that can't anchor annotations). */
   onAnnotate?: (side: Side, lineNumber: number) => void;
 }
 
@@ -346,16 +343,11 @@ function Column({
   const cellClasses = ["tour-row-cell"];
   if (isCursor) cellClasses.push("is-cursor");
   if (isInRange) cellClasses.push("in-range");
-  // Issue #320: GitHub-style annotate `+` button overlaying the
-  // gutter/cell boundary. Rendered only when the column carries a
-  // line number AND `onAnnotate` is wired. CSS owns the visibility
-  // rule (hidden by default; revealed on row :hover or when the
-  // gutter sits on the cursored side; ghost state when
-  // `[data-composer-open]` is set on <html>). `tabIndex={-1}` keeps
-  // the button out of Tab order — the keyboard `a` shortcut is the
-  // canonical keyboard path. `stopPropagation` stops the cell's
-  // row-click handler from also seeding the cursor before the
-  // App-level annotate branch runs.
+  // Issue #320: `tabIndex={-1}` keeps the button out of Tab order (the
+  // keyboard `a` shortcut is the canonical keyboard path); `stopPropagation`
+  // stops the cell's row-click handler from seeding the cursor before the
+  // App-level annotate branch runs. Visibility is CSS-driven — see
+  // `.tour-row-annotate-btn` in file-grid-css.
   const showAnnotateButton = onAnnotate !== undefined && lineNumber != null;
   const handleAnnotateClick = (e: React.MouseEvent) => {
     e.stopPropagation();
