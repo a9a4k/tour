@@ -31,6 +31,7 @@ import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
 import { CURSOR_FG, CURSOR_GLYPH } from "./DiffLine.js";
 import { FileHeader } from "./FileHeader.js";
+import { collectFileCardOffsets, deriveActiveFile } from "./active-file.js";
 import { withFileSeparators } from "./FileSeparator.js";
 import {
   buildTree,
@@ -402,6 +403,39 @@ function App(props: AppProps) {
     () => sortFilesForStream(bundleSlice?.files ?? ([] as ReadonlyArray<BundleFile>)),
     [bundleSlice],
   );
+
+  // Issue #307: the active-file header above the diff scrollbox names the
+  // file the viewport is currently inside, derived from scroll position
+  // (NOT cursor / NOT sidebar selection). OpenTUI has no `position:
+  // sticky` primitive so we synthesise it: poll `sb.scrollTop` + the per-
+  // file-card content-y offsets, run them through the pure
+  // `deriveActiveFile`, and re-render when the answer changes.
+  //
+  // 50ms poll covers the cases that don't already re-render React on
+  // their own: free mouse-wheel scroll and in-flight smooth-scroll
+  // tweens (smooth-scroll mutates `sb.scrollTop` per OpenTUI frame
+  // without dispatching). Keyboard-driven motion (j/k, d/u, n/p, layout
+  // toggle) already triggers a React render, but the same effect tick
+  // covers that too — `setActiveFile` short-circuits when the derived
+  // name is unchanged so the interval is cheap.
+  const fileNames = useMemo(() => files.map((f) => f.name), [files]);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
+  useEffect(() => {
+    if (fileNames.length === 0) {
+      setActiveFile(null);
+      return;
+    }
+    const tick = () => {
+      const sb = diffScrollRef.current;
+      if (!sb) return;
+      const offsets = collectFileCardOffsets(sb, fileNames);
+      const next = deriveActiveFile(sb.scrollTop, offsets);
+      setActiveFile((cur) => (cur === next ? cur : next));
+    };
+    tick();
+    const handle = setInterval(tick, 50);
+    return (): void => clearInterval(handle);
+  }, [fileNames]);
 
   const tree = treeSlice?.root ?? EMPTY_TREE;
   const annotationCounts = treeSlice?.annotationCounts ?? EMPTY_ANNOTATION_COUNTS;
@@ -1627,83 +1661,101 @@ function App(props: AppProps) {
           flexDirection="column"
           onMouseDown={() => setSidebarFocused(false)}
         >
-          {view.kind === "ok" && bundle.kind === "ok" && bundle.diff && (
-            <scrollbox
-              ref={diffScrollRef}
-              height="100%"
-              // viewportCulling=true skips render work for off-screen file
-              // cards. Previously off-limits because off-screen children
-              // carry stale `_y` under culling (commit 0f2d59d), which
-              // broke `scrollChildIntoView` for cross-file `n`/`p`
-              // autoscroll. The diff-pane scroll-into-view path now goes
-              // through `./scroll-into-view.ts`, which force-refreshes
-              // layout from Yoga before reading position; and
-              // `buildRowYResolver` does the same on every visited node.
-              // Both are per-frame guarded so already-fresh nodes are a
-              // no-op.
-              viewportCulling={true}
-            >
-              {withFileSeparators(files, (file) => {
-                const collapsed = isFileCollapsed(file.name);
-                const rows = plannedRowsByFile.get(file.name) ?? [];
-                const reason = fileClassification(classifications, file.name).reason;
-                // Issue #297: per-file Expand-all lives in the file-header
-                // chrome. Issue #298 tightens the visibility rule from
-                // "any hidden gap" to "≥ 2 hidden gaps" — a single-gap
-                // file is already covered by its per-hunk banner button
-                // (or standalone expand-down for file-bottom), so showing
-                // the chrome would stack a redundant second `↕`. The
-                // body-collapsed clause (classifier or user `c` toggle)
-                // still wins: a hidden body's `collapsed-file` row
-                // reveals the body before any in-body gaps matter.
-                const fileMeta = fileMetadata.get(file.name);
-                const hasMultipleHiddenGaps =
-                  !collapsed &&
-                  fileMeta !== undefined &&
-                  fileExpandableGapCount(
-                    fileMeta,
-                    expansion,
-                    bundleSlice?.fileContents.get(file.name)?.newContent,
-                  ) >= 2;
-                return (
-                  <box
-                    key={file.name}
-                    id={`file-card-${file.name}`}
-                    borderStyle="single"
-                    borderColor={theme.border.default}
-                    flexDirection="column"
-                    marginBottom={1}
-                  >
-                    <FileHeader
-                      fileName={file.name}
-                      label={fileEntryLabel(file, classifications, annotations)}
-                      hasMultipleHiddenGaps={hasMultipleHiddenGaps}
-                      onExpandAll={expandAllInFile}
-                    />
-                    {fileCardBody(
-                      file.name,
-                      collapsed,
-                      file.hunks.length > 0,
-                      reason,
-                      rows,
-                      layout,
-                      cursorCardId,
-                      cursor,
-                      onCursorClick,
-                      onInteractiveClick,
-                      onCardClick,
-                      repliesCollapsed,
-                      replyLock,
-                      now,
-                      nav.navIndexById,
-                      nav.navTotal,
-                      !sidebarFocused,
-                    )}
-                  </box>
-                );
-              })}
-            </scrollbox>
-          )}
+          {view.kind === "ok" && bundle.kind === "ok" && bundle.diff && (() => {
+            // Issue #307: synthesise GitHub-style sticky file-header in
+            // OpenTUI. The pane-top header names the file the viewport is
+            // currently inside (`activeFile` polled from scrollTop +
+            // card offsets — see effect above), carries the same chrome
+            // the in-card header used to carry (file label + per-file
+            // Expand-all `↕` gated on ≥2 hidden gaps), and retargets its
+            // dispatch to whatever file is currently active.
+            //
+            // Filename also lives inline in each card's top border via
+            // the box `title` prop — so the upcoming file's name
+            // previews as its labeled border scrolls into view. The
+            // in-card `<FileHeader>` is gone; the active-file header at
+            // the pane top is the only visible filename slot once the
+            // user is inside a card.
+            const activeFileObj = activeFile
+              ? files.find((f) => f.name === activeFile)
+              : null;
+            const activeFileMeta = activeFile ? fileMetadata.get(activeFile) : undefined;
+            const activeCollapsed = activeFile ? isFileCollapsed(activeFile) : false;
+            const activeHasMultipleHiddenGaps =
+              activeFileObj !== null &&
+              activeFileObj !== undefined &&
+              !activeCollapsed &&
+              activeFileMeta !== undefined &&
+              fileExpandableGapCount(
+                activeFileMeta,
+                expansion,
+                bundleSlice?.fileContents.get(activeFileObj.name)?.newContent,
+              ) >= 2;
+            return (
+              <>
+                {activeFileObj && (
+                  <FileHeader
+                    fileName={activeFileObj.name}
+                    label={fileEntryLabel(activeFileObj, classifications, annotations)}
+                    hasMultipleHiddenGaps={activeHasMultipleHiddenGaps}
+                    onExpandAll={expandAllInFile}
+                  />
+                )}
+                <scrollbox
+                  ref={diffScrollRef}
+                  height="100%"
+                  // viewportCulling=true skips render work for off-screen file
+                  // cards. Previously off-limits because off-screen children
+                  // carry stale `_y` under culling (commit 0f2d59d), which
+                  // broke `scrollChildIntoView` for cross-file `n`/`p`
+                  // autoscroll. The diff-pane scroll-into-view path now goes
+                  // through `./scroll-into-view.ts`, which force-refreshes
+                  // layout from Yoga before reading position; and
+                  // `buildRowYResolver` does the same on every visited node.
+                  // Both are per-frame guarded so already-fresh nodes are a
+                  // no-op.
+                  viewportCulling={true}
+                >
+                  {withFileSeparators(files, (file) => {
+                    const collapsed = isFileCollapsed(file.name);
+                    const rows = plannedRowsByFile.get(file.name) ?? [];
+                    const reason = fileClassification(classifications, file.name).reason;
+                    return (
+                      <box
+                        key={file.name}
+                        id={`file-card-${file.name}`}
+                        borderStyle="single"
+                        borderColor={theme.border.default}
+                        title={fileEntryLabel(file, classifications, annotations)}
+                        flexDirection="column"
+                        marginBottom={1}
+                      >
+                        {fileCardBody(
+                          file.name,
+                          collapsed,
+                          file.hunks.length > 0,
+                          reason,
+                          rows,
+                          layout,
+                          cursorCardId,
+                          cursor,
+                          onCursorClick,
+                          onInteractiveClick,
+                          onCardClick,
+                          repliesCollapsed,
+                          replyLock,
+                          now,
+                          nav.navIndexById,
+                          nav.navTotal,
+                          !sidebarFocused,
+                        )}
+                      </box>
+                    );
+                  })}
+                </scrollbox>
+              </>
+            );
+          })()}
         </box>
       </box>
 
