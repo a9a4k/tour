@@ -1227,8 +1227,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 // iff the file has ≥ 2 distinct expandable gaps. With
                 // ≤ 1 gap the per-hunk banner button (or standalone
                 // expand-down for file-bottom) is exactly sufficient.
+                // Issue #304: ALSO gate on the file body NOT being
+                // collapsed — when the body is hidden, the gaps live
+                // inside it and pressing `↕` would have no visible
+                // effect. Mirrors the TUI's pre-existing collapse gate
+                // (see src/tui/app.tsx near `<FileHeader>` render site).
                 const meta = parsedFilesByName.get(fileName);
                 const hasMultipleHiddenGaps =
+                  !isCollapsed(fileName) &&
                   meta !== undefined &&
                   fileExpandableGapCount(meta, expansion, bf.newContent) >= 2;
                 const topLevelComposer =

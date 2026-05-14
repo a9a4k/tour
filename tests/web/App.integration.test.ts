@@ -253,3 +253,171 @@ describe("App integration smoke (Issue #235)", () => {
     expect(directChildren[2]!.classList.contains("layout-toggle")).toBe(true);
   });
 });
+
+// Issue #304: web per-file Expand-all `↕` chrome stays visible when the
+// file body is collapsed. The TUI's chrome already gates on
+// `!collapsed`; the web didn't. The fixture below has a single file with
+// two hunks separated by enough hidden context to yield ≥ 2 expandable
+// gaps (file-top + mid-file + file-bottom = 3), so the chrome qualifies
+// for the #298 `gapCount >= 2` gate. Clicking the file-header bar
+// dispatches `folds.setOverride` (toggleCollapsed); the chrome must
+// disappear in the same render and reappear on un-collapse.
+
+const gapTourId = "2026-05-14-000000-collapse-gate";
+
+const gapTourSummary = {
+  id: gapTourId,
+  title: "Collapse gate fixture",
+  status: "open" as const,
+  created_at: "2026-05-14T00:00:00Z",
+  closed_at: "",
+  head_sha: "deadbeef",
+  base_sha: "cafebabe",
+  head_source: "feature/x",
+  base_source: "main",
+  wip_snapshot: false,
+};
+
+const gapDiff = `diff --git a/src/gap.ts b/src/gap.ts
+index 1..2 100644
+--- a/src/gap.ts
++++ b/src/gap.ts
+@@ -5,3 +5,3 @@
+ line 5
+-old line 6
++new line 6
+ line 7
+@@ -25,3 +25,3 @@
+ line 25
+-old line 26
++new line 26
+ line 27
+`;
+
+const gapNewContent =
+  "line 1\nline 2\nline 3\nline 4\nline 5\nnew line 6\nline 7\nline 8\nline 9\n" +
+  "line 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\n" +
+  "line 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nnew line 26\nline 27\n" +
+  "line 28\nline 29\nline 30\n";
+
+const gapOldContent =
+  "line 1\nline 2\nline 3\nline 4\nline 5\nold line 6\nline 7\nline 8\nline 9\n" +
+  "line 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\n" +
+  "line 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nold line 26\nline 27\n" +
+  "line 28\nline 29\nline 30\n";
+
+const gapBundle = {
+  kind: "ok" as const,
+  tour: gapTourSummary,
+  annotations: [],
+  diff: gapDiff,
+  files: [
+    {
+      name: "src/gap.ts",
+      type: "modified",
+      hunks: [],
+      oldContent: gapOldContent,
+      newContent: gapNewContent,
+      classification: { collapsed: false },
+      orphanWindows: [],
+    },
+  ],
+};
+
+describe("App per-file Expand-all chrome — collapse gate (Issue #304)", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([gapTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${gapTourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(gapBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${gapTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+  });
+
+  it("hides the chrome `↕` button when the file body is collapsed and restores it on un-collapse", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: gapTourId }));
+    });
+    await flush();
+
+    const header = container.querySelector(
+      '.tour-file-outer[data-file="src/gap.ts"] .tour-file-header',
+    ) as HTMLElement;
+    expect(header).not.toBeNull();
+
+    // Pre-collapse: file has ≥ 2 hidden gaps, so the chrome qualifies and
+    // is visible.
+    expect(
+      header.querySelector(".tour-file-expand-all-button"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '.tour-file-outer[data-file="src/gap.ts"] .tour-file-block',
+      ),
+    ).not.toBeNull();
+
+    // Collapse: click the file-header bar.
+    await act(async () => {
+      header.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // Body is gone (collapsed) AND chrome `↕` is gone in the same render.
+    expect(
+      container.querySelector(
+        '.tour-file-outer[data-file="src/gap.ts"] .tour-file-block',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        '.tour-file-outer[data-file="src/gap.ts"] .tour-file-expand-all-button',
+      ),
+    ).toBeNull();
+
+    // Un-collapse: click again. Chrome reappears alongside the body.
+    const headerAfter = container.querySelector(
+      '.tour-file-outer[data-file="src/gap.ts"] .tour-file-header',
+    ) as HTMLElement;
+    await act(async () => {
+      headerAfter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(
+      container.querySelector(
+        '.tour-file-outer[data-file="src/gap.ts"] .tour-file-block',
+      ),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '.tour-file-outer[data-file="src/gap.ts"] .tour-file-expand-all-button',
+      ),
+    ).not.toBeNull();
+  });
+});
