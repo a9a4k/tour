@@ -961,7 +961,7 @@ describe("TourSessionRuntime", () => {
     });
   });
 
-  describe("collapsed-file auto-reveal → revalidateCursor (issue #309)", () => {
+  describe("collapsed-file cursor traversal (issue #309 + issue #310 split)", () => {
     // A bun.lock-style classifier-collapsed file with a real one-hunk diff
     // body. With `classification.collapsed === true` the planner emits a
     // single synthetic `collapsed-file` interactive row in place of the
@@ -1001,7 +1001,7 @@ describe("TourSessionRuntime", () => {
       };
     }
 
-    it("cursor.set onto the synthetic collapsed-file anchor → reveal clears the override → runtime revalidates state.cursor onto a walkable row (no ghost cursor)", () => {
+    it("cursor.set onto the synthetic collapsed-file anchor leaves state.cursor on the synthetic row and does NOT clear collapsedOverrides (issue #310)", () => {
       const store = storeWithTour("tour-a");
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -1025,27 +1025,28 @@ describe("TourSessionRuntime", () => {
       };
       store.dispatch({ type: "cursor.set", anchor: syntheticAnchor });
 
-      // The setCursor → revealSidebarFile → folds.setOverride chain runs
-      // synchronously inside the runtime. With the fix, that mutation emits
-      // `revalidateCursor`; the runtime snaps state.cursor onto a walkable
-      // row in the post-reveal flat-rows. Without the fix, state.cursor
-      // keeps the synthetic anchor — `j`/`k` silently no-op.
+      // After the issue #310 split, the cursor.set emits `selectSidebarFile`
+      // (sidebar-select only) — NOT `revealSidebarFile`. The runtime no
+      // longer dispatches `folds.setOverride { value: false }`, so the
+      // planner keeps emitting the synthetic `collapsed-file` row and
+      // state.cursor remains anchored to it. The user's `j` press
+      // expressed "advance one stop", not "uncollapse this entire file."
       const cursor = store.getState().cursor;
-      expect(cursor).not.toBeNull();
-      expect(cursor).not.toBe(syntheticAnchor);
+      expect(cursor).toBe(syntheticAnchor);
       if (cursor === null || cursor.kind !== "row") throw new Error("unreachable");
-      // Snap landed inside bun.lock (the file the user was navigating into).
       expect(cursor.file).toBe("bun.lock");
-      // The anchor must NOT be the synthetic collapsed-file row — that row
-      // no longer exists in flatRows after the override clears.
-      expect(cursor.interactive?.subKind).not.toBe("collapsed-file");
-      // The override is also cleared (sanity — this is what triggered the
-      // bug, and what the runtime's view re-derivation must see).
-      expect(store.getState().collapsedOverrides["bun.lock"]).toBe(false);
+      // The synthetic collapsed-file row is still the anchor — Enter on
+      // this row stays the explicit-reveal escape hatch (existing #280 /
+      // #306 wiring).
+      expect(cursor.interactive?.subKind).toBe("collapsed-file");
+      // The classifier-collapse contract is preserved: no override entry
+      // is written, so isClassifierCollapsed still returns true and the
+      // file body stays hidden.
+      expect("bun.lock" in store.getState().collapsedOverrides).toBe(false);
       stop();
     });
 
-    it("subsequent j-step from the snapped cursor advances to the next walkable row (post-reveal navigation works)", () => {
+    it("cursor.set onto the synthetic anchor leaves the cursor resolvable in flatRows (no ghost cursor: j/k can step off the synthetic row)", () => {
       const store = storeWithTour("tour-a");
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -1056,7 +1057,6 @@ describe("TourSessionRuntime", () => {
         tourId: "tour-a",
         bundle: collapsedFileBundle("tour-a"),
       });
-      // Drive the auto-reveal chain by `cursor.set`ing the synthetic anchor.
       const syntheticAnchor: Cursor = {
         kind: "row",
         file: "bun.lock",
@@ -1067,15 +1067,52 @@ describe("TourSessionRuntime", () => {
       };
       store.dispatch({ type: "cursor.set", anchor: syntheticAnchor });
 
-      // The snapped cursor must resolve in the live flat-rows so a follow-
-      // up j/k motion is not a silent no-op (the user-visible #309 symptom
-      // after the ghost-cursor lands).
+      // The synthetic row is the SOLE row emitted for bun.lock when the
+      // file is classifier-collapsed; it IS a walkable interactive row, so
+      // the cursor resolves and a subsequent `j`/`k` advances normally to
+      // the next file's first walkable row — no silent no-op.
       const state = store.getState();
       const bundle = isBundleResolved(state);
       if (bundle === null || bundle.kind !== "ok") throw new Error("unreachable");
       const view = deriveTourSessionView(bundle, state);
       if (view.kind !== "ok") throw new Error("unreachable");
       expect(view.cursor.rowIdx).toBeGreaterThanOrEqual(0);
+      stop();
+    });
+
+    it("manual `c` toggle (user-folded file) survives cursor traversal — same rule as classifier-collapse (issue #310 AC)", () => {
+      // The split rule applies to user-folded files too: a `j` traversal
+      // into a file the user previously hid with `c` must not silently
+      // un-hide it. The override entry stays true, the file body stays
+      // hidden, and the cursor lands on whatever anchor the surface
+      // dispatched.
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: collapsedFileBundle("tour-a"),
+      });
+      // User manually folds bun.lock with `c` — distinct from
+      // classifier-collapse since this is an explicit user override.
+      store.dispatch({ type: "folds.setOverride", file: "bun.lock", value: true });
+      expect(store.getState().collapsedOverrides["bun.lock"]).toBe(true);
+
+      // `j` lands the cursor on the file's anchor. With the split, no
+      // implicit unfold fires; the override stays at true.
+      const anchor: Cursor = {
+        kind: "row",
+        file: "bun.lock",
+        lineNumber: 1,
+        side: "additions",
+        preferredSide: "additions",
+      };
+      store.dispatch({ type: "cursor.set", anchor });
+
+      expect(store.getState().collapsedOverrides["bun.lock"]).toBe(true);
       stop();
     });
 
@@ -1362,7 +1399,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("revealSidebarFile intent → adapter.revealFileInSidebar and dispatches folds.setOverride(false)", () => {
+    it("selectSidebarFile intent → adapter.revealFileInSidebar without clearing collapsedOverrides (issue #310 split)", () => {
       const store = storeWithTour("tour-a");
       store.dispatch({
         type: "folds.setOverride",
@@ -1373,7 +1410,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      // `cursor.set` for a row anchor on a new file emits revealSidebarFile.
+      // `cursor.set` for a row anchor on a new file emits selectSidebarFile.
+      // Pre-split this would dispatch `folds.setOverride { value: false }`
+      // and uncollapse the file; the split keeps `collapsedOverrides`
+      // untouched so cursor traversal honours the user's manual `c` toggle
+      // and the classifier-collapse contract.
       store.dispatch({
         type: "cursor.set",
         anchor: {
@@ -1386,7 +1427,9 @@ describe("TourSessionRuntime", () => {
       });
 
       expect(adapter.revealFileCalls).toEqual(["src/a.ts"]);
-      expect(store.getState().collapsedOverrides["src/a.ts"]).toBe(false);
+      // Override is preserved at its pre-cursor.set value (true) — the
+      // intent no longer overwrites it to false.
+      expect(store.getState().collapsedOverrides["src/a.ts"]).toBe(true);
       stop();
     });
   });

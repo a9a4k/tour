@@ -170,7 +170,7 @@ export type Intent =
   | { type: "mirrorUrl"; tourId: string }
   | { type: "revalidateCursor" }
   | { type: "scrollCursorTarget"; target: ScrollCursorTarget; placement: ScrollPlacement }
-  | { type: "revealSidebarFile"; file: string }
+  | { type: "selectSidebarFile"; file: string }
   | { type: "mirrorAnnUrl"; annotationId: string | null }
   | { type: "submitAnnotation"; tourId: string; target: ComposerTarget; body: string }
   | { type: "scrollToAnnotation"; annotationId: string }
@@ -637,11 +637,17 @@ function enterSubmitting(
 // Shared `cursor.set` / `cursor.materialize` transition: writes the slice
 // and derives the visual-side-effect intent stream from the (prev, next)
 // pair. `scrollCursorTarget` always fires (the cursor moved, so the
-// surface re-centers it). `revealSidebarFile` fires when the resolved
+// surface re-centers it). `selectSidebarFile` fires when the resolved
 // file changed — only RowAnchors have a resolvable file, so a Card→Card
-// or Row→Card move doesn't reveal anything. `mirrorAnnUrl` fires when
-// the annotation-id under the cursor changed (entering, leaving, or
-// switching cards) so the webapp `?ann=` URL stays in sync.
+// or Row→Card move doesn't reveal anything. The intent is sidebar-
+// selection only — issue #310 split `revealSidebarFile` (force-uncollapse +
+// sidebar select) into two semantics so a `j` traversal into a classifier-
+// collapsed file no longer dispatches a `folds.setOverride { value: false }`
+// the user never asked for. Explicit-reveal callsites (sidebar click,
+// annotation jumps, ...) dispatch `folds.setOverride` themselves alongside
+// the `cursor.set`. `mirrorAnnUrl` fires when the annotation-id under the
+// cursor changed (entering, leaving, or switching cards) so the webapp
+// `?ann=` URL stays in sync.
 function setCursor(
   state: TourSessionState,
   next: Cursor,
@@ -653,7 +659,7 @@ function setCursor(
   const prevFile = isRowAnchor(state.cursor) ? state.cursor.file : null;
   const nextFile = isRowAnchor(next) ? next.file : null;
   if (nextFile !== null && nextFile !== prevFile) {
-    intents.push({ type: "revealSidebarFile", file: nextFile });
+    intents.push({ type: "selectSidebarFile", file: nextFile });
   }
   const prevAnnId = isCardAnchor(state.cursor) ? state.cursor.annotationId : null;
   const nextAnnId = isCardAnchor(next) ? next.annotationId : null;
