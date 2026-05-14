@@ -68,6 +68,7 @@ import {
   folderRowFixedCost,
   fileRowFixedCost,
 } from "./sidebar-row-label.js";
+import { sidebarCursorPaint } from "./sidebar-cursor-paint.js";
 import { countDiffStats } from "../core/diff-stats.js";
 import { TourSessionRuntime } from "../core/tour-session-runtime.js";
 import { createTuiTourSessionAdapter } from "./tour-session-adapter.js";
@@ -1437,11 +1438,10 @@ function App(props: AppProps) {
               // because the glyph overwrites the leading space that the
               // row-label module already budgets for. Bold is dropped on
               // both states — the bg-intensity + glyph cues carry focus
-              // and selection without a second weight cue.
-              const bg = isSelected
-                ? (sidebarFocused ? theme.bg.cursorRow.tui : theme.bg.accentCursor.tui)
-                : undefined;
-              const showGlyph = isSelected && sidebarFocused;
+              // and selection without a second weight cue. Composition
+              // lives in `sidebar-cursor-paint.ts` so the four cases are
+              // unit-testable in isolation.
+              const { bg, showGlyph } = sidebarCursorPaint({ isSelected, sidebarFocused });
               const onRowMouseDown = (event: { stopPropagation: () => void }) => {
                 // OpenTUI mouse events bubble (Renderable.processMouseEvent
                 // calls parent unless `propagationStopped`). Without this
