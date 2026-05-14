@@ -355,18 +355,10 @@ function App(props: AppProps) {
         // Same-tour refresh (issue #211): dispatch `bundle.refreshed`
         // (NOT `tour.switched`) so the watcher reload doesn't trigger
         // the CONTEXT-pinned Tour-switch reset cascade (picker close +
-        // replyLock idle).
-        // Re-seed orphan windows on watcher reload (annotations may have
-        // changed; orphan windows recompute). seedFromOrphans unions per-side
-        // by max so manually expanded user state is preserved (issue #114).
-        // Dispatch BEFORE `bundle.refreshed` so the reducer's `revalidateCursor`
-        // intent fires against the freshly-seeded expansion slice.
-        if (next.kind === "ok") {
-          store.dispatch({
-            type: "expansion.seedFromOrphans",
-            windows: flattenOrphanWindows(next.files),
-          });
-        }
+        // replyLock idle). Orphan-window seeding is folded into the
+        // reducer (PRD #278 slice 1) — `bundle.refreshed` unions the
+        // inbound `bundle.files[*].orphanWindows` into the expansion
+        // slice via per-side max, preserving manual user expansion.
         store.dispatch({ type: "bundle.refreshed", bundle: next });
       } catch {
         // transient — keep current bundle
@@ -729,18 +721,11 @@ function App(props: AppProps) {
             // Drive the reducer's `tour.switched` cascade — bundle is
             // replaced; picker closes (defensively; commit already closed
             // it); replyLock resets to idle; cursor resets to null;
-            // expansion resets to empty; composer → closed; folds →
-            // empty.
+            // expansion resets to empty and re-seeds from the inbound
+            // bundle's orphan windows (PRD #278 slice 1) so Annotations
+            // whose anchor lives in Hidden context render inline on first
+            // paint of the new tour; composer → closed; folds → empty.
             store.dispatch({ type: "tour.switched", tourId, bundle: next });
-            // Re-seed orphan windows from the new tour's files post-switch
-            // so Annotations whose anchor lives in Hidden context render
-            // inline on first paint of the new tour.
-            if (next.kind === "ok") {
-              store.dispatch({
-                type: "expansion.seedFromOrphans",
-                windows: flattenOrphanWindows(next.files),
-              });
-            }
             // Reply-lock fetch for the new tour. Must dispatch AFTER
             // `tour.switched` (which resets replyLock to idle) so the
             // freshly-loaded lock isn't clobbered.
@@ -859,19 +844,12 @@ function App(props: AppProps) {
             // so the new entry shows up immediately on submit. Same-tour
             // refresh — dispatch `bundle.refreshed` (issue #211), NOT
             // `tour.switched`, so the picker / replyLock survive a composer
-            // submit. Re-seed orphan windows BEFORE `bundle.refreshed` so the
-            // reducer's `revalidateCursor` intent fires against the freshly-
-            // seeded expansion slice.
+            // submit. Orphan-window seeding is folded into the reducer's
+            // `bundle.refreshed` branch (PRD #278 slice 1).
             if (!props.loadTour) return;
             try {
               const refreshed = await props.loadTour(tourId);
               if (unmounted) return;
-              if (refreshed.kind === "ok") {
-                store.dispatch({
-                  type: "expansion.seedFromOrphans",
-                  windows: flattenOrphanWindows(refreshed.files),
-                });
-              }
               store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
             } catch {
               // transient — keep current bundle

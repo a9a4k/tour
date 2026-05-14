@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { PickerRow } from "./tour-list.js";
-import type { TourBundle } from "./tour-bundle.js";
+import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
 import type { Annotation, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
@@ -197,6 +197,20 @@ export function initialTourSessionState(): TourSessionState {
 
 const NO_INTENTS: Intent[] = [];
 
+// Stitch `BundleFile.orphanWindows` (file-grouped, no `file` field) into the
+// flat `OrphanWindow[]` shape `expansionSeedFromOrphans` consumes. Used by
+// the `tour.switched` and `bundle.refreshed` branches to fold orphan-window
+// seeding into the reducer (PRD #278 slice 1).
+function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] {
+  const out: OrphanWindow[] = [];
+  for (const f of files) {
+    for (const w of f.orphanWindows) {
+      out.push({ file: f.name, ref: w.ref, fromStart: w.fromStart, fromEnd: w.fromEnd });
+    }
+  }
+  return out;
+}
+
 export function reduce(state: TourSessionState, action: Action): ReduceResult {
   switch (action.type) {
     case "picker.open":
@@ -250,7 +264,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: NO_INTENTS,
       };
 
-    case "bundle.refreshed":
+    case "bundle.refreshed": {
       // Same-tour bundle update (watcher reload / SSE annotation-changed).
       // Replaces the bundle slice in place; intentionally does NOT touch
       // picker / replyLock / currentTourId — the user is still on the same
@@ -258,13 +272,24 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // `revalidateCursor` iff the cursor slice is non-null so the surface
       // can recompute its substrate-derived flat-rows and snap/clear the
       // anchor against the new bundle.
+      //
+      // PRD #278 slice 1: orphan-window seeding is folded into the reducer.
+      // The expansion slice unions with `bundle.files[*].orphanWindows` via
+      // per-side `Math.max`, so manual user expansion is preserved across
+      // watcher reloads (issue #114). Empty / absent windows leave the slice
+      // ref-equal (same-ref short-circuit in `expansionSeedFromOrphans`).
+      const expansion =
+        action.bundle.kind === "ok"
+          ? expansionSeedFromOrphans(state.expansion, flattenOrphanWindows(action.bundle.files))
+          : state.expansion;
       return {
-        state: { ...state, bundle: { kind: "ok", value: action.bundle } },
+        state: { ...state, bundle: { kind: "ok", value: action.bundle }, expansion },
         intents:
           state.cursor === null
             ? NO_INTENTS
             : [{ type: "revalidateCursor" }],
       };
+    }
 
     case "bundle.failed":
       return {
@@ -272,7 +297,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: NO_INTENTS,
       };
 
-    case "tour.switched":
+    case "tour.switched": {
       // CONTEXT-pinned Tour-switch reset rules: layout preserved; picker
       // closed; reply-lock reset; cursor → null and expansion → empty
       // (slice 2 additions per PRD #229 / issue #230); composer → closed
@@ -280,6 +305,14 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // additions per PRD #234 / issue #236). Distinct from
       // `bundle.refreshed` so a same-tour watcher reload doesn't dump
       // picker / replyLock / cursor / expansion / composer / folds.
+      //
+      // PRD #278 slice 1: expansion resets to empty, then seeds from the
+      // inbound bundle's orphan windows so Annotations whose anchor lives
+      // in Hidden context render inline on first paint of the new tour.
+      const expansion =
+        action.bundle.kind === "ok"
+          ? expansionSeedFromOrphans(emptyExpansion(), flattenOrphanWindows(action.bundle.files))
+          : emptyExpansion();
       return {
         state: {
           ...state,
@@ -288,13 +321,14 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           picker: { kind: "closed" },
           replyLock: { kind: "idle" },
           cursor: null,
-          expansion: emptyExpansion(),
+          expansion,
           composer: { kind: "closed" },
           collapsedFolders: new Set<string>(),
           collapsedOverrides: {},
         },
         intents: NO_INTENTS,
       };
+    }
 
     case "replyLock.loaded":
       return {

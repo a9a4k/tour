@@ -26,7 +26,7 @@ import {
 import { revealAncestors, type VisibleRow } from "../../core/file-tree.js";
 import { planRows, GAP_TWO_ROW_THRESHOLD, type PlannedRow } from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
-import { emptyExpansion, getBoundary, type OrphanWindow } from "../../core/expansion-state.js";
+import { emptyExpansion, getBoundary } from "../../core/expansion-state.js";
 import {
   cursorAtFirstFileRow,
   cursorFromAnnotation,
@@ -173,9 +173,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // mirrorAnnUrl) into DOM / history substrate.
   const cursor = sessionState.cursor;
   // Hidden-context expansion (PRD #212 / ADR 0024) lives in the Tour-
-  // session store too (PRD #229 slice 2, issue #232). The store's
-  // tour.switched branch resets to empty; mount-time / SSE-refresh
-  // orphan-window seeding dispatches `expansion.seedFromOrphans`.
+  // session store too (PRD #229 slice 2, issue #232). Orphan-window
+  // seeding is folded into the reducer's `tour.switched` and
+  // `bundle.refreshed` branches (PRD #278 slice 1) — the surface no
+  // longer dispatches `expansion.seedFromOrphans` as a follow-up.
   const expansion = sessionState.expansion;
   const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -527,24 +528,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // of the parallel useMemo chain the App used to maintain. EMPTY_BUNDLE
   // keeps the hook call unconditional before the real bundle lands.
   const view: TourSessionView = useTourSessionView(store, bundle ?? EMPTY_BUNDLE);
-
-  // Seed orphan windows on bundle load (and re-union on SSE refresh; new
-  // annotations may add windows). seedFromOrphans is a union — per-side
-  // expansion is `Math.max(prev, w.fromStart/fromEnd)` so manually-
-  // expanded user state is preserved across reloads (mirrors TUI #114).
-  useEffect(() => {
-    if (view.kind !== "ok") return;
-    const files = view.bundle.files;
-    if (!files.length) return;
-    const windows: OrphanWindow[] = [];
-    for (const f of files) {
-      for (const w of f.orphanWindows) {
-        windows.push({ file: f.name, ref: w.ref, fromStart: w.fromStart, fromEnd: w.fromEnd });
-      }
-    }
-    if (windows.length === 0) return;
-    store.dispatch({ type: "expansion.seedFromOrphans", windows });
-  }, [view, store]);
 
   // tourStats re-plans every file with stable args (empty annotations /
   // expansion, "split" layout) to compute the FULL-diff +N -M totals —
