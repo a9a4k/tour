@@ -3,6 +3,7 @@ import {
   TourSessionStore,
   initialTourSessionState,
   isBundleResolved,
+  type ComposerTarget,
   type TourSessionState,
 } from "../../src/core/tour-session.js";
 import { deriveTourSessionView } from "../../src/core/tour-session-view.js";
@@ -99,6 +100,7 @@ interface FakeAdapter extends TourSessionAdapter {
   requestReplyCalls: Array<{ tourId: string; annotationId: string }>;
   scrollCardCalls: Array<{ id: string; mode: ScrollPlacement }>;
   scrollRowCalls: Array<{ anchor: ScrollRowAnchor; mode: ScrollPlacement }>;
+  scrollComposerCalls: Array<ComposerTarget>;
   scrollPickerCalls: number[];
   revealFileCalls: string[];
   mirrorTourCalls: string[];
@@ -124,6 +126,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const requestReplyCalls: FakeAdapter["requestReplyCalls"] = [];
   const scrollCardCalls: FakeAdapter["scrollCardCalls"] = [];
   const scrollRowCalls: FakeAdapter["scrollRowCalls"] = [];
+  const scrollComposerCalls: FakeAdapter["scrollComposerCalls"] = [];
   const scrollPickerCalls: number[] = [];
   const revealFileCalls: string[] = [];
   const mirrorTourCalls: string[] = [];
@@ -137,6 +140,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     requestReplyCalls,
     scrollCardCalls,
     scrollRowCalls,
+    scrollComposerCalls,
     scrollPickerCalls,
     revealFileCalls,
     mirrorTourCalls,
@@ -184,6 +188,9 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     },
     scrollToRow: (anchor, mode) => {
       scrollRowCalls.push({ anchor, mode });
+    },
+    scrollToComposer: (target) => {
+      scrollComposerCalls.push(target);
     },
     scrollToPickerRow: (idx) => {
       scrollPickerCalls.push(idx);
@@ -1267,6 +1274,48 @@ describe("TourSessionRuntime", () => {
       expect(
         adapter.scrollCardCalls.filter((c) => c.id === "a-new" && c.mode === "center"),
       ).toEqual([{ id: "a-new", mode: "center" }]);
+      stop();
+    });
+
+    it("scrollToComposer intent (composer.recall, top-level) → adapter.scrollToComposer(target) (#320)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      const target: ComposerTarget = {
+        kind: "top-level",
+        file: "src/a.ts",
+        side: "additions",
+        line_start: 42,
+        line_end: 42,
+      };
+      store.dispatch({ type: "composer.open", target });
+      store.dispatch({ type: "composer.recall" });
+      expect(adapter.scrollComposerCalls).toEqual([target]);
+      // Composer state is unchanged by recall — still `open` at the same target.
+      expect(store.getState().composer).toEqual({ kind: "open", target, body: "" });
+      stop();
+    });
+
+    it("scrollToComposer intent (composer.recall, reply) → adapter.scrollToComposer(target) (#320)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      const target: ComposerTarget = { kind: "reply", replies_to: "ann-99" };
+      store.dispatch({ type: "composer.open", target });
+      store.dispatch({ type: "composer.recall" });
+      expect(adapter.scrollComposerCalls).toEqual([target]);
+      stop();
+    });
+
+    it("composer.recall while closed dispatches no scrollToComposer (#320)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      store.dispatch({ type: "composer.recall" });
+      expect(adapter.scrollComposerCalls).toEqual([]);
       stop();
     });
 

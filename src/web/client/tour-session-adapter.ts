@@ -133,6 +133,43 @@ export function createWebTourSessionAdapter(
         cell?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
       });
     },
+    scrollToComposer: (target) => {
+      // Issue #320: auto-recall for an in-flight Composer scrolled off-
+      // screen. Top-level composers anchor at a (file, side, line_end) row;
+      // scroll that row in (matching `scrollToRow`'s anchor lookup) and
+      // focus the inline `.tour-card[data-composer="true"]` textarea so
+      // the user can resume typing. Reply composers nest inside a card —
+      // scrollToCard handles the recall + the inner textarea picks up
+      // focus when the slot mounts.
+      if (typeof document === "undefined") return;
+      requestAnimationFrame(() => {
+        const cbs = deps.callbacksRef.current;
+        if (!cbs) return;
+        if (target.kind === "reply") {
+          // Reply composer is anchored under its parent annotation's card.
+          // The thread-collapse / unfold path is owned by the existing
+          // card-recall; we only need to scroll the card into view here.
+          const replyAnchor = deps.annotationRefs.current.get(target.replies_to);
+          replyAnchor?.scrollIntoView({ behavior: "instant", block: "center" });
+          replyAnchor
+            ?.querySelector<HTMLTextAreaElement>("textarea")
+            ?.focus();
+          return;
+        }
+        const block = cbs.findFileBlock(target.file);
+        if (!block) return;
+        const cell = block.querySelector<HTMLElement>(
+          `.tour-row-gutter[data-side="${target.side}"][data-line-number="${target.line_end}"]`,
+        );
+        cell?.scrollIntoView({ behavior: "instant", block: "center" });
+        const composerCard = block.querySelector<HTMLElement>(
+          '.tour-card[data-composer="true"]',
+        );
+        composerCard
+          ?.querySelector<HTMLTextAreaElement>("textarea")
+          ?.focus();
+      });
+    },
     scrollToPickerRow: (idx: number) => {
       if (typeof document === "undefined") return;
       const el = document.querySelector(`[data-picker-row-idx="${idx}"]`);

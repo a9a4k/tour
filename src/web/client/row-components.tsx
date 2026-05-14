@@ -65,6 +65,14 @@ export interface DiffRowProps {
    *  Line cursor for annotation creation. */
   onClick?: (side: Side) => void;
   onMouseEnter?: () => void;
+  /** Issue #320: GitHub-style `+` annotate button. When wired, every
+   *  gutter that carries a line number renders a `+` button overlaying
+   *  the gutter/cell boundary. Visibility is CSS-driven (row hover +
+   *  cursored side); App-level routing branches on composer state to
+   *  open-vs-recall. Omitting this prop hides the button on every
+   *  gutter — used by the file-cards / interactive rows that do not
+   *  support annotation anchoring. */
+  onAnnotate?: (side: Side, lineNumber: number) => void;
 }
 
 // `display: grid` + `grid-template-columns: subgrid` + `grid-column: 1 / -1`
@@ -184,6 +192,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     preferredSide,
     onClick,
     onMouseEnter,
+    onAnnotate,
   } = props;
 
   // `.is-cursor` and `.in-range` live per-cell so split layout scopes both
@@ -249,6 +258,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           isInRange={range.left}
           hasStripe={stripeSide === "deletions"}
           onClick={onClick ? handleColumnClick("deletions") : undefined}
+          onAnnotate={onAnnotate}
         />
         <Column
           side="additions"
@@ -260,6 +270,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
           isInRange={range.right}
           hasStripe={stripeSide === "additions"}
           onClick={onClick ? handleColumnClick("additions") : undefined}
+          onAnnotate={onAnnotate}
         />
       </div>
     );
@@ -295,6 +306,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
         isInRange={unifiedInRange}
         hasStripe={unifiedInRange}
         onClick={onClick ? handleColumnClick(sideForClick) : undefined}
+        onAnnotate={onAnnotate}
       />
     </div>
   );
@@ -310,6 +322,7 @@ interface ColumnProps {
   isInRange: boolean;
   hasStripe: boolean;
   onClick?: (e: React.MouseEvent) => void;
+  onAnnotate?: (side: Side, lineNumber: number) => void;
 }
 
 function Column({
@@ -322,6 +335,7 @@ function Column({
   isInRange,
   hasStripe,
   onClick,
+  onAnnotate,
 }: ColumnProps): React.JSX.Element {
   const html = lineNumber != null ? tokens?.get(lineNumber) : undefined;
   const gutterClasses = ["tour-row-gutter"];
@@ -332,6 +346,21 @@ function Column({
   const cellClasses = ["tour-row-cell"];
   if (isCursor) cellClasses.push("is-cursor");
   if (isInRange) cellClasses.push("in-range");
+  // Issue #320: GitHub-style annotate `+` button overlaying the
+  // gutter/cell boundary. Rendered only when the column carries a
+  // line number AND `onAnnotate` is wired. CSS owns the visibility
+  // rule (hidden by default; revealed on row :hover or when the
+  // gutter sits on the cursored side; ghost state when
+  // `[data-composer-open]` is set on <html>). `tabIndex={-1}` keeps
+  // the button out of Tab order — the keyboard `a` shortcut is the
+  // canonical keyboard path. `stopPropagation` stops the cell's
+  // row-click handler from also seeding the cursor before the
+  // App-level annotate branch runs.
+  const showAnnotateButton = onAnnotate !== undefined && lineNumber != null;
+  const handleAnnotateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onAnnotate && lineNumber != null) onAnnotate(side, lineNumber);
+  };
   return (
     <>
       <span
@@ -340,6 +369,17 @@ function Column({
         data-line-number={lineNumber ?? ""}
       >
         {lineNumber ?? ""}
+        {showAnnotateButton ? (
+          <button
+            type="button"
+            className="tour-row-annotate-btn"
+            tabIndex={-1}
+            aria-label={`Add comment on line ${lineNumber}`}
+            onClick={handleAnnotateClick}
+          >
+            +
+          </button>
+        ) : null}
       </span>
       <span className={symbolClasses.join(" ")} data-side={side} aria-hidden="true">
         {symbol}

@@ -790,6 +790,147 @@ describe("<DiffRow>", () => {
     expect(symbols[1]!.textContent).toBe("+");
   });
 
+  // ------------------------------------------------------------------
+  // Annotate `+` button (issue #320)
+  // ------------------------------------------------------------------
+
+  describe("annotate `+` button (#320)", () => {
+    it("renders a tour-row-annotate-btn inside each gutter when onAnnotate is wired and the column has a line number", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "split",
+          leftLineNumber: 5,
+          rightLineNumber: 5,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          onAnnotate: () => {},
+        }),
+      );
+      const buttons = c.querySelectorAll(".tour-row-annotate-btn");
+      expect(buttons.length).toBe(2);
+      for (const btn of Array.from(buttons)) {
+        expect(btn.textContent).toBe("+");
+        expect((btn as HTMLElement).getAttribute("tabindex")).toBe("-1");
+        expect((btn as HTMLElement).getAttribute("aria-label")).toContain("line 5");
+      }
+    });
+
+    it("does NOT render the annotate button when onAnnotate is undefined", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "split",
+          leftLineNumber: 5,
+          rightLineNumber: 5,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+        }),
+      );
+      expect(c.querySelectorAll(".tour-row-annotate-btn").length).toBe(0);
+    });
+
+    it("omits the annotate button on empty-side gutters in split layout (#320)", () => {
+      // Pure-addition row: deletions gutter has no line number → no button.
+      // Additions gutter has a line number → button renders.
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "split",
+          leftLineNumber: null,
+          rightLineNumber: 42,
+          leftText: "",
+          rightText: "x",
+          isCursor: false,
+          onAnnotate: () => {},
+        }),
+      );
+      const deletionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"]',
+      ) as HTMLElement;
+      const additionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="additions"]',
+      ) as HTMLElement;
+      expect(deletionsGutter.querySelector(".tour-row-annotate-btn")).toBeNull();
+      expect(
+        additionsGutter.querySelector(".tour-row-annotate-btn"),
+      ).not.toBeNull();
+    });
+
+    it("renders the button on context rows on both sides (#320)", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "split",
+          leftLineNumber: 3,
+          rightLineNumber: 3,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          onAnnotate: () => {},
+        }),
+      );
+      expect(c.querySelectorAll(".tour-row-annotate-btn").length).toBe(2);
+    });
+
+    it("renders one button in unified layout when onAnnotate is wired", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 99,
+          leftText: "",
+          rightText: "x",
+          isCursor: false,
+          onAnnotate: () => {},
+        }),
+      );
+      expect(c.querySelectorAll(".tour-row-annotate-btn").length).toBe(1);
+    });
+
+    it("clicking the button calls onAnnotate(side, lineNumber) and does not bubble to onClick", () => {
+      const annotateCalls: Array<{ side: string; line: number }> = [];
+      const clickCalls: string[] = [];
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "split",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          onClick: (side) => clickCalls.push(side),
+          onAnnotate: (side, line) => annotateCalls.push({ side, line }),
+        }),
+      );
+      const additionsBtn = c.querySelector(
+        '.tour-row-gutter[data-side="additions"] .tour-row-annotate-btn',
+      ) as HTMLElement;
+      act(() => {
+        additionsBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(annotateCalls).toEqual([{ side: "additions", line: 9 }]);
+      // No bubbling into the cell's onClick.
+      expect(clickCalls).toEqual([]);
+
+      const deletionsBtn = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"] .tour-row-annotate-btn',
+      ) as HTMLElement;
+      act(() => {
+        deletionsBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(annotateCalls).toEqual([
+        { side: "additions", line: 9 },
+        { side: "deletions", line: 7 },
+      ]);
+      expect(clickCalls).toEqual([]);
+    });
+  });
+
   it("emits a single tour-row-symbol cell in unified layout (#221)", () => {
     const c = mount(
       createElement(DiffRow, {

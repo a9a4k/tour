@@ -147,6 +147,7 @@ export type Action =
   | { type: "composer.failed"; error: string }
   | { type: "composer.retry" }
   | { type: "composer.dismissError" }
+  | { type: "composer.recall" }
   | { type: "folds.toggleFolder"; path: string }
   | { type: "folds.setOverride"; file: string; value: boolean }
   | { type: "folds.clearOverride"; file: string }
@@ -174,6 +175,7 @@ export type Intent =
   | { type: "mirrorAnnUrl"; annotationId: string | null }
   | { type: "submitAnnotation"; tourId: string; target: ComposerTarget; body: string }
   | { type: "scrollToAnnotation"; annotationId: string }
+  | { type: "scrollToComposer"; target: ComposerTarget }
   | { type: "requestReply"; tourId: string; annotationId: string };
 
 export interface ReduceResult {
@@ -503,6 +505,19 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       return {
         state: { ...state, composer: { kind: "open", target, body } },
         intents: NO_INTENTS,
+      };
+    }
+
+    case "composer.recall": {
+      // Issue #320: no state change. Emits `scrollToComposer` so the
+      // adapter pulls the in-flight composer's anchor row + textarea
+      // back to the user. Guarded no-op on closed (only the App-level
+      // `+`-button branch dispatches it, and only while non-closed —
+      // the guard is defence in depth).
+      if (state.composer.kind === "closed") return { state, intents: NO_INTENTS };
+      return {
+        state,
+        intents: [{ type: "scrollToComposer", target: state.composer.target }],
       };
     }
 

@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Webapp: GitHub-style `+` button on every annotatable diff row
+  (issue #320).** Hidden by default, revealed on row `:hover` and on
+  the Cursor's focused side. Click opens the top-level Composer at
+  `(file, side, line)` with `line_start == line_end` — one-click
+  parity with GitHub's `+`, replacing the prior two-step `click-row →
+  press a` mouse path. The existing keyboard `a` shortcut is
+  unchanged; both paths converge on the same `composer.open`
+  dispatch.
+
+  When a Composer is already open (any of `open` / `submitting` /
+  `errored`), every `+` reads in a muted **ghost** state and clicking
+  invokes **auto-recall**: a new `composer.recall` reducer action
+  emits a `scrollToComposer` intent that the web adapter realises as
+  "scroll the in-flight Composer's anchor row into view + focus its
+  textarea." The user can't open a second Composer while one is in
+  flight and can't lose the in-flight one by scrolling away. CSS keys
+  the ghost state off a `data-composer-open` attribute on `<html>`
+  (mirrored to `composer.kind !== "closed"`).
+
+  Side-effects: removed the `cursor: pointer` rule on annotatable
+  `.tour-row[data-line-type=...]` selectors — the `+` button is now
+  the only visible "click me" cue on a row. Row click still seeds the
+  cursor (unchanged). The button is `tabIndex={-1}` so it stays out
+  of Tab order; the keyboard `a` flow remains the canonical keyboard
+  path. Empty-side gutters, interactive rows, and rows without an
+  `onAnnotate` callback render no button. TUI is unaffected (no mouse
+  hover surface; v1 of the TUI adapter implements `scrollToComposer`
+  as a row-only scroll, no textarea focus parity).
+
+  Issue: #320
+
 ### Fixed
 
 - **TUI: `[`/`]` sidebar resize no longer drifts the diff viewport (issue
