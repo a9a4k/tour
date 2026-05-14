@@ -476,10 +476,36 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // Submitting → closed; emit `scrollToAnnotation` so the freshly-
       // created annotation card scrolls into view (replaces the TUI's
       // `pendingScrollAnnotationId` useState per PRD #234).
+      //
+      // Issue #322: also fold the freshly-created annotation into the
+      // resolved bundle's annotations array on the same dispatch — the
+      // new card renders in the same React commit as the textarea
+      // removal, instead of waiting for the SSE → bundle-refetch round-
+      // trip (~500-600 ms on large tours). The server-driven
+      // `bundle.refreshed` will replace the whole array later; that
+      // refresh naturally de-dupes by overwrite (id collision on the
+      // same dispatch is also guarded below). No-op on the bundle slice
+      // when the bundle isn't resolved (defence in depth — the runtime
+      // gates composer.submit on a resolved bundle).
       if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
+      const intents: Intent[] = [
+        { type: "scrollToAnnotation", annotationId: action.annotation.id },
+      ];
+      if (state.bundle.kind !== "ok") {
+        return { state: { ...state, composer: { kind: "closed" } }, intents };
+      }
+      const inner = state.bundle.value;
+      const already = inner.annotations.some((a) => a.id === action.annotation.id);
+      const nextBundle: TourBundle = already
+        ? inner
+        : { ...inner, annotations: [...inner.annotations, action.annotation] };
       return {
-        state: { ...state, composer: { kind: "closed" } },
-        intents: [{ type: "scrollToAnnotation", annotationId: action.annotation.id }],
+        state: {
+          ...state,
+          composer: { kind: "closed" },
+          bundle: { kind: "ok", value: nextBundle },
+        },
+        intents,
       };
     }
 

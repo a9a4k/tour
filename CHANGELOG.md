@@ -41,6 +41,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Annotation submit on large tours: new card renders in the same commit as
+  composer dismissal (issue #322).** Before: the `composer.submitted`
+  reducer transitioned the composer slice to `closed` (textarea removed
+  from the DOM) and emitted `scrollToAnnotation`, but the new annotation
+  card wasn't in `state.bundle.annotations` yet — that took a server-side
+  `annotation-changed` SSE round-trip → full bundle re-fetch → `bundle.
+  refreshed` dispatch (~500-600 ms on large tours, scaling with bundle
+  size). The user saw an empty interval between "my textarea vanished"
+  and "my annotation appeared", and the `scrollToAnnotation` intent fired
+  against a card the ref map didn't yet contain — effectively a no-op
+  until refresh. The POST response already carries the canonical
+  `Annotation`; the reducer now folds it into the resolved bundle's
+  `annotations` array on the same dispatch that closes the composer.
+  Multi-client correctness preserved: the SSE-triggered `bundle.
+  refreshed` still arrives later and overwrites the whole array,
+  naturally de-duping by id (collision on the same dispatch is also
+  guarded). Applies to both top-level annotations and replies (they
+  share the same reducer branch). No-op on the bundle slice when the
+  bundle isn't resolved (defence in depth).
+
+  Issue: #322
+
 - **Webapp file header: copy-path button now shows a checkmark for ~1.2 s
   after a successful clipboard write (restores #16, dropped during the
   #225 chrome restructure, issue #319).** Clicking the per-file copy-path
