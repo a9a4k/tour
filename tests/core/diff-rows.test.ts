@@ -192,11 +192,99 @@ index 1..2 100644
     expect(annIds).toEqual(["a", "b"]);
   });
 
-  it("silently drops annotations that fall outside any visible row", () => {
+  // Issue #300: an annotation whose `line_end` falls outside the planner's
+  // emitted same-side diff rows used to be silently dropped, breaking n/p
+  // navigation when the bundle bookmark counter `[K/M]` claimed the card
+  // existed. The fallback ladder is: exact match → nearest preceding same-
+  // side row → first same-side row → file's first emitted row.
+  it("falls back to the nearest preceding same-side row when line_end is past the last in-hunk line (issue #300)", () => {
+    const file = parseFile(SIMPLE_DIFF);
+    // SIMPLE_DIFF's only hunk emits additions rows at lines 2 and 3.
+    // line_end = 99 sits past every emitted addition line — the previous
+    // behavior was to silently drop the card.
+    const a = ann({ id: "ghost", side: "additions", line_start: 99, line_end: 99 });
+    const rows = planRows(file, [a], "split");
+    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    expect(annIdx).toBeGreaterThan(0);
+    const prev = rows[annIdx - 1];
+    if (prev.kind === "diff-row") {
+      expect(prev.rightLineNumber).toBe(3);
+    } else {
+      throw new Error("expected nearest preceding additions row before card");
+    }
+  });
+
+  it("falls back to the nearest preceding additions row when line_end is between two hunks (issue #300)", () => {
+    // Two hunks with a 10-line gap between them. line_end = 7 sits in the
+    // unexpanded mid-file gap (lines 4..13 hidden). The card should anchor
+    // to line 3 — the nearest preceding additions diff row.
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -1,3 +1,3 @@
+ ctx1
+-old1
++new1
+ ctx2
+@@ -14,2 +14,2 @@
+ ctx14
+-old14
++new14
+`;
+    const file = parseFile(diff);
+    const a = ann({ id: "gap", side: "additions", line_start: 7, line_end: 7 });
+    const rows = planRows(file, [a], "split");
+    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    expect(annIdx).toBeGreaterThan(0);
+    const prev = rows[annIdx - 1];
+    if (prev.kind === "diff-row") {
+      expect(prev.rightLineNumber).toBe(3);
+    } else {
+      throw new Error("expected nearest preceding additions row before card");
+    }
+  });
+
+  it("falls forward to the first same-side row when line_end precedes every emitted same-side row (issue #300)", () => {
+    // The only hunk starts at line 5; nothing on the additions side appears
+    // before line 5. line_end = 2 has no preceding same-side row, so the
+    // card snaps forward onto the first additions row in the file (line 5).
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -5,1 +5,1 @@
+-old5
++new5
+`;
+    const file = parseFile(diff);
+    const a = ann({ id: "early", side: "additions", line_start: 2, line_end: 2 });
+    const rows = planRows(file, [a], "split");
+    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    expect(annIdx).toBeGreaterThan(0);
+    const prev = rows[annIdx - 1];
+    if (prev.kind === "diff-row") {
+      expect(prev.rightLineNumber).toBe(5);
+    } else {
+      throw new Error("expected first additions row before card");
+    }
+  });
+
+  it("CardFlatRow.lineEnd preserves the annotation's authored line_end after a fallback snap (issue #300)", () => {
+    // Even when the card snaps to a fallback diff row, the AnnotationRow it
+    // emits carries the original annotation (line_end intact) so downstream
+    // consumers (URL, click routing, agent reply targets) see the true
+    // anchor — not the snap target.
     const file = parseFile(SIMPLE_DIFF);
     const a = ann({ id: "ghost", side: "additions", line_start: 99, line_end: 99 });
     const rows = planRows(file, [a], "split");
-    expect(rows.some((r) => r.kind === "annotation")).toBe(false);
+    const annRow = rows.find((r) => r.kind === "annotation");
+    if (annRow?.kind === "annotation") {
+      expect(annRow.annotation.line_end).toBe(99);
+      expect(annRow.annotation.line_start).toBe(99);
+    } else {
+      throw new Error("expected annotation row to be emitted");
+    }
   });
 
   it("places a deletions-side annotation after the matching row in unified layout", () => {
