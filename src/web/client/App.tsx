@@ -56,7 +56,7 @@ import { tourDiffStats } from "../../core/diff-stats.js";
 import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
 import { decideReanchor } from "./re-anchor-policy.js";
-import { readTourFromLocation, readAnnFromLocation, composeUrl } from "./url-routing.js";
+import { readTourFromLocation, readAnnFromLocation } from "./url-routing.js";
 import { recallCardIntoView } from "./auto-recall.js";
 
 // Escape a string for safe interpolation into a CSS attribute selector
@@ -191,120 +191,23 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     findFileBlock: (name: string) => HTMLElement | null;
   } | null>(null);
 
-  // Intent listener — realizes the store's intent emissions in DOM /
-  // network / history substrate (PRD #207 / issue #210; slice 2 / issue
-  // #232 grows the cursor + expansion intent set). `loadTour` is owned
-  // by the Tour-session runtime (PRD #278 slice 3) — calls `fetchBundle`
-  // → `tour.switched` → `fetchReplyLock` → `replyLock.loaded` through the
-  // adapter; the surface no longer hand-rolls a `loadBundle` callback.
-  useEffect(() => {
-    return store.onIntent((intent) => {
-      switch (intent.type) {
-        case "scrollPickerRow": {
-          if (typeof document === "undefined") break;
-          const el = document.querySelector(
-            `[data-picker-row-idx="${intent.idx}"]`,
-          );
-          el?.scrollIntoView({ block: "nearest" });
-          break;
-        }
-        case "mirrorUrl":
-          if (typeof window !== "undefined" && window.history) {
-            window.history.pushState(
-              { tourId: intent.tourId },
-              "",
-              composeUrl(intent.tourId, null),
-            );
-          }
-          break;
-        case "scrollCursorTarget": {
-          // Defer to RAF so cursor.set landing under a fresh bundle waits
-          // for React's commit before querying DOM — matches the existing
-          // scrollAnnotationIntoView pattern. Placement is dictated by the
-          // reducer: `nearest` for in-flight navigation (n/p, j/k, click);
-          // `center` for fresh landings (initial materialize, URL restore).
-          if (typeof document === "undefined") break;
-          const target = intent.target;
-          const placement = intent.placement;
-          requestAnimationFrame(() => {
-            if (target.kind === "card") {
-              annotationRefs.current
-                .get(target.annotationId)
-                ?.scrollIntoView({ behavior: "instant", block: placement });
-              return;
-            }
-            const inputs = intentInputsRef.current;
-            if (!inputs) return;
-            const block = inputs.findFileBlock(target.file);
-            if (!block) return;
-            const cell = block.querySelector<HTMLElement>(
-              `.tour-row-gutter[data-side="${target.side}"][data-line-number="${target.lineNumber}"]`,
-            );
-            cell?.scrollIntoView({ block: placement });
-          });
-          break;
-        }
-        case "revealSidebarFile": {
-          const inputs = intentInputsRef.current;
-          if (!inputs) break;
-          inputs.setSelectedFile(intent.file);
-          store.dispatch({
-            type: "folds.setOverride",
-            file: intent.file,
-            value: false,
-          });
-          inputs.revealFileAncestors(intent.file);
-          break;
-        }
-        case "mirrorAnnUrl": {
-          // `replaceState` (not `pushState`) so back/forward steps over Tour
-          // switches, not over every cursor move. The URL composer uses the
-          // store's current tourId so an in-flight tour-switch can't write
-          // the wrong tour's URL.
-          if (typeof window === "undefined" || !window.history) break;
-          const tid = store.getState().currentTourId;
-          if (tid === null) break;
-          const url = composeUrl(tid, intent.annotationId);
-          const current =
-            window.location.pathname + window.location.search + window.location.hash;
-          if (url === current) break;
-          window.history.replaceState(window.history.state, "", url);
-          break;
-        }
-        case "scrollToAnnotation": {
-          // The freshly-created card may not yet be in the DOM — SSE
-          // delivers the new bundle asynchronously. Defer to RAF; if the
-          // ref still isn't present, the scroll is silently a no-op (the
-          // SSE refresh will land the card in view anyway, since reply
-          // / inline annotations render adjacent to the cursor's existing
-          // anchor).
-          if (typeof document === "undefined") break;
-          const id = intent.annotationId;
-          requestAnimationFrame(() => {
-            annotationRefs.current
-              .get(id)
-              ?.scrollIntoView({ behavior: "instant", block: "center" });
-          });
-          break;
-        }
-      }
-    });
-  }, [store]);
-
-  // Tour-session runtime (PRD #278 slice 2 + slice 3). Subscribes to SSE
-  // via the web adapter and dispatches `bundle.refreshed` /
-  // `replyLock.loaded` on tour events; realises the `loadTour` intent end-
-  // to-end (fetchBundle → tour.switched → fetchReplyLock →
-  // replyLock.loaded). The runtime re-subscribes itself when
-  // `currentTourId` changes, so this effect runs once at mount and tears
-  // down at unmount.
+  // Tour-session runtime (PRD #278 slices 2-6). Subscribes to SSE via the
+  // web adapter and dispatches `bundle.refreshed` / `replyLock.loaded` on
+  // tour events; realises every intent the reducer emits (loadTour,
+  // submitAnnotation, scroll / mirror / reveal). The runtime re-subscribes
+  // itself when `currentTourId` changes, so this effect runs once at mount
+  // and tears down at unmount.
   //
   // Registered BEFORE the mount-time bundle.loading dispatch so the
   // runtime's `onIntent` subscription is live when the initial loadTour
   // intent fires. React runs useEffects in declaration order; reversing
   // the order drops the first intent and the bundle never loads.
   useEffect(() => {
-    const adapter = createWebTourSessionAdapter();
+    const adapter = createWebTourSessionAdapter({
+      store,
+      annotationRefs,
+      callbacksRef: intentInputsRef,
+    });
     const runtime = new TourSessionRuntime(store, adapter);
     return runtime.start();
   }, [store]);

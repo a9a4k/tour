@@ -1,3 +1,4 @@
+import type { ScrollBoxRenderable } from "@opentui/core";
 import { TourWatcher } from "../core/watcher.js";
 import type {
   ScrollRowAnchor,
@@ -7,28 +8,68 @@ import type {
 import type { TourBundle } from "../core/tour-bundle.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import type { Annotation } from "../core/types.js";
-import type { ScrollPlacement } from "../core/tour-session.js";
+import {
+  isBundleResolved,
+  type ScrollPlacement,
+  type TourSessionStore,
+} from "../core/tour-session.js";
 import type { WriteAnnotationInput } from "../core/write-annotation-input.js";
+import { isTopLevel } from "../core/threads.js";
+import {
+  buildTree,
+  compress,
+  revealAncestors,
+  revealAndLocate,
+} from "../core/file-tree.js";
+import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
 
-// TUI substrate dependencies the adapter needs. Sourced from `StartTuiProps`
-// (loadTour / loadReplyLock / writeAnnotation) and the surface's `cwd`.
-// Methods that touch OpenTUI scroll / sidebar / focus state arrive in later
-// slices — stubbed here so the interface compiles.
+// TUI substrate dependencies the adapter needs. The renderer-bound
+// ScrollBoxRenderable refs are filled lazily by `<scrollbox ref={...}>`
+// — they're read at intent-fire time so the adapter doesn't trip on a
+// pre-mount intent. The store handle lets the adapter (a) derive the
+// sidebar tree on demand inside `revealFileInSidebar` and (b) retry the
+// post-submit scroll once the watcher's `bundle.refreshed` lands.
 export interface TuiTourSessionAdapterDeps {
   cwd: string;
+  store: TourSessionStore;
   loadTour: (id: string) => Promise<TourBundle>;
   loadReplyLock: (id: string) => Promise<ReplyLock | null>;
   writeAnnotation: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
+  diffScrollBoxRef: { current: ScrollBoxRenderable | null };
+  pickerScrollBoxRef: { current: ScrollBoxRenderable | null };
+  setSelectedRowIdx: (idx: number) => void;
 }
 
-// `TourSessionAdapter` implemented against the TUI substrate. This slice
-// wires only the methods needed for the watcher path
-// (`fetchBundle` / `fetchReplyLock` / `subscribeTourEvents`); scroll /
-// reveal / mirror methods are no-ops until later slices land their intent
-// handlers. The URL mirrors are permanent no-ops — the TUI has no URL.
+// Post-submit scroll retry budget. The watcher's `bundle.refreshed` lands
+// within a few ms in practice — 20 retries at the default macrotask
+// cadence covers a worst-case ~1s window before we silently give up.
+const POST_SUBMIT_SCROLL_RETRY_BUDGET = 20;
+
+// `TourSessionAdapter` implemented against the TUI substrate (OpenTUI
+// ScrollBox + TourWatcher + props.* callbacks). URL-mirror methods are
+// permanent no-ops — the TUI has no URL.
 export function createTuiTourSessionAdapter(
   deps: TuiTourSessionAdapterDeps,
 ): TourSessionAdapter {
+  // Defers to the next macrotask so OpenTUI's Yoga relayout completes
+  // before we read positions. `requestAnimationFrame` shims to
+  // `setImmediate` (or similar) in bun/node and fires BEFORE OpenTUI's
+  // render tick — empirically verified that setTimeout(0) is what
+  // reliably lands the callback after layout.
+  function scheduleScroll(fn: () => void): void {
+    setTimeout(fn, 0);
+  }
+
+  function scrollCardOnce(id: string, mode: ScrollPlacement): boolean {
+    const sb = deps.diffScrollBoxRef.current;
+    if (!sb) return false;
+    const targetId = `annotation-${id}`;
+    if (!sb.content.findDescendantById(targetId)) return false;
+    if (mode === "center") centerChildInView(sb, targetId);
+    else scrollChildIntoView(sb, targetId);
+    return true;
+  }
+
   return {
     fetchBundle: (id) => deps.loadTour(id),
     fetchReplyLock: (id) => deps.loadReplyLock(id),
@@ -50,17 +91,54 @@ export function createTuiTourSessionAdapter(
       watcher.start();
       return () => watcher.stop();
     },
-    scrollToCard: (_id: string, _mode: ScrollPlacement) => {
-      // Slice 6: wire to OpenTUI ScrollBoxRenderable.
+    scrollToCard: (id, mode) => {
+      const attempt = (remaining: number): void => {
+        scheduleScroll(() => {
+          if (scrollCardOnce(id, mode)) return;
+          // Target not in DOM yet (post-submit `scrollToAnnotation` fires
+          // synchronously inside `composer.submitted`, before the watcher
+          // delivers the freshly-written card). Retry until the bundle
+          // refreshes or the budget runs out.
+          if (remaining > 0) attempt(remaining - 1);
+        });
+      };
+      attempt(POST_SUBMIT_SCROLL_RETRY_BUDGET);
     },
-    scrollToRow: (_anchor: ScrollRowAnchor, _mode: ScrollPlacement) => {
-      // Slice 6: wire to OpenTUI ScrollBoxRenderable.
+    scrollToRow: (anchor: ScrollRowAnchor, _mode: ScrollPlacement) => {
+      scheduleScroll(() => {
+        const sb = deps.diffScrollBoxRef.current;
+        if (!sb) return;
+        scrollChildIntoView(
+          sb,
+          `diff-row-${anchor.file}-${anchor.side}-${anchor.lineNumber}`,
+        );
+      });
     },
-    scrollToPickerRow: (_idx: number) => {
-      // Slice 6: wire to OpenTUI ScrollBoxRenderable.
+    scrollToPickerRow: (idx: number) => {
+      const sb = deps.pickerScrollBoxRef.current;
+      if (!sb) return;
+      scrollChildIntoView(sb, `picker-row-${idx}`);
     },
-    revealFileInSidebar: (_file: string) => {
-      // Slice 6.
+    revealFileInSidebar: (file: string) => {
+      const state = deps.store.getState();
+      const bundle = isBundleResolved(state);
+      if (!bundle || bundle.kind !== "ok") return;
+      const tree = compress(buildTree([...bundle.files]));
+      const annotationCounts: Record<string, number> = {};
+      for (const a of bundle.annotations) {
+        if (isTopLevel(a)) {
+          annotationCounts[a.file] = (annotationCounts[a.file] ?? 0) + 1;
+        }
+      }
+      const collapsedFolders = state.collapsedFolders;
+      const ancestors = revealAncestors(tree, file);
+      for (const path of ancestors) {
+        if (collapsedFolders.has(path)) {
+          deps.store.dispatch({ type: "folds.toggleFolder", path });
+        }
+      }
+      const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
+      if (located) deps.setSelectedRowIdx(located.rowIdx);
     },
     mirrorTourUrl: () => {
       // TUI has no URL.

@@ -82,12 +82,43 @@ export class TourSessionRuntime {
    */
   start(): () => void {
     this.intentUnsub = this.store.onIntent((intent) => {
-      if (intent.type === "loadTour") {
-        void this.handleLoadTour(intent.tourId);
-      } else if (intent.type === "submitAnnotation") {
-        this.handleSubmitAnnotation(intent.tourId, intent.target, intent.body);
-      } else if (intent.type === "revalidateCursor") {
-        this.handleRevalidateCursor();
+      switch (intent.type) {
+        case "loadTour":
+          void this.handleLoadTour(intent.tourId);
+          return;
+        case "submitAnnotation":
+          this.handleSubmitAnnotation(intent.tourId, intent.target, intent.body);
+          return;
+        case "scrollPickerRow":
+          this.adapter.scrollToPickerRow(intent.idx);
+          return;
+        case "scrollCursorTarget":
+          if (intent.target.kind === "card") {
+            this.adapter.scrollToCard(intent.target.annotationId, intent.placement);
+          } else {
+            this.adapter.scrollToRow(intent.target, intent.placement);
+          }
+          return;
+        case "scrollToAnnotation":
+          this.adapter.scrollToCard(intent.annotationId, "center");
+          return;
+        case "mirrorUrl":
+          this.adapter.mirrorTourUrl(intent.tourId);
+          return;
+        case "mirrorAnnUrl":
+          this.adapter.mirrorAnnUrl(intent.annotationId);
+          return;
+        case "revealSidebarFile":
+          this.store.dispatch({
+            type: "folds.setOverride",
+            file: intent.file,
+            value: false,
+          });
+          this.adapter.revealFileInSidebar(intent.file);
+          return;
+        case "revalidateCursor":
+          this.handleRevalidateCursor();
+          return;
       }
     });
 

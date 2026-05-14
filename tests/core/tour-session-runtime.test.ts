@@ -6,10 +6,12 @@ import {
 } from "../../src/core/tour-session.js";
 import {
   TourSessionRuntime,
+  type ScrollRowAnchor,
   type TourEvent,
   type TourEventHandler,
   type TourSessionAdapter,
 } from "../../src/core/tour-session-runtime.js";
+import type { ScrollPlacement } from "../../src/core/tour-session.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import type { ReplyLock } from "../../src/core/reply-lock.js";
 import type { Tour, Annotation } from "../../src/core/types.js";
@@ -92,6 +94,12 @@ interface FakeAdapter extends TourSessionAdapter {
   bundleCalls: string[];
   lockCalls: string[];
   writeCalls: Array<{ tourId: string; input: WriteAnnotationInput }>;
+  scrollCardCalls: Array<{ id: string; mode: ScrollPlacement }>;
+  scrollRowCalls: Array<{ anchor: ScrollRowAnchor; mode: ScrollPlacement }>;
+  scrollPickerCalls: number[];
+  revealFileCalls: string[];
+  mirrorTourCalls: string[];
+  mirrorAnnCalls: Array<string | null>;
   subscriptions: Array<{ tourId: string; handler: TourEventHandler; unsubscribed: boolean }>;
   emit(tourId: string, event: TourEvent): void;
 }
@@ -109,12 +117,24 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const bundleCalls: string[] = [];
   const lockCalls: string[] = [];
   const writeCalls: FakeAdapter["writeCalls"] = [];
+  const scrollCardCalls: FakeAdapter["scrollCardCalls"] = [];
+  const scrollRowCalls: FakeAdapter["scrollRowCalls"] = [];
+  const scrollPickerCalls: number[] = [];
+  const revealFileCalls: string[] = [];
+  const mirrorTourCalls: string[] = [];
+  const mirrorAnnCalls: Array<string | null> = [];
   const subscriptions: FakeAdapter["subscriptions"] = [];
 
   const adapter: FakeAdapter = {
     bundleCalls,
     lockCalls,
     writeCalls,
+    scrollCardCalls,
+    scrollRowCalls,
+    scrollPickerCalls,
+    revealFileCalls,
+    mirrorTourCalls,
+    mirrorAnnCalls,
     subscriptions,
     fetchBundle: async (id) => {
       bundleCalls.push(id);
@@ -152,12 +172,24 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         entry.unsubscribed = true;
       };
     },
-    scrollToCard: () => {},
-    scrollToRow: () => {},
-    scrollToPickerRow: () => {},
-    revealFileInSidebar: () => {},
-    mirrorTourUrl: () => {},
-    mirrorAnnUrl: () => {},
+    scrollToCard: (id, mode) => {
+      scrollCardCalls.push({ id, mode });
+    },
+    scrollToRow: (anchor, mode) => {
+      scrollRowCalls.push({ anchor, mode });
+    },
+    scrollToPickerRow: (idx) => {
+      scrollPickerCalls.push(idx);
+    },
+    revealFileInSidebar: (file) => {
+      revealFileCalls.push(file);
+    },
+    mirrorTourUrl: (id) => {
+      mirrorTourCalls.push(id);
+    },
+    mirrorAnnUrl: (id) => {
+      mirrorAnnCalls.push(id);
+    },
     emit(tourId, event) {
       for (const sub of subscriptions) {
         if (sub.tourId === tourId && !sub.unsubscribed) sub.handler(event);
@@ -918,6 +950,208 @@ describe("TourSessionRuntime", () => {
       });
 
       expect(store.getState().cursor).toBe(before);
+      stop();
+    });
+  });
+
+  describe("scroll / mirror / reveal intents (PRD #278 slice 6)", () => {
+    it("scrollPickerRow intent → adapter.scrollToPickerRow", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      // `picker.move` emits scrollPickerRow with the clamped cursor index.
+      store.dispatch({
+        type: "picker.open",
+        rows: [
+          { id: "tour-a", title: "A", status: "open", glyph: "●", age: "now", annotationCount: 0 },
+          { id: "tour-b", title: "B", status: "open", glyph: "●", age: "now", annotationCount: 0 },
+        ],
+      });
+      store.dispatch({ type: "picker.move", delta: 1 });
+
+      expect(adapter.scrollPickerCalls).toEqual([1]);
+      stop();
+    });
+
+    it("scrollCursorTarget intent (kind=card) → adapter.scrollToCard with placement", () => {
+      const store = storeWithTour(null);
+      const ann: Annotation = {
+        id: "ann1",
+        file: "src/a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "x",
+        author: "human",
+        author_kind: "human",
+        created_at: "2026-05-14T00:00:00Z",
+      };
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: okBundle("tour-a", [ann]),
+      });
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "cursor.set",
+        anchor: { kind: "card", annotationId: "ann1", preferredSide: "additions" },
+        placement: "center",
+      });
+
+      expect(adapter.scrollCardCalls).toEqual([{ id: "ann1", mode: "center" }]);
+      expect(adapter.scrollRowCalls).toEqual([]);
+      stop();
+    });
+
+    it("scrollCursorTarget intent (kind=row) → adapter.scrollToRow with the row anchor and placement", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "src/a.ts",
+          side: "additions",
+          lineNumber: 7,
+          preferredSide: "additions",
+        },
+      });
+
+      expect(adapter.scrollRowCalls).toEqual([
+        {
+          anchor: { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
+          mode: "nearest",
+        },
+      ]);
+      expect(adapter.scrollCardCalls).toEqual([]);
+      stop();
+    });
+
+    it("scrollToAnnotation intent → adapter.scrollToCard(id, 'center')", () => {
+      const store = storeWithTour(null);
+      const ann: Annotation = {
+        id: "a-new",
+        file: "src/a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "fresh",
+        author: "human",
+        author_kind: "human",
+        created_at: "2026-05-14T00:00:00Z",
+      };
+      const bundle = okBundle("tour-a", [ann]);
+      const adapter = createFakeAdapter({ writeAnnotationResult: ann });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle });
+
+      // composer.submitted dispatch emits scrollToAnnotation (the reducer
+      // requires composer to be in `submitting` for the transition).
+      store.dispatch({
+        type: "composer.open",
+        target: {
+          kind: "top-level",
+          file: "src/a.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+        },
+      });
+      store.dispatch({ type: "composer.setBody", body: "x" });
+      store.dispatch({ type: "composer.submit" });
+      store.dispatch({ type: "composer.submitted", annotation: ann });
+
+      expect(
+        adapter.scrollCardCalls.filter((c) => c.id === "a-new" && c.mode === "center"),
+      ).toEqual([{ id: "a-new", mode: "center" }]);
+      stop();
+    });
+
+    it("mirrorUrl intent → adapter.mirrorTourUrl(tourId)", () => {
+      const store = storeWithTour(null);
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      // picker.commit emits both loadTour AND mirrorUrl.
+      store.dispatch({
+        type: "picker.open",
+        rows: [
+          { id: "tour-a", title: "A", status: "open", glyph: "●", age: "now", annotationCount: 0 },
+        ],
+      });
+      store.dispatch({ type: "picker.commit" });
+
+      expect(adapter.mirrorTourCalls).toEqual(["tour-a"]);
+      stop();
+    });
+
+    it("mirrorAnnUrl intent → adapter.mirrorAnnUrl(annotationId)", () => {
+      const store = storeWithTour(null);
+      const ann: Annotation = {
+        id: "ann1",
+        file: "src/a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "x",
+        author: "human",
+        author_kind: "human",
+        created_at: "2026-05-14T00:00:00Z",
+      };
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: okBundle("tour-a", [ann]),
+      });
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "cursor.set",
+        anchor: { kind: "card", annotationId: "ann1", preferredSide: "additions" },
+      });
+      // Clearing the cursor with a card anchor present emits mirrorAnnUrl(null).
+      store.dispatch({ type: "cursor.clear" });
+
+      expect(adapter.mirrorAnnCalls).toEqual(["ann1", null]);
+      stop();
+    });
+
+    it("revealSidebarFile intent → adapter.revealFileInSidebar and dispatches folds.setOverride(false)", () => {
+      const store = storeWithTour("tour-a");
+      store.dispatch({
+        type: "folds.setOverride",
+        file: "src/a.ts",
+        value: true,
+      });
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      // `cursor.set` for a row anchor on a new file emits revealSidebarFile.
+      store.dispatch({
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "src/a.ts",
+          side: "additions",
+          lineNumber: 1,
+          preferredSide: "additions",
+        },
+      });
+
+      expect(adapter.revealFileCalls).toEqual(["src/a.ts"]);
+      expect(store.getState().collapsedOverrides["src/a.ts"]).toBe(false);
       stop();
     });
   });
