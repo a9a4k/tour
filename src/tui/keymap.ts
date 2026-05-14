@@ -53,6 +53,7 @@ export type KeyAction =
   | { type: "cursor-side-right" }
   | { type: "primary-action" }
   | { type: "expand-file-all" }
+  | { type: "yank-file-path" }
   | { type: "noop" }
   | { type: "noop-reply-on-row" }
   | { type: "noop-send-on-row" }
@@ -108,6 +109,12 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     // (empty tour, null cursor + sidebar focused on a folder), the
     // App-side handler is a labelled no-op.
     if (key.name === "e") return { type: "expand-file-all" };
+    // Issue #326: `y` yanks the focused file's repo-relative path to the
+    // system clipboard via OSC 52. Available in both panes — diff-pane
+    // resolves the file from the cursor, sidebar from the selection.
+    // The App-side handler is a labelled no-op when no file is in scope
+    // (sidebar parked on a folder, null cursor on a degenerate state).
+    if (key.name === "y") return { type: "yank-file-path" };
     // Row-kind-aware action dispatch (PRD #192 / ADR 0022). The unified
     // cursor routes action keys by row kind: `a` is a row-only action,
     // `r` and `s` are card-only actions. Mismatches map to labelled

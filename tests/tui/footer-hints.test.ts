@@ -45,6 +45,15 @@ describe("TUI_FOOTER_HINTS", () => {
     expect(TUI_FOOTER_HINTS).toContain("[/]: width");
   });
 
+  // Issue #326: `y` yanks the focused file's repo-relative path to the
+  // clipboard via OSC 52. The hint is persistent (not gated on a
+  // configured agent or any other state) — the action is always
+  // available, the App-side handler is a labelled no-op when no file
+  // is in scope.
+  it("surfaces `y: yank path` as a persistent hint", () => {
+    expect(TUI_FOOTER_HINTS).toContain("y: yank path");
+  });
+
   it("omits the `s: send to {agent}` hint by default (no reply-agent configured)", () => {
     expect(TUI_FOOTER_HINTS).not.toContain("s: send to");
   });

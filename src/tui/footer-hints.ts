@@ -23,7 +23,7 @@ export function composeFooterHints(opts: FooterHintOptions = {}): string {
       ? `  ·  s: send to ${opts.replyAgent}`
       : "";
   return (
-    `j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  c: collapse  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  [/]: width  ·  q: quit`
+    `j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  c: collapse  ·  y: yank path  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  [/]: width  ·  q: quit`
   );
 }
 

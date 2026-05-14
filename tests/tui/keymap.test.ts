@@ -340,6 +340,27 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("e", { shift: true }), diffPane).type).toBe("noop");
   });
 
+  // Issue #326: `y` yanks the focused file's repo-relative path to the
+  // system clipboard via OSC 52. Available in both panes — App-side
+  // resolves the file from the cursor (diff pane) or sidebar selection.
+  it("y dispatches yank-file-path regardless of pane focus", () => {
+    expect(dispatchKey(k("y"), sidebar).type).toBe("yank-file-path");
+    expect(dispatchKey(k("y"), diffPane).type).toBe("yank-file-path");
+    expect(dispatchKey(k("y"), sidebarFolder).type).toBe("yank-file-path");
+    expect(dispatchKey(k("y"), diffPaneOnCard).type).toBe("yank-file-path");
+    expect(dispatchKey(k("y"), sidebarOnCard).type).toBe("yank-file-path");
+  });
+
+  it("Ctrl+Y is not consumed as yank-file-path (modifier guard)", () => {
+    expect(dispatchKey(k("y", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("y", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Shift+Y is not consumed as yank-file-path (uppercase reserved for variant; not in scope)", () => {
+    expect(dispatchKey(k("y", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("y", { shift: true }), diffPane).type).toBe("noop");
+  });
+
   it("Ctrl+T is not consumed as open-picker", () => {
     expect(dispatchKey(k("t", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("t", { ctrl: true }), diffPane).type).toBe("noop");

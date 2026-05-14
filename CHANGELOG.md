@@ -8,6 +8,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI: `y` yanks the focused file's repo-relative path to the system
+  clipboard (issue #326).** Webapp parity for the copy-path affordance
+  added by issues #16 / #225 / #317 / #319. Pressing `y` resolves the
+  source from the focused pane — diff focus uses the file under the
+  row / card cursor, sidebar focus uses the selected file row — and
+  emits the OSC 52 escape sequence (`ESC ] 52 ; c ; <base64> BEL`)
+  on `process.stdout`. No `pbcopy` / `xclip` / `wl-copy` shell-out,
+  no new dependency; modern terminals (alacritty, kitty, iTerm2,
+  WezTerm, ghostty, foot) accept the sequence directly, and tmux
+  needs `set -s set-clipboard on`. Feedback is a one-line footer
+  hint reading `Copied <path>` that auto-clears after ~1.2 s (same
+  duration as the webapp's checkmark window in #319). Sidebar-
+  focused folder rows / null cursor / cursor pointing at a missing
+  annotation are silent labelled no-ops — no clipboard write, no
+  footer hint, no error. Failure of the OSC 52 write itself is
+  unobservable from the app and silently dropped, matching the
+  webapp's `navigator.clipboard.writeText` decision from #319.
+
+  Issue: #326
+
 - **Webapp: drag-resizable sidebar with auto-fit on every tour switch
   (issue #323).** The previous `width: 280px; flex-shrink: 0` sidebar
   had no resize affordance — keyboard-only users had no escape valve
