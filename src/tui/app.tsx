@@ -63,6 +63,7 @@ import {
   buildTopLevelComposer,
 } from "./composer-state.js";
 import { useTourSessionView } from "../core/tour-session-view.js";
+import { foldToggleAction } from "../core/fold-toggle.js";
 import {
   fileCardPlaceholder,
   fileClassification,
@@ -1317,11 +1318,10 @@ function App(props: AppProps) {
         const f = selectedRow.file;
         const cls = fileClassification(classifications, f.name);
         if (cls.reason === "binary") return;
-        store.dispatch({
-          type: "folds.setOverride",
-          file: f.name,
-          value: !isFileCollapsed(f.name),
-        });
+        // Issue #316: unfold direction clears the override so the classifier
+        // verdict re-applies (classifier-collapsed files return to state A,
+        // the synthetic-summary view). Web mirrors this rule.
+        store.dispatch(foldToggleAction(f.name, isFileCollapsed(f.name), cls));
         return;
       }
       case "toggle-folder": {

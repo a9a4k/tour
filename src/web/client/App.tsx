@@ -64,6 +64,7 @@ import { FILE_GRID_CSS } from "./file-grid-css.js";
 import { decideReanchor } from "./re-anchor-policy.js";
 import { readTourFromLocation, readAnnFromLocation } from "./url-routing.js";
 import { recallCardIntoView } from "./auto-recall.js";
+import { foldToggleAction } from "../../core/fold-toggle.js";
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -542,15 +543,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [collapsedOverrides, view],
   );
 
+  // Issue #316: fold-toggle decision is delegated to `foldToggleAction`.
+  // Fold direction writes `setOverride(true)`; unfold direction clears the
+  // override for non-binary files (classifier verdict re-applies on the
+  // next render — classifier-collapsed files return to the synthetic-
+  // summary view, state A) and writes `setOverride(false)` for binary
+  // files (their default-collapsed lives in the classifier, so clearing
+  // would re-collapse them). State C (full body on a classifier-collapsed
+  // file) is reachable only via explicit-reveal gestures (Enter on the
+  // synthetic row, annotation nav). Same factoring as #310 / #313.
   const toggleCollapsed = useCallback(
     (fileName: string) => {
-      store.dispatch({
-        type: "folds.setOverride",
-        file: fileName,
-        value: !isCollapsed(fileName),
-      });
+      const f = view.kind === "ok" ? view.bundle.filesByName.get(fileName) : null;
+      const classification = f?.classification ?? { collapsed: false };
+      store.dispatch(foldToggleAction(fileName, isCollapsed(fileName), classification));
     },
-    [isCollapsed, store],
+    [isCollapsed, store, view],
   );
 
   // Look up a file's outer wrapper by `data-file` attribute. Used for

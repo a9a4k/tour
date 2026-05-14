@@ -695,3 +695,98 @@ describe("App sidebar click on a classifier-collapsed file (issue #313)", () => 
     expect(afterEnterNonInteractive.length).toBeGreaterThan(0);
   });
 });
+
+// Issue #316: fold then unfold on a classifier-collapsed file must return
+// to the classifier-default (synthetic-summary) view, not the full body.
+// The fold-toggle's unfold direction is now `folds.clearOverride` (deletes
+// the override entry), so `isClassifierCollapsed`'s fallback re-applies
+// the classifier verdict. Folding (visible -> collapsed) is unchanged:
+// `setOverride(true)`. Binary files keep `setOverride(false)` on unfold
+// since their "collapsed" default is anchored in classification, not in
+// the override map.
+
+describe("App fold-unfold restores classifier-default (issue #316)", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([lockTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${lockTourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(lockBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${lockTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+  });
+
+  it("folding then unfolding a classifier-collapsed file returns to the synthetic-summary view (not the full body)", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: lockTourId }));
+    });
+    await flush();
+
+    const fileOuter = () =>
+      container.querySelector('.tour-file-outer[data-file="bun.lock"]');
+    const nonInteractiveRows = () =>
+      Array.from(fileOuter()!.querySelectorAll(".tour-row")).filter(
+        (el) => !el.classList.contains("tour-row-interactive"),
+      );
+    const interactiveRows = () =>
+      fileOuter()!.querySelectorAll(".tour-row.tour-row-interactive");
+
+    // Pre-fold (state A: override === undefined): classifier-collapsed —
+    // synthetic row only, no body rows.
+    expect(fileOuter()).not.toBeNull();
+    expect(nonInteractiveRows().length).toBe(0);
+    expect(interactiveRows().length).toBeGreaterThan(0);
+
+    // Fold (A -> B): click the file-header bar. Body fully hidden,
+    // synthetic row also gone (file-header only).
+    const header = container.querySelector(
+      '.tour-file-outer[data-file="bun.lock"] .tour-file-header',
+    ) as HTMLElement;
+    expect(header).not.toBeNull();
+    await act(async () => {
+      header.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(nonInteractiveRows().length).toBe(0);
+    expect(interactiveRows().length).toBe(0);
+
+    // Unfold (B -> A, NOT C): click the file-header again. The override is
+    // CLEARED, so `isClassifierCollapsed` falls back to the classifier
+    // verdict — the synthetic row reappears, the diff body does NOT.
+    const headerAfter = container.querySelector(
+      '.tour-file-outer[data-file="bun.lock"] .tour-file-header',
+    ) as HTMLElement;
+    await act(async () => {
+      headerAfter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(nonInteractiveRows().length).toBe(0);
+    expect(interactiveRows().length).toBeGreaterThan(0);
+  });
+});
