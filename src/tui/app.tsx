@@ -772,8 +772,12 @@ function App(props: AppProps) {
       type: "cursor.set",
       anchor: { kind: "row", file, lineNumber, side, preferredSide: side },
     });
-    // Sidebar reveal flows through the reducer's `revealSidebarFile`
-    // intent (emitted on cross-file `cursor.set` for RowAnchors).
+    // Sidebar selection flows through the reducer's `selectSidebarFile`
+    // intent (emitted on cross-file `cursor.set` for RowAnchors). The
+    // intent updates the sidebar selection only — issue #310 split off
+    // the implicit auto-unfold so a cursor click on a row in a
+    // classifier-collapsed file's diff body (which is already expanded)
+    // doesn't accidentally toggle other folds.
   };
 
   // Mouse click on an interactive row (PRD #107 US 16): set cursor with
@@ -795,8 +799,12 @@ function App(props: AppProps) {
         preferredSide: preferredSideOf(cursor),
       }),
     });
-    // Sidebar reveal flows through the reducer's `revealSidebarFile`
-    // intent (emitted on cross-file `cursor.set` for RowAnchors).
+    // Sidebar selection flows through the reducer's `selectSidebarFile`
+    // intent (emitted on cross-file `cursor.set` for RowAnchors). The
+    // intent updates the sidebar selection only — issue #310 split off
+    // the implicit auto-unfold so a cursor click on a row in a
+    // classifier-collapsed file's diff body (which is already expanded)
+    // doesn't accidentally toggle other folds.
   };
 
   // Mouse click on an annotation card (issue #261). ADR 0022 unified the
@@ -1035,6 +1043,11 @@ function App(props: AppProps) {
       if (opts.animate === true) animatedScrollChildIntoView(diffScrollRef.current, targetId);
       else scrollChildIntoView(diffScrollRef.current, targetId);
     }
+    // Sidebar select is an explicit "show me this file" gesture — issue
+    // #310 split the implicit auto-unfold off the cursor.set side-effect,
+    // so explicit-reveal callsites dispatch `folds.setOverride` directly.
+    // Mirrors the n/p annotation-jump pattern (`jumpToAnnotation`).
+    store.dispatch({ type: "folds.setOverride", file: filePath, value: false });
     dispatchCursor(cursorAtFirstFileRow(filePath, flatRowsList));
   };
 
@@ -1492,7 +1505,6 @@ function App(props: AppProps) {
         currentAnnotationIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         tourStats={tourStats}
-        selectedPath={selectedRow?.path}
         onOpenPicker={() => void openPicker()}
         onPrevAnnotation={gotoPrevAnnotation}
         onNextAnnotation={gotoNextAnnotation}

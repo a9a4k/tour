@@ -534,3 +534,145 @@ describe("App header source pair — WIP tour (Issue #308)", () => {
     expect(refs!.textContent).not.toContain("main");
   });
 });
+
+// Issue #310: cursor traversal into a classifier-collapsed file must not
+// auto-expand it (the synthetic `collapsed-file` row stays visible, `j`
+// advances past it), but an EXPLICIT sidebar click on the same file must
+// still expand it — that's the user's "show me this file" gesture and
+// the existing escape hatch from the classifier's collapse contract.
+// Fixture: a classifier-collapsed lockfile-style entry. The sidebar's
+// `<button.file-entry>` is the explicit-reveal target.
+
+const lockTourId = "2026-05-14-100000-sidebar-click-collapsed";
+
+const lockTourSummary = {
+  id: lockTourId,
+  title: "Sidebar reveal on collapsed file",
+  status: "open" as const,
+  created_at: "2026-05-14T10:00:00Z",
+  closed_at: "",
+  head_sha: "deadbeef",
+  base_sha: "cafebabe",
+  head_source: "feature/x",
+  base_source: "main",
+  wip_snapshot: false,
+};
+
+const lockDiff = `diff --git a/bun.lock b/bun.lock
+index 1..2 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -1,1 +1,2 @@
+ keep
++added
+`;
+
+const lockBundle = {
+  kind: "ok" as const,
+  tour: lockTourSummary,
+  annotations: [],
+  diff: lockDiff,
+  files: [
+    {
+      name: "bun.lock",
+      type: "modified",
+      hunks: [],
+      oldContent: "keep\n",
+      newContent: "keep\nadded\n",
+      // Classifier-collapsed — planner emits the synthetic CollapsedFileRow
+      // in place of the file's body unless the user explicitly reveals.
+      classification: { collapsed: true, reason: "generated" },
+      orphanWindows: [],
+    },
+  ],
+};
+
+describe("App sidebar click on a classifier-collapsed file (issue #310)", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([lockTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${lockTourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(lockBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${lockTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+  });
+
+  it("clicking the sidebar file-entry for a classifier-collapsed file expands its body (explicit-reveal path preserved)", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: lockTourId }));
+    });
+    await flush();
+
+    // Pre-click: file is classifier-collapsed — only the synthetic
+    // `··· N lines hidden — Enter to expand ···` row renders for bun.lock.
+    // The file's diff body (DiffRow children) is NOT present.
+    const fileOuter = container.querySelector(
+      '.tour-file-outer[data-file="bun.lock"]',
+    );
+    expect(fileOuter).not.toBeNull();
+    const preDiffRows = fileOuter!.querySelectorAll(".tour-row");
+    // The synthetic CollapsedFileRow is an interactive .tour-row banner;
+    // the file's actual diff body would add ≥ 1 more row. Pre-click we
+    // expect ONLY the synthetic banner (or zero, depending on emission).
+    const preNonInteractive = Array.from(preDiffRows).filter(
+      (el) => !el.classList.contains("tour-row-interactive"),
+    );
+    expect(preNonInteractive.length).toBe(0);
+
+    // Find the sidebar row button. <FileRow> renders `<button.file-entry
+    // title="bun.lock">`. Title is the path key — uniquely addressable.
+    const sidebarEntry = container.querySelector(
+      'button.file-entry[title="bun.lock"]',
+    ) as HTMLButtonElement | null;
+    expect(sidebarEntry).not.toBeNull();
+
+    await act(async () => {
+      sidebarEntry!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    // Post-click: the explicit-reveal dispatched `folds.setOverride
+    // { value: false }`, which overrides the classifier's collapse verdict
+    // (isClassifierCollapsed returns false when override === false). The
+    // planner now emits the file's actual diff body rows in place of the
+    // synthetic CollapsedFileRow. At least one non-interactive diff row
+    // for bun.lock must be present.
+    const postFileOuter = container.querySelector(
+      '.tour-file-outer[data-file="bun.lock"]',
+    );
+    expect(postFileOuter).not.toBeNull();
+    const postNonInteractive = Array.from(
+      postFileOuter!.querySelectorAll(".tour-row"),
+    ).filter((el) => !el.classList.contains("tour-row-interactive"));
+    expect(postNonInteractive.length).toBeGreaterThan(0);
+  });
+});

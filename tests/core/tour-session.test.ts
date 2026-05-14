@@ -595,7 +595,7 @@ function cardAnchor(over: Partial<CardAnchor> = {}): CardAnchor {
 }
 
 describe("reduce — cursor slice (slice 2 foundation)", () => {
-  it("cursor.set on a null cursor writes the slice and emits scrollCursorTarget + revealSidebarFile (RowAnchor)", () => {
+  it("cursor.set on a null cursor writes the slice and emits scrollCursorTarget + selectSidebarFile (RowAnchor)", () => {
     const anchor = rowAnchor({ file: "foo.ts", lineNumber: 7, side: "additions" });
     const r = reduce(initialTourSessionState(), { type: "cursor.set", anchor });
     expect(r.state.cursor).toBe(anchor);
@@ -605,11 +605,11 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 7 },
         placement: "nearest",
       },
-      { type: "revealSidebarFile", file: "foo.ts" },
+      { type: "selectSidebarFile", file: "foo.ts" },
     ]);
   });
 
-  it("cursor.set to a RowAnchor in the same file does NOT emit revealSidebarFile", () => {
+  it("cursor.set to a RowAnchor in the same file does NOT emit selectSidebarFile", () => {
     let s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts", lineNumber: 1 }),
@@ -627,7 +627,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     ]);
   });
 
-  it("cursor.set to a RowAnchor in a different file emits revealSidebarFile", () => {
+  it("cursor.set to a RowAnchor in a different file emits selectSidebarFile", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts" }),
@@ -636,7 +636,32 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       type: "cursor.set",
       anchor: rowAnchor({ file: "bar.ts", lineNumber: 3 }),
     });
-    expect(r.intents).toContainEqual({ type: "revealSidebarFile", file: "bar.ts" });
+    expect(r.intents).toContainEqual({ type: "selectSidebarFile", file: "bar.ts" });
+  });
+
+  // Issue #310: split-intent regression. `cursor.set` is the most ambient
+  // traversal gesture (j/k, click). Emitting an intent that forces an
+  // unfold on every cursor file change burned the classifier-collapse
+  // contract for lockfile / generated / vendored files — a `j` press
+  // ended up uncollapsing 500+ rows of churn the classifier said weren't
+  // worth review-grade attention. The intent must NOT carry an implicit
+  // unfold; sidebar-selection is the only effect.
+  it("cursor.set to a RowAnchor in a different file does NOT emit revealSidebarFile (issue #310 split)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "bar.ts", lineNumber: 3 }),
+    });
+    // After the split, `revealSidebarFile` is removed from the intent
+    // vocabulary — only `selectSidebarFile` is emitted on cursor file
+    // change. Explicit force-unfold lives at the call site (sidebar
+    // click, n/p annotation jump, ...).
+    expect(
+      r.intents.some((i) => (i as { type: string }).type === "revealSidebarFile"),
+    ).toBe(false);
   });
 
   it("cursor.set from RowAnchor to CardAnchor emits mirrorAnnUrl { annotationId }", () => {
@@ -674,12 +699,12 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 4 },
         placement: "nearest",
       },
-      { type: "revealSidebarFile", file: "foo.ts" },
+      { type: "selectSidebarFile", file: "foo.ts" },
       { type: "mirrorAnnUrl", annotationId: null },
     ]);
   });
 
-  it("cursor.set from CardAnchor to a different CardAnchor emits mirrorAnnUrl { newId } (no revealSidebarFile)", () => {
+  it("cursor.set from CardAnchor to a different CardAnchor emits mirrorAnnUrl { newId } (no selectSidebarFile)", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: cardAnchor({ annotationId: "ann-1" }),
@@ -1060,15 +1085,15 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
     });
     store.dispatch({ type: "cursor.set", anchor: initialAnchor });
 
-    // Intent stream so far: cursor.set's three intents (scroll + reveal +
-    // mirror-null since prev was null and new is row).
+    // Intent stream so far: cursor.set's two intents (scroll + sidebar
+    // select; the prev-null state means no mirror-null is emitted).
     expect(intents).toEqual([
       {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 42 },
         placement: "nearest",
       },
-      { type: "revealSidebarFile", file: "foo.ts" },
+      { type: "selectSidebarFile", file: "foo.ts" },
     ]);
     intents.length = 0;
 
@@ -1548,15 +1573,18 @@ describe("reduce — folds slice (slice 3 foundation)", () => {
 });
 
 describe("reduce — folds.* + expansion.* → revalidateCursor wiring (issue #309)", () => {
-  // Auto-reveal of a classifier-collapsed file (triggered by a cursor.set
-  // whose anchor lands on the file's synthetic `collapsed-file` row) leaves
-  // `state.cursor` orphaned: `setCursor` emits `revealSidebarFile`, the
-  // runtime dispatches `folds.setOverride { value: false }`, the planner
-  // stops emitting the synthetic row, and the next render's keyboard handler
-  // reads a stale anchor — j/k silently no-op. The fix mirrors the
-  // `bundle.refreshed → revalidateCursor` wiring at every reducer branch that
-  // mutates flat-rows-shape state (folds + expansion) so the runtime can
-  // snap `state.cursor` back to a walkable row.
+  // The fix mirrors the `bundle.refreshed → revalidateCursor` wiring at every
+  // reducer branch that mutates flat-rows-shape state (folds + expansion) so
+  // the runtime can snap `state.cursor` back to a walkable row when a state
+  // mutation drops the cursor's anchor from flatRows. The original orphan
+  // path (cursor.set → auto-unfold via revealSidebarFile intent → planner
+  // drops synthetic row → state.cursor orphaned) is no longer reachable
+  // through cursor traversal: issue #310 split `revealSidebarFile` into a
+  // sidebar-select-only intent, so a `j`/`k` press no longer dispatches
+  // `folds.setOverride`. The revalidateCursor wiring remains valuable as
+  // defence in depth for programmatic `folds.*` and `expansion.*` mutations
+  // that DO still mutate flat-rows shape from explicit user actions
+  // (sidebar click, annotation jump, ...).
   it("folds.setOverride { value: false } with cursor !== null emits revalidateCursor", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",

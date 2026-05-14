@@ -172,7 +172,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // branches own the lazy-materialization rule, the tour-switch reset,
   // and the cross-async revalidation pipeline; the surface translates
   // input events into cursor.* actions and realizes the emitted
-  // visual-side-effect intents (scrollCursorTarget, revealSidebarFile,
+  // visual-side-effect intents (scrollCursorTarget, selectSidebarFile,
   // mirrorAnnUrl) into DOM / history substrate.
   const cursor = sessionState.cursor;
   // Hidden-context expansion (PRD #212 / ADR 0024) lives in the Tour-
@@ -368,7 +368,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // as the SequencePill counter), independent of cursor position
       // (issue #206 revert of #203). NavBase is universal across branches
       // (issue #246), so this works in snapshot-lost mode too (though
-      // revealSidebarFile is then a no-op since the tree slice isn't
+      // selectSidebarFile is then a no-op since the tree slice isn't
       // available).
       const topLevel = view.nav.topLevel;
       const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
@@ -623,6 +623,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // "show me from the top." Smooth scroll over multi-viewport distances
       // is disorienting in a code-review surface.
       if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+      // Sidebar click is an explicit "show me this file" gesture — issue
+      // #310 split the implicit auto-unfold off the cursor.set side-effect,
+      // so explicit-reveal callsites dispatch `folds.setOverride` directly.
+      // Mirrors the n/p annotation-jump pattern (this file, line ~380).
+      store.dispatch({ type: "folds.setOverride", file: name, value: false });
       // Cursor follows the click — matches the TUI rule (PRD US 20). The
       // reducer's `nearest` default for scrollCursorTarget keeps the
       // first-row scroll from fighting the file-block scroll above: the

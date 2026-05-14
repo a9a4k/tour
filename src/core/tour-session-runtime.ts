@@ -106,12 +106,15 @@ export class TourSessionRuntime {
         case "mirrorAnnUrl":
           this.adapter.mirrorAnnUrl(intent.annotationId);
           return;
-        case "revealSidebarFile":
-          this.store.dispatch({
-            type: "folds.setOverride",
-            file: intent.file,
-            value: false,
-          });
+        case "selectSidebarFile":
+          // Sidebar selection only — issue #310 split out the implicit
+          // `folds.setOverride { value: false }` that turned a `j`/`k`
+          // traversal into a classifier-collapsed file into an unwanted
+          // auto-unfold (560+ rows of lockfile churn appear, cursor parks
+          // on row 1). Explicit-reveal callsites (sidebar click, n/p
+          // annotation jump, URL `?ann=` restore) dispatch `folds.setOverride`
+          // themselves alongside the `cursor.set`, mirroring the existing
+          // pattern for annotation navigation.
           this.adapter.revealFileInSidebar(intent.file);
           return;
         case "revalidateCursor":

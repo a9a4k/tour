@@ -59,6 +59,7 @@ Existing scroll machinery (`scrollChildIntoView`, smooth-scroll, scroll-into-vie
 - Each file card loses one row of header chrome and gains a labeled top border. Card height drops by 1; the diff body that used to start at `card.top + 2` (border + header) now starts at `card.top + 1` (border with inline label). Cumulative effect across N files: N rows of content height returned to the viewport.
 - The 50ms scroll poll is the only ongoing per-frame work introduced. Measured cost: a single tree walk over file-card children (10s of nodes at worst) + a small loop in `deriveActiveFile`. Negligible vs. OpenTUI's render loop.
 - Surface parity with the web's existing sticky-header behaviour is now intentional. The webapp's separate sticky bug (`overflow: hidden` on `.tour-file-outer`) is tracked as a follow-up.
+- Issue #311 retired the `TopHeaderTui.selectedPath` cursor-file path row as redundant: the sidebar row-highlight remains the sole surface for cursor location, and the pane-top header introduced here is now the sole surface for the scroll-active file.
 
 ## References
 
