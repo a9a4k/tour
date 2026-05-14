@@ -58,6 +58,7 @@ import {
 import { dispatchCursorKey } from "./cursor-keymap.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
 import { tourDiffStats } from "../../core/diff-stats.js";
+import { headerSourcePair } from "../../core/header-source-pair.js";
 import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
 import { decideReanchor } from "./re-anchor-policy.js";
@@ -1296,9 +1297,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           <h1 className={titleIsEmpty ? "untitled" : undefined}>
             {tourMeta.title || "(untitled)"}
           </h1>
-          <span className="tour-refs">
-            {tourMeta.base_source} ← {tourMeta.head_source}
-          </span>
+          <span className="tour-refs">{headerSourcePair(tourMeta)}</span>
         </div>
         <div className="tour-header-right">
           <TourStatsIndicator

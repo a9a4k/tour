@@ -74,8 +74,10 @@ const tour: Tour = {
   status: "open",
   created_at: "2026-05-10T10:10:10Z",
   closed_at: "",
-  head_sha: "deadbeef",
-  base_sha: "cafebabe",
+  // Realistic 40-char hex SHAs so the 7-char slice test (issue #308) has
+  // something meaningful to assert against.
+  head_sha: "deadbeefcafebabe0000000000000000abcdef12",
+  base_sha: "cafebabe1234567800000000000000009876fedc",
   head_source: "feature/x",
   base_source: "main",
   wip_snapshot: false,
@@ -143,11 +145,46 @@ describe("TopHeaderTui (issue #93)", () => {
     expect(leftText).toContain("Add foo");
   });
 
-  it("renders the sources string ('main ← feature/x') inside the left cluster", () => {
+  it("renders the source pair as short SHAs ('<base[:7]> ← <head[:7]>') inside the left cluster (issue #308)", () => {
     const root = render();
     const [left] = childrenOf(row1Of(root)).filter(isElement);
     const leftText = walk(left).filter((e) => e.type === "text").map(textChildOf).join(" | ");
-    expect(leftText).toContain("main ← feature/x");
+    expect(leftText).toContain("cafebab ← deadbee");
+  });
+
+  it("does not render the original ref names in the header (issue #308)", () => {
+    const root = render();
+    const headerText = walk(root)
+      .filter((e) => e.type === "text")
+      .map(textChildOf)
+      .join(" | ");
+    // The fixture's head_source / base_source must not leak into the
+    // header — they would re-introduce the ref-name drift the issue
+    // closes (re-opened tour misread as pointing at current main / HEAD).
+    expect(headerText).not.toContain("main ← feature/x");
+    expect(headerText).not.toContain("feature/x");
+    // "main" is a substring of several common words; assert the exact
+    // " main " token (with spaces) is absent rather than the bare word.
+    expect(headerText).not.toMatch(/\bmain\b/);
+  });
+
+  it("renders WIP literally on the head side when wip_snapshot === true (issue #308)", () => {
+    const root = render({
+      tour: {
+        ...tour,
+        // head_source is deliberately NOT "WIP" — the discriminator must be
+        // the wip_snapshot boolean, not a string comparison on head_source.
+        head_source: "HEAD",
+        wip_snapshot: true,
+      },
+    });
+    const leftText = walk(row1Of(root))
+      .filter((e) => e.type === "text")
+      .map(textChildOf)
+      .join(" | ");
+    expect(leftText).toContain("cafebab ← WIP");
+    // The base side still renders as a short SHA, not the ref name.
+    expect(leftText).not.toMatch(/\bmain\b/);
   });
 
   it("falls back to '(untitled)' when the tour title is empty", () => {
@@ -196,7 +233,7 @@ describe("TopHeaderTui (issue #93)", () => {
       (e) =>
         e.type === "text" &&
         typeof e.props.children === "string" &&
-        (e.props.children as string).includes("main ← feature/x"),
+        (e.props.children as string).includes("cafebab ← deadbee"),
     );
     expect(sourcesNode).toBeDefined();
     expect(sourcesNode!.props["truncate"]).toBe(true);
