@@ -37,7 +37,23 @@ describe("spa shell html()", () => {
   it("declares the dark canvas color and sidebar layout", () => {
     const out = html();
     expect(out).toContain("#0d1117");
+    // The fixed 280px is the fallback default (the inline style from
+    // React state wins at runtime); position: relative anchors the
+    // absolutely-positioned drag handle (issue #323).
     expect(out).toMatch(/\.app-sidebar\s*\{[^}]*width:\s*280px/);
+    expect(out).toMatch(/\.app-sidebar\s*\{[^}]*position:\s*relative/);
+  });
+
+  it("declares the sidebar drag-resize handle (issue #323)", () => {
+    const out = html();
+    // Handle is positioned at the right edge with col-resize cursor.
+    expect(out).toMatch(/\.sidebar-resize-handle\s*\{[^}]*position:\s*absolute/);
+    expect(out).toMatch(/\.sidebar-resize-handle\s*\{[^}]*cursor:\s*col-resize/);
+    // While dragging, the aside carries .is-resizing which suppresses
+    // text selection so the cursor doesn't paint a selection across
+    // the diff body during the drag.
+    expect(out).toMatch(/\.app-sidebar\.is-resizing/);
+    expect(out).toMatch(/\.app-sidebar\.is-resizing[\s\S]*?user-select:\s*none/);
   });
 
   it("emits the GitHub Dark Default token block as :root custom properties (Issue #57)", () => {

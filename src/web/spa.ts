@@ -23,11 +23,53 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   }
   #root { display: flex; flex-direction: column; height: 100%; }
   .app-body { display: flex; flex: 1; min-height: 0; }
+  /* Issue #323: sidebar width is now React state (default 280px before
+     auto-fit lands), so the inline style wins at runtime. The 280px
+     rule below is kept as a fallback for any pre-mount paint.
+     position: relative anchors the absolute drag handle. */
   .app-sidebar {
     width: 280px;
     border-right: 1px solid var(--border-default);
     overflow-y: auto;
     flex-shrink: 0;
+    position: relative;
+  }
+  .sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 5;
+    /* Transparent grab zone; reveal a 2px accent line on hover so the
+       affordance is discoverable without visual chrome at rest. */
+    background: transparent;
+  }
+  .sidebar-resize-handle:hover,
+  .sidebar-resize-handle:active {
+    background:
+      linear-gradient(
+        to right,
+        transparent 0,
+        transparent 3px,
+        var(--border-accent) 3px,
+        var(--border-accent) 5px,
+        transparent 5px,
+        transparent 8px
+      );
+  }
+  /* Suppress text selection across the document during an in-flight
+     drag (mouse moves over the diff body shouldn't paint a selection
+     under the cursor). The class is toggled on the aside by the
+     drag handlers. */
+  .app-sidebar.is-resizing {
+    cursor: col-resize;
+  }
+  .app-sidebar.is-resizing,
+  .app-sidebar.is-resizing * {
+    user-select: none;
   }
   .app-sidebar h2 {
     padding: 12px 16px;

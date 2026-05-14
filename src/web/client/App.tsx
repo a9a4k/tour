@@ -65,6 +65,12 @@ import { decideReanchor } from "./re-anchor-policy.js";
 import { readTourFromLocation, readAnnFromLocation } from "./url-routing.js";
 import { recallCardIntoView } from "./auto-recall.js";
 import { foldToggleAction } from "../../core/fold-toggle.js";
+import { SidebarResizeHandle } from "./SidebarResizeHandle.js";
+import {
+  SIDEBAR_DEFAULT_PX,
+  clampSidebarWidthManualPx,
+  computeAutoFitWidthPx,
+} from "./sidebar-width.js";
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -197,6 +203,30 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // layout (rare — interactive rows, paired-deletion cursor against an
   // unrendered side), the effect skips the adjustment.
   const layoutToggleSnapshotRef = useRef<{ top: number } | null>(null);
+  // Issue #323: stateful sidebar width. Seeded from SIDEBAR_DEFAULT_PX
+  // (280, matching the pre-#323 hard-coded value) and overwritten by:
+  //   1. Auto-fit on every tour switch (`tour.id` change with non-empty
+  //      visible rows). Manual drag does NOT carry over across tours —
+  //      session-local, mirrors the TUI semantics.
+  //   2. The drag handle's `pointermove` frames during a user drag.
+  // Both writers wrap their write in capture + applyPreserveScreenY so
+  // the cursor row's on-screen y is pinned across the reflow. Without
+  // the wire, an annotation card above the cursor reflows when the
+  // diff pane narrows and the cursor walks up or down the screen.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_PX);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  // Tour id the auto-fit effect last ran against. Gated so folder
+  // expand / collapse within a tour does NOT re-fit (the row list
+  // changes but the user expects the width to stay put). Mirrors the
+  // TUI's `lastFittedTourIdRef`.
+  const lastFittedTourIdRef = useRef<string | null>(null);
+  // Issue #323: pre-resize snapshot of the re-anchor target's
+  // on-screen y. Populated synchronously inside the drag handler (and
+  // the auto-fit effect) BEFORE `setSidebarWidth` triggers React's
+  // re-render; consumed by the resize-apply useLayoutEffect after
+  // React commits the new width. Same pattern as
+  // `layoutToggleSnapshotRef` — the only difference is the trigger.
+  const resizeSnapshotRef = useRef<{ top: number } | null>(null);
   // Refs holding the latest React-state inputs the intent handlers need.
   // The intent listener fires synchronously inside `store.dispatch`, BEFORE
   // React re-renders, so the listener's closure captures stale values. The
@@ -595,6 +625,104 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     },
     [findFileBlock],
   );
+
+  // Issue #323: sidebar-width-change preserveScreenY. The auto-fit
+  // effect and the drag handler both write `resizeSnapshotRef` BEFORE
+  // calling `setSidebarWidth`; this useLayoutEffect re-reads the cursor
+  // row's new on-screen y after React commits the width change but
+  // BEFORE the browser paints, and scrolls by the delta so the row
+  // stays put. Same algorithm as the layout-toggle effect above — the
+  // only difference is the trigger (sidebarWidth, not layout).
+  useLayoutEffect(() => {
+    const snap = resizeSnapshotRef.current;
+    if (!snap) return;
+    resizeSnapshotRef.current = null;
+    if (!cursor || view.kind !== "ok") return;
+    if (typeof window === "undefined") return;
+    const el = findCursorRowEl(cursor, view.rows.flatRowsList);
+    if (!el) return;
+    const newTop = el.getBoundingClientRect().top;
+    const delta = newTop - snap.top;
+    if (delta !== 0) {
+      window.scrollBy({ top: delta, behavior: "instant" });
+    }
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+      el.scrollIntoView({ behavior: "instant", block: "center" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarWidth]);
+
+  // Issue #323: auto-fit the sidebar on every tour switch. Runs at
+  // most once per `tour.id` (gated by `lastFittedTourIdRef`); folder
+  // expand / collapse within a tour does NOT re-fit. Manual drag
+  // width does not carry over — the next tour-switch overwrites it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (view.kind !== "ok") return;
+    const id = view.bundle.tour.id;
+    if (lastFittedTourIdRef.current === id) return;
+    if (view.tree.visibleRows.length === 0) return;
+    lastFittedTourIdRef.current = id;
+    // Capture the cursor row's pre-resize on-screen y so the width
+    // change reflows without walking the cursor up or down the screen.
+    if (cursor) {
+      const el = findCursorRowEl(cursor, view.rows.flatRowsList);
+      if (el) {
+        resizeSnapshotRef.current = {
+          top: el.getBoundingClientRect().top,
+        };
+      }
+    }
+    const fitted = computeAutoFitWidthPx(
+      view.tree.visibleRows,
+      window.innerWidth,
+    );
+    setSidebarWidth(fitted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  // Drag uses the manual clamp (see `clampSidebarWidthManualPx`); the
+  // capture-before-commit / apply-after-commit pattern is owned by
+  // `resizeSnapshotRef` + the resize-apply useLayoutEffect above.
+  const handleSidebarResize = useCallback(
+    (rawWidth: number) => {
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const next = clampSidebarWidthManualPx(rawWidth, vw);
+      if (next === sidebarWidth) return;
+      if (cursor && view.kind === "ok") {
+        const el = findCursorRowEl(cursor, view.rows.flatRowsList);
+        if (el) {
+          resizeSnapshotRef.current = { top: el.getBoundingClientRect().top };
+        }
+      }
+      setSidebarWidth(next);
+    },
+    [sidebarWidth, cursor, view, findCursorRowEl],
+  );
+
+  const handleSidebarResizeStart = useCallback(() => {
+    setIsResizing(true);
+  }, []);
+
+  const handleSidebarResizeEnd = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  // Defensive: keep the sidebar width inside the manual clamp when the
+  // browser resizes. Without this, dragging out the window from
+  // 1800 px to 800 px could leave the sidebar at 1400 px and hide the
+  // diff entirely.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => {
+      setSidebarWidth((w) =>
+        clampSidebarWidthManualPx(w, window.innerWidth),
+      );
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Keep the intent-handler input ref fresh. The listener fires
   // synchronously inside store.dispatch, BEFORE React re-renders, so its
@@ -1376,8 +1504,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       <div className="app-body">
         {view.kind === "snapshot-lost" ? (
           <>
-            <aside className="app-sidebar">
+            <aside
+              className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
+              style={{ width: sidebarWidth }}
+            >
               <h2>Files</h2>
+              <SidebarResizeHandle
+                width={sidebarWidth}
+                onResize={handleSidebarResize}
+                onResizeStart={handleSidebarResizeStart}
+                onResizeEnd={handleSidebarResizeEnd}
+              />
             </aside>
             <main className="app-main">
               <div className="banner">
@@ -1403,7 +1540,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           </>
         ) : (
           <>
-            <aside className="app-sidebar">
+            <aside
+              className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
+              style={{ width: sidebarWidth }}
+            >
               <h2>Files</h2>
               {view.tree.visibleRows.map((row) =>
                 row.kind === "folder" ? (
@@ -1418,6 +1558,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                   />
                 ),
               )}
+              <SidebarResizeHandle
+                width={sidebarWidth}
+                onResize={handleSidebarResize}
+                onResizeStart={handleSidebarResizeStart}
+                onResizeEnd={handleSidebarResizeEnd}
+              />
             </aside>
             <main className="app-main">
               <style>{FILE_GRID_CSS}</style>
