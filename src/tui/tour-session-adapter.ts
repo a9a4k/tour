@@ -67,15 +67,16 @@ export function createTuiTourSessionAdapter(
     setTimeout(fn, 0);
   }
 
-  function scrollCardOnce(id: string, mode: ScrollPlacement): boolean {
-    const sb = deps.diffScrollBoxRef.current;
-    if (!sb) return false;
-    const targetId = `annotation-${id}`;
-    if (!sb.content.findDescendantById(targetId)) return false;
-    // Issue #294 Slice 1: animate when the smooth-scroll flag is on and
-    // this is an in-flight navigation (placement === "nearest"). Fresh
-    // landings (placement === "center" — cursor materialize, URL restore,
-    // tour-switch, send-to-agent recall) stay instant by construction.
+  // Issue #296: placement-driven helper choice, anchor-kind-agnostic.
+  // `center` → instant frame (fresh landings: cursor materialize, URL
+  // restore, tour-switch, send-to-agent recall). `nearest` → in-flight
+  // navigation (`j`/`k`/`n`/`p`/click-to-position), animated when the
+  // smooth-scroll flag is on (issue #294 Slice 1) and instant otherwise.
+  function scrollByPlacement(
+    sb: ScrollBoxRenderable,
+    targetId: string,
+    mode: ScrollPlacement,
+  ): void {
     if (mode === "center") {
       centerChildInView(sb, targetId);
     } else if (isSmoothScrollEnabled()) {
@@ -83,6 +84,14 @@ export function createTuiTourSessionAdapter(
     } else {
       scrollChildIntoView(sb, targetId);
     }
+  }
+
+  function scrollCardOnce(id: string, mode: ScrollPlacement): boolean {
+    const sb = deps.diffScrollBoxRef.current;
+    if (!sb) return false;
+    const targetId = `annotation-${id}`;
+    if (!sb.content.findDescendantById(targetId)) return false;
+    scrollByPlacement(sb, targetId, mode);
     return true;
   }
 
@@ -134,18 +143,7 @@ export function createTuiTourSessionAdapter(
         const sb = deps.diffScrollBoxRef.current;
         if (!sb) return;
         const targetId = `diff-row-${anchor.file}-${anchor.side}-${anchor.lineNumber}`;
-        // Issue #296: placement-driven helper choice, anchor-kind-agnostic
-        // — same shape as `scrollCardOnce`. `center` → centerChildInView
-        // (fresh landings: cursor materialize, send-to-agent recall);
-        // `nearest` → scrollChildIntoView, animated when the smooth-scroll
-        // flag is on (in-flight `j`/`k`/`n`/`p`/click-to-position).
-        if (mode === "center") {
-          centerChildInView(sb, targetId);
-        } else if (isSmoothScrollEnabled()) {
-          animatedScrollChildIntoView(sb, targetId);
-        } else {
-          scrollChildIntoView(sb, targetId);
-        }
+        scrollByPlacement(sb, targetId, mode);
       });
     },
     scrollToPickerRow: (idx: number) => {
