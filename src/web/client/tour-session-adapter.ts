@@ -26,6 +26,17 @@ export interface WebTourSessionAdapterDeps {
   };
 }
 
+// Cursor-driven scroll behavior derives from the intent's placement (issue
+// #293). `nearest` is in-flight navigation (`n`/`p`, `j`/`k`, click-to-
+// position, bundle-refresh re-snap) — smooth scroll conveys travel
+// distance so adjacent landings keep spatial continuity. `center` is a
+// fresh landing (initial materialize, URL `?ann=` restore, stale fallback)
+// — instant so the target frames immediately with no prior frame of
+// reference to preserve.
+function behaviorFor(mode: ScrollPlacement): ScrollBehavior {
+  return mode === "nearest" ? "smooth" : "instant";
+}
+
 // `TourSessionAdapter` implemented against the webapp's substrate
 // (`fetch`, `EventSource`, `window.history`, DOM scroll).
 export function createWebTourSessionAdapter(
@@ -106,7 +117,7 @@ export function createWebTourSessionAdapter(
       requestAnimationFrame(() => {
         deps.annotationRefs.current
           .get(id)
-          ?.scrollIntoView({ behavior: "instant", block: mode });
+          ?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
       });
     },
     scrollToRow: (anchor: ScrollRowAnchor, mode: ScrollPlacement) => {
@@ -119,7 +130,7 @@ export function createWebTourSessionAdapter(
         const cell = block.querySelector<HTMLElement>(
           `.tour-row-gutter[data-side="${anchor.side}"][data-line-number="${anchor.lineNumber}"]`,
         );
-        cell?.scrollIntoView({ block: mode });
+        cell?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
       });
     },
     scrollToPickerRow: (idx: number) => {
