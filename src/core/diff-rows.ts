@@ -591,15 +591,45 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
   return out;
 }
 
+/** Resolve the row index an annotation's card should anchor onto, with a
+ *  fallback ladder so a top-level annotation whose `line_end` doesn't
+ *  match any emitted diff row never silently drops out of the flat stream
+ *  (issue #300). The card-walker (`n`/`p`) walks the canonical top-level
+ *  list directly, so dropping the card here broke the bookmark pill's
+ *  `K+1/M` contract and snapped the cursor away when the user pressed
+ *  `n` to reach it.
+ *
+ *  The ladder:
+ *  1. Exact match on `(side, line_end)` — the common path.
+ *  2. Nearest preceding same-side diff row (largest line number `<= line_end`)
+ *     — used when the anchor sits past the last in-hunk line, inside an
+ *     unexpanded mid-file gap, or past the file-bottom gap.
+ *  3. First same-side diff row in the file — used when no preceding row
+ *     exists (anchor sits above the first emitted hunk).
+ *  4. File's first emitted row of any kind — last-resort so the card is
+ *     never silently omitted from a file that has anything to render.
+ *
+ *  Returns -1 only when `rows` is fully empty (binary file / empty diff).
+ *  Note: the resulting `CardFlatRow.lineEnd` still carries the annotation's
+ *  authored `line_end`, not the snap target — downstream consumers (URL,
+ *  click routing, agent reply targets, side derivation) see the true anchor. */
 function findAnchorRowIndex(rows: PlannedRow[], ann: Annotation): number {
+  let nearestPrecedingIdx = -1;
+  let nearestPrecedingLine = -1;
+  let firstSameSideIdx = -1;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (row.kind !== "diff-row") continue;
-    if (ann.side === "additions") {
-      if (row.rightLineNumber === ann.line_end) return i;
-    } else {
-      if (row.leftLineNumber === ann.line_end) return i;
+    const line = ann.side === "additions" ? row.rightLineNumber : row.leftLineNumber;
+    if (line === null) continue;
+    if (line === ann.line_end) return i;
+    if (firstSameSideIdx === -1) firstSameSideIdx = i;
+    if (line < ann.line_end && line > nearestPrecedingLine) {
+      nearestPrecedingLine = line;
+      nearestPrecedingIdx = i;
     }
   }
-  return -1;
+  if (nearestPrecedingIdx !== -1) return nearestPrecedingIdx;
+  if (firstSameSideIdx !== -1) return firstSameSideIdx;
+  return rows.length > 0 ? 0 : -1;
 }

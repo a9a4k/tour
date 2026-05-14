@@ -6,7 +6,11 @@ import {
   type PlannedRow,
   type InteractiveRow,
 } from "../../src/core/diff-rows.js";
-import { resolveCursorRowIdx } from "../../src/core/cursor-state.js";
+import {
+  resolveCursorRowIdx,
+  nextCard,
+  validateCursor,
+} from "../../src/core/cursor-state.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
 import type { Annotation } from "../../src/core/types.js";
 
@@ -245,6 +249,37 @@ index 1..2 100644
     );
     expect(idx).toBeGreaterThanOrEqual(0);
     expect(flat[idx].file).toBe("b.txt");
+  });
+
+  // Issue #300: from a card whose successor's `line_end` sits outside any
+  // emitted diff row, `nextCard` returns the successor's CardAnchor (the
+  // walker reads the canonical topLevel list directly) AND `validateCursor`
+  // resolves the anchor against flatRows (not null), because the planner's
+  // fallback ladder ensures every top-level annotation produces a
+  // `CardFlatRow` in the stream.
+  it("n from card K lands on K+1 even when K+1's line_end sits outside any emitted diff row (issue #300)", () => {
+    // Single-hunk diff: additions side emits lines 2 and 3. Annotation 3's
+    // line_end = 35 sits past every emitted addition line, mirroring the
+    // sandcastle fixture `2026-05-14-084002-8wzf` (.sandcastle/run.ts:18-35
+    // on a `@@ -1,9 +1,34 @@` hunk emitting up to line 34 only).
+    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
+    const a1 = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2, created_at: "2026-05-14T00:00:00Z" });
+    const a2 = ann({ id: "a2", side: "additions", line_start: 3, line_end: 3, created_at: "2026-05-14T00:00:01Z" });
+    const a3 = ann({ id: "a3", side: "additions", line_start: 18, line_end: 35, created_at: "2026-05-14T00:00:02Z" });
+    const topLevel = [a1, a2, a3];
+    const planned = new Map<string, PlannedRow[]>([
+      ["x.txt", plannedFor(SIMPLE_DIFF, topLevel, "split")],
+    ]);
+    const flat = flatRows([f], planned, () => false);
+    // The card-walker advances purely from the topLevel list.
+    const onA2 = { kind: "card" as const, annotationId: "a2", preferredSide: "additions" as const };
+    const advanced = nextCard(onA2, topLevel);
+    expect(advanced).toEqual({ kind: "card", annotationId: "a3", preferredSide: "additions" });
+    // Pre-#300 the view-validator would have nulled this anchor because a3
+    // wasn't in flatRows. After the fix, the planner's fallback emits a
+    // CardFlatRow for a3, so the validator returns the cursor unchanged.
+    const validated = validateCursor(advanced, flat);
+    expect(validated).toEqual(advanced);
   });
 });
 
