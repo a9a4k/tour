@@ -201,44 +201,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     findFileBlock: (name: string) => HTMLElement | null;
   } | null>(null);
 
-  // Fetches /api/tours/<id> and dispatches `tour.switched` (or
-  // `bundle.failed`) into the store (issue #211: the store's bundle slice
-  // is now authoritative). Stale-response guard: drops the response if a
-  // later tour-switch has moved the store's currentTourId off `tourId`.
-  // Caller is responsible for ensuring bundle.loading was dispatched (the
-  // reducer's picker.commit does this; popstate / auto-pick / initial mount
-  // do it explicitly below).
-  const loadBundle = useCallback(
-    (id: string) => {
-      void (async () => {
-        try {
-          const res = await fetch(`/api/tours/${id}`);
-          const data = (await res.json()) as TourBundle | { error: string };
-          if (store.getState().currentTourId !== id) return;
-          if ("error" in data) {
-            store.dispatch({ type: "bundle.failed", tourId: id, error: data.error });
-          } else {
-            store.dispatch({ type: "tour.switched", tourId: id, bundle: data });
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          if (store.getState().currentTourId !== id) return;
-          store.dispatch({ type: "bundle.failed", tourId: id, error: message });
-        }
-      })();
-    },
-    [store],
-  );
-
   // Intent listener — realizes the store's intent emissions in DOM /
   // network / history substrate (PRD #207 / issue #210; slice 2 / issue
-  // #232 grows the cursor + expansion intent set).
+  // #232 grows the cursor + expansion intent set). `loadTour` is owned
+  // by the Tour-session runtime (PRD #278 slice 3) — calls `fetchBundle`
+  // → `tour.switched` → `fetchReplyLock` → `replyLock.loaded` through the
+  // adapter; the surface no longer hand-rolls a `loadBundle` callback.
   useEffect(() => {
     return store.onIntent((intent) => {
       switch (intent.type) {
-        case "loadTour":
-          loadBundle(intent.tourId);
-          break;
         case "scrollPickerRow": {
           if (typeof document === "undefined") break;
           const el = document.querySelector(
@@ -399,11 +370,30 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         }
       }
     });
-  }, [store, loadBundle]);
+  }, [store]);
+
+  // Tour-session runtime (PRD #278 slice 2 + slice 3). Subscribes to SSE
+  // via the web adapter and dispatches `bundle.refreshed` /
+  // `replyLock.loaded` on tour events; realises the `loadTour` intent end-
+  // to-end (fetchBundle → tour.switched → fetchReplyLock →
+  // replyLock.loaded). The runtime re-subscribes itself when
+  // `currentTourId` changes, so this effect runs once at mount and tears
+  // down at unmount.
+  //
+  // Registered BEFORE the mount-time bundle.loading dispatch so the
+  // runtime's `onIntent` subscription is live when the initial loadTour
+  // intent fires. React runs useEffects in declaration order; reversing
+  // the order drops the first intent and the bundle never loads.
+  useEffect(() => {
+    const adapter = createWebTourSessionAdapter();
+    const runtime = new TourSessionRuntime(store, adapter);
+    return runtime.start();
+  }, [store]);
 
   // Mount-time: fetch tour list via store dispatches, auto-pick on bare URL,
   // and kick off the initial bundle load if a tour-id was already seeded
-  // from the URL.
+  // from the URL. `bundle.loading` emits `loadTour` (PRD #278 slice 3) so
+  // the runtime owns the fetch / dispatch chain.
   useEffect(() => {
     store.dispatch({ type: "tourList.loading" });
     void (async () => {
@@ -418,7 +408,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           const auto = pickAutoTour(tours);
           const autoId = auto?.id ?? tours[tours.length - 1].id;
           store.dispatch({ type: "bundle.loading", tourId: autoId });
-          loadBundle(autoId);
         }
       } catch (err) {
         store.dispatch({
@@ -434,7 +423,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const initial = store.getState().currentTourId;
     if (initial !== null) {
       store.dispatch({ type: "bundle.loading", tourId: initial });
-      loadBundle(initial);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -445,11 +433,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const current = store.getState().currentTourId;
       if (fromUrl !== null && fromUrl !== current) {
         // popstate is the equivalent of a picker-commit (issue #210): the
-        // session action sets bundle = loading + currentTourId, and the
-        // App-side fetcher dispatches tour.switched / bundle.failed. No
-        // mirrorUrl — popstate is following the URL, not writing it.
+        // session action sets bundle = loading + currentTourId and emits a
+        // `loadTour` intent that the runtime realises through the adapter.
+        // No mirrorUrl — popstate is following the URL, not writing it.
         store.dispatch({ type: "bundle.loading", tourId: fromUrl });
-        loadBundle(fromUrl);
       }
       // Mirror `?ann=` / `#<ann-id>` back into the cursor on browser
       // back / forward (PRD #192 / ADR 0022 slice 2). The mount-time
@@ -471,7 +458,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [store, loadBundle]);
+  }, [store]);
 
   // Tour-switch reset for sidebar selection. After PRD #234 slice 3
   // (issue #238) the reducer's `tour.switched` branch owns every reset
@@ -483,46 +470,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (!tourId) return;
     setSelectedFile(null);
   }, [tourId]);
-
-  // Tour-session runtime (PRD #278 slice 2). Subscribes to SSE via the
-  // web adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
-  // on tour events. The runtime re-subscribes itself when `currentTourId`
-  // changes, so this effect runs once at mount and tears down at unmount.
-  useEffect(() => {
-    const adapter = createWebTourSessionAdapter();
-    const runtime = new TourSessionRuntime(store, adapter);
-    return runtime.start();
-  }, [store]);
-
-  // Mount-time / tour-switch seed of the reply-lock slice. `tour.switched`
-  // resets the slice to `{ kind: "idle" }`; this effect fetches the current
-  // lock and dispatches `replyLock.loaded` so the pill state is accurate
-  // on first paint of every tour. Slice 3 lifts this into the runtime's
-  // `loadTour` intent handler.
-  useEffect(() => {
-    if (!tourId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(`/api/tours/${tourId}/reply-lock`);
-        const data = (await res.json()) as ReplyLock | { error: string } | null;
-        if (cancelled) return;
-        if (data && typeof data === "object" && "error" in data) {
-          store.dispatch({ type: "replyLock.loaded", replyLock: null });
-        } else {
-          store.dispatch({
-            type: "replyLock.loaded",
-            replyLock: data as ReplyLock | null,
-          });
-        }
-      } catch {
-        // transient — keep current pill state
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tourId, store]);
 
   const tourMeta = bundle?.tour ?? null;
   // Tour-session view (PRD #242 / issue #245). Per-namespace memoised

@@ -205,11 +205,11 @@ describe("reduce — picker slice", () => {
 });
 
 describe("reduce — bundle slice", () => {
-  it("bundle.loading sets currentTourId and bundle = loading", () => {
+  it("bundle.loading sets currentTourId and bundle = loading, emits loadTour", () => {
     const r = reduce(initialTourSessionState(), { type: "bundle.loading", tourId: "x" });
     expect(r.state.currentTourId).toBe("x");
     expect(r.state.bundle).toEqual({ kind: "loading" });
-    expect(r.intents).toEqual([]);
+    expect(r.intents).toEqual([{ type: "loadTour", tourId: "x" }]);
   });
 
   it("bundle.refreshed replaces the bundle slice in place and leaves picker / replyLock / currentTourId / layout untouched", () => {

@@ -46,10 +46,11 @@ export interface TourSessionAdapter {
 /**
  * The impure half of the Tour-session triple (reducer + view + runtime).
  * Subscribes to `store.onIntent` and to `adapter.subscribeTourEvents`;
- * realises tour events as reducer dispatches.
+ * realises intents and tour events as reducer dispatches.
  *
- * This slice (PRD #278 slice 2) wires only the watcher path. Intent
- * realisation arrives in later slices.
+ * Slice 2 (PRD #278) wired the watcher path. Slice 3 wires the `loadTour`
+ * intent — emitted by `picker.commit` and by `bundle.loading` (the action
+ * popstate / auto-pick / initial mount dispatch).
  */
 export class TourSessionRuntime {
   private intentUnsub: (() => void) | null = null;
@@ -68,10 +69,11 @@ export class TourSessionRuntime {
    * call once at App mount; call the returned teardown at unmount.
    */
   start(): () => void {
-    // Reserved for slices 3-7 — intent handlers (loadTour, submitAnnotation,
-    // scrollCursorTarget, ...) land here. Subscribed now so the listener
-    // wiring lives in one place from birth.
-    this.intentUnsub = this.store.onIntent(() => {});
+    this.intentUnsub = this.store.onIntent((intent) => {
+      if (intent.type === "loadTour") {
+        void this.handleLoadTour(intent.tourId);
+      }
+    });
 
     this.syncTourSubscription();
     this.stateUnsub = this.store.subscribe(() => this.syncTourSubscription());
@@ -85,6 +87,42 @@ export class TourSessionRuntime {
       this.eventUnsub = null;
       this.subscribedTourId = null;
     };
+  }
+
+  // Realises the `loadTour` intent (PRD #278 slice 3). Fetches the bundle,
+  // dispatches `tour.switched` on success (the reducer's branch owns the
+  // CONTEXT-pinned reset cascade — picker / replyLock / cursor / expansion /
+  // composer / folds), then fetches the reply-lock and dispatches
+  // `replyLock.loaded`. On fetchBundle failure dispatches `bundle.failed`.
+  // Reply-lock fetch errors are swallowed (transient — keep current pill
+  // state; the tour-switched reset already moved replyLock to idle).
+  //
+  // Stale-tour guard: every dispatch is gated on the store's current tour
+  // still matching `tourId`. A loadTour for tour A whose fetch resolves
+  // after the user switched to tour B is dropped — the new tour's load
+  // owns its own bundle / lock.
+  private async handleLoadTour(tourId: string): Promise<void> {
+    let bundle: TourBundle;
+    try {
+      bundle = await this.adapter.fetchBundle(tourId);
+    } catch (e) {
+      if (this.store.getState().currentTourId !== tourId) return;
+      const error = e instanceof Error ? e.message : String(e);
+      this.store.dispatch({ type: "bundle.failed", tourId, error });
+      return;
+    }
+    if (this.store.getState().currentTourId !== tourId) return;
+    this.store.dispatch({ type: "tour.switched", tourId, bundle });
+
+    let lock: ReplyLock | null;
+    try {
+      lock = await this.adapter.fetchReplyLock(tourId);
+    } catch {
+      // transient — keep current pill state
+      return;
+    }
+    if (this.store.getState().currentTourId !== tourId) return;
+    this.store.dispatch({ type: "replyLock.loaded", replyLock: lock });
   }
 
   // Re-subscribes to the watcher when the current tour id changes. Other

@@ -644,11 +644,11 @@ function App(props: AppProps) {
   safeRowIdxRef.current = safeRowIdx;
 
   // Intent listener — realizes the reducer's emitted intents in the TUI
-  // substrate (PRD #207 slice 1 + slice 2 contract). `loadTour` performs
-  // the in-process bundle reload then dispatches `tour.switched` (which
-  // drives the reducer's bundle/picker/replyLock/cursor/expansion reset
-  // cascade — cursor + expansion landed in the reducer with slice 2,
-  // issue #230). `scrollPickerRow` scrolls the picker modal scrollbox.
+  // substrate (PRD #207 slice 1 + slice 2 contract). `loadTour` is owned
+  // by the Tour-session runtime (PRD #278 slice 3) — calls `fetchBundle`
+  // → `tour.switched` → `fetchReplyLock` → `replyLock.loaded` through the
+  // adapter; the surface no longer hand-rolls the dispatch sequence.
+  // `scrollPickerRow` scrolls the picker modal scrollbox.
   // `revalidateCursor` runs `validateCursor` against the substrate-derived
   // flat-rows and dispatches `cursor.set` / `cursor.clear`.
   // `scrollCursorTarget` scrolls the diff pane via `scrollChildIntoView` /
@@ -658,59 +658,6 @@ function App(props: AppProps) {
   useEffect(() => {
     let unmounted = false;
     const unsubscribe = store.onIntent((intent) => {
-      if (intent.type === "loadTour") {
-        const tourId = intent.tourId;
-        if (!props.loadTour) return;
-        if (tourId === bundle.tour.id) {
-          // Same-tour Enter: keymap short-circuited to picker.close, so
-          // this branch is defensive against direct loadTour intents from
-          // future call sites.
-          return;
-        }
-        (async () => {
-          try {
-            const next = await props.loadTour!(tourId);
-            if (unmounted) return;
-            // Sidebar row index is the only CONTEXT-pinned Tour-switch
-            // reset still hand-rolled — sidebar selection is surface-
-            // specific (derivable from cursor) and out of scope for the
-            // store per PRD #234. Every other reset (cursor, expansion,
-            // composer, folds + overrides, replyLock, picker, bundle)
-            // lands in the reducer's `tour.switched` branch.
-            setSelectedRowIdx(0);
-            // Drive the reducer's `tour.switched` cascade — bundle is
-            // replaced; picker closes (defensively; commit already closed
-            // it); replyLock resets to idle; cursor resets to null;
-            // expansion resets to empty and re-seeds from the inbound
-            // bundle's orphan windows (PRD #278 slice 1) so Annotations
-            // whose anchor lives in Hidden context render inline on first
-            // paint of the new tour; composer → closed; folds → empty.
-            store.dispatch({ type: "tour.switched", tourId, bundle: next });
-            // Reply-lock fetch for the new tour. Must dispatch AFTER
-            // `tour.switched` (which resets replyLock to idle) so the
-            // freshly-loaded lock isn't clobbered.
-            if (props.loadReplyLock) {
-              try {
-                const lock = await props.loadReplyLock(tourId);
-                if (!unmounted) {
-                  store.dispatch({ type: "replyLock.loaded", replyLock: lock });
-                }
-              } catch {
-                if (!unmounted) {
-                  store.dispatch({ type: "replyLock.loaded", replyLock: null });
-                }
-              }
-            } else {
-              store.dispatch({ type: "replyLock.loaded", replyLock: null });
-            }
-          } catch (e) {
-            if (unmounted) return;
-            const error = e instanceof Error ? e.message : String(e);
-            store.dispatch({ type: "bundle.failed", tourId, error });
-          }
-        })();
-        return;
-      }
       if (intent.type === "scrollPickerRow") {
         const sb = pickerScrollRef.current;
         if (!sb) return;
@@ -838,10 +785,22 @@ function App(props: AppProps) {
       unmounted = true;
       unsubscribe();
     };
-    // store / props.loadTour / props.loadReplyLock are stable for the
-    // TUI's CLI invocation; bundle.tour.id is read inside the closure.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, props.loadTour, props.loadReplyLock, bundle.tour.id]);
+    // store / props.loadTour stable for the TUI's CLI invocation; the
+    // submitAnnotation post-submit refetch (slice 4 will lift) reads
+    // props.loadTour from the closure.
+  }, [store, props.loadTour]);
+
+  // Tour-switch reset for sidebar row index. The reducer's `tour.switched`
+  // branch owns every CONTEXT-pinned reset (picker / replyLock / cursor /
+  // expansion / composer / folds); sidebar selection is surface-specific
+  // (out of scope for the store per PRD #234) so the reset rides on a
+  // currentTourId-keyed useEffect — mirrors the web's `setSelectedFile`
+  // reset pattern. PRD #278 slice 3.
+  const currentTourId = sessionState.currentTourId;
+  useEffect(() => {
+    if (currentTourId === null) return;
+    setSelectedRowIdx(0);
+  }, [currentTourId]);
 
   const jumpToAnnotation = (ann: Annotation) => {
     // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
