@@ -191,20 +191,27 @@ describe("computeAutoFitWidth", () => {
   });
 
   it("solves the issue #315 reproduction (depth-5 row, 117-col terminal)", () => {
-    // Reproduction filename `get-block-answer-grpc.controller.ts`
-    // is 35 chars, at depth 5. fileRowFixedCost (no stats, no badge)
-    // = LEADING(1) + 1*5 + ICON_AND_SPACE(2) + TRAILING(1) = 9.
-    // Content = 9 + 35 = 44. Sidebar = 44 + 2 = 46. Cap on termW=117
-    // is 117-60=57. 46 < 57 → 46 (auto-fit picks 46, fits without
+    // Reproduction filename `get-block-answer-grpc.controller.ts` is
+    // 35 chars at depth 5. Per the screenshot in the issue, the row
+    // carries `+58` additions and a `[2]` annotation badge — both
+    // contribute to the fixed cost and must be included so the test
+    // exercises the real-world width, not a stripped-down hypothetical.
+    //
+    // fileRowFixedCost = LEADING(1) + 1*5 + ICON_AND_SPACE(2)
+    //   + ` +58`(4) + ` [2]`(4) + TRAILING(1) = 17.
+    // Content = 17 + 35 = 52. Sidebar = 52 + 2 = 54. Cap on termW=117
+    // is 117-60=57. 54 < 57 → 54 (auto-fit picks 54, fits without
     // truncation). Tightens the brief's claim ("solves the reproduction
-    // case without manual intervention").
+    // case without manual intervention") against the actual row state.
+    const stats = { additions: 58, deletions: 0 };
     const rows = [
       file({
         displayName: "get-block-answer-grpc.controller.ts",
         depth: 5,
+        annotationCount: 2,
       }),
     ];
-    expect(computeAutoFitWidth(rows, noStats, 117)).toBe(46);
+    expect(computeAutoFitWidth(rows, () => stats, 117)).toBe(54);
   });
 
   it("takes the maximum over a mixed folder+file list", () => {
