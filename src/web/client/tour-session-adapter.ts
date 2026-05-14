@@ -69,13 +69,18 @@ export function createWebTourSessionAdapter(
     },
     requestReply: async ({ tourId, annotationId }) => {
       // SSE `reply-in-flight` / `reply-cleared` events drive the in-flight
-      // pill; network rejections propagate to the runtime's fire-and-forget
-      // catch. PRD #278 slice 7.
-      await fetch(`/api/tours/${tourId}/request-reply`, {
+      // pill; transport-level failures (non-2xx or network) reject so the
+      // adapter contract matches the TUI's in-process path (issue #291).
+      // The runtime's fire-and-forget catch absorbs both. PRD #278 slice 7.
+      const res = await fetch(`/api/tours/${tourId}/request-reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ annotation_id: annotationId }),
       });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
     },
     subscribeTourEvents: (tourId, handler: TourEventHandler) => {
       const evtSource = new EventSource(`/api/tours/${tourId}/events`);
