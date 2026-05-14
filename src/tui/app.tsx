@@ -32,7 +32,6 @@ import { DiffRows } from "./DiffRows.js";
 import { CURSOR_FG, CURSOR_GLYPH } from "./DiffLine.js";
 import { FileHeader } from "./FileHeader.js";
 import { collectFileCardOffsets, deriveActiveFile } from "./active-file.js";
-import { withFileSeparators } from "./FileSeparator.js";
 import {
   buildTree,
   compress,
@@ -1783,7 +1782,7 @@ function App(props: AppProps) {
                   // no-op.
                   viewportCulling={true}
                 >
-                  {withFileSeparators(files, (file) => {
+                  {files.map((file) => {
                     const collapsed = isFileCollapsed(file.name);
                     const rows = plannedRowsByFile.get(file.name) ?? [];
                     const reason = fileClassification(classifications, file.name).reason;
