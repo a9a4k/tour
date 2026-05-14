@@ -71,15 +71,6 @@ function cssEscapeFile(value: string): string {
   return value.replace(/["\\]/g, (c) => `\\${c}`);
 }
 
-interface PostBody {
-  body: string;
-  file?: string;
-  side?: "additions" | "deletions";
-  line_start?: number;
-  line_end?: number;
-  replies_to?: string;
-}
-
 interface AppProps {
   initialTourId: string | null;
   // The renderer-configured reply-agent name (from `--reply-agent <name>`,
@@ -302,54 +293,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             window.location.pathname + window.location.search + window.location.hash;
           if (url === current) break;
           window.history.replaceState(window.history.state, "", url);
-          break;
-        }
-        case "submitAnnotation": {
-          // PRD #234 slice 3, issue #238. Composer submit / retry routes
-          // through the store: reducer transitions to `submitting` and
-          // emits this intent; surface POSTs to the existing
-          // `/api/tours/:id/annotations` endpoint with the same payload
-          // shape as before, then dispatches `composer.submitted`
-          // (success) or `composer.failed` (failure) to close the loop.
-          const { tourId: submitTourId, target, body } = intent;
-          const trimmed = body.trim();
-          const payload: PostBody =
-            target.kind === "reply"
-              ? { body: trimmed, replies_to: target.replies_to }
-              : {
-                  body: trimmed,
-                  file: target.file,
-                  side: target.side,
-                  line_start: target.line_start,
-                  line_end: target.line_end,
-                };
-          void (async () => {
-            try {
-              const res = await fetch(
-                `/api/tours/${submitTourId}/annotations`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
-                },
-              );
-              if (!res.ok) {
-                const data = (await res.json().catch(() => ({}))) as {
-                  error?: string;
-                };
-                store.dispatch({
-                  type: "composer.failed",
-                  error: data.error ?? `HTTP ${res.status}`,
-                });
-                return;
-              }
-              const ann = (await res.json()) as Annotation;
-              store.dispatch({ type: "composer.submitted", annotation: ann });
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              store.dispatch({ type: "composer.failed", error: message });
-            }
-          })();
           break;
         }
         case "scrollToAnnotation": {

@@ -1,12 +1,17 @@
 import type { TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
 import type { Annotation } from "./types.js";
-import type {
-  ScrollCursorTarget,
-  ScrollPlacement,
-  TourSessionStore,
+import {
+  isBundleResolved,
+  type ComposerTarget,
+  type ScrollCursorTarget,
+  type ScrollPlacement,
+  type TourSessionStore,
 } from "./tour-session.js";
-import type { WriteAnnotationInput } from "./write-annotation-input.js";
+import {
+  buildWriteAnnotationInput,
+  type WriteAnnotationInput,
+} from "./write-annotation-input.js";
 
 // The TourEvent vocabulary is the existing watcher / SSE event set. The
 // adapter normalises both the TUI's `TourWatcher` events and the web's
@@ -72,6 +77,8 @@ export class TourSessionRuntime {
     this.intentUnsub = this.store.onIntent((intent) => {
       if (intent.type === "loadTour") {
         void this.handleLoadTour(intent.tourId);
+      } else if (intent.type === "submitAnnotation") {
+        this.handleSubmitAnnotation(intent.tourId, intent.target, intent.body);
       }
     });
 
@@ -123,6 +130,57 @@ export class TourSessionRuntime {
     }
     if (this.store.getState().currentTourId !== tourId) return;
     this.store.dispatch({ type: "replyLock.loaded", replyLock: lock });
+  }
+
+  // Realises the `submitAnnotation` intent (PRD #278 slice 4). Trim-and-
+  // reject for whitespace-only bodies (PRD #140 — every surface treats an
+  // empty submit as cancel, not a disk write). Resolves the reply parent
+  // (or attaches the live bundle for top-level) via the shared
+  // `buildWriteAnnotationInput` builder so both surfaces converge on the
+  // same `WriteAnnotationInput` shape. On success dispatches
+  // `composer.submitted` (the reducer emits `scrollToAnnotation`); on
+  // rejection dispatches `composer.failed`.
+  private handleSubmitAnnotation(
+    tourId: string,
+    target: ComposerTarget,
+    body: string,
+  ): void {
+    if (body.trim().length === 0) {
+      this.store.dispatch({ type: "composer.close" });
+      return;
+    }
+    const liveBundle = isBundleResolved(this.store.getState());
+    if (!liveBundle) {
+      this.store.dispatch({
+        type: "composer.failed",
+        error: "Tour bundle is no longer loaded",
+      });
+      return;
+    }
+    const built = buildWriteAnnotationInput({ target, body, bundle: liveBundle });
+    if (built.kind === "parent-missing") {
+      this.store.dispatch({
+        type: "composer.failed",
+        error: "Parent annotation no longer exists",
+      });
+      return;
+    }
+    void this.writeAnnotationAndDispatch(tourId, built.input);
+  }
+
+  private async writeAnnotationAndDispatch(
+    tourId: string,
+    input: WriteAnnotationInput,
+  ): Promise<void> {
+    let created: Annotation;
+    try {
+      created = await this.adapter.writeAnnotation(tourId, input);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.store.dispatch({ type: "composer.failed", error });
+      return;
+    }
+    this.store.dispatch({ type: "composer.submitted", annotation: created });
   }
 
   // Re-subscribes to the watcher when the current tour id changes. Other

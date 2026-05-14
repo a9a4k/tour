@@ -42,7 +42,6 @@ import {
   type TourSummary,
 } from "../core/tour-session.js";
 import {
-  buildWriteAnnotationInput,
   type StartTuiProps,
   type WriteAnnotationInput,
 } from "../core/write-annotation-input.js";
@@ -656,7 +655,6 @@ function App(props: AppProps) {
   // and selects its row in the sidebar tree. `mirrorUrl` and `mirrorAnnUrl`
   // are ignored — the TUI has no URL.
   useEffect(() => {
-    let unmounted = false;
     const unsubscribe = store.onIntent((intent) => {
       if (intent.type === "scrollPickerRow") {
         const sb = pickerScrollRef.current;
@@ -694,101 +692,23 @@ function App(props: AppProps) {
         }
         return;
       }
-      if (intent.type === "submitAnnotation") {
-        if (!props.writeAnnotation) return;
-        const { tourId, target, body } = intent;
-        // Empty bodies (or whitespace-only) are treated as cancel — same as
-        // the prior surface-side trim check. The reducer transitioned us to
-        // `submitting` already; flip back to `closed` rather than burning a
-        // disk write. PRD #234 issue #237.
-        if (body.trim().length === 0) {
-          store.dispatch({ type: "composer.close" });
-          return;
-        }
-        // Resolve the reply parent + attach the live bundle from the store,
-        // not from a React closure, so a mid-composition watcher reload is
-        // reflected. The shared `buildWriteAnnotationInput` enforces the
-        // bundle field on the top-level payload at compile time — pre-fix
-        // this construction silently dropped `bundle`, the writer crashed
-        // on `undefined.kind` in `validateAnchor`, and the user saw the
-        // composer vanish with no error. Issue #254.
-        const live = store.getState();
-        const liveBundle = isBundleResolved(live);
-        if (!liveBundle) {
-          // Bundle slice is idle / loading / failed — the composer must
-          // have opened against a resolved tour, so this is a watcher race
-          // with a `bundle.failed` between open and submit. Surface as a
-          // failure rather than calling the writer with no bundle.
-          store.dispatch({
-            type: "composer.failed",
-            error: "Tour bundle is no longer loaded",
-          });
-          return;
-        }
-        const built = buildWriteAnnotationInput({
-          target,
-          body,
-          bundle: liveBundle,
-        });
-        if (built.kind === "parent-missing") {
-          // Parent vanished mid-composition (rare — watcher reload deleted
-          // the annotation between open and submit). Surface as a failure
-          // and bail out before calling the writer.
-          store.dispatch({
-            type: "composer.failed",
-            error: "Parent annotation no longer exists",
-          });
-          return;
-        }
-        const input = built.input;
-        (async () => {
-          try {
-            const created = await props.writeAnnotation!(tourId, input);
-            if (unmounted) return;
-            store.dispatch({ type: "composer.submitted", annotation: created });
-            // The CLI's `tour annotate` would let the watcher re-render. The
-            // TUI path skips the watcher loop and reloads the bundle directly
-            // so the new entry shows up immediately on submit. Same-tour
-            // refresh — dispatch `bundle.refreshed` (issue #211), NOT
-            // `tour.switched`, so the picker / replyLock survive a composer
-            // submit. Orphan-window seeding is folded into the reducer's
-            // `bundle.refreshed` branch (PRD #278 slice 1).
-            if (!props.loadTour) return;
-            try {
-              const refreshed = await props.loadTour(tourId);
-              if (unmounted) return;
-              store.dispatch({ type: "bundle.refreshed", bundle: refreshed });
-            } catch {
-              // transient — keep current bundle
-            }
-          } catch (e) {
-            if (unmounted) return;
-            const error = e instanceof Error ? e.message : String(e);
-            store.dispatch({ type: "composer.failed", error });
-          }
-        })();
-        return;
-      }
       if (intent.type === "scrollToAnnotation") {
         // Post-submit scroll: the intent fires synchronously inside the
-        // `composer.submitted` dispatch, which precedes the
-        // `bundle.refreshed` dispatch in this listener's submitAnnotation
-        // flow — so the freshly-created card may not be in the DOM yet.
-        // Stash the id; the retry useEffect on plannedRowsByFile picks it
-        // up once the bundle-refresh re-render lands the card.
+        // `composer.submitted` dispatch. The freshly-created card may not
+        // be in the DOM yet — the watcher's `bundle.refreshed` lands the
+        // new row asynchronously (PRD #278 slice 4 dropped the surface-
+        // side eager refetch). Stash the id; the retry useEffect on
+        // plannedRowsByFile picks it up once the bundle-refresh re-render
+        // mounts the card.
         pendingScrollIdRef.current = intent.annotationId;
         return;
       }
       // mirrorUrl + mirrorAnnUrl: TUI has no URL — ignored.
     });
     return () => {
-      unmounted = true;
       unsubscribe();
     };
-    // store / props.loadTour stable for the TUI's CLI invocation; the
-    // submitAnnotation post-submit refetch (slice 4 will lift) reads
-    // props.loadTour from the closure.
-  }, [store, props.loadTour]);
+  }, [store]);
 
   // Tour-switch reset for sidebar row index. The reducer's `tour.switched`
   // branch owns every CONTEXT-pinned reset (picker / replyLock / cursor /

@@ -28,10 +28,28 @@ export function createWebTourSessionAdapter(): TourSessionAdapter {
       if (data && typeof data === "object" && "error" in data) return null;
       return data as ReplyLock | null;
     },
-    writeAnnotation: async (_tourId: string, _input: WriteAnnotationInput): Promise<Annotation> => {
-      // Slice 4 lifts `submitAnnotation` into the runtime; the webapp's
-      // POST currently lives in App.tsx's intent listener.
-      throw new Error("writeAnnotation not yet wired through the runtime");
+    writeAnnotation: async (tourId: string, input: WriteAnnotationInput): Promise<Annotation> => {
+      const body = input.body.trim();
+      const payload: Record<string, unknown> =
+        input.kind === "reply"
+          ? { body, replies_to: input.parent.id }
+          : {
+              body,
+              file: input.file,
+              side: input.side,
+              line_start: input.line_start,
+              line_end: input.line_end,
+            };
+      const res = await fetch(`/api/tours/${tourId}/annotations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      return (await res.json()) as Annotation;
     },
     requestReply: async () => {
       // Slice 7 wires the explicit reply-agent send path through the runtime.

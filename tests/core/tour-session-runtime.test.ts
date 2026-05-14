@@ -13,6 +13,7 @@ import {
 import type { TourBundle } from "../../src/core/tour-bundle.js";
 import type { ReplyLock } from "../../src/core/reply-lock.js";
 import type { Tour, Annotation } from "../../src/core/types.js";
+import type { WriteAnnotationInput } from "../../src/core/write-annotation-input.js";
 
 function tour(id: string): Tour {
   return {
@@ -33,11 +34,11 @@ function snapshotLostBundle(id: string): TourBundle {
   return { kind: "snapshot-lost", tour: tour(id), annotations: [] as Annotation[] };
 }
 
-function okBundle(id: string): TourBundle {
+function okBundle(id: string, annotations: Annotation[] = []): TourBundle {
   return {
     kind: "ok",
     tour: tour(id),
-    annotations: [] as Annotation[],
+    annotations,
     diff: "",
     files: [],
   };
@@ -46,6 +47,7 @@ function okBundle(id: string): TourBundle {
 interface FakeAdapter extends TourSessionAdapter {
   bundleCalls: string[];
   lockCalls: string[];
+  writeCalls: Array<{ tourId: string; input: WriteAnnotationInput }>;
   subscriptions: Array<{ tourId: string; handler: TourEventHandler; unsubscribed: boolean }>;
   emit(tourId: string, event: TourEvent): void;
 }
@@ -55,16 +57,20 @@ interface FakeAdapterOptions {
   lockByTour?: Record<string, ReplyLock | null>;
   fetchBundleError?: boolean;
   fetchReplyLockError?: boolean;
+  writeAnnotationError?: string;
+  writeAnnotationResult?: Annotation;
 }
 
 function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const bundleCalls: string[] = [];
   const lockCalls: string[] = [];
+  const writeCalls: FakeAdapter["writeCalls"] = [];
   const subscriptions: FakeAdapter["subscriptions"] = [];
 
   const adapter: FakeAdapter = {
     bundleCalls,
     lockCalls,
+    writeCalls,
     subscriptions,
     fetchBundle: async (id) => {
       bundleCalls.push(id);
@@ -76,8 +82,21 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
       if (opts.fetchReplyLockError) throw new Error("transport");
       return opts.lockByTour?.[id] ?? null;
     },
-    writeAnnotation: async () => {
-      throw new Error("not implemented");
+    writeAnnotation: async (tourId, input) => {
+      writeCalls.push({ tourId, input });
+      if (opts.writeAnnotationError) throw new Error(opts.writeAnnotationError);
+      return opts.writeAnnotationResult ?? {
+        id: "a-new",
+        file: input.kind === "top-level" ? input.file : input.parent.file,
+        side: input.kind === "top-level" ? input.side : input.parent.side,
+        line_start: input.kind === "top-level" ? input.line_start : input.parent.line_start,
+        line_end: input.kind === "top-level" ? input.line_end : input.parent.line_end,
+        body: input.body,
+        author: "human",
+        author_kind: "human",
+        created_at: "2026-05-14T00:00:00Z",
+        ...(input.kind === "reply" ? { replies_to: input.parent.id } : {}),
+      };
     },
     requestReply: async () => {
       throw new Error("not implemented");
@@ -535,6 +554,212 @@ describe("TourSessionRuntime", () => {
       // for tour-b, it resolves to null after the fetch.
       // The key assertion: the tour-a lock did NOT clobber tour-b state.
       expect(store.getState().replyLock).not.toEqual({ kind: "ok", value: lock });
+      stop();
+    });
+  });
+
+  describe("submitAnnotation intent (PRD #278 slice 4)", () => {
+    function annotationFixture(id: string, overrides: Partial<Annotation> = {}): Annotation {
+      return {
+        id,
+        file: "src/a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "parent body",
+        author: "human",
+        author_kind: "human",
+        created_at: "2026-05-14T00:00:00Z",
+        ...overrides,
+      };
+    }
+
+    function seedTour(store: TourSessionStore, bundle: TourBundle): void {
+      store.dispatch({
+        type: "tour.switched",
+        tourId: bundle.tour.id,
+        bundle,
+      });
+    }
+
+    it("calls adapter.writeAnnotation with the built input and dispatches composer.submitted on success", async () => {
+      const store = storeWithTour(null);
+      const bundle = okBundle("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, bundle);
+
+      store.dispatch({
+        type: "composer.open",
+        target: {
+          kind: "top-level",
+          file: "src/a.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+        },
+      });
+      store.dispatch({ type: "composer.setBody", body: "hello world" });
+      store.dispatch({ type: "composer.submit" });
+      await flush();
+
+      expect(adapter.writeCalls.length).toBe(1);
+      expect(adapter.writeCalls[0].tourId).toBe("tour-a");
+      expect(adapter.writeCalls[0].input).toMatchObject({
+        kind: "top-level",
+        file: "src/a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "hello world",
+      });
+      expect(store.getState().composer).toEqual({ kind: "closed" });
+      stop();
+    });
+
+    it("resolves the reply parent from the live bundle and passes it through writeAnnotation", async () => {
+      const store = storeWithTour(null);
+      const parent = annotationFixture("p1");
+      const bundle = okBundle("tour-a", [parent]);
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, bundle);
+
+      store.dispatch({
+        type: "composer.open",
+        target: { kind: "reply", replies_to: "p1" },
+      });
+      store.dispatch({ type: "composer.setBody", body: "a reply" });
+      store.dispatch({ type: "composer.submit" });
+      await flush();
+
+      expect(adapter.writeCalls.length).toBe(1);
+      const input = adapter.writeCalls[0].input;
+      expect(input.kind).toBe("reply");
+      if (input.kind === "reply") {
+        expect(input.parent).toEqual(parent);
+        expect(input.body).toBe("a reply");
+      }
+      expect(store.getState().composer).toEqual({ kind: "closed" });
+      stop();
+    });
+
+    it("dispatches composer.failed with the error message on writeAnnotation rejection", async () => {
+      const store = storeWithTour(null);
+      const bundle = okBundle("tour-a");
+      const adapter = createFakeAdapter({ writeAnnotationError: "disk full" });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, bundle);
+
+      store.dispatch({
+        type: "composer.open",
+        target: {
+          kind: "top-level",
+          file: "src/a.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+        },
+      });
+      store.dispatch({ type: "composer.setBody", body: "hi" });
+      store.dispatch({ type: "composer.submit" });
+      await flush();
+
+      const composer = store.getState().composer;
+      expect(composer.kind).toBe("errored");
+      if (composer.kind === "errored") {
+        expect(composer.error).toBe("disk full");
+        expect(composer.body).toBe("hi");
+      }
+      stop();
+    });
+
+    it("treats whitespace-only body as composer.close — does NOT call writeAnnotation", async () => {
+      const store = storeWithTour(null);
+      const bundle = okBundle("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, bundle);
+
+      store.dispatch({
+        type: "composer.open",
+        target: {
+          kind: "top-level",
+          file: "src/a.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+        },
+      });
+      store.dispatch({ type: "composer.setBody", body: "   \n  " });
+      store.dispatch({ type: "composer.submit" });
+      await flush();
+
+      expect(adapter.writeCalls.length).toBe(0);
+      expect(store.getState().composer).toEqual({ kind: "closed" });
+      stop();
+    });
+
+    it("dispatches composer.failed when the live bundle is no longer resolved", async () => {
+      const store = storeWithTour(null);
+      const bundle = okBundle("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, bundle);
+
+      store.dispatch({
+        type: "composer.open",
+        target: {
+          kind: "top-level",
+          file: "src/a.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+        },
+      });
+      store.dispatch({ type: "composer.setBody", body: "hello" });
+      // Bundle drops out from under the composer (mid-composition watcher race).
+      store.dispatch({ type: "bundle.failed", tourId: "tour-a", error: "lost" });
+      store.dispatch({ type: "composer.submit" });
+      await flush();
+
+      expect(adapter.writeCalls.length).toBe(0);
+      const composer = store.getState().composer;
+      expect(composer.kind).toBe("errored");
+      if (composer.kind === "errored") {
+        expect(composer.error).toBe("Tour bundle is no longer loaded");
+      }
+      stop();
+    });
+
+    it("dispatches composer.failed when the reply parent no longer exists in the live bundle", async () => {
+      const store = storeWithTour(null);
+      // Bundle has no annotations, so the reply parent lookup will miss.
+      const bundle = okBundle("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, bundle);
+
+      store.dispatch({
+        type: "composer.open",
+        target: { kind: "reply", replies_to: "vanished" },
+      });
+      store.dispatch({ type: "composer.setBody", body: "hi" });
+      store.dispatch({ type: "composer.submit" });
+      await flush();
+
+      expect(adapter.writeCalls.length).toBe(0);
+      const composer = store.getState().composer;
+      expect(composer.kind).toBe("errored");
+      if (composer.kind === "errored") {
+        expect(composer.error).toBe("Parent annotation no longer exists");
+      }
       stop();
     });
   });
