@@ -198,6 +198,15 @@ const SIDEBAR_CONTENT_WIDTH = SIDEBAR_WIDTH - SIDEBAR_BORDER;
 
 function App(props: AppProps) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0);
+  // Issue #302: true while an in-flight card scroll animation hasn't yet
+  // settled. Suppresses the footer-hint off-screen suffix during the
+  // window — the pixel probe reads `sb.scrollTop` and the imperative
+  // tween that mutates it doesn't trigger a React re-render, so a probe
+  // run mid-animation sees stale state and reports a visible card as
+  // off-screen. The adapter flips it back to `false` after
+  // `SMOOTH_SCROLL_DEFAULT_DURATION_MS + 50ms`; that state change forces
+  // a re-render where the probe sees the settled scrollTop.
+  const [scrollPending, setScrollPending] = useState(false);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [repliesCollapsed, setRepliesCollapsed] = useState(false);
   // Tour-session store (PRD #207 slice 1, issue #209; bundle / replyLock
@@ -349,6 +358,7 @@ function App(props: AppProps) {
       diffScrollBoxRef: diffScrollRef,
       pickerScrollBoxRef: pickerScrollRef,
       setSelectedRowIdx,
+      setScrollPending,
       replyAgent: props.replyAgent,
     });
     // `viewOptions` matches the TUI's `useTourSessionView` call so the
@@ -557,14 +567,20 @@ function App(props: AppProps) {
   // cursor's `r` target so the user knows what `r` will do before
   // pressing it. The off-screen suffix is driven by a pixel-position
   // probe (issue #302) — ask the diff scrollbox for the rendered
-  // card's box and intersect it with the viewport rect. The prior
-  // index-based approximation (`avg = scrollHeight / flatRows`)
-  // mis-reported visible cards as off-screen whenever tall cards
-  // skewed prefix density. When the scrollbox isn't ready or the
-  // descendant isn't in the tree (pre-mount / culled), the probe
-  // returns undefined and the suffix is omitted.
+  // card's box and intersect it with the viewport rect.
+  //
+  // While `scrollPending` is true, an in-flight scroll-into-view
+  // animation hasn't yet settled and `sb.scrollTop` is mid-flight —
+  // probing here would read pre-scroll state and mis-report the card
+  // as off-screen. Omit the suffix during the window; the adapter
+  // flips `scrollPending` back to `false` after the smooth-scroll
+  // duration + buffer, forcing a re-render where the probe sees the
+  // settled scrollTop. Free-scrolling (page motion, mouse wheel)
+  // doesn't go through the auto-scroll path, so `scrollPending` stays
+  // `false` and the probe accurately reports above / below.
   const cardViewportPosition: "in" | "above" | "below" | undefined = (() => {
     if (!cursor || cursor.kind !== "card") return undefined;
+    if (scrollPending) return undefined;
     const sb = diffScrollRef.current;
     if (!sb) return undefined;
     const probed = computeCardViewportPosition(sb, `annotation-${cursor.annotationId}`);

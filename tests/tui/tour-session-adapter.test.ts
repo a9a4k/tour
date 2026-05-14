@@ -81,7 +81,7 @@ const stubStore = {
   getState: () => ({ currentTourId: null }),
 } as unknown as TourSessionStore;
 
-function makeAdapter(sb: FakeScrollBox | null) {
+function makeAdapter(sb: FakeScrollBox | null, opts: { setScrollPending?: (pending: boolean) => void } = {}) {
   return createTuiTourSessionAdapter({
     cwd: "/tmp",
     store: stubStore,
@@ -95,6 +95,7 @@ function makeAdapter(sb: FakeScrollBox | null) {
     diffScrollBoxRef: { current: sb as unknown as ScrollBoxRenderable | null },
     pickerScrollBoxRef: { current: null },
     setSelectedRowIdx: () => {},
+    setScrollPending: opts.setScrollPending ?? (() => {}),
     replyAgent: undefined,
   });
 }
@@ -267,5 +268,86 @@ describe("createTuiTourSessionAdapter.scrollToCard — post-submit retry path (i
     expect(writes).toEqual([84]);
     // animatedScrollTo's instant path writes scrollTop directly, not via scrollBy.
     expect(sb.scrollBy).not.toHaveBeenCalled();
+  });
+});
+
+// Issue #302 (second iteration): the scroll-into-view animation mutates
+// `sb.scrollTop` imperatively without triggering a React re-render, so the
+// footer-hint pixel probe — which reads `sb.scrollTop` at render time —
+// sees pre-scroll state and reports a visible card as off-screen. The
+// adapter signals `setScrollPending(true)` when it starts the scroll and
+// `setScrollPending(false)` once the animation has settled, so the App
+// can suppress the directional suffix during the window and force a
+// re-render where the probe sees the settled scrollTop.
+
+describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (issue #302)", () => {
+  it("flips setScrollPending(true) synchronously when the card scroll is initiated", () => {
+    const sb = makeScrollBox({
+      viewportHeight: 20,
+      scrollTop: 0,
+      scrollHeight: 500,
+      child: { id: "annotation-ann1", y: 100, height: 4 },
+    });
+    const events: boolean[] = [];
+    const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
+    adapter.scrollToCard("ann1", "nearest");
+    // The signal must land before the macrotask flushes — the probe runs
+    // in the same React render cycle as the cursor change that triggered
+    // the scroll, so suppression has to be live by then.
+    expect(events).toEqual([true]);
+  });
+
+  it("flips setScrollPending(false) after the smooth-scroll settle window when the scroll succeeds", async () => {
+    vi.useFakeTimers();
+    try {
+      const sb = makeScrollBox({
+        viewportHeight: 20,
+        scrollTop: 0,
+        scrollHeight: 500,
+        child: { id: "annotation-ann1", y: 100, height: 4 },
+      });
+      const events: boolean[] = [];
+      const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
+      adapter.scrollToCard("ann1", "nearest");
+      expect(events).toEqual([true]);
+      // Flush the scheduleScroll macrotask so the scroll fires.
+      await vi.advanceTimersByTimeAsync(0);
+      // Still pending — the settle timer is armed but not yet fired.
+      expect(events).toEqual([true]);
+      // Advance past the smooth-scroll duration + buffer (200 + 50 = 250ms).
+      await vi.advanceTimersByTimeAsync(300);
+      expect(events).toEqual([true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flips setScrollPending(false) when the retry budget is exhausted without a successful scroll", async () => {
+    vi.useFakeTimers();
+    try {
+      // No descendant matching the card id → every attempt fails.
+      const sb = makeScrollBox({
+        viewportHeight: 20,
+        scrollTop: 0,
+        scrollHeight: 500,
+        child: { id: "annotation-other", y: 100, height: 4 },
+      });
+      const events: boolean[] = [];
+      const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
+      adapter.scrollToCard("ann1", "nearest");
+      expect(events).toEqual([true]);
+      // Drain all 21 macrotasks (initial + 20 retries). Each retry
+      // re-schedules via setTimeout(0); advanceTimersByTimeAsync(0)
+      // doesn't fire newly-scheduled timers, so step explicitly.
+      for (let i = 0; i < 22; i++) {
+        await vi.advanceTimersByTimeAsync(1);
+      }
+      // The last attempt cleared the pending signal — no settle timer
+      // since no scroll fired, so the false lands synchronously inside
+      // the last scheduleScroll macrotask.
+      expect(events.at(-1)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

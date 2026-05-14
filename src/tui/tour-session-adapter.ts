@@ -22,7 +22,10 @@ import {
   revealAndLocate,
 } from "../core/file-tree.js";
 import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
-import { animatedScrollChildIntoView } from "./smooth-scroll.js";
+import {
+  animatedScrollChildIntoView,
+  SMOOTH_SCROLL_DEFAULT_DURATION_MS,
+} from "./smooth-scroll.js";
 import { requestReply as runRequestReply } from "../core/reply-runner.js";
 
 // TUI substrate dependencies the adapter needs. The renderer-bound
@@ -40,6 +43,15 @@ export interface TuiTourSessionAdapterDeps {
   diffScrollBoxRef: { current: ScrollBoxRenderable | null };
   pickerScrollBoxRef: { current: ScrollBoxRenderable | null };
   setSelectedRowIdx: (idx: number) => void;
+  /** Notifies the App that an in-flight card scroll started / settled. The
+   *  footer-hint pixel probe reads `sb.scrollTop` at render time, but the
+   *  scroll-into-view animation mutates `scrollTop` imperatively without
+   *  triggering a React re-render — so without this signal the probe sees
+   *  pre-scroll state and reports a visible card as off-screen (issue
+   *  #302). The App suppresses the directional suffix while `true` and
+   *  forces a re-render when the flag flips back to `false` so the probe
+   *  re-runs against the settled scrollTop. */
+  setScrollPending: (pending: boolean) => void;
   // The renderer-configured reply-agent name (`--reply-agent`). Absent or
   // empty means the renderer was launched without a reply-agent; the
   // `requestReply` adapter call no-ops, mirroring `core/reply-runner`'s
@@ -131,6 +143,17 @@ export function createTuiTourSessionAdapter(
       return () => watcher.stop();
     },
     scrollToCard: (id, mode) => {
+      // Issue #302: signal pending while the scroll-into-view animation
+      // runs so the App can suppress the footer-hint off-screen suffix
+      // (the probe reads `sb.scrollTop` and the imperative tween that
+      // mutates it doesn't trigger a React re-render). Cleared after
+      // the smooth-scroll duration + a small buffer; the resulting
+      // state flip forces a re-render where the probe sees the settled
+      // `scrollTop` and reports the correct relation.
+      deps.setScrollPending(true);
+      const settle = (): void => {
+        setTimeout(() => deps.setScrollPending(false), SMOOTH_SCROLL_DEFAULT_DURATION_MS + 50);
+      };
       // Issue #301: only the first attempt honors the placement's
       // animate default — once we're retrying (target absent on the
       // first try), we're inside the post-submit "wait for DOM" loop,
@@ -143,12 +166,21 @@ export function createTuiTourSessionAdapter(
       const attempt = (remaining: number, isRetry: boolean): void => {
         scheduleScroll(() => {
           const opts = isRetry ? { animate: false } : {};
-          if (scrollCardOnce(id, mode, opts)) return;
+          if (scrollCardOnce(id, mode, opts)) {
+            settle();
+            return;
+          }
           // Target not in DOM yet (post-submit `scrollToAnnotation` fires
           // synchronously inside `composer.submitted`, before the watcher
           // delivers the freshly-written card). Retry until the bundle
           // refreshes or the budget runs out.
-          if (remaining > 0) attempt(remaining - 1, true);
+          if (remaining > 0) {
+            attempt(remaining - 1, true);
+            return;
+          }
+          // Retry budget exhausted with no successful scroll — clear
+          // pending so the suffix isn't suppressed forever.
+          deps.setScrollPending(false);
         });
       };
       attempt(POST_SUBMIT_SCROLL_RETRY_BUDGET, false);
