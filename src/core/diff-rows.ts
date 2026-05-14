@@ -74,7 +74,6 @@ export type InteractiveSubKind =
   | "expand-down"
   | "expand-file-all"
   | "boundary-top"
-  | "boundary-bottom"
   | "collapsed-file";
 
 export type BoundaryRef = number | "top" | "bottom";
@@ -87,8 +86,7 @@ export interface InteractiveRow {
    *  hidden ···"); the cursor visual works regardless. */
   text?: string;
   /** Lines hidden in the gap this row addresses. Set on `expand-down`
-   *  (= remaining gap) and the legacy `boundary-bottom` (= remaining
-   *  file-bottom gap). Lets consumers compute the full-gap expansion
+   *  (= remaining gap). Lets consumers compute the full-gap expansion
    *  count directly instead of passing a large sentinel and relying on
    *  receiver-side clamping. */
   gapAbove?: number;
@@ -392,9 +390,9 @@ function walkHunks(
     }
   }
 
-  // boundary-bottom: file's last hunk doesn't reach EOF on the additions
-  // side. Without `newContent` we can't know the file length, so the row
-  // is suppressed.
+  // File-bottom expand-down: file's last hunk doesn't reach EOF on the
+  // additions side. Without `newContent` we can't know the file length,
+  // so the row is suppressed.
   if (file.hunks.length > 0 && newLineCount > 0) {
     const last = file.hunks[file.hunks.length - 1];
     const lastAdditionEnd = last.additionStart + last.additionCount - 1;

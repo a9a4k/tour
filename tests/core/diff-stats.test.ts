@@ -50,7 +50,7 @@ describe("countDiffStats (#228)", () => {
   it("excludes non-diff-row kinds (hunk-header, interactive, annotation)", () => {
     const rows: PlannedRow[] = [
       { kind: "hunk-header", header: "@@ -1 +1 @@", hunkIndex: 0, gapAbove: 0 },
-      { kind: "interactive", subKind: "boundary-bottom", boundaryRef: "bottom" },
+      { kind: "interactive", subKind: "expand-down", boundaryRef: "bottom" },
       {
         kind: "annotation",
         annotation: {
@@ -254,7 +254,7 @@ describe("tourDiffStats (#233)", () => {
       {
         rows: [
           { kind: "hunk-header", header: "@@ -1 +1 @@", hunkIndex: 0, gapAbove: 0 } as PlannedRow,
-          { kind: "interactive", subKind: "boundary-bottom", boundaryRef: "bottom" } as PlannedRow,
+          { kind: "interactive", subKind: "expand-down", boundaryRef: "bottom" } as PlannedRow,
           diffRow("addition"),
         ],
       },

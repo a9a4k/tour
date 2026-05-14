@@ -126,7 +126,6 @@ function interactiveDirection(
   // interactive vocabulary (now hosted on the hunk-header banner's left
   // cell). The only standalone `expand-down` row dispatches "down".
   if (subKind === "expand-down") return "down";
-  if (subKind === "boundary-bottom") return "down";
   if (subKind === "boundary-top") return "up";
   // collapsed-file uses `down` as a neutral default; activation routes
   // through `expand-file` regardless of direction.

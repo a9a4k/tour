@@ -876,10 +876,6 @@ function App(props: AppProps) {
       case "expand-file-all":
         expandAllInFile(cursor.file);
         return;
-      // `boundary-bottom` is no longer emitted by the planner — file-
-      // bottom gaps now use a standalone `expand-down` row (issue #280).
-      case "boundary-bottom":
-        return;
     }
   };
 
