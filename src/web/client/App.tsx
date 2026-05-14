@@ -543,15 +543,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [collapsedOverrides, view],
   );
 
-  // Issue #316: fold-toggle decision is delegated to `foldToggleAction`.
-  // Fold direction writes `setOverride(true)`; unfold direction clears the
-  // override for non-binary files (classifier verdict re-applies on the
-  // next render — classifier-collapsed files return to the synthetic-
-  // summary view, state A) and writes `setOverride(false)` for binary
-  // files (their default-collapsed lives in the classifier, so clearing
-  // would re-collapse them). State C (full body on a classifier-collapsed
-  // file) is reachable only via explicit-reveal gestures (Enter on the
-  // synthetic row, annotation nav). Same factoring as #310 / #313.
+  // Issue #316: dispatch decided by `foldToggleAction` (see helper for the
+  // three-state rationale and why binary is the exception).
   const toggleCollapsed = useCallback(
     (fileName: string) => {
       const f = view.kind === "ok" ? view.bundle.filesByName.get(fileName) : null;

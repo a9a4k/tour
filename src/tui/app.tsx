@@ -1318,9 +1318,7 @@ function App(props: AppProps) {
         const f = selectedRow.file;
         const cls = fileClassification(classifications, f.name);
         if (cls.reason === "binary") return;
-        // Issue #316: unfold direction clears the override so the classifier
-        // verdict re-applies (classifier-collapsed files return to state A,
-        // the synthetic-summary view). Web mirrors this rule.
+        // Issue #316: dispatch decided by `foldToggleAction` (see helper).
         store.dispatch(foldToggleAction(f.name, isFileCollapsed(f.name), cls));
         return;
       }
