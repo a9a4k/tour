@@ -6,15 +6,31 @@ import type {
 import type { TourBundle } from "../../core/tour-bundle.js";
 import type { ReplyLock } from "../../core/reply-lock.js";
 import type { Annotation } from "../../core/types.js";
-import type { ScrollPlacement } from "../../core/tour-session.js";
+import type { ScrollPlacement, TourSessionStore } from "../../core/tour-session.js";
 import type { WriteAnnotationInput } from "../../core/write-annotation-input.js";
+import { composeUrl } from "./url-routing.js";
+
+// Webapp substrate dependencies the adapter needs. Refs are read at
+// intent-fire time so the adapter doesn't trip on pre-mount intents;
+// callbacks live in `callbacksRef` so the surface can refresh them per
+// render without rebuilding the adapter.
+export interface WebTourSessionAdapterDeps {
+  store: TourSessionStore;
+  annotationRefs: { current: Map<string, HTMLDivElement> };
+  callbacksRef: {
+    current: {
+      findFileBlock: (name: string) => HTMLElement | null;
+      setSelectedFile: (file: string | null) => void;
+      revealFileAncestors: (file: string) => void;
+    } | null;
+  };
+}
 
 // `TourSessionAdapter` implemented against the webapp's substrate
-// (`fetch`, `EventSource`, `window.history`, DOM scroll). Only the watcher
-// path (`fetchBundle` / `fetchReplyLock` / `subscribeTourEvents`) is
-// wired in this slice; scroll / reveal / mirror methods land in later
-// slices alongside their runtime intent handlers.
-export function createWebTourSessionAdapter(): TourSessionAdapter {
+// (`fetch`, `EventSource`, `window.history`, DOM scroll).
+export function createWebTourSessionAdapter(
+  deps: WebTourSessionAdapterDeps,
+): TourSessionAdapter {
   return {
     fetchBundle: async (id) => {
       const res = await fetch(`/api/tours/${id}`);
@@ -73,23 +89,55 @@ export function createWebTourSessionAdapter(): TourSessionAdapter {
       };
       return () => evtSource.close();
     },
-    scrollToCard: (_id: string, _mode: ScrollPlacement) => {
-      // Slice 6: DOM scrollIntoView via annotationRefs.
+    scrollToCard: (id: string, mode: ScrollPlacement) => {
+      if (typeof document === "undefined") return;
+      requestAnimationFrame(() => {
+        deps.annotationRefs.current
+          .get(id)
+          ?.scrollIntoView({ behavior: "instant", block: mode });
+      });
     },
-    scrollToRow: (_anchor: ScrollRowAnchor, _mode: ScrollPlacement) => {
-      // Slice 6: DOM scrollIntoView via the row gutter selector.
+    scrollToRow: (anchor: ScrollRowAnchor, mode: ScrollPlacement) => {
+      if (typeof document === "undefined") return;
+      requestAnimationFrame(() => {
+        const cbs = deps.callbacksRef.current;
+        if (!cbs) return;
+        const block = cbs.findFileBlock(anchor.file);
+        if (!block) return;
+        const cell = block.querySelector<HTMLElement>(
+          `.tour-row-gutter[data-side="${anchor.side}"][data-line-number="${anchor.lineNumber}"]`,
+        );
+        cell?.scrollIntoView({ block: mode });
+      });
     },
-    scrollToPickerRow: (_idx: number) => {
-      // Slice 6: DOM scrollIntoView via `[data-picker-row-idx="<idx>"]`.
+    scrollToPickerRow: (idx: number) => {
+      if (typeof document === "undefined") return;
+      const el = document.querySelector(`[data-picker-row-idx="${idx}"]`);
+      el?.scrollIntoView({ block: "nearest" });
     },
-    revealFileInSidebar: (_file: string) => {
-      // Slice 6.
+    revealFileInSidebar: (file: string) => {
+      const cbs = deps.callbacksRef.current;
+      if (!cbs) return;
+      cbs.setSelectedFile(file);
+      cbs.revealFileAncestors(file);
     },
-    mirrorTourUrl: (_id: string) => {
-      // Slice 6: window.history.pushState via composeUrl.
+    mirrorTourUrl: (id: string) => {
+      if (typeof window === "undefined" || !window.history) return;
+      window.history.pushState({ tourId: id }, "", composeUrl(id, null));
     },
-    mirrorAnnUrl: (_id: string | null) => {
-      // Slice 6: window.history.replaceState via composeUrl.
+    mirrorAnnUrl: (annotationId: string | null) => {
+      // `replaceState` (not `pushState`) so back/forward steps over Tour
+      // switches, not over every cursor move. Composer reads the store's
+      // current tourId so an in-flight tour-switch can't write the wrong
+      // tour's URL.
+      if (typeof window === "undefined" || !window.history) return;
+      const tid = deps.store.getState().currentTourId;
+      if (tid === null) return;
+      const url = composeUrl(tid, annotationId);
+      const current =
+        window.location.pathname + window.location.search + window.location.hash;
+      if (url === current) return;
+      window.history.replaceState(window.history.state, "", url);
     },
   };
 }

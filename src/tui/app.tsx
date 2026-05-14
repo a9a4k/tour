@@ -298,15 +298,6 @@ function App(props: AppProps) {
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
-  // The post-submit scroll-the-new-card-into-view flow is driven by the
-  // reducer's `scrollToAnnotation` intent (emitted by `composer.submitted`,
-  // PRD #234 / issue #237). The TUI's prior `pendingScrollAnnotationId`
-  // useState is gone; the intent listener stashes the id in this ref and a
-  // useEffect on `plannedRowsByFile` consumes it once the bundle-refresh
-  // re-render mounts the new card. The retry useEffect mirrors the prior
-  // flow's correctness without requiring assumptions about React commit
-  // timing relative to the `composer.submitted` dispatch.
-  const pendingScrollIdRef = useRef<string | null>(null);
   const renderer = useRenderer();
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -335,20 +326,25 @@ function App(props: AppProps) {
     return () => clearInterval(handle);
   }, [replyLock]);
 
-  // Tour-session runtime (PRD #278 slice 2). Subscribes to the watcher via
-  // the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
-  // on tour events. The runtime re-subscribes itself when `currentTourId`
-  // changes (tour-switch), so this effect runs once at mount and tears
-  // down at unmount.
+  // Tour-session runtime (PRD #278 slices 2-6). Subscribes to the watcher
+  // via the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
+  // on tour events; realises every intent the reducer emits (loadTour,
+  // submitAnnotation, scroll / mirror / reveal). The runtime re-subscribes
+  // itself when `currentTourId` changes (tour-switch), so this effect
+  // runs once at mount and tears down at unmount.
   useEffect(() => {
     if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeAnnotation) {
       return;
     }
     const adapter = createTuiTourSessionAdapter({
       cwd: props.cwd,
+      store,
       loadTour: props.loadTour,
       loadReplyLock: props.loadReplyLock,
       writeAnnotation: props.writeAnnotation,
+      diffScrollBoxRef: diffScrollRef,
+      pickerScrollBoxRef: pickerScrollRef,
+      setSelectedRowIdx,
     });
     const runtime = new TourSessionRuntime(store, adapter);
     return runtime.start();
@@ -530,23 +526,6 @@ function App(props: AppProps) {
     sidebarScrollRef.current.scrollChildIntoView(`row-${row.path}`);
   }, [safeRowIdx, visibleRows]);
 
-  // Consume a pending post-submit scroll once the bundle-refresh re-render
-  // mounts the new annotation card (PRD #234 / issue #237). The ref is set
-  // by the `scrollToAnnotation` intent handler; this effect retries each
-  // time `plannedRowsByFile` re-derives until the card appears in the DOM.
-  // The cursor is intentionally NOT advanced onto the new card (PRD UX 26
-  // r-after-a foot-gun protection); this is viewport-only.
-  useEffect(() => {
-    const id = pendingScrollIdRef.current;
-    if (id === null) return;
-    const sb = diffScrollRef.current;
-    if (!sb) return;
-    const targetId = `annotation-${id}`;
-    if (!sb.content.findDescendantById(targetId)) return;
-    scrollChildIntoView(sb, targetId);
-    pendingScrollIdRef.current = null;
-  }, [annotations, plannedRowsByFile]);
-
   const sendHintVerdict =
     sendTargetVal !== null
       ? canSendToAgent({
@@ -624,91 +603,23 @@ function App(props: AppProps) {
     }
   };
 
-  // Refs used by the intent listener to read the latest substrate-derived
-  // state without re-registering the listener on every render. Updated
-  // inline below as each value is computed.
-  const cursorRef = useRef<Cursor | null>(cursor);
-  cursorRef.current = cursor;
-  const flatRowsRef = useRef<ReadonlyArray<FlatRow>>(flatRowsList);
-  flatRowsRef.current = flatRowsList;
-  const filesRef = useRef<ReadonlyArray<BundleFile>>(files);
-  filesRef.current = files;
-  const treeRef = useRef(tree);
-  treeRef.current = tree;
-  const collapsedFoldersRef = useRef<Set<string>>(collapsedFolders);
-  collapsedFoldersRef.current = collapsedFolders;
-  const annotationCountsRef = useRef<Readonly<Record<string, number>>>(annotationCounts);
-  annotationCountsRef.current = annotationCounts;
-  const safeRowIdxRef = useRef<number>(safeRowIdx);
-  safeRowIdxRef.current = safeRowIdx;
-
-  // Intent listener — realizes the reducer's emitted intents in the TUI
-  // substrate (PRD #207 slice 1 + slice 2 contract). `loadTour` is owned
-  // by the Tour-session runtime (PRD #278 slice 3) — calls `fetchBundle`
-  // → `tour.switched` → `fetchReplyLock` → `replyLock.loaded` through the
-  // adapter; the surface no longer hand-rolls the dispatch sequence.
-  // `scrollPickerRow` scrolls the picker modal scrollbox.
-  // `revalidateCursor` runs `validateCursor` against the substrate-derived
-  // flat-rows and dispatches `cursor.set` / `cursor.clear`.
-  // `scrollCursorTarget` scrolls the diff pane via `scrollChildIntoView` /
-  // `centerChildInView`. `revealSidebarFile` reveals the file's ancestors
-  // and selects its row in the sidebar tree. `mirrorUrl` and `mirrorAnnUrl`
-  // are ignored — the TUI has no URL.
+  // Intent listener — `revalidateCursor` remains surface-side here (slice 5
+  // of PRD #278 lifts it into the runtime). All scroll / mirror / reveal /
+  // loadTour / submitAnnotation / scrollToAnnotation intents are realised
+  // by the Tour-session runtime via the adapter (slices 2-6).
   useEffect(() => {
     const unsubscribe = store.onIntent((intent) => {
-      if (intent.type === "scrollPickerRow") {
-        const sb = pickerScrollRef.current;
-        if (!sb) return;
-        scrollChildIntoView(sb, `picker-row-${intent.idx}`);
-        return;
-      }
       if (intent.type === "revalidateCursor") {
-        const c = cursorRef.current;
+        const c = store.getState().cursor;
         if (c === null) return;
-        const validated = validateCursor(c, flatRowsRef.current, filesRef.current);
+        const validated = validateCursor(c, flatRowsList, files);
         if (validated !== c) dispatchAnchorOrClear(validated);
-        return;
       }
-      if (intent.type === "scrollCursorTarget") {
-        const sb = diffScrollRef.current;
-        if (!sb) return;
-        if (intent.target.kind === "card") {
-          centerChildInView(sb, `annotation-${intent.target.annotationId}`);
-        } else {
-          const { file, side, lineNumber } = intent.target;
-          scrollChildIntoView(sb, `diff-row-${file}-${side}-${lineNumber}`);
-        }
-        return;
-      }
-      if (intent.type === "revealSidebarFile") {
-        const rowIdx = revealAndLocateFile(
-          intent.file,
-          treeRef.current,
-          collapsedFoldersRef.current,
-          annotationCountsRef.current,
-        );
-        if (rowIdx !== null && rowIdx !== safeRowIdxRef.current) {
-          setSelectedRowIdx(rowIdx);
-        }
-        return;
-      }
-      if (intent.type === "scrollToAnnotation") {
-        // Post-submit scroll: the intent fires synchronously inside the
-        // `composer.submitted` dispatch. The freshly-created card may not
-        // be in the DOM yet — the watcher's `bundle.refreshed` lands the
-        // new row asynchronously (PRD #278 slice 4 dropped the surface-
-        // side eager refetch). Stash the id; the retry useEffect on
-        // plannedRowsByFile picks it up once the bundle-refresh re-render
-        // mounts the card.
-        pendingScrollIdRef.current = intent.annotationId;
-        return;
-      }
-      // mirrorUrl + mirrorAnnUrl: TUI has no URL — ignored.
     });
     return () => {
       unsubscribe();
     };
-  }, [store]);
+  }, [store, flatRowsList, files]);
 
   // Tour-switch reset for sidebar row index. The reducer's `tour.switched`
   // branch owns every CONTEXT-pinned reset (picker / replyLock / cursor /
