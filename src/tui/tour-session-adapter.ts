@@ -5,7 +5,7 @@ import type {
   TourEventHandler,
   TourSessionAdapter,
 } from "../core/tour-session-runtime.js";
-import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
+import type { TourBundle } from "../core/tour-bundle.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import type { Annotation } from "../core/types.js";
 import {
@@ -123,7 +123,7 @@ export function createTuiTourSessionAdapter(
       const state = deps.store.getState();
       const bundle = isBundleResolved(state);
       if (!bundle || bundle.kind !== "ok") return;
-      const tree = compress(buildTree([...(bundle.files as ReadonlyArray<BundleFile>)]));
+      const tree = compress(buildTree([...bundle.files]));
       const annotationCounts: Record<string, number> = {};
       for (const a of bundle.annotations) {
         if (isTopLevel(a)) {
