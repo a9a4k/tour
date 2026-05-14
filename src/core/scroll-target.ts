@@ -52,6 +52,37 @@ export function center(child: ScrollChild, viewport: ScrollViewport): number {
 }
 
 /**
+ * Pick the scrollTop that keeps a child at the same on-screen y-coordinate
+ * after a content reflow (PRD / issue #303 — layout toggle). Inputs are in
+ * content coordinates: `oldChild.y` is the row's pre-reflow content-y,
+ * `newChild.y` is its post-reflow content-y, and `oldScrollTop` is the
+ * pre-reflow scrollTop. The pre-reflow screen-y is `oldChild.y -
+ * oldScrollTop`; the new scrollTop that pins the row at the same screen-y
+ * is `newChild.y - (oldChild.y - oldScrollTop)`.
+ *
+ * Clamped to `[0, contentHeight - viewport.height]`. If the clamp would
+ * leave the child entirely outside the viewport (the diff grew or shrank
+ * so the screen-y is now past a document bound), the function falls back
+ * to `center(newChild, viewport)` per the issue brief.
+ */
+export function preserveScreenY(
+  oldChild: ScrollChild,
+  newChild: ScrollChild,
+  oldScrollTop: number,
+  viewport: ScrollViewport,
+): number {
+  const screenY = oldChild.y - oldScrollTop;
+  const desired = newChild.y - screenY;
+  const clamped = clamp(desired, viewport);
+  const childTop = newChild.y - clamped;
+  const childBottom = childTop + newChild.height;
+  if (childBottom <= 0 || childTop >= viewport.height) {
+    return center(newChild, viewport);
+  }
+  return clamped;
+}
+
+/**
  * Minimal-motion alignment: returns the current `scrollTop` when the child
  * is already fully visible (or, for an oversized child, already covers the
  * viewport). Otherwise scrolls just enough to bring the nearer edge into

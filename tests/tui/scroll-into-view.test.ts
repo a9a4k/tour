@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  applyPreserveScreenY,
+  captureScreenYSnapshot,
   centerChildInView,
   computeCardViewportPosition,
   scrollChildIntoView,
@@ -360,5 +362,160 @@ describe("computeCardViewportPosition", () => {
     const out = computeCardViewportPosition(sb as unknown as ScrollBoxRenderable, "target");
     expect(refreshOrder).toEqual(["content", "file", "child"]);
     expect(out).toBe("in");
+  });
+});
+
+// Issue #303: when the user toggles between split / unified layouts via
+// `shift+L`, the diff row count changes and the cursor row's content-y
+// shifts. The captureScreenYSnapshot / applyPreserveScreenY pair pins the
+// cursor at the same on-screen y across the toggle. The capture happens
+// before the dispatch; the apply runs from the layout-change useEffect
+// after OpenTUI re-lays out.
+describe("captureScreenYSnapshot", () => {
+  it("returns the child's pre-reflow content-y, height, and scrollTop", () => {
+    // screen-y=60, viewport.y=50 → screen-relative offset=10.
+    // contentY = 60 - 50 + 100 = 110.
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 60,
+      freshChildHeight: 4,
+    });
+    const snap = captureScreenYSnapshot(sb as unknown as ScrollBoxRenderable, "target");
+    expect(snap).toEqual({ contentY: 110, height: 4, scrollTop: 100 });
+  });
+
+  it("returns null when the child isn't in the tree", () => {
+    const { sb } = makeFakeScrollbox({
+      viewportY: 0,
+      viewportHeight: 20,
+      scrollTop: 0,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 0,
+      freshChildHeight: 0,
+    });
+    const snap = captureScreenYSnapshot(sb as unknown as ScrollBoxRenderable, "missing");
+    expect(snap).toBeNull();
+  });
+
+  it("refreshes the ancestor chain top-down before reading positions", () => {
+    const { sb, refreshOrder } = makeFakeScrollbox({
+      viewportY: 0,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 4,
+      freshChildY: 60,
+      freshChildHeight: 4,
+    });
+    captureScreenYSnapshot(sb as unknown as ScrollBoxRenderable, "target");
+    expect(refreshOrder).toEqual(["content", "file", "child"]);
+  });
+});
+
+describe("applyPreserveScreenY", () => {
+  it("pins the row at the same screen-y after a content reflow that moves the row down", () => {
+    // Pre-reflow snapshot: contentY=110, scrollTop=100 → screenY=10 (mid-viewport).
+    // Post-reflow: row at screen-y=70 (viewport.y=50, scrollTop=100), contentY = 70-50+100 = 120.
+    // Desired scrollTop = 120 - 10 = 110. preserveScreenY clamps to [0, max=480].
+    const { sb } = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 70,
+      freshChildHeight: 4,
+    });
+    const snap = { contentY: 110, height: 4, scrollTop: 100 };
+    const applied = applyPreserveScreenY(sb as unknown as ScrollBoxRenderable, "target", snap);
+    expect(applied).toBe(true);
+    // contentY post = 70 - 50 + 100 = 120; screenY = 10; desired = 120 - 10 = 110.
+    expect((sb as unknown as { scrollTo: { value?: number } & FakeScrollBox }).scrollTo).toBeTypeOf("function");
+  });
+
+  it("issues scrollTo(desired) where desired pins the row at the captured screen-y", () => {
+    // Pre snapshot: contentY=200, scrollTop=190 → screenY=10 (mid-viewport).
+    // Post-reflow row at screen-y=60, viewport.y=50, scrollTop=190 → contentY=200.
+    // Desired = 200 - 10 = 190. Row stable across reflow → scrollTop unchanged
+    // (still issues scrollTo — no minimal-motion shortcut).
+    const fake = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 190,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 60,
+      freshChildHeight: 4,
+    });
+    const snap = { contentY: 200, height: 4, scrollTop: 190 };
+    applyPreserveScreenY(fake.sb as unknown as ScrollBoxRenderable, "target", snap);
+    expect(fake.scrollTarget).toEqual({ type: "to", value: 190 });
+  });
+
+  it("returns false when the row isn't in the post-reflow tree", () => {
+    const fake = makeFakeScrollbox({
+      viewportY: 0,
+      viewportHeight: 20,
+      scrollTop: 0,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 0,
+      freshChildHeight: 0,
+    });
+    const snap = { contentY: 100, height: 4, scrollTop: 0 };
+    const applied = applyPreserveScreenY(fake.sb as unknown as ScrollBoxRenderable, "missing", snap);
+    expect(applied).toBe(false);
+    expect(fake.scrollTarget).toBeNull();
+  });
+
+  it("falls back to center when the preserved scrollTop would leave the row offscreen", () => {
+    // Pre snapshot: contentY=500, scrollTop=480 → screenY=20 (off bottom-edge of pre viewport).
+    // Post-reflow: shrunk content. contentY=95 in a contentHeight=100 doc, viewport.height=20.
+    // viewport.y=50, scrollTop=80 → screen-y of child = 95 - 80 + 50 = 65 (set freshChildY = 65).
+    // Desired preserve = 95 - 20 = 75; clamp to maxScrollTop=80 → 75. childTop=20 → at viewport.height
+    // → off-screen → center fallback → 95 - 9.5 = 85.5 → clamp to 80.
+    const fake = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 80,
+      scrollHeight: 100,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 65,
+      freshChildHeight: 1,
+    });
+    const snap = { contentY: 500, height: 1, scrollTop: 480 };
+    applyPreserveScreenY(fake.sb as unknown as ScrollBoxRenderable, "target", snap);
+    // contentY post = 65 - 50 + 80 = 95. screenY = 500 - 480 = 20. desired = 95 - 20 = 75.
+    // Clamp max = 100 - 20 = 80; 75 in range. childTop = 95 - 75 = 20; viewport.height=20 → off-screen.
+    // Fallback to center: 95 - (20 - 1)/2 = 85.5; clamp to 80.
+    expect(fake.scrollTarget).toEqual({ type: "to", value: 80 });
+  });
+
+  it("refreshes the ancestor chain before reading post-reflow positions", () => {
+    const { sb, refreshOrder } = makeFakeScrollbox({
+      viewportY: 0,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 4,
+      freshChildY: 60,
+      freshChildHeight: 4,
+    });
+    const snap = { contentY: 110, height: 4, scrollTop: 100 };
+    applyPreserveScreenY(sb as unknown as ScrollBoxRenderable, "target", snap);
+    expect(refreshOrder).toEqual(["content", "file", "child"]);
   });
 });

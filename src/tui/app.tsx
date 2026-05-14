@@ -92,14 +92,17 @@ import {
 } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import {
+  applyPreserveScreenY,
+  captureScreenYSnapshot,
   computeCardViewportPosition,
   scrollChildIntoView,
+  type ScreenYSnapshot,
 } from "./scroll-into-view.js";
 import {
   animatedScrollChildIntoView,
   animatedScrollTo,
 } from "./smooth-scroll.js";
-import { buildRowYResolver } from "./row-y-resolver.js";
+import { buildRowYResolver, cursorRowDomId } from "./row-y-resolver.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
@@ -325,6 +328,17 @@ function App(props: AppProps) {
   // re-seed — user motion taken before a watcher reload survives.
   const seededTourIdRef = useRef<string | null>(null);
 
+  // Issue #303 preserve-cursor-on-layout-toggle: pre-toggle snapshot of the
+  // cursor row's position. Populated synchronously inside the toggle-layout
+  // case below, BEFORE `layout.set` dispatches; consumed by the layout-
+  // change useEffect after OpenTUI has laid out the new layout. The id is
+  // the layout-invariant FlatRow id (so a paired-context cursor on either
+  // side resolves to the same node in both split and unified).
+  const layoutToggleSnapshotRef = useRef<{
+    rowId: string;
+    snap: ScreenYSnapshot;
+  } | null>(null);
+
   // `bundle.tour` / `bundle.annotations` are present in both bundle
   // kinds; the view's ok-branch namespaces gate the rest.
   const annotations: ReadonlyArray<Annotation> = bundle.annotations;
@@ -510,15 +524,29 @@ function App(props: AppProps) {
   useEffect(() => {
     if (!diffScrollRef.current || !cursor) return;
     const sb = diffScrollRef.current;
-    // `scrollChildIntoView` is culling-safe: under `viewportCulling=true`
-    // opentui leaves stale positions inside off-screen file subtrees, so
-    // a cross-file scroll lands on the previous file otherwise. The
-    // helper force-refreshes the layout chain before reading positions.
-    const targetId =
-      cursor.kind === "card"
-        ? `annotation-${cursor.annotationId}`
-        : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
+    // Issue #303: when the user toggled layout via `shift+L`, the keymap
+    // handler stashed a pre-toggle snapshot. Apply it once OpenTUI has
+    // laid out the new layout (setTimeout(0) defers past the render
+    // tick) so the cursor row lands at the same on-screen y. Falls back
+    // to the historic `scrollChildIntoView` when no snapshot is present
+    // (initial mount, programmatic layout change, no cursor at toggle
+    // time) — both paths are culling-safe via `refreshLayoutChain`.
+    const pending = layoutToggleSnapshotRef.current;
+    layoutToggleSnapshotRef.current = null;
     const handle = setTimeout(() => {
+      if (pending) {
+        const applied = applyPreserveScreenY(sb, pending.rowId, pending.snap);
+        if (applied) return;
+        // Row not found in the new layout — fall through to the default
+        // scroll-into-view fallback so the cursor at least lands visible.
+      }
+      // `scrollChildIntoView` is culling-safe under `viewportCulling=true`;
+      // it refreshes the layout chain before reading positions, so a
+      // cross-file scroll lands on the right file instead of a stale one.
+      const targetId =
+        cursor.kind === "card"
+          ? `annotation-${cursor.annotationId}`
+          : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
       animatedScrollChildIntoView(sb, targetId);
     }, 0);
     return (): void => clearTimeout(handle);
@@ -1175,12 +1203,27 @@ function App(props: AppProps) {
       case "toggle-replies-collapse":
         setRepliesCollapsed((v) => !v);
         return;
-      case "toggle-layout":
+      case "toggle-layout": {
+        // Issue #303: capture the cursor row's pre-toggle position so the
+        // layout-change useEffect below can pin it at the same on-screen
+        // y after the diff re-flows. The capture must happen BEFORE the
+        // dispatch — the snapshot reads `sb.scrollTop` and the row's
+        // content-y on the pre-toggle layout. No cursor → no snapshot →
+        // the toggle behaves as before (no preserve).
+        const sb = diffScrollRef.current;
+        if (sb && cursor && rowsSlice) {
+          const rowId = cursorRowDomId(cursor, rowsSlice.flatRowsList);
+          if (rowId) {
+            const snap = captureScreenYSnapshot(sb, rowId);
+            if (snap) layoutToggleSnapshotRef.current = { rowId, snap };
+          }
+        }
         store.dispatch({
           type: "layout.set",
           layout: layout === "split" ? "unified" : "split",
         });
         return;
+      }
       case "open-picker":
         void openPicker();
         return;
