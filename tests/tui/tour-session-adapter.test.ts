@@ -118,10 +118,9 @@ beforeEach(() => {
 // moves the choice from anchor kind to `placement`, anchor-kind-agnostic
 // across both surfaces.
 //
-// Issue #299 retired the `TOUR_TUI_SMOOTH_SCROLL` env var: the `nearest`
-// branch now always animates via `animatedScrollChildIntoView` (which
-// instantiates a `createTimeline` via `@opentui/core`). These tests pin
-// the adapter's placement → scroll-helper mapping: `center` →
+// The `nearest` branch always animates via `animatedScrollChildIntoView`
+// (which instantiates a `createTimeline` via `@opentui/core`). These tests
+// pin the adapter's placement → scroll-helper mapping: `center` →
 // `sb.scrollTo` (instant); `nearest` → animated path (timeline created).
 
 describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper choice", () => {
@@ -203,5 +202,70 @@ describe("createTuiTourSessionAdapter — null scrollbox ref", () => {
     );
     await flushMacrotask();
     // No throw, no scroll — the absent ref is the pre-mount guard.
+  });
+});
+
+// Issue #301: the post-submit `scrollToAnnotation` retry-budget loop fires
+// inside `composer.submitted`, before the watcher's `bundle.refreshed`
+// delivers the freshly-written card to the DOM. Each retry waits one
+// macrotask for the DOM to catch up. Without `animate: false`, every
+// retry that lands a successful scroll spawns a Timeline that the next
+// retry would immediately cancel — wasteful churn for a "wait for DOM"
+// mechanism that isn't the user's in-flight motion gesture. The fix
+// threads `animate: false` into retry attempts so the eventual successful
+// write lands instantly. First attempt (n/p-to-existing-card path)
+// keeps its animation; only the retry path is collapsed to instant.
+describe("createTuiTourSessionAdapter.scrollToCard — post-submit retry path (issue #301)", () => {
+  it("retries write instantly (animate: false) — no Timeline spawned when the target appears on a later attempt", async () => {
+    const child: FakeNode = {
+      id: "annotation-ann1",
+      y: 100,
+      x: 0,
+      height: 4,
+      width: 80,
+      parent: null,
+      updateFromLayout: (): void => {},
+    };
+    let probeCount = 0;
+    const content: FakeNode & {
+      findDescendantById: (id: string) => FakeNode | null;
+    } = {
+      id: "__content",
+      updateFromLayout: (): void => {},
+      findDescendantById: (id: string): FakeNode | null => {
+        if (id !== child.id) return null;
+        probeCount += 1;
+        // null on the first probe (first-attempt guard); child on the
+        // retry probe + the helper's delta-compute probe.
+        return probeCount >= 2 ? child : null;
+      },
+    };
+    child.parent = content;
+    const writes: number[] = [];
+    const sb = {
+      content,
+      viewport: { x: 0, y: 0, width: 80, height: 20 },
+      scrollHeight: 500,
+      scrollTo: vi.fn(),
+      scrollBy: vi.fn(),
+      get scrollTop(): number {
+        return writes.length > 0 ? writes[writes.length - 1] : 0;
+      },
+      set scrollTop(v: number) {
+        writes.push(v);
+      },
+    };
+    const adapter = makeAdapter(sb as unknown as FakeScrollBox);
+    adapter.scrollToCard("ann1", "nearest");
+    // Flush twice — first attempt fires (target missing), then the retry.
+    await flushMacrotask();
+    await flushMacrotask();
+    // The retry threaded `animate: false` → no Timeline.
+    expect(createTimelineSpy).not.toHaveBeenCalled();
+    // The landing happened: nearest-aligned scrollTop is
+    // (child.y + child.height) - viewport.height = 104 - 20 = 84.
+    expect(writes).toEqual([84]);
+    // animatedScrollTo's instant path writes scrollTop directly, not via scrollBy.
+    expect(sb.scrollBy).not.toHaveBeenCalled();
   });
 });

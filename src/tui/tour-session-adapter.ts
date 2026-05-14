@@ -70,26 +70,33 @@ export function createTuiTourSessionAdapter(
   // Issue #296: placement-driven helper choice, anchor-kind-agnostic.
   // `center` → instant frame (fresh landings: cursor materialize, URL
   // restore, tour-switch, send-to-agent recall). `nearest` → in-flight
-  // navigation (`j`/`k`/`n`/`p`/click-to-position), always animated
-  // (issue #299 retired the `TOUR_TUI_SMOOTH_SCROLL` env-var gate).
+  // navigation (`j`/`k`/`n`/`p`/click-to-position), always animated.
+  // `opts.animate === false` is the caller-level escape hatch (used by
+  // the post-submit retry-budget below — issue #301) that forces the
+  // nearest branch to write instantly without spawning a tween.
   function scrollByPlacement(
     sb: ScrollBoxRenderable,
     targetId: string,
     mode: ScrollPlacement,
+    opts: { animate?: boolean } = {},
   ): void {
     if (mode === "center") {
       centerChildInView(sb, targetId);
     } else {
-      animatedScrollChildIntoView(sb, targetId);
+      animatedScrollChildIntoView(sb, targetId, opts);
     }
   }
 
-  function scrollCardOnce(id: string, mode: ScrollPlacement): boolean {
+  function scrollCardOnce(
+    id: string,
+    mode: ScrollPlacement,
+    opts: { animate?: boolean } = {},
+  ): boolean {
     const sb = deps.diffScrollBoxRef.current;
     if (!sb) return false;
     const targetId = `annotation-${id}`;
     if (!sb.content.findDescendantById(targetId)) return false;
-    scrollByPlacement(sb, targetId, mode);
+    scrollByPlacement(sb, targetId, mode, opts);
     return true;
   }
 
@@ -124,17 +131,27 @@ export function createTuiTourSessionAdapter(
       return () => watcher.stop();
     },
     scrollToCard: (id, mode) => {
-      const attempt = (remaining: number): void => {
+      // Issue #301: only the first attempt honors the placement's
+      // animate default — once we're retrying (target absent on the
+      // first try), we're inside the post-submit "wait for DOM" loop,
+      // not an in-flight gesture. Pass `animate: false` on retries so
+      // the eventual successful write lands instantly instead of
+      // spawning a tween per attempt that gets cancelled by the next
+      // attempt's macrotask. `n`/`p` to an existing card hits the
+      // first-attempt path (target already in DOM) and keeps its
+      // animated motion.
+      const attempt = (remaining: number, isRetry: boolean): void => {
         scheduleScroll(() => {
-          if (scrollCardOnce(id, mode)) return;
+          const opts = isRetry ? { animate: false } : {};
+          if (scrollCardOnce(id, mode, opts)) return;
           // Target not in DOM yet (post-submit `scrollToAnnotation` fires
           // synchronously inside `composer.submitted`, before the watcher
           // delivers the freshly-written card). Retry until the bundle
           // refreshes or the budget runs out.
-          if (remaining > 0) attempt(remaining - 1);
+          if (remaining > 0) attempt(remaining - 1, true);
         });
       };
-      attempt(POST_SUBMIT_SCROLL_RETRY_BUDGET);
+      attempt(POST_SUBMIT_SCROLL_RETRY_BUDGET, false);
     },
     scrollToRow: (anchor: ScrollRowAnchor, mode: ScrollPlacement) => {
       scheduleScroll(() => {
