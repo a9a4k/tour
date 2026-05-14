@@ -619,3 +619,66 @@ function HunkHeaderBannerImpl(
 }
 
 export const HunkHeaderBanner = memo(HunkHeaderBannerImpl);
+
+// ---------------------------------------------------------------------------
+// <ExpandDownStandalone>
+// ---------------------------------------------------------------------------
+
+export interface ExpandDownStandaloneProps {
+  boundaryRef: BoundaryRef;
+  /** `.is-cursor` outline applies when the cursor lands on this row. */
+  isCursor: boolean;
+  /** Dispatches the expand action on click / cursored-Enter. Always called
+   *  with `EXPANSION_STEP` — Shift carries no special meaning (#275). The
+   *  reducer clamps the step against the remaining gap. */
+  onActivate: (count: number) => void;
+}
+
+// Issue #292: standalone `expand-down` row matches the hunk-header banner's
+// two-cell layout — a 44px saturated `bg.accentEmphasis` button cell on the
+// left + an empty `bg.accentSubtle.web` right cell. Mirrors GitHub's
+// `tr.js-expandable-line` shape (same structure as the hunk-header banner;
+// only the right cell's content differs — empty here, `@@ ...` text on the
+// banner). Reuses `.tour-hunk-header` / `.tour-hunk-header-button` /
+// `.tour-hunk-header-text` so the Down standalone row's button lines up
+// vertically with the hunk-header banner's Up button in the mid-file
+// large-gap case.
+function ExpandDownStandaloneImpl(
+  props: ExpandDownStandaloneProps,
+): React.JSX.Element {
+  const { boundaryRef, isCursor, onActivate } = props;
+  const classes = ["tour-row", "tour-hunk-header"];
+  if (isCursor) classes.push("is-cursor");
+  const onButtonClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onActivate(EXPANSION_STEP);
+  };
+  const onButtonKeyDown = (e: React.KeyboardEvent) => {
+    if (!isCursor || e.key !== "Enter") return;
+    e.preventDefault();
+    onActivate(EXPANSION_STEP);
+  };
+  return (
+    <div
+      className={classes.join(" ")}
+      data-subkind="expand-down"
+      data-direction="down"
+      data-boundary-ref={String(boundaryRef)}
+      style={BANNER_STYLE}
+    >
+      <span
+        className="tour-hunk-header-button"
+        role="button"
+        tabIndex={0}
+        aria-label="Expand Down"
+        onClick={onButtonClick}
+        onKeyDown={onButtonKeyDown}
+      >
+        ↓
+      </span>
+      <span className="tour-hunk-header-text" />
+    </div>
+  );
+}
+
+export const ExpandDownStandalone = memo(ExpandDownStandaloneImpl);

@@ -1593,10 +1593,12 @@ index 1..2 100644
       expect(cells[0].props["gutterAccent"]).toBe(false);
     });
 
-    // Issue #280: only `expand-down` survives as a standalone interactive
-    // row — `expand-up` / `expand-all` are folded onto the hunk-header
-    // banner's left cell (tested below).
-    it("renders an expand-down row with the planner's `↓ Expand Down` text and a stable id", () => {
+    // Issue #292: standalone `expand-down` row renders as a two-cell
+    // banner mirroring the hunk-header layout — 44px saturated button
+    // cell carrying `↓` + empty `bg.accentSubtle` right cell. No
+    // DiffLine; the row is structurally identical to the hunk-header
+    // banner from #280 except that the right cell is empty.
+    it("renders an expand-down row as a two-cell banner with a `↓` glyph in the saturated left cell and an empty right cell", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
@@ -1607,10 +1609,37 @@ index 1..2 100644
         },
       ];
       const tree = callDiffRows({ rows, layout: "split" });
-      const cells = diffLineCellsOf(tree);
-      expect(cells.length).toBe(1);
-      expect(cells[0].props["text"]).toBe("↓ Expand Down");
+      // No DiffLine — the row is two intrinsic <box>es with <text> children.
+      expect(diffLineCellsOf(tree).length).toBe(0);
+      // The `↓` glyph paints in fg.onEmphasis (mirrors the hunk-header
+      // banner's button-cell color contract).
+      const glyph = flatten(tree).find(
+        (el) =>
+          typeof el.props.children === "string" &&
+          (el.props.children as string) === "↓" &&
+          el.props.fg === theme.fg.onEmphasis,
+      );
+      expect(glyph).toBeDefined();
       expect(findIdElement(tree, "interactive-row-x.txt-expand-down-2")).toBeDefined();
+    });
+
+    it("button cell bg is theme.bg.accentEmphasis; right cell bg is theme.bg.accentSubtle.tui", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: 2,
+          text: "↓ Expand Down",
+          gapAbove: 80,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const cells = flatten(tree).filter(
+        (el) => typeof el.props["backgroundColor"] === "string",
+      );
+      const bgs = cells.map((el) => el.props["backgroundColor"] as string);
+      expect(bgs).toContain(theme.bg.accentEmphasis);
+      expect(bgs).toContain(theme.bg.accentSubtle.tui);
     });
 
     it("mouse click on an expand-down row dispatches onInteractiveClick(file, subKind, boundaryRef)", () => {
@@ -1640,7 +1669,7 @@ index 1..2 100644
       expect(onInteractiveClick).toHaveBeenCalledWith("x.txt", "expand-down", 2);
     });
 
-    it("lights up cursor on an expand-down row when the cursor's interactive anchor matches", () => {
+    it("lights up cursor on an expand-down row when the cursor's interactive anchor matches (button cell bg flips to cursorRow)", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
@@ -1659,8 +1688,10 @@ index 1..2 100644
         interactive: { subKind: "expand-down" as const, boundaryRef: "bottom" as const },
       };
       const tree = callDiffRows({ rows, layout: "split", cursor });
-      const cells = diffLineCellsOf(tree);
-      expect(cells[0].props["cursorActive"]).toBe(true);
+      const bgs = flatten(tree)
+        .map((el) => el.props["backgroundColor"])
+        .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.cursorRow.tui);
     });
   });
 

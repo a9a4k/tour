@@ -249,10 +249,6 @@ export function DiffRows({
           );
         }
         if (row.kind === "interactive") {
-          // Interactive row visual (ADR 0013): cursor's `❯` glyph + gutter
-          // bg in the line-number column on the active side, consistent
-          // with the diff-row treatment. The text body (e.g. "··· N
-          // hidden ···") comes from the planner.
           const cursorActive =
             rowCursor != null &&
             rowCursor.file === fileName &&
@@ -263,6 +259,41 @@ export function DiffRows({
           const onMouseDown = onInteractiveClick
             ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
             : undefined;
+          // Issue #292: standalone `expand-down` row mirrors the
+          // hunk-header banner's two-cell layout — 44px saturated
+          // button cell carrying `↓` + empty `bg.accentSubtle` right
+          // cell. The button cell's bg flips to `bg.cursorRow` when
+          // cursored, matching the hunk-header banner's left-cell
+          // cursor treatment from #280.
+          if (row.subKind === "expand-down") {
+            const buttonBg = cursorActive
+              ? theme.bg.cursorRow.tui
+              : theme.bg.accentEmphasis;
+            const textBg = theme.bg.accentSubtle.tui;
+            return (
+              <box
+                key={key}
+                id={id}
+                flexDirection="row"
+                width="100%"
+                onMouseDown={onMouseDown}
+              >
+                <box
+                  flexShrink={0}
+                  paddingLeft={2}
+                  paddingRight={2}
+                  backgroundColor={buttonBg}
+                >
+                  <text fg={theme.fg.onEmphasis}>↓</text>
+                </box>
+                <box flexGrow={1} backgroundColor={textBg} />
+              </box>
+            );
+          }
+          // Interactive row visual (ADR 0013): cursor's `❯` glyph + gutter
+          // bg in the line-number column on the active side, consistent
+          // with the diff-row treatment. The text body (e.g. "··· N
+          // hidden ···") comes from the planner.
           return (
             <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
               <DiffLine
