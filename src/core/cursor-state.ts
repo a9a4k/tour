@@ -307,6 +307,95 @@ function rowMatchesAnchor(
   return row.leftLineNumber === lineNumber;
 }
 
+/**
+ * Predict the cursor's landing after an Enter-press orphans the current
+ * interactive cursor (issue #306). Pressing Enter on a gap-row that
+ * consumes its entire remaining gap leaves the cursor anchored to a row
+ * the next render drops from the walkable stream (banner with
+ * `primaryExpand === null`, expand-down with gap < emit threshold, or
+ * the collapsed-file row replaced by the file body). Both surfaces call
+ * this helper with the pre-dispatch `flatRows` and the orphan kind to
+ * compute a landing on a row that survives the expansion; the caller
+ * then dispatches `cursor.set` alongside the `expansion.*` action.
+ *
+ * Landing rules (per issue #306 brief):
+ *
+ * - `boundary-top` / `hunk-separator` / `expand-down-mid` consumed →
+ *   first DIFF row of the same file at or after `idx+1` in
+ *   `flatRowsBefore`. Interactive rows are skipped because the same
+ *   dispatch can orphan adjacent interactives (a mid-file `expand-down`
+ *   sits immediately before a `hunk-header` banner that the same
+ *   full-gap dispatch will also orphan).
+ *
+ * - `expand-down-bottom` consumed → last DIFF row of the same file at
+ *   or before `idx-1`. The `+1` fallback would jump into the next file.
+ *
+ * - `collapsed-file` consumed → a synthetic `boundary-top` anchor on
+ *   the file. After the file body materialises the banner resolves
+ *   directly when walkable (`primaryExpand !== null` — the common
+ *   case); otherwise `validateCursor` snaps the cursor to the file's
+ *   first emitted row.
+ */
+export type ExpandOrphanKind =
+  | "boundary-top"
+  | "hunk-separator"
+  | "expand-down-mid"
+  | "expand-down-bottom"
+  | "collapsed-file";
+
+export function cursorAfterExpand(
+  cursor: RowAnchor,
+  flatRowsBefore: ReadonlyArray<FlatRow>,
+  orphanKind: ExpandOrphanKind,
+): Cursor {
+  const file = cursor.file;
+  const preferredSide = cursor.preferredSide;
+
+  if (orphanKind === "collapsed-file") {
+    // The file's diff body materialises after dispatch — `flatRowsBefore`
+    // has no diff rows for this file (only the collapsed-file synthetic).
+    // The post-expansion file emits its hunk-header banner first when the
+    // file-top gap > 0; otherwise the first hunk-content row. The
+    // boundary-top anchor resolves in the former case and is snapped by
+    // `validateCursor`'s file-row fallback in the latter.
+    return cursorOnInteractive({
+      file,
+      subKind: "boundary-top",
+      boundaryRef: "top",
+      preferredSide,
+    });
+  }
+
+  const idx = resolveCursorRowIdx(cursor, flatRowsBefore);
+  if (idx === -1) return cursor;
+
+  const direction: 1 | -1 = orphanKind === "expand-down-bottom" ? -1 : 1;
+  const target = nearestDiffRowInFile(flatRowsBefore, file, idx, direction);
+  if (target) return cursorFromRow(target, preferredSide);
+
+  // Fallback: try the opposite direction within the same file (covers the
+  // pathological case where the orphan is the only walkable row of its
+  // kind ahead and the file has nothing behind it).
+  const fallback = nearestDiffRowInFile(flatRowsBefore, file, idx, -direction as 1 | -1);
+  if (fallback) return cursorFromRow(fallback, preferredSide);
+
+  return cursor;
+}
+
+function nearestDiffRowInFile(
+  rows: ReadonlyArray<FlatRow>,
+  file: string,
+  fromIdx: number,
+  direction: 1 | -1,
+): DiffFlatRow | null {
+  const end = direction === 1 ? rows.length : -1;
+  for (let i = fromIdx + direction; i !== end; i += direction) {
+    const r = rows[i];
+    if (r.kind === "diff" && r.file === file) return r;
+  }
+  return null;
+}
+
 export function cursorFromRow(
   row: FlatRow,
   preferredSide: "additions" | "deletions",

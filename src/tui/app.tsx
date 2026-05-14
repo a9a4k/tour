@@ -13,10 +13,16 @@ import type { Tour, Annotation } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
-import { planRows, hunkHeaderExpandPlan, fileExpandableGapCount } from "../core/diff-rows.js";
+import {
+  planRows,
+  hunkHeaderExpandPlan,
+  fileExpandableGapCount,
+  GAP_TWO_ROW_THRESHOLD,
+} from "../core/diff-rows.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
+  getBoundary,
   seedFromOrphans,
   type OrphanWindow,
 } from "../core/expansion-state.js";
@@ -76,6 +82,7 @@ import type { ReplyLock } from "../core/reply-lock.js";
 import { canSendToAgent } from "../core/can-send-to-agent.js";
 import type { FlatRow } from "../core/flat-rows.js";
 import {
+  cursorAfterExpand,
   initialCursor,
   moveCursor,
   nextCard,
@@ -86,6 +93,7 @@ import {
   cursorAtFirstFileRow,
   cursorOnInteractive,
   type Cursor,
+  type ExpandOrphanKind,
 } from "../core/cursor-state.js";
 import {
   step as stepDiffPane,
@@ -879,13 +887,52 @@ function App(props: AppProps) {
   // stubs above. The Shift modifier is no longer special (PRD #270
   // Slice 5 / issue #275); the per-file Expand-all row is the whole-
   // file escape hatch.
+  //
+  // Issue #306: when the dispatch consumes the row's gap entirely the
+  // next render drops the row from flatRows and `j`/`k` no-ops on the
+  // stranded anchor. Predict the orphan, capture a landing target via
+  // `cursorAfterExpand` against the pre-dispatch flatRows, then dispatch
+  // `cursor.set` alongside the `expansion.*` action so state and view
+  // stay in lockstep. Mirrors the webapp's Enter handler.
   const dispatchPrimaryAction = () => {
     if (!cursor || cursor.kind !== "row" || !cursor.interactive) return;
     const { subKind, boundaryRef } = cursor.interactive;
+    const flatRowsBefore = flatRowsList;
+    let orphanKind: ExpandOrphanKind | null = null;
     switch (subKind) {
-      case "expand-down":
+      case "expand-down": {
+        const gapSize =
+          boundaryRef === "bottom"
+            ? boundaryBottomGapSize(cursor.file)
+            : typeof boundaryRef === "number"
+              ? hunkSeparatorGapSize(cursor.file, boundaryRef)
+              : 0;
+        if (gapSize === 0) return;
+        // Mode is always symmetric-20 + direction "down" → addDown =
+        // min(SYMMETRIC_STEP*2, remaining) = min(20, remaining). Bottom
+        // row stops emitting at new gap == 0; mid-file row stops emitting
+        // at new gap < GAP_TWO_ROW_THRESHOLD (planner's
+        // `emitLeadingExpandDown` rule).
+        const ref = boundaryRef === "bottom" ? "bottom" : (boundaryRef as number);
+        const cur = getBoundary(expansion, { file: cursor.file, ref });
+        const remaining = gapSize - cur.up - cur.down;
+        const addition = Math.min(20, remaining);
+        const newRemaining = remaining - addition;
+        if (boundaryRef === "bottom") {
+          orphanKind = newRemaining <= 0 ? "expand-down-bottom" : null;
+        } else {
+          orphanKind = newRemaining < GAP_TWO_ROW_THRESHOLD ? "expand-down-mid" : null;
+        }
+        const landing =
+          orphanKind === null
+            ? null
+            : cursorAfterExpand(cursor, flatRowsBefore, orphanKind);
         expandDirectional(cursor.file, boundaryRef, "down", "symmetric-20");
+        if (landing !== null && landing !== cursor) {
+          store.dispatch({ type: "cursor.set", anchor: landing });
+        }
         return;
+      }
       case "boundary-top":
       case "hunk-separator": {
         // Issue #280: hunk-header banner's left cell. Re-derive the
@@ -904,13 +951,26 @@ function App(props: AppProps) {
         if (plan.primaryExpand === "up") {
           expandDirectional(cursor.file, boundaryRef, "up", "symmetric-20");
         } else {
+          // "all" dispatch reveals the entire remaining gap → next render
+          // sets primaryExpand=null and the banner drops out of flatRows.
+          // Issue #306 orphan path.
+          orphanKind = subKind === "boundary-top" ? "boundary-top" : "hunk-separator";
+          const landing = cursorAfterExpand(cursor, flatRowsBefore, orphanKind);
           expandDirectional(cursor.file, boundaryRef, "both", "all");
+          if (landing !== cursor) {
+            store.dispatch({ type: "cursor.set", anchor: landing });
+          }
         }
         return;
       }
-      case "collapsed-file":
+      case "collapsed-file": {
+        const landing = cursorAfterExpand(cursor, flatRowsBefore, "collapsed-file");
         expandCollapsedFile(cursor.file);
+        if (landing !== cursor) {
+          store.dispatch({ type: "cursor.set", anchor: landing });
+        }
         return;
+      }
     }
   };
 

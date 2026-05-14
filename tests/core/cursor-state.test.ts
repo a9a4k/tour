@@ -11,6 +11,7 @@ import {
   cursorFromAnnotation,
   cursorAtFirstFileRow,
   cursorOnInteractive,
+  cursorAfterExpand,
   isRowAnchor,
   isCardAnchor,
   type Cursor,
@@ -913,5 +914,155 @@ describe("interactive-row cursor support (PRD #107)", () => {
     });
     expect(c.interactive).toEqual({ subKind: "collapsed-file", boundaryRef: "top" });
     expect(c.file).toBe("x.txt");
+  });
+});
+
+describe("cursorAfterExpand (issue #306)", () => {
+  it("boundary-top consumed in 'all' mode lands on the first diff row of the same file", () => {
+    // flatRowsBefore: file-top banner + the hunk's first content rows.
+    // After the dispatch the banner is gone from the stream; we want the
+    // cursor to land on the first hunk-content row which survives.
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+      pairedFlat("x.txt", 5, 5),
+      pairedFlat("x.txt", 6, 6),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" });
+    const landed = cursorAfterExpand(c, rows, "boundary-top");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.interactive).toBeUndefined();
+    expect(landed.file).toBe("x.txt");
+    expect(landed.lineNumber).toBe(5);
+    expect(landed.side).toBe("additions");
+  });
+
+  it("hunk-separator consumed in 'all' mode lands on the first diff row at or after the banner in the same file", () => {
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      pairedFlat("x.txt", 20, 20),
+      pairedFlat("x.txt", 21, 21),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 });
+    const landed = cursorAfterExpand(c, rows, "hunk-separator");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.lineNumber).toBe(20);
+  });
+
+  it("expand-down mid-file consumed skips past the adjacent hunk-header banner (which the same dispatch orphans) to land on the next hunk-content", () => {
+    // The mid-file expand-down sits immediately before the hunk-header
+    // banner. A full-down dispatch consumes the gap → the banner's
+    // primaryExpand drops to null and the planner stops emitting the
+    // expand-down row. Both adjacent interactives orphan; the cursor
+    // must land on the first DIFF row.
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "expand-down", boundaryRef: 1 }),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      pairedFlat("x.txt", 60, 60),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "expand-down", boundaryRef: 1 });
+    const landed = cursorAfterExpand(c, rows, "expand-down-mid");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.lineNumber).toBe(60);
+  });
+
+  it("expand-down file-bottom consumed lands on the LAST diff row of the file (not the next file's first row)", () => {
+    // Forward scan would jump into the next file. Bottom-orphan must
+    // walk backward to find the file's last surviving diff row.
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      pairedFlat("x.txt", 2, 2),
+      interactiveFlat({ file: "x.txt", subKind: "expand-down", boundaryRef: "bottom" }),
+      pairedFlat("y.txt", 1, 1),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "expand-down", boundaryRef: "bottom" });
+    const landed = cursorAfterExpand(c, rows, "expand-down-bottom");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.file).toBe("x.txt");
+    expect(landed.lineNumber).toBe(2);
+  });
+
+  it("collapsed-file consumed returns a synthetic boundary-top anchor for the file (validateCursor snaps if banner is non-walkable)", () => {
+    // flatRowsBefore has no diff rows in the file (only the synthetic
+    // collapsed-file row). The post-dispatch file body is unknown to the
+    // helper; we return a boundary-top anchor on the file so the cursor
+    // lands on the (commonly walkable) hunk-header banner, with the
+    // view's validateCursor snapping to the file's first emitted row
+    // when the banner is non-walkable.
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "collapsed-file", boundaryRef: "top" }),
+      pairedFlat("y.txt", 1, 1),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "collapsed-file", boundaryRef: "top" });
+    const landed = cursorAfterExpand(c, rows, "collapsed-file");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.file).toBe("x.txt");
+    expect(landed.interactive).toEqual({ subKind: "boundary-top", boundaryRef: "top" });
+  });
+
+  it("preserves preferredSide on the landing anchor (issue #200 — side carries across orphan)", () => {
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+      pairedFlat("x.txt", 5, 5),
+    ];
+    const c = cursorOnInteractive({
+      file: "x.txt",
+      subKind: "boundary-top",
+      boundaryRef: "top",
+      preferredSide: "deletions",
+    });
+    const landed = cursorAfterExpand(c, rows, "boundary-top");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.preferredSide).toBe("deletions");
+    expect(landed.side).toBe("deletions");
+    expect(landed.lineNumber).toBe(5);
+  });
+
+  it("returns the same cursor when the orphan target is not in the flat stream (defensive)", () => {
+    const rows: FlatRow[] = [pairedFlat("y.txt", 1, 1)];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" });
+    const landed = cursorAfterExpand(c, rows, "boundary-top");
+    expect(landed).toBe(c);
+  });
+
+  it("returns the same cursor when no diff row exists in the same file in either direction", () => {
+    // Only interactive rows in the file — pathological / defensive case.
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
+      interactiveFlat({ file: "x.txt", subKind: "expand-down", boundaryRef: "bottom" }),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" });
+    const landed = cursorAfterExpand(c, rows, "boundary-top");
+    expect(landed).toBe(c);
+  });
+
+  it("forward scan skips card rows and lands on the first DIFF row of the file", () => {
+    // Cards aren't diff rows; the helper walks past them to the diff row.
+    const rows: FlatRow[] = [
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      cardFlat({ file: "x.txt", side: "additions", lineEnd: 5, annotationId: "a1" }),
+      pairedFlat("x.txt", 20, 20),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 });
+    const landed = cursorAfterExpand(c, rows, "hunk-separator");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    expect(landed.lineNumber).toBe(20);
+  });
+
+  it("scoped to the same file — forward scan does not cross file boundaries", () => {
+    // The next file's diff row must not be picked when this file has no
+    // following diff row.
+    const rows: FlatRow[] = [
+      pairedFlat("x.txt", 1, 1),
+      interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
+      pairedFlat("y.txt", 1, 1),
+    ];
+    const c = cursorOnInteractive({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 });
+    const landed = cursorAfterExpand(c, rows, "hunk-separator");
+    if (!isRowAnchor(landed)) throw new Error("expected row anchor");
+    // Forward in same file: none. Falls back to backward in same file.
+    expect(landed.file).toBe("x.txt");
+    expect(landed.lineNumber).toBe(1);
   });
 });
