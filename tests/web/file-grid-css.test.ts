@@ -602,6 +602,18 @@ describe("FILE_GRID_CSS — GitHub-style header chrome (#225)", () => {
       /\.tour-file-name[^{]*\{[^}]*white-space:\s*nowrap/,
     );
   });
+
+  // Issue #319: the copy-path button swaps its icon to a checkmark on a
+  // successful clipboard write. The two octicons render at the same
+  // intrinsic 16x16 size today, but the brief is explicit that the button
+  // must pin its own width so a future icon-size drift doesn't reflow the
+  // adjacent filename / right region. A `min-width` declaration on the
+  // button is the load-bearing rule.
+  it("declares a min-width on the copy button so the icon swap is layout-stable (issue #319)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\.tour-file-copy-button[^{]*\{[^}]*min-width:\s*\d+px/,
+    );
+  });
 });
 
 describe("FILE_GRID_CSS — per-file Expand-all-hidden button (#274)", () => {

@@ -8,6 +8,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp file header: copy-path button now shows a checkmark for ~1.2 s
+  after a successful clipboard write (restores #16, dropped during the
+  #225 chrome restructure, issue #319).** Clicking the per-file copy-path
+  button was fire-and-forget — clipboard write happened, but the icon
+  never changed, so users had to paste somewhere to verify the copy
+  landed. The button now swaps the CopyIcon for a CheckIcon for 1.2 s on
+  a successful `navigator.clipboard.writeText` resolution, then reverts.
+  Failure stays silent (no error icon, no toast — matches GitHub). Rapid
+  re-clicks re-copy and re-arm the 1.2-s revert timer. The button's CSS
+  gains a `min-width: 24px` so the icon swap is layout-stable (the two
+  octicons share a 16 px intrinsic size today, but pinning the bounding
+  box absorbs any future drift between the glyphs). The pending timer
+  is cleared on unmount via a `useEffect` cleanup so a stale callback
+  can't fire `setState` against a detached fiber.
+
+  Issue: #319
+
 - **TUI: `[`/`]` sidebar resize no longer drifts the diff viewport (issue
   #318).** The diff pane is a `flexGrow={1}` sibling of the fixed-width
   sidebar, so a width change reflows annotation cards (markdown blocks
