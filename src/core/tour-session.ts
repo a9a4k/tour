@@ -496,9 +496,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       }
       const inner = state.bundle.value;
       const already = inner.annotations.some((a) => a.id === action.annotation.id);
-      const nextAnns = already ? inner.annotations : [...inner.annotations, action.annotation];
-      const nextBundle: TourBundle =
-        nextAnns === inner.annotations ? inner : { ...inner, annotations: nextAnns };
+      const nextBundle: TourBundle = already
+        ? inner
+        : { ...inner, annotations: [...inner.annotations, action.annotation] };
       return {
         state: {
           ...state,
