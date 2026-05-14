@@ -91,7 +91,10 @@ import {
   jump as jumpDiffPane,
 } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
-import { scrollChildIntoView } from "./scroll-into-view.js";
+import {
+  computeCardViewportPosition,
+  scrollChildIntoView,
+} from "./scroll-into-view.js";
 import {
   animatedScrollChildIntoView,
   animatedScrollTo,
@@ -552,29 +555,25 @@ function App(props: AppProps) {
   });
   // Action-target preview line (PRD #192 / ADR 0022). Renders the
   // cursor's `r` target so the user knows what `r` will do before
-  // pressing it. Off-screen suffix uses the diff-pane scrollbox viewport
-  // mapped onto the flat-row index space — the line-height isn't fixed
-  // so we approximate by comparing the cursor's row index to the rough
-  // visible range. When the scrollbox isn't ready, the suffix is
-  // omitted.
-  const viewportRange = ((): { start: number; end: number } | undefined => {
+  // pressing it. The off-screen suffix is driven by a pixel-position
+  // probe (issue #302) — ask the diff scrollbox for the rendered
+  // card's box and intersect it with the viewport rect. The prior
+  // index-based approximation (`avg = scrollHeight / flatRows`)
+  // mis-reported visible cards as off-screen whenever tall cards
+  // skewed prefix density. When the scrollbox isn't ready or the
+  // descendant isn't in the tree (pre-mount / culled), the probe
+  // returns undefined and the suffix is omitted.
+  const cardViewportPosition: "in" | "above" | "below" | undefined = (() => {
+    if (!cursor || cursor.kind !== "card") return undefined;
     const sb = diffScrollRef.current;
-    if (!sb || flatRowsList.length === 0) return undefined;
-    // Approximate: contentHeight / flatRows ≈ avg row height. The
-    // approximation is fine for off-screen detection — direction is
-    // what matters, not the precise boundary.
-    const total = flatRowsList.length;
-    const avg = sb.scrollHeight > 0 ? sb.scrollHeight / total : 1;
-    if (avg === 0) return undefined;
-    const start = Math.max(0, Math.floor(sb.scrollTop / avg));
-    const end = Math.min(total, Math.ceil((sb.scrollTop + sb.viewport.height) / avg));
-    return { start, end };
+    if (!sb) return undefined;
+    const probed = computeCardViewportPosition(sb, `annotation-${cursor.annotationId}`);
+    return probed ?? undefined;
   })();
   const footerPreview = composeFooterPreview({
     cursor,
     annotations,
-    viewportRange,
-    cursorRowIdx: cursorSlice?.rowIdx ?? -1,
+    cardViewportPosition,
   });
   const baseFooter = `${footerPreview}  ·  ${footerHints}`;
   const footer = footerStatus ? `${baseFooter}  ·  ${footerStatus}` : baseFooter;

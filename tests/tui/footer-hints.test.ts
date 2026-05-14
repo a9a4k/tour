@@ -132,40 +132,58 @@ describe("composeFooterPreview (PRD #192)", () => {
     expect(out).not.toContain("second line");
   });
 
-  it("appends `(cursor ↑ above viewport)` when the cursor's row is above the visible range", () => {
+  // Issue #302: the off-screen suffix is driven by a pixel-position
+  // probe on the rendered card's box vs. the diff scrollbox's viewport
+  // rect, not by a uniform-row-height index approximation. Cards have
+  // very different heights from diff rows (a multi-line markdown block
+  // vs. a single diff line), so the prior `avg = scrollHeight / rows`
+  // estimate mis-reported visible cards as offscreen whenever tall
+  // cards skewed prefix density. The helper now takes a single
+  // `cardViewportPosition: "in" | "above" | "below"` signal — computed
+  // at the App-shell call site from the rendered card's Y range — and
+  // omits the suffix when it's `"in"` or undefined.
+  it("appends `(cursor ↑ above viewport)` when the rendered card is above the viewport rect", () => {
     const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
       annotations,
-      viewportRange: { start: 10, end: 20 },
-      cursorRowIdx: 3,
+      cardViewportPosition: "above",
     });
     expect(out).toContain("(cursor ↑ above viewport)");
   });
 
-  it("appends `(cursor ↓ below viewport)` when the cursor's row is below the visible range", () => {
+  it("appends `(cursor ↓ below viewport)` when the rendered card is below the viewport rect", () => {
     const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
       annotations,
-      viewportRange: { start: 0, end: 5 },
-      cursorRowIdx: 10,
+      cardViewportPosition: "below",
     });
     expect(out).toContain("(cursor ↓ below viewport)");
   });
 
-  it("omits the off-screen suffix when the cursor is inside the viewport", () => {
+  it("omits the off-screen suffix when the rendered card intersects the viewport rect", () => {
     const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
     const annotations = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
       annotations,
-      viewportRange: { start: 0, end: 10 },
-      cursorRowIdx: 3,
+      cardViewportPosition: "in",
     });
     expect(out).not.toContain("above viewport");
     expect(out).not.toContain("below viewport");
+  });
+
+  it("omits the off-screen suffix when the position probe couldn't resolve (pre-mount / culled)", () => {
+    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+    const annotations = [ann({ id: "a1", body: "hi" })];
+    const out = composeFooterPreview({
+      cursor,
+      annotations,
+      cardViewportPosition: undefined,
+    });
+    expect(out).toBe('r: reply to "hi"');
   });
 });
