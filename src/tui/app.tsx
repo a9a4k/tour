@@ -1678,11 +1678,10 @@ function App(props: AppProps) {
             // user is inside a card.
             const activeFileObj = activeFile
               ? files.find((f) => f.name === activeFile)
-              : null;
+              : undefined;
             const activeFileMeta = activeFile ? fileMetadata.get(activeFile) : undefined;
             const activeCollapsed = activeFile ? isFileCollapsed(activeFile) : false;
             const activeHasMultipleHiddenGaps =
-              activeFileObj !== null &&
               activeFileObj !== undefined &&
               !activeCollapsed &&
               activeFileMeta !== undefined &&
