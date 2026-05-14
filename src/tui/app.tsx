@@ -376,6 +376,17 @@ function App(props: AppProps) {
     snap: ScreenYSnapshot;
   } | null>(null);
 
+  // Issue #318 (upgraded): pre-resize snapshot of the re-anchor target's
+  // on-screen y. Stashed synchronously in the `[`/`]` keypress handler
+  // BEFORE `setSidebarWidth` so the capture reads the old layout; consumed
+  // by the resize-apply useEffect after OpenTUI has laid out the new pane
+  // width. Same pattern as `layoutToggleSnapshotRef` (#303) — the only
+  // difference is the trigger (sidebar width, not layout mode).
+  const resizeSnapshotRef = useRef<{
+    rowId: string;
+    snap: ScreenYSnapshot;
+  } | null>(null);
+
   // `bundle.tour` / `bundle.annotations` are present in both bundle
   // kinds; the view's ok-branch namespaces gate the rest.
   const annotations: ReadonlyArray<Annotation> = bundle.annotations;
@@ -622,6 +633,30 @@ function App(props: AppProps) {
     return (): void => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
+
+  // Issue #318 (upgraded): after `[`/`]` resize, OpenTUI re-flows
+  // annotation cards to the new pane width. The keypress handler
+  // captured the target row's on-screen y before triggering the
+  // re-render; this effect applies it via `preserveScreenY` once Yoga
+  // has measured the new card heights. `setTimeout(0)` defers past the
+  // render tick for the same reason as the layout-toggle effect above
+  // (rAF on bun fires before OpenTUI's render tick). Falls through to
+  // `scrollChildIntoView` when the target id isn't resolvable in the
+  // post-resize tree (degenerate; shouldn't happen for resize since
+  // row identity is layout-invariant — kept as defensive parity with
+  // the layout-toggle path).
+  useEffect(() => {
+    const sb = diffScrollRef.current;
+    if (!sb) return;
+    const pending = resizeSnapshotRef.current;
+    resizeSnapshotRef.current = null;
+    if (!pending) return;
+    const handle = setTimeout(() => {
+      const applied = applyPreserveScreenY(sb, pending.rowId, pending.snap);
+      if (!applied) scrollChildIntoView(sb, pending.rowId);
+    }, 0);
+    return (): void => clearTimeout(handle);
+  }, [sidebarWidth]);
 
   // Sidebar follows the cursor's file. RowAnchor → cursor.file directly;
   // CardAnchor → view.cursor.cardAnnotation.file. Deps key off the
@@ -1259,11 +1294,16 @@ function App(props: AppProps) {
     // tour picker. The adjustment is session-local — the next tour
     // switch re-runs auto-fit and the override doesn't carry over.
     //
-    // Issue #318: a width change reflows annotation cards, drifting
-    // the diff viewport's visual position. Re-anchor via
-    // `resizeReanchorTargetId` + `scrollChildIntoView`; deferred via
-    // `setTimeout(0)` for the reasons documented at the layout-toggle
-    // effect above (rAF fires before OpenTUI's render tick in bun).
+    // Issue #318 (upgraded to preserveScreenY per follow-up review):
+    // a width change reflows annotation cards, drifting the diff
+    // viewport's visual position. `scrollChildIntoView(block:nearest)`
+    // alone wasn't enough — it no-ops when the row is still in viewport
+    // (so card-height deltas above the cursor walked it within the
+    // viewport) and snaps to the nearer edge when the row falls out
+    // (so held-down `]` drifted the cursor toward an edge). Mirror
+    // the layout-toggle pattern (#303): capture the target's on-screen
+    // y BEFORE `setSidebarWidth` schedules the re-render, then apply
+    // it in the resize-apply useEffect once Yoga has re-measured.
     // No-op when the clamp pinned the width (no reflow).
     if (!key.ctrl && !key.shift && (key.name === "[" || key.name === "]")) {
       const delta = key.name === "[" ? -SIDEBAR_RESIZE_STEP : SIDEBAR_RESIZE_STEP;
@@ -1271,21 +1311,20 @@ function App(props: AppProps) {
         sidebarWidth + delta,
         renderer.terminalWidth,
       );
-      setSidebarWidth(next);
       setFooterStatus(`sidebar: ${next} cols`);
       if (next !== sidebarWidth) {
+        const sb = diffScrollRef.current;
         const targetId = resizeReanchorTargetId({
           cursor,
           flatRows: flatRowsList,
           activeFile,
         });
-        if (targetId !== null) {
-          setTimeout(() => {
-            const sb = diffScrollRef.current;
-            if (sb) scrollChildIntoView(sb, targetId);
-          }, 0);
+        if (sb && targetId !== null) {
+          const snap = captureScreenYSnapshot(sb, targetId);
+          if (snap) resizeSnapshotRef.current = { rowId: targetId, snap };
         }
       }
+      setSidebarWidth(next);
       return;
     }
 
