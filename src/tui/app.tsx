@@ -78,7 +78,7 @@ import {
   SIDEBAR_BORDER,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_RESIZE_STEP,
-  clampSidebarWidth,
+  clampSidebarWidthManual,
   computeAutoFitWidth,
 } from "./sidebar-width.js";
 import { sidebarCursorPaint } from "./sidebar-cursor-paint.js";
@@ -211,12 +211,16 @@ function fileCardBody(
   );
 }
 
-// Sidebar width is now per-tour state (issue #312). On every tour
-// switch the auto-fit helper picks the minimum width that lets every
-// visible row render without middle-truncation, clamped to
-// `[SIDEBAR_MIN_WIDTH, floor(terminalWidth * SIDEBAR_MAX_FRAC)]`.
-// `[`/`]` adjust the width by `SIDEBAR_RESIZE_STEP` within the same
-// range; the adjustment is session-local and resets on the next
+// Sidebar width is now per-tour state (issue #312; cap formula
+// retuned in issue #315). On every tour switch the auto-fit helper
+// picks the minimum width that lets every visible row render without
+// middle-truncation, clamped to `[SIDEBAR_MIN_WIDTH, max(MIN,
+// terminalWidth - DIFF_PANE_MIN_WIDTH)]` (auto-fit reserves a
+// defensible diff-pane minimum). `[`/`]` adjust the width by
+// `SIDEBAR_RESIZE_STEP` against the wider manual range
+// `[SIDEBAR_MIN_WIDTH, max(MIN, terminalWidth - SIDEBAR_MIN_WIDTH)]`,
+// so the user can push past the auto-fit cap when the diff floor
+// binds. The adjustment is session-local and resets on the next
 // tour switch (auto-fit is the source of truth per-tour). Row labels
 // still middle-truncate to whatever `sidebarWidth - SIDEBAR_BORDER`
 // is at render time so long names never wrap (issue #156).
@@ -1243,15 +1247,21 @@ function App(props: AppProps) {
       return;
     }
 
-    // Issue #312: `[`/`]` resize the sidebar within
-    // `[SIDEBAR_MIN_WIDTH, floor(termW * SIDEBAR_MAX_FRAC)]`. Handled
-    // here so the composer / picker early-returns above swallow
-    // brackets while typing or navigating the tour picker. The
-    // adjustment is session-local — the next tour switch re-runs
-    // auto-fit and the override doesn't carry over.
+    // Issue #312 (cap retuned in #315): `[`/`]` resize the sidebar
+    // within `[SIDEBAR_MIN_WIDTH, max(MIN, termW - SIDEBAR_MIN_WIDTH)]`.
+    // The manual cap is strictly wider than the auto-fit cap so the
+    // user can push past the diff-pane-minimum reservation when the
+    // sidebar needs to render very long paths (the auto-fit cap's
+    // escape valve). Handled here so the composer / picker early-
+    // returns above swallow brackets while typing or navigating the
+    // tour picker. The adjustment is session-local — the next tour
+    // switch re-runs auto-fit and the override doesn't carry over.
     if (!key.ctrl && !key.shift && (key.name === "[" || key.name === "]")) {
       const delta = key.name === "[" ? -SIDEBAR_RESIZE_STEP : SIDEBAR_RESIZE_STEP;
-      const next = clampSidebarWidth(sidebarWidth + delta, renderer.terminalWidth);
+      const next = clampSidebarWidthManual(
+        sidebarWidth + delta,
+        renderer.terminalWidth,
+      );
       setSidebarWidth(next);
       setFooterStatus(`sidebar: ${next} cols`);
       return;
