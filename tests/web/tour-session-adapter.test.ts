@@ -12,14 +12,23 @@ import type { TourSessionStore } from "../../src/core/tour-session.js";
 
 let originalFetch: typeof fetch;
 
-function makeAdapter() {
+function makeAdapter(
+  opts: {
+    annotationRefs?: Map<string, HTMLDivElement>;
+    callbacks?: {
+      findFileBlock: (name: string) => HTMLElement | null;
+      setSelectedFile: (file: string | null) => void;
+      revealFileAncestors: (file: string) => void;
+    } | null;
+  } = {},
+) {
   const stubStore = {
     getState: () => ({ currentTourId: null }),
   } as unknown as TourSessionStore;
   return createWebTourSessionAdapter({
     store: stubStore,
-    annotationRefs: { current: new Map() },
-    callbacksRef: { current: null },
+    annotationRefs: { current: opts.annotationRefs ?? new Map() },
+    callbacksRef: { current: opts.callbacks ?? null },
   });
 }
 
@@ -41,22 +50,16 @@ function flushRaf(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-function makeScrollAdapter(opts: {
-  annotationRefs?: Map<string, HTMLDivElement>;
-  callbacks?: {
-    findFileBlock: (name: string) => HTMLElement | null;
-    setSelectedFile: (file: string | null) => void;
-    revealFileAncestors: (file: string) => void;
-  } | null;
-}) {
-  const stubStore = {
-    getState: () => ({ currentTourId: null }),
-  } as unknown as TourSessionStore;
-  return createWebTourSessionAdapter({
-    store: stubStore,
-    annotationRefs: { current: opts.annotationRefs ?? new Map() },
-    callbacksRef: { current: opts.callbacks ?? null },
-  });
+function makeRowDom(): { fileBlock: HTMLElement; scrollSpy: ReturnType<typeof vi.fn> } {
+  const fileBlock = document.createElement("div");
+  const cell = document.createElement("div");
+  cell.classList.add("tour-row-gutter");
+  cell.setAttribute("data-side", "additions");
+  cell.setAttribute("data-line-number", "7");
+  fileBlock.appendChild(cell);
+  const scrollSpy = vi.fn();
+  cell.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
+  return { fileBlock, scrollSpy };
 }
 
 describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior (Issue #293)", () => {
@@ -64,9 +67,7 @@ describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior
     const card = document.createElement("div");
     const scrollSpy = vi.fn();
     card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
-    const adapter = makeScrollAdapter({
-      annotationRefs: new Map([["ann1", card]]),
-    });
+    const adapter = makeAdapter({ annotationRefs: new Map([["ann1", card]]) });
 
     adapter.scrollToCard("ann1", "nearest");
     await flushRaf();
@@ -79,9 +80,7 @@ describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior
     const card = document.createElement("div");
     const scrollSpy = vi.fn();
     card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
-    const adapter = makeScrollAdapter({
-      annotationRefs: new Map([["ann1", card]]),
-    });
+    const adapter = makeAdapter({ annotationRefs: new Map([["ann1", card]]) });
 
     adapter.scrollToCard("ann1", "center");
     await flushRaf();
@@ -93,16 +92,8 @@ describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior
 
 describe("createWebTourSessionAdapter.scrollToRow — placement-driven behavior (Issue #293)", () => {
   it("scrolls the gutter cell smoothly when placement is 'nearest' (j/k off-screen target)", async () => {
-    const fileBlock = document.createElement("div");
-    const cell = document.createElement("div");
-    cell.classList.add("tour-row-gutter");
-    cell.setAttribute("data-side", "additions");
-    cell.setAttribute("data-line-number", "7");
-    fileBlock.appendChild(cell);
-    const scrollSpy = vi.fn();
-    cell.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
-
-    const adapter = makeScrollAdapter({
+    const { fileBlock, scrollSpy } = makeRowDom();
+    const adapter = makeAdapter({
       callbacks: {
         findFileBlock: () => fileBlock,
         setSelectedFile: () => {},
@@ -121,16 +112,8 @@ describe("createWebTourSessionAdapter.scrollToRow — placement-driven behavior 
   });
 
   it("scrolls the gutter cell instantly when placement is 'center'", async () => {
-    const fileBlock = document.createElement("div");
-    const cell = document.createElement("div");
-    cell.classList.add("tour-row-gutter");
-    cell.setAttribute("data-side", "additions");
-    cell.setAttribute("data-line-number", "7");
-    fileBlock.appendChild(cell);
-    const scrollSpy = vi.fn();
-    cell.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
-
-    const adapter = makeScrollAdapter({
+    const { fileBlock, scrollSpy } = makeRowDom();
+    const adapter = makeAdapter({
       callbacks: {
         findFileBlock: () => fileBlock,
         setSelectedFile: () => {},
