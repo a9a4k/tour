@@ -49,28 +49,33 @@ describe("FileHeader (issue #297 — per-file Expand-all in file-header chrome)"
     const tree = FileHeader({
       fileName: "x.txt",
       label: " M x.txt ",
-      hasHiddenGap: false,
+      hasMultipleHiddenGaps: false,
     });
     const texts = textElements(tree).map((t) => t.props["children"]);
     expect(texts).toContain(" M x.txt ");
   });
 
-  it("does NOT render the ↕ Expand-all affordance when the file has no hidden gaps", () => {
+  // Issue #298: the chrome affordance is gated on ≥ 2 hidden gaps;
+  // single-gap and zero-gap files leave it hidden so the per-hunk
+  // banner button (or standalone expand-down for file-bottom) is the
+  // only visible expand affordance and the chrome doesn't stack a
+  // redundant second `↕`.
+  it("does NOT render the ↕ Expand-all affordance when the file has fewer than 2 hidden gaps", () => {
     const tree = FileHeader({
       fileName: "x.txt",
       label: " M x.txt ",
-      hasHiddenGap: false,
+      hasMultipleHiddenGaps: false,
     });
     expect(findIdElement(tree, fileHeaderExpandAllId("x.txt"))).toBeUndefined();
     const texts = textElements(tree).map((t) => t.props["children"]);
     expect(texts).not.toContain(EXPAND_ALL_GLYPH);
   });
 
-  it("renders the ↕ Expand-all affordance when the file has at least one hidden gap", () => {
+  it("renders the ↕ Expand-all affordance when the file has at least 2 hidden gaps", () => {
     const tree = FileHeader({
       fileName: "x.txt",
       label: " M x.txt ",
-      hasHiddenGap: true,
+      hasMultipleHiddenGaps: true,
     });
     expect(findIdElement(tree, fileHeaderExpandAllId("x.txt"))).toBeDefined();
     const texts = textElements(tree).map((t) => t.props["children"]);
@@ -82,7 +87,7 @@ describe("FileHeader (issue #297 — per-file Expand-all in file-header chrome)"
     const tree = FileHeader({
       fileName: "src/a.ts",
       label: " M src/a.ts ",
-      hasHiddenGap: true,
+      hasMultipleHiddenGaps: true,
       onExpandAll,
     });
     const wrapper = findIdElement(tree, fileHeaderExpandAllId("src/a.ts"));
@@ -97,7 +102,7 @@ describe("FileHeader (issue #297 — per-file Expand-all in file-header chrome)"
     const tree = FileHeader({
       fileName: "x.txt",
       label: " M x.txt ",
-      hasHiddenGap: true,
+      hasMultipleHiddenGaps: true,
     });
     const wrapper = findIdElement(tree, fileHeaderExpandAllId("x.txt"));
     expect(wrapper).toBeDefined();
