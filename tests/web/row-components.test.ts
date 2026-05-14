@@ -128,6 +128,84 @@ describe("<DiffRow>", () => {
     expect(gutters[0]!.textContent).toBe("99");
   });
 
+  // Issue #303 follow-up: `data-row-id` is the layout-invariant hook
+  // `findCursorRowEl` queries for the preserve-cursor-on-layout-toggle
+  // path. It must match the FlatRow's canonical (side, lineNumber) and be
+  // identical across split / unified — including for paired context rows
+  // where the unified renderer's `data-side` reflects `preferredSide` and
+  // would otherwise diverge from the FlatRow's natural `additions` side.
+  describe("data-row-id (layout-invariant)", () => {
+    it("uses additions-{rightLineNumber} for paired rows in split", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "split",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "foo",
+          rightText: "foo",
+          isCursor: false,
+        }),
+      );
+      expect(c.querySelector(".tour-row")!.getAttribute("data-row-id")).toBe(
+        "additions-9",
+      );
+    });
+
+    it("uses additions-{rightLineNumber} for paired rows in unified — even with preferredSide=deletions", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "foo",
+          rightText: "foo",
+          isCursor: true,
+          cursorSide: "deletions",
+          preferredSide: "deletions",
+        }),
+      );
+      expect(c.querySelector(".tour-row")!.getAttribute("data-row-id")).toBe(
+        "additions-9",
+      );
+    });
+
+    it("uses deletions-{leftLineNumber} for pure deletion rows in split", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "split",
+          leftLineNumber: 15,
+          rightLineNumber: null,
+          leftText: "x",
+          rightText: "",
+          isCursor: false,
+        }),
+      );
+      expect(c.querySelector(".tour-row")!.getAttribute("data-row-id")).toBe(
+        "deletions-15",
+      );
+    });
+
+    it("uses deletions-{leftLineNumber} for pure deletion rows in unified", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "unified",
+          leftLineNumber: 15,
+          rightLineNumber: null,
+          leftText: "x",
+          rightText: "",
+          isCursor: false,
+        }),
+      );
+      expect(c.querySelector(".tour-row")!.getAttribute("data-row-id")).toBe(
+        "deletions-15",
+      );
+    });
+  });
+
   it("paints token HTML via dangerouslySetInnerHTML when tokens are provided", () => {
     const tokensRight = new Map<number, string>([
       [42, '<span style="color:#abcdef">const</span>'],

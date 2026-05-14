@@ -562,12 +562,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // Issue #303 preserve-cursor-on-layout-toggle: resolve a cursor anchor
   // to the DOM element that hosts its row. Card cursors return the
   // annotation card wrapper (registered in `annotationRefs`). Diff
-  // cursors project through `resolveCursorRowIdx` so a paired-context
-  // cursor on EITHER side resolves to the FlatRow's natural side +
-  // lineNumber — that selector exists in both split (additions column)
-  // and unified (the single column) layouts. Interactive rows return
-  // null (no clean DOM hook today; preserve-y skips them, falling back
-  // to today's behaviour).
+  // cursors project through `resolveCursorRowIdx` to the FlatRow, then
+  // query the `.tour-row` element by its layout-invariant `data-row-id`
+  // attribute — emitted by `<DiffRow>` from leftLineNumber / rightLineNumber
+  // via the same mapping as `flatRowFromLines`. The attribute is identical
+  // across split and unified, so the same selector resolves in both layouts
+  // even for paired-context cursors on the deletions side (where the
+  // gutter's `data-side` reflects `preferredSide` and would otherwise miss).
+  // Interactive rows return null (no clean DOM hook today; preserve-y
+  // skips them, falling back to today's behaviour).
   const findCursorRowEl = useCallback(
     (c: Cursor, flatRows: ReadonlyArray<FlatRow>): HTMLElement | null => {
       if (typeof document === "undefined") return null;
@@ -581,11 +584,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (r.kind === "interactive") return null;
       const block = findFileBlock(r.file);
       if (!block) return null;
-      const gutter = block.querySelector<HTMLElement>(
-        `.tour-row-gutter[data-side="${r.side}"][data-line-number="${r.lineNumber}"]`,
+      const rowId = `${r.side}-${r.lineNumber}`;
+      return block.querySelector<HTMLElement>(
+        `.tour-row[data-row-id="${rowId}"]`,
       );
-      if (!gutter) return null;
-      return gutter.closest<HTMLElement>(".tour-row") ?? gutter;
     },
     [findFileBlock],
   );

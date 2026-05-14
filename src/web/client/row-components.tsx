@@ -216,11 +216,26 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     onClick?.(side);
   };
 
+  // Issue #303 follow-up: layout-invariant row id mirrors `flatRowFromLines`
+  // in `core/flat-rows.ts` — paired/additions rows key off rightLineNumber,
+  // pure-deletion rows off leftLineNumber. `findCursorRowEl` (App.tsx)
+  // queries by this attribute so the cursor's row resolves in BOTH split
+  // and unified, including paired-context cursors on the deletions side
+  // (where `data-side` on the rendered gutter diverges from the FlatRow's
+  // canonical `additions`).
+  const rowDataId =
+    rightLineNumber !== null
+      ? `additions-${rightLineNumber}`
+      : leftLineNumber !== null
+        ? `deletions-${leftLineNumber}`
+        : undefined;
+
   if (layout === "split") {
     return (
       <div
         className="tour-row"
         data-line-type={kind}
+        data-row-id={rowDataId}
         style={ROW_STYLE}
         onMouseEnter={onMouseEnter}
       >
@@ -266,6 +281,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     <div
       className="tour-row"
       data-line-type={kind}
+      data-row-id={rowDataId}
       style={ROW_STYLE}
       onMouseEnter={onMouseEnter}
     >
