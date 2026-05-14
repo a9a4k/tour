@@ -992,10 +992,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       );
       // Enter on a gap-row interactive cursor → dispatch the same
       // expansion action as clicking the row's chevron (PRD #212 user-
-      // stories 7-8). collapsed-file routes to `expand-file`. Other
-      // interactive subkinds compute count via `expand-all` →
-      // full-gap, everything else → EXPANSION_STEP. The Shift modifier
-      // carries no special meaning (PRD #270 Slice 5 / issue #275).
+      // stories 7-8). collapsed-file routes to `expand-file`; the
+      // hunk-header banner's `boundary-top` / `hunk-separator` cursor
+      // routes through `hunkHeaderExpandPlan` (issue #280); standalone
+      // `expand-down` uses EXPANSION_STEP. The Shift modifier carries
+      // no special meaning (PRD #270 Slice 5 / issue #275).
       if (
         e.key === "Enter" &&
         !focusInEditable &&

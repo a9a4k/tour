@@ -414,33 +414,18 @@ export const FILE_GRID_CSS = `
     border-radius: 4px;
   }
 
-  /* Hunk-header banner: GitHub-style full-width section divider with a
-     subtle accent tint. The row spans 1 / -1 via grid-column (no subgrid
-     here — the two text segments flow inline). Range segment renders
-     muted; context segment renders in the default fg.
-
-     PRD 270 Slice 2 / issue 272: the banner is display-only — the
-     directional expand affordance lives in the explicit expand-up /
-     expand-down / expand-all interactive rows (Slice 1). The 252
-     ::before '...' cue is removed (premise was "always show
-     expandability hint, click anywhere on banner" — the new model uses
-     explicit cursor-walkable buttons instead). position: relative
-     (252 anchor) and padding-left: 60px (44px cue + 16px gap) revert
-     to the pre-252 symmetric inset. cursor: pointer removed: the
-     banner no longer responds to clicks.
+  /* Hunk-header banner (issue 280): two-cell layout matching GitHub's
+     @@ row — saturated leftmost button cell (~44px) carrying the
+     primary expand affordance + accent-subtle right cell carrying the
+     range + function-context text. The outer row uses display: flex to
+     escape .tour-row's display: grid + subgrid template; the cells own
+     their own insets so padding on the outer rule is 0.
 
      Typography (issue 253): banner inherits MONO_STACK / 12px / 20px so
      the text reads as part of the diff stream rather than as UI chrome.
-     Pre-253 the banner inherited the document body's sans-serif 16px /
-     normal-line-height — visually mismatched against the monospace 12px
-     20px-line-height code rows below. Child spans (.tour-hunk-header-
-     range, .tour-hunk-header-context) inherit these declarations
-     naturally. */
+     Child spans (.tour-hunk-header-range, .tour-hunk-header-context)
+     inherit these declarations naturally. */
   .tour-hunk-header {
-    /* Issue 280: two-cell layout. Override .tour-rows display:grid +
-       subgrid template; lay out the left button cell (~44px, saturated
-       accent-emphasis bg) inline with the right text cell (accent-subtle
-       wash). Right cell hosts the range + function-context spans. */
     display: flex;
     flex-direction: row;
     align-items: stretch;
@@ -473,13 +458,8 @@ export const FILE_GRID_CSS = `
     outline-offset: -2px;
   }
 
-  .tour-hunk-header-button.is-placeholder {
-    color: ${theme.fg.onEmphasis};
-    cursor: default;
-  }
-
   .tour-hunk-header-text {
-    /* Right cell. Inherits the rows accent-subtle wash; matches GitHubs
+    /* Right cell. Inherits the row's accent-subtle wash; matches GitHub's
        blob-code-hunk inset. */
     flex: 1 1 auto;
     padding: 6px 16px;
@@ -491,10 +471,10 @@ export const FILE_GRID_CSS = `
   }
 
   .tour-hunk-header-context {
-    /* Both range and context render in fg.muted to match GitHub's continuous-
-       grey treatment. The hunk header is metadata, not code — muting the
-       whole banner signals "you can skip reading this carefully" and keeps
-       reviewer attention on the diff rows below. */
+    /* Both range and context render in fg.muted to match GitHub's
+       continuous-grey treatment. The hunk header is metadata, not code —
+       muting the whole banner signals "you can skip reading this
+       carefully" and keeps reviewer attention on the diff rows below. */
     color: ${theme.fg.muted};
     margin-left: 1ch;
   }

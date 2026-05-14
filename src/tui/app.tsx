@@ -244,12 +244,11 @@ function App(props: AppProps) {
   // seven previously-inline cursor/nav predicates all flow from these
   // five namespaces. The `live*` projection prefix is gone.
   //
-  // PRD #270 / issue #273 (Slice 3): the TUI's hunk-header banner is
-  // display-only; the cursor walks past it via the directional
-  // `expand-up` / `expand-down` / `expand-all` rows the planner emits
-  // adjacent to the banner. `hunkHeaderCursorStop: false` is vestigial
-  // (Slices 2 & 3 collapsed both surfaces onto unconditional skip) but
-  // still threaded for caller-side clarity.
+  // Issue #280: the TUI's hunk-header banner is a two-cell layout —
+  // left cell hosts the primary expand affordance (`↑` / `↕` / inert
+  // `…`), right cell hosts the `@@` text. The cursor walks the row
+  // whenever `primaryExpand !== null`. `hunkHeaderCursorStop: false`
+  // is vestigial but still threaded for caller-side clarity.
   //
   // PRD #270 / issue #274 (Slice 4): opt-in to the planner's per-file
   // Expand-all-hidden affordance row. The TUI surfaces it as a cursor-
@@ -1042,15 +1041,11 @@ function App(props: AppProps) {
   // delegate to the same pure helpers in `core/expansion-state.ts` the
   // surface used to call directly.
   //
-  // PRD #270 / issue #273 (TUI Slice 3): the hunk-header banner is
-  // display-only on the TUI surface; the cursor never lands on it.
-  // The directional `expand-up` / `expand-down` / `expand-all` rows
-  // the planner emits adjacent to the banner carry the affordance +
-  // Enter dispatch. Each directional row routes to the boundary key
-  // its `boundaryRef` names (`"top"` / number / `"bottom"`) with the
-  // direction labelled by its subkind. `expand-all` reveals the
-  // entire remaining gap in one Enter; `expand-up` / `expand-down`
-  // use the symmetric-20 ladder (or `"all"` when Shift is held).
+  // Issue #280: the hunk-header banner's left cell is interactive
+  // when `primaryExpand !== null` — its Enter dispatch is routed by
+  // `dispatchPrimaryAction` (`boundary-top` / `hunk-separator` cases).
+  // The standalone `expand-down` row uses the symmetric-20 ladder; the
+  // banner's "all" path reveals the entire remaining gap in one Enter.
   const expandDirectional = (
     file: string,
     boundaryRef: BoundaryRef,

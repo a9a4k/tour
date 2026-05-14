@@ -441,25 +441,12 @@ export interface InteractiveRowProps {
   gapAbove: number;
   isCursor: boolean;
   /** Dispatches the expand action into `core/expansion-state.ts`'s
-   *  reducer. The component computes `count`: `expand-all` reveals the
-   *  entire remaining gap in one click; every other directional /
-   *  banner row uses `EXPANSION_STEP`. The Shift modifier carries no
-   *  special meaning (PRD #270 Slice 5 / issue #275). */
+   *  reducer. The component always passes `EXPANSION_STEP` — issue #280
+   *  removed `expand-all` from the standalone `InteractiveSubKind`
+   *  vocabulary (now hosted on the hunk-header banner's left cell). The
+   *  Shift modifier carries no special meaning (PRD #270 Slice 5 / issue
+   *  #275). */
   onActivate: (count: number) => void;
-}
-
-// PRD #270 / issue #271: `expand-all` always reveals the entire remaining
-// gap in one Enter — the button's label IS the contract ("Expand All
-// ${gapAbove} lines"). Every other directional / banner row dispatches
-// `EXPANSION_STEP` lines regardless of the Shift modifier (PRD #270
-// Slice 5 / issue #275 — the per-file Expand-all chrome button is the
-// whole-file escape hatch).
-function interactiveRowCount(
-  subKind: InteractiveSubKind,
-  gapAbove: number,
-): number {
-  if (subKind === "expand-all") return gapAbove;
-  return EXPANSION_STEP;
 }
 
 function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
@@ -468,7 +455,6 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
     boundaryRef,
     direction,
     glyph,
-    gapAbove,
     isCursor,
     onActivate,
   } = props;
@@ -476,13 +462,13 @@ function InteractiveRowImpl(props: InteractiveRowProps): React.JSX.Element {
   if (isCursor) classes.push("is-cursor");
   const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onActivate(interactiveRowCount(subKind, gapAbove));
+    onActivate(EXPANSION_STEP);
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isCursor) return;
     if (e.key !== "Enter") return;
     e.preventDefault();
-    onActivate(interactiveRowCount(subKind, gapAbove));
+    onActivate(EXPANSION_STEP);
   };
   return (
     <div

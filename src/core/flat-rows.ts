@@ -71,11 +71,10 @@ export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 
 /** Options for `flatRows`. */
 export interface FlatRowsOptions {
-  /** Vestigial. PRD #270 Slices 2 & 3 (issues #272, #273) collapsed both
-   *  surfaces onto unconditional skip of `hunk-header` rows from the cursor
-   *  stream — the banner is display-only everywhere. The option is kept
-   *  for caller-side compatibility (TUI passes `false`); the value is now
-   *  ignored. */
+  /** Vestigial. Issue #280 brought the hunk-header banner back as a
+   *  cursor stop when `primaryExpand !== null`, with both surfaces
+   *  following the same rule. The option is kept for caller-side
+   *  compatibility (TUI passes `false`); the value is now ignored. */
   hunkHeaderCursorStop?: boolean;
 }
 
