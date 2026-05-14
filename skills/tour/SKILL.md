@@ -45,6 +45,8 @@ For terminal review: `tour tui "$TOUR_ID"`.
 
 Pass `--reply-agent <name>` only when you can self-identify (Claude Code → `claude`, Codex → `codex`). If unsure, drop the flag — Tour auto-detects shipped CLIs on PATH. See [REFERENCE.md](REFERENCE.md#reply-agent-selection).
 
+For uncommitted work, use `--head WIP` — Tour snapshots the working tree as a synthetic commit; no need to commit first.
+
 Don't pass `--base origin/main`. The default merge-base-with-upstream matches GitHub's PR diff; `--base origin/main` inverts every commit landed on main since branch divergence and buries your changes.
 
 ## Annotation rules
