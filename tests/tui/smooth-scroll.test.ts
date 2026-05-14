@@ -348,7 +348,7 @@ describe("animatedCenterChildInView", () => {
   });
 });
 
-describe("animatedScrollTo — feature-flag bypass", () => {
+describe("animatedScrollTo — animate: false escape hatch", () => {
   it("when `animate: false` is passed, skips the timeline and writes the target instantly", () => {
     const sb = makeFakeScrollBox({ scrollTop: 0, scrollHeight: 500, viewportHeight: 20 });
     const { factory, timelines } = makeFakeTimelineFactory();
