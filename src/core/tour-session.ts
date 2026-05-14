@@ -291,10 +291,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           : state.expansion;
       return {
         state: { ...state, bundle: { kind: "ok", value: action.bundle }, expansion },
-        intents:
-          state.cursor === null
-            ? NO_INTENTS
-            : [{ type: "revalidateCursor" }],
+        intents: revalidateIfCursor(state),
       };
     }
 
@@ -608,10 +605,12 @@ function withExpansion(state: TourSessionState, next: ExpansionState): ReduceRes
 }
 
 // Returns the standard `revalidateCursor` intent list iff a non-null cursor
-// is present (issue #309 — auto-reveal of a classifier-collapsed file, fold
-// toggles, programmatic expansion, etc. can leave `state.cursor` anchored to
-// a row that no longer exists in flat-rows). Mirrors the
-// `bundle.refreshed → revalidateCursor` wiring.
+// is present. Shared by every reducer branch that mutates flat-rows-shape
+// state in a way that can orphan `state.cursor`: `bundle.refreshed`, the
+// four `folds.*` branches, and the `expansion.*` cluster via
+// `withExpansion` (issue #309). The surface drains the intent by
+// re-deriving the view and snapping (or clearing) the anchor via
+// `validateCursor`.
 function revalidateIfCursor(state: TourSessionState): Intent[] {
   return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
 }
