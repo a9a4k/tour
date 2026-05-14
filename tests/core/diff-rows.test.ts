@@ -1503,7 +1503,9 @@ index 1..2 100644
 // redundant second `↕`. The new pure helper counts the gaps that still
 // have hidden content after current expansion.
 describe("fileExpandableGapCount (issue #298)", () => {
-  const TWO_HUNK_WITH_TWO_GAPS = `diff --git a/x.txt b/x.txt
+  // Two hunks (5,3 and 14,2) over a 16-line newContent: file-top gap of
+  // 4, mid-file gap of 6, file-bottom gap of 1 — three distinct gaps.
+  const TWO_HUNK_THREE_GAPS = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
 +++ b/x.txt
@@ -1518,7 +1520,7 @@ index 1..2 100644
 +new14
 `;
 
-  const NEW_CONTENT_TWO_GAPS =
+  const NEW_CONTENT_THREE_GAPS =
     [
       "h1",
       "h2",
@@ -1561,8 +1563,9 @@ index 1..2 100644
 +added
 `;
     const file = parseFile(noGap);
-    // newContent has 4 lines, hunk covers 1..4 → no file-bottom gap.
-    const newContent = ["ctx", "new", "added", "tail-but-also-in-hunk"].slice(0, 3).join("\n") + "\n";
+    // newContent's 3 lines all sit inside the hunk's coverage → no
+    // file-top gap (additionStart=1) and no file-bottom gap remainder.
+    const newContent = ["ctx", "new", "added"].join("\n") + "\n";
     expect(fileExpandableGapCount(file, undefined, newContent)).toBe(0);
   });
 
@@ -1619,7 +1622,7 @@ index 1..2 100644
     expect(fileExpandableGapCount(file, undefined, newContent)).toBe(2);
   });
 
-  it("returns 1 for two adjacent hunks (between-gap = 0) with no other hidden content", () => {
+  it("returns 1 for two adjacent hunks (between-gap = 0) with only a file-top gap", () => {
     const twoAdjacent = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1680,13 +1683,13 @@ index 1..2 100644
     expect(fileExpandableGapCount(file, undefined, newContent)).toBe(1);
   });
 
-  it("returns 2 for two hunks with hidden content between AND a file-top gap", () => {
-    const file = parseFile(TWO_HUNK_WITH_TWO_GAPS);
+  it("returns 3 for two hunks with hidden content above AND between AND below", () => {
+    const file = parseFile(TWO_HUNK_THREE_GAPS);
     // file-top gap = 4 (lines 1..4); mid gap (8..13) = 6; file-bottom = 1 (line 16).
-    expect(fileExpandableGapCount(file, undefined, NEW_CONTENT_TWO_GAPS)).toBe(3);
+    expect(fileExpandableGapCount(file, undefined, NEW_CONTENT_THREE_GAPS)).toBe(3);
   });
 
-  it("returns 3 for three+ hunks with multiple gaps", () => {
+  it("returns 4 for three+ hunks with multiple gaps", () => {
     const threeHunks = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1715,8 +1718,8 @@ index 1..2 100644
     expect(fileExpandableGapCount(file, undefined, newContent)).toBe(4);
   });
 
-  it("drops back to 1 after partial expansion fully reveals one of two gaps", () => {
-    const file = parseFile(TWO_HUNK_WITH_TWO_GAPS);
+  it("drops by 1 after partial expansion fully reveals one of three gaps", () => {
+    const file = parseFile(TWO_HUNK_THREE_GAPS);
     // Starts at 3 gaps (top/mid/bottom). Saturate the file-top gap by
     // expanding 4 lines from the file-top boundary's `down` side.
     const expansion = new Map([
@@ -1730,11 +1733,11 @@ index 1..2 100644
         },
       ],
     ]);
-    expect(fileExpandableGapCount(file, expansion, NEW_CONTENT_TWO_GAPS)).toBe(2);
+    expect(fileExpandableGapCount(file, expansion, NEW_CONTENT_THREE_GAPS)).toBe(2);
   });
 
   it("drops to 0 once every gap is saturated", () => {
-    const file = parseFile(TWO_HUNK_WITH_TWO_GAPS);
+    const file = parseFile(TWO_HUNK_THREE_GAPS);
     const expansion = new Map([
       [
         "x.txt",
@@ -1748,6 +1751,6 @@ index 1..2 100644
         },
       ],
     ]);
-    expect(fileExpandableGapCount(file, expansion, NEW_CONTENT_TWO_GAPS)).toBe(0);
+    expect(fileExpandableGapCount(file, expansion, NEW_CONTENT_THREE_GAPS)).toBe(0);
   });
 });

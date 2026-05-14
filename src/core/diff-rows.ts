@@ -420,11 +420,9 @@ function walkHunks(
 }
 
 /** True iff the file has at least one hidden gap (file-top, mid-file, or
- *  file-bottom) after subtracting current expansion. Issue #297 promotes
- *  this helper to a public export so the TUI's file-header chrome can
- *  decide when to render the `↕` Expand-all affordance from the same
- *  source of truth that gates the affordance's effect — once every gap
- *  is saturated the affordance has nothing to do and disappears. */
+ *  file-bottom) after subtracting current expansion. Thin wrapper around
+ *  `fileExpandableGapCount` (issue #298 split out the count form so both
+ *  surfaces' file-header chrome can apply the `gapCount >= 2` gate). */
 export function fileHasHiddenGap(
   file: FileDiffMetadata,
   expansion: ExpansionState | undefined,
