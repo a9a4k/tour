@@ -1547,6 +1547,120 @@ describe("reduce — folds slice (slice 3 foundation)", () => {
   });
 });
 
+describe("reduce — folds.* + expansion.* → revalidateCursor wiring (issue #309)", () => {
+  // Auto-reveal of a classifier-collapsed file (triggered by a cursor.set
+  // whose anchor lands on the file's synthetic `collapsed-file` row) leaves
+  // `state.cursor` orphaned: `setCursor` emits `revealSidebarFile`, the
+  // runtime dispatches `folds.setOverride { value: false }`, the planner
+  // stops emitting the synthetic row, and the next render's keyboard handler
+  // reads a stale anchor — j/k silently no-op. The fix mirrors the
+  // `bundle.refreshed → revalidateCursor` wiring at every reducer branch that
+  // mutates flat-rows-shape state (folds + expansion) so the runtime can
+  // snap `state.cursor` back to a walkable row.
+  it("folds.setOverride { value: false } with cursor !== null emits revalidateCursor", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: false,
+    });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("folds.setOverride with cursor === null emits no revalidateCursor", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: true,
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.setOverride same-value no-op emits no revalidateCursor (state ref unchanged)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    s = reduce(s, { type: "folds.setOverride", file: "foo.ts", value: true }).state;
+    const r = reduce(s, { type: "folds.setOverride", file: "foo.ts", value: true });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.clearOverride with cursor !== null emits revalidateCursor", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "folds.setOverride",
+      file: "foo.ts",
+      value: true,
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: rowAnchor({ file: "foo.ts" }) }).state;
+    const r = reduce(s, { type: "folds.clearOverride", file: "foo.ts" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("folds.clearOverride absent-file no-op emits no revalidateCursor", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, { type: "folds.clearOverride", file: "ghost.ts" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("folds.toggleFolder with cursor !== null emits revalidateCursor", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, { type: "folds.toggleFolder", path: "src" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("folds.clearAll with cursor !== null emits revalidateCursor", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "folds.toggleFolder",
+      path: "src",
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: rowAnchor({ file: "foo.ts" }) }).state;
+    const r = reduce(s, { type: "folds.clearAll" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("folds.clearAll same-empty no-op emits no revalidateCursor", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, { type: "folds.clearAll" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("expansion.expandFile with cursor !== null emits revalidateCursor (defence in depth on top of cursorAfterExpand)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    const r = reduce(s, { type: "expansion.expandFile", file: "foo.ts" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("expansion.expandFile same-ref no-op emits no revalidateCursor", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts" }),
+    }).state;
+    s = reduce(s, { type: "expansion.expandFile", file: "foo.ts" }).state;
+    const r = reduce(s, { type: "expansion.expandFile", file: "foo.ts" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+});
+
 describe("reduce — layout slice (slice 3 foundation)", () => {
   it("layout.set switches split → unified (no intents)", () => {
     const r = reduce(initialTourSessionState(), {

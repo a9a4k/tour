@@ -441,6 +441,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       );
 
     case "expansion.seedFromOrphans":
+      // No revalidateCursor: this action runs during `bundle.refreshed` /
+      // `tour.switched`, both of which own their own cursor revalidation
+      // (or reset). The action is also a no-op outside those paths.
       return withExpansion(state, expansionSeedFromOrphans(state.expansion, action.windows));
 
     case "composer.open":
@@ -510,7 +513,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       const next = new Set(state.collapsedFolders);
       if (next.has(action.path)) next.delete(action.path);
       else next.add(action.path);
-      return { state: { ...state, collapsedFolders: next }, intents: NO_INTENTS };
+      return {
+        state: { ...state, collapsedFolders: next },
+        intents: revalidateIfCursor(state),
+      };
     }
 
     case "folds.setOverride": {
@@ -522,7 +528,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           ...state,
           collapsedOverrides: { ...state.collapsedOverrides, [action.file]: action.value },
         },
-        intents: NO_INTENTS,
+        intents: revalidateIfCursor(state),
       };
     }
 
@@ -530,7 +536,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (!(action.file in state.collapsedOverrides)) return { state, intents: NO_INTENTS };
       const next = { ...state.collapsedOverrides };
       delete next[action.file];
-      return { state: { ...state, collapsedOverrides: next }, intents: NO_INTENTS };
+      return {
+        state: { ...state, collapsedOverrides: next },
+        intents: revalidateIfCursor(state),
+      };
     }
 
     case "folds.clearAll": {
@@ -546,7 +555,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           collapsedFolders: new Set<string>(),
           collapsedOverrides: {},
         },
-        intents: NO_INTENTS,
+        intents: revalidateIfCursor(state),
       };
     }
 
@@ -585,10 +594,26 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
 // Shared expansion-slice writer: every `expansion.*` action delegates to a
 // pure helper in `core/expansion-state.ts` and is otherwise structurally
-// identical — same-ref short-circuit, no intents, slice-only mutation.
+// identical — same-ref short-circuit, slice-only mutation, and emits
+// `revalidateCursor` when state mutated AND the cursor is non-null (issue
+// #309, mirrors the `folds.*` wiring). Defence in depth on top of the
+// surface-side `cursorAfterExpand` helper from issue #306 — surfaces that
+// don't pre-compute a landing (or that miss an orphan kind) still recover.
 function withExpansion(state: TourSessionState, next: ExpansionState): ReduceResult {
   if (next === state.expansion) return { state, intents: NO_INTENTS };
-  return { state: { ...state, expansion: next }, intents: NO_INTENTS };
+  return {
+    state: { ...state, expansion: next },
+    intents: revalidateIfCursor(state),
+  };
+}
+
+// Returns the standard `revalidateCursor` intent list iff a non-null cursor
+// is present (issue #309 — auto-reveal of a classifier-collapsed file, fold
+// toggles, programmatic expansion, etc. can leave `state.cursor` anchored to
+// a row that no longer exists in flat-rows). Mirrors the
+// `bundle.refreshed → revalidateCursor` wiring.
+function revalidateIfCursor(state: TourSessionState): Intent[] {
+  return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
 }
 
 // Open → submitting and errored → submitting share their entire transition:

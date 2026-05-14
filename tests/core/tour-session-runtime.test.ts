@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   TourSessionStore,
   initialTourSessionState,
+  isBundleResolved,
   type TourSessionState,
 } from "../../src/core/tour-session.js";
+import { deriveTourSessionView } from "../../src/core/tour-session-view.js";
 import {
   TourSessionRuntime,
   type ScrollRowAnchor,
@@ -955,6 +957,156 @@ describe("TourSessionRuntime", () => {
       });
 
       expect(store.getState().cursor).toBe(before);
+      stop();
+    });
+  });
+
+  describe("collapsed-file auto-reveal → revalidateCursor (issue #309)", () => {
+    // A bun.lock-style classifier-collapsed file with a real one-hunk diff
+    // body. With `classification.collapsed === true` the planner emits a
+    // single synthetic `collapsed-file` interactive row in place of the
+    // file's body; clearing the override re-emits the body.
+    const COLLAPSED_DIFF = `diff --git a/bun.lock b/bun.lock
+--- a/bun.lock
++++ b/bun.lock
+@@ -1,1 +1,2 @@
+ keep
++added
+`;
+
+    function collapsedFileBundle(id: string): TourBundle {
+      const file: BundleFile = {
+        name: "bun.lock",
+        type: "change",
+        hunks: [
+          {
+            additionStart: 1,
+            additionCount: 2,
+            deletionStart: 1,
+            deletionCount: 1,
+            content: [],
+          },
+        ],
+        oldContent: "keep\n",
+        newContent: "keep\nadded\n",
+        classification: { collapsed: true, reason: "generated" },
+        orphanWindows: [],
+      };
+      return {
+        kind: "ok",
+        tour: tour(id),
+        annotations: [],
+        diff: COLLAPSED_DIFF,
+        files: [file],
+      };
+    }
+
+    it("cursor.set onto the synthetic collapsed-file anchor → reveal clears the override → runtime revalidates state.cursor onto a walkable row (no ghost cursor)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: collapsedFileBundle("tour-a"),
+      });
+
+      // Simulate `j` landing on bun.lock's collapsed-file row: the surface
+      // dispatches a `cursor.set` with a synthetic interactive anchor.
+      const syntheticAnchor: Cursor = {
+        kind: "row",
+        file: "bun.lock",
+        lineNumber: 0,
+        side: "additions",
+        preferredSide: "additions",
+        interactive: { subKind: "collapsed-file", boundaryRef: "top" },
+      };
+      store.dispatch({ type: "cursor.set", anchor: syntheticAnchor });
+
+      // The setCursor → revealSidebarFile → folds.setOverride chain runs
+      // synchronously inside the runtime. With the fix, that mutation emits
+      // `revalidateCursor`; the runtime snaps state.cursor onto a walkable
+      // row in the post-reveal flat-rows. Without the fix, state.cursor
+      // keeps the synthetic anchor — `j`/`k` silently no-op.
+      const cursor = store.getState().cursor;
+      expect(cursor).not.toBeNull();
+      expect(cursor).not.toBe(syntheticAnchor);
+      if (cursor === null || cursor.kind !== "row") throw new Error("unreachable");
+      // Snap landed inside bun.lock (the file the user was navigating into).
+      expect(cursor.file).toBe("bun.lock");
+      // The anchor must NOT be the synthetic collapsed-file row — that row
+      // no longer exists in flatRows after the override clears.
+      expect(cursor.interactive?.subKind).not.toBe("collapsed-file");
+      // The override is also cleared (sanity — this is what triggered the
+      // bug, and what the runtime's view re-derivation must see).
+      expect(store.getState().collapsedOverrides["bun.lock"]).toBe(false);
+      stop();
+    });
+
+    it("subsequent j-step from the snapped cursor advances to the next walkable row (post-reveal navigation works)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: collapsedFileBundle("tour-a"),
+      });
+      // Drive the auto-reveal chain by `cursor.set`ing the synthetic anchor.
+      const syntheticAnchor: Cursor = {
+        kind: "row",
+        file: "bun.lock",
+        lineNumber: 0,
+        side: "additions",
+        preferredSide: "additions",
+        interactive: { subKind: "collapsed-file", boundaryRef: "top" },
+      };
+      store.dispatch({ type: "cursor.set", anchor: syntheticAnchor });
+
+      // The snapped cursor must resolve in the live flat-rows so a follow-
+      // up j/k motion is not a silent no-op (the user-visible #309 symptom
+      // after the ghost-cursor lands).
+      const state = store.getState();
+      const bundle = isBundleResolved(state);
+      if (bundle === null || bundle.kind !== "ok") throw new Error("unreachable");
+      const view = deriveTourSessionView(bundle, state);
+      if (view.kind !== "ok") throw new Error("unreachable");
+      expect(view.cursor.rowIdx).toBeGreaterThanOrEqual(0);
+      stop();
+    });
+
+    it("cursor.set into a non-collapsed file does not double-dispatch cursor.set (regression guard)", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: bundleWithFileA("tour-a"),
+      });
+      // The same-ref short-circuit in handleRevalidateCursor means a
+      // re-validation that yields the same anchor does NOT dispatch a
+      // second cursor.set. We measure that by tracking scrollToRow calls:
+      // every cursor.set on a row anchor emits scrollCursorTarget which
+      // routes to scrollToRow. A double-dispatch would show 2 calls.
+      adapter.scrollRowCalls.length = 0;
+      store.dispatch({
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "a.ts",
+          lineNumber: 1,
+          side: "additions",
+          preferredSide: "additions",
+        },
+      });
+      expect(adapter.scrollRowCalls.length).toBe(1);
       stop();
     });
   });
