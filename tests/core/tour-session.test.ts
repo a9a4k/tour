@@ -1353,6 +1353,148 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r2.intents).toEqual([]);
   });
 
+  // Issue #322: optimistic annotation insert. The freshly-created Annotation
+  // must be folded into the resolved bundle's annotations array on the same
+  // dispatch that closes the composer, so the new card renders in the same
+  // React commit as the textarea removal — no visible gap while the SSE-
+  // driven bundle.refreshed round-trips (~500-600ms on large tours).
+  describe("composer.submitted optimistic bundle annotations insert (issue #322)", () => {
+    it("appends the new annotation to a resolved snapshot-lost bundle's annotations array", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkAnnotation({ id: "fresh-ann-1" });
+      const r = reduce(s, { type: "composer.submitted", annotation: ann });
+      expect(r.state.bundle.kind).toBe("ok");
+      if (r.state.bundle.kind === "ok") {
+        expect(r.state.bundle.value.annotations.map((a) => a.id)).toContain("fresh-ann-1");
+        // Variant is preserved across the optimistic fold.
+        expect(r.state.bundle.value.kind).toBe("snapshot-lost");
+      }
+    });
+
+    it("appends the new annotation to a resolved ok-bundle's annotations array (preserves diff + files)", () => {
+      const b = okBundle("tour-a", [bundleFile("foo.ts")]);
+      let s = reduce(initialTourSessionState(), {
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: b,
+      }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkAnnotation({ id: "fresh-ann-ok" });
+      const r = reduce(s, { type: "composer.submitted", annotation: ann });
+      expect(r.state.bundle.kind).toBe("ok");
+      if (r.state.bundle.kind === "ok") {
+        expect(r.state.bundle.value.kind).toBe("ok");
+        expect(r.state.bundle.value.annotations.map((a) => a.id)).toContain("fresh-ann-ok");
+        if (r.state.bundle.value.kind === "ok") {
+          // diff / files refs preserved (no full bundle rebuild).
+          expect(r.state.bundle.value.diff).toBe(b.diff);
+          expect(r.state.bundle.value.files).toBe(b.files);
+        }
+      }
+    });
+
+    it("reply submission path produces the same optimistic insertion", () => {
+      const parent = mkAnnotation({ id: "parent-1" });
+      const b: TourBundle = {
+        kind: "snapshot-lost",
+        tour: tour({ id: "tour-a" }),
+        annotations: [parent],
+      };
+      let s = reduce(initialTourSessionState(), {
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: b,
+      }).state;
+      s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
+      s = reduce(s, { type: "composer.setBody", body: "a reply" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const reply = mkAnnotation({ id: "reply-1", replies_to: "parent-1" });
+      const r = reduce(s, { type: "composer.submitted", annotation: reply });
+      expect(r.state.bundle.kind).toBe("ok");
+      if (r.state.bundle.kind === "ok") {
+        const ids = r.state.bundle.value.annotations.map((a) => a.id);
+        expect(ids).toEqual(["parent-1", "reply-1"]);
+      }
+    });
+
+    it("subsequent bundle.refreshed carrying the same id results in exactly one occurrence (no duplicate)", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkAnnotation({ id: "dedup-1" });
+      s = reduce(s, { type: "composer.submitted", annotation: ann }).state;
+      // Server bundle from the SSE-triggered refetch — also carries the
+      // same annotation. The refresh must overwrite the optimistic copy,
+      // not double-insert.
+      const refreshed: TourBundle = {
+        kind: "snapshot-lost",
+        tour: tour({ id: "tour-a" }),
+        annotations: [ann],
+      };
+      const r = reduce(s, { type: "bundle.refreshed", bundle: refreshed });
+      expect(r.state.bundle.kind).toBe("ok");
+      if (r.state.bundle.kind === "ok") {
+        const matching = r.state.bundle.value.annotations.filter((a) => a.id === "dedup-1");
+        expect(matching).toHaveLength(1);
+      }
+    });
+
+    it("subsequent bundle.refreshed NOT carrying the id overwrites the optimistic insert (server wins on divergence)", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const optimistic = mkAnnotation({ id: "optimistic-1" });
+      s = reduce(s, { type: "composer.submitted", annotation: optimistic }).state;
+      // Multi-client scenario: another writer concurrently created a
+      // different annotation; ours never reached disk. The refreshed
+      // bundle carries someone else's annotation but not ours.
+      const otherAnn = mkAnnotation({ id: "other-writer-1" });
+      const refreshed: TourBundle = {
+        kind: "snapshot-lost",
+        tour: tour({ id: "tour-a" }),
+        annotations: [otherAnn],
+      };
+      const r = reduce(s, { type: "bundle.refreshed", bundle: refreshed });
+      expect(r.state.bundle.kind).toBe("ok");
+      if (r.state.bundle.kind === "ok") {
+        const ids = r.state.bundle.value.annotations.map((a) => a.id);
+        expect(ids).toEqual(["other-writer-1"]);
+        expect(ids).not.toContain("optimistic-1");
+      }
+    });
+
+    it("is a no-op on the bundle slice when the bundle isn't resolved; composer still transitions to closed", () => {
+      // Hand-construct a state in submitting with a non-ok bundle slice
+      // (defence-in-depth path — the runtime guards against this but the
+      // reducer must still close the composer cleanly).
+      const base = initialTourSessionState();
+      const s: TourSessionState = {
+        ...base,
+        currentTourId: "tour-a",
+        bundle: { kind: "loading" },
+        composer: {
+          kind: "submitting",
+          target: topLevelTarget(),
+          body: "draft",
+        },
+      };
+      const ann = mkAnnotation({ id: "fresh-but-bundleless" });
+      const r = reduce(s, { type: "composer.submitted", annotation: ann });
+      expect(r.state.composer).toEqual({ kind: "closed" });
+      expect(r.state.bundle).toEqual({ kind: "loading" });
+      expect(r.intents).toEqual([
+        { type: "scrollToAnnotation", annotationId: "fresh-but-bundleless" },
+      ]);
+    });
+  });
+
   it("composer.failed on submitting → errored, preserving target + body", () => {
     let s = stateWithTourLoaded();
     const target = topLevelTarget({ file: "z.ts", line_start: 3, line_end: 3 });
