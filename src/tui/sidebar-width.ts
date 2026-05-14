@@ -6,41 +6,65 @@ import {
   type FileRowStats,
 } from "./sidebar-row-label.js";
 
-// Sidebar auto-fit width (issue #312). Three composable knobs let
-// deep trees render readable filenames without forcing the user to
-// guess a fixed column count:
+// Sidebar auto-fit width (issue #312; cap formula retuned in issue
+// #315). Four composable knobs let deep trees render readable
+// filenames without forcing the user to guess a fixed column count:
 //
 //   * `computeAutoFitWidth(rows, statsFor, terminalWidth)` runs on
 //     every tour-id change. Walks the visible rows, takes the widest
 //     row's `fixedCost + displayName.length`, adds the box border,
-//     and clamps to `[SIDEBAR_MIN_WIDTH, floor(terminalWidth *
-//     SIDEBAR_MAX_FRAC)]`.
+//     and clamps via `clampSidebarWidth`.
 //
-//   * `clampSidebarWidth(width, terminalWidth)` is the same clamp,
-//     reused by the `[`/`]` resize keys so manual adjustment can't
-//     escape the auto-fit range.
+//   * `clampSidebarWidth(width, terminalWidth)` is the auto-fit
+//     clamp. Range is `[SIDEBAR_MIN_WIDTH, max(SIDEBAR_MIN_WIDTH,
+//     terminalWidth - DIFF_PANE_MIN_WIDTH)]` — the cap reserves a
+//     defensible diff-pane minimum rather than an arbitrary fraction
+//     of the terminal width. Replaced the pre-#315 percentage cap
+//     (`floor(terminalWidth * 0.4)`) which made the reproduction
+//     case from issue #315 (117-col terminal, depth-5 row needing 54
+//     cols) impossible to satisfy: auto-fit topped out at 46 cols
+//     and `]` could not push past the same percentage ceiling.
+//
+//   * `clampSidebarWidthManual(width, terminalWidth)` is the wider
+//     clamp used by the `[`/`]` keypress handler. Range is
+//     `[SIDEBAR_MIN_WIDTH, max(SIDEBAR_MIN_WIDTH, terminalWidth -
+//     SIDEBAR_MIN_WIDTH)]` — an explicit user gesture honors only
+//     the hard floor on the diff side (24 cols guaranteed for the
+//     diff pane, symmetric with the sidebar's floor). Manual resize
+//     can squeeze the diff below `DIFF_PANE_MIN_WIDTH`; auto-fit
+//     cannot.
 //
 //   * `INDENT_PER_DEPTH` in `sidebar-row-label.ts` dropped from 2 to
-//     1 — the only knob that helps when the 40% cap binds (narrow
-//     terminals + deep trees, e.g. tmux split at 100 cols on a
-//     depth-7 monorepo). `[`/`]` cannot push past the cap, so indent
-//     is the load-bearing fix for that cohort.
+//     1 in #312 — orthogonal to the cap fix, still load-bearing for
+//     narrow-terminal degenerate cases where the diff-floor cap
+//     collapses to MIN.
 //
-// MIN floor wins over the cap when they collide (degenerate narrow-
-// terminal case). Empty row lists fall back to
+// `DIFF_PANE_MIN_WIDTH = 60` is the bare-minimum diff readability
+// budget for typical code: line numbers, gutter, indent, and enough
+// content to recognise a statement. Static rather than derived from
+// actual diff content — a per-bundle derivation adds complexity for
+// marginal gain; 60 cols is defensible across the cohort.
+//
+// MIN floor wins over either cap when they collide (degenerate
+// narrow-terminal case). Empty row lists fall back to
 // SIDEBAR_DEFAULT_WIDTH (still clamped).
 
 export const SIDEBAR_MIN_WIDTH = 24;
 export const SIDEBAR_BORDER = 2;
-export const SIDEBAR_MAX_FRAC = 0.4;
+export const DIFF_PANE_MIN_WIDTH = 60;
 export const SIDEBAR_RESIZE_STEP = 2;
 export const SIDEBAR_DEFAULT_WIDTH = 30;
 
 export function clampSidebarWidth(width: number, terminalWidth: number): number {
-  const cap = Math.max(
-    SIDEBAR_MIN_WIDTH,
-    Math.floor(terminalWidth * SIDEBAR_MAX_FRAC),
-  );
+  const cap = Math.max(SIDEBAR_MIN_WIDTH, terminalWidth - DIFF_PANE_MIN_WIDTH);
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(cap, width));
+}
+
+export function clampSidebarWidthManual(
+  width: number,
+  terminalWidth: number,
+): number {
+  const cap = Math.max(SIDEBAR_MIN_WIDTH, terminalWidth - SIDEBAR_MIN_WIDTH);
   return Math.max(SIDEBAR_MIN_WIDTH, Math.min(cap, width));
 }
 
