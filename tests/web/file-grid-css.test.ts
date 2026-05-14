@@ -488,11 +488,14 @@ describe("FILE_GRID_CSS — file-card boundary (#249)", () => {
   // review. Pre-#249 the `.tour-file-outer` div was a transparent
   // passthrough (no rule); files stacked edge-to-edge with nothing for the
   // eye to anchor against. New rule paints the 1px border, 6px radius,
-  // 16px vertical gap, canvas.default background, and overflow: hidden so
-  // the file header's top corners and the diff body's bottom corners clip
-  // to the rounded boundary. `overflow: hidden` also bounds the sticky
-  // file-header's stick range to its own card — one sticky header at a
-  // time instead of all file headers stacking at the viewport top.
+  // 16px vertical gap, canvas.default background, and a `clip-path` for
+  // rounded-corner clipping. `clip-path` is used INSTEAD OF `overflow:
+  // hidden` because the latter would make `.tour-file-outer` a scroll-
+  // container ancestor, against which the sticky `.tour-file-header`
+  // would then resolve — and since `.tour-file-outer` never scrolls,
+  // the header would never stick. `clip-path` is a visual clip only
+  // (no scroll container), so the sticky header resolves against
+  // `.app-main` (the real scroll container) and pins at viewport top.
 
   const outerRule = FILE_GRID_CSS.match(
     /\.tour-file-outer\s*\{([^}]*)\}/,
@@ -517,14 +520,18 @@ describe("FILE_GRID_CSS — file-card boundary (#249)", () => {
     expect(outerRule).toMatch(/margin-bottom:\s*16px/);
   });
 
-  it("clips children to the rounded corners via overflow: hidden", () => {
-    // Without this, the file header's top corners and the diff body's
-    // bottom corners stay square even though the outer container is
-    // rounded — the children paint over the rounded boundary.
-    // overflow: hidden also bounds the sticky file-header's stick range
-    // to the card box so only the current file's header sticks at any
-    // moment (instead of all headers stacking at the viewport top).
-    expect(outerRule).toMatch(/overflow:\s*hidden/);
+  it("clips children to the rounded corners via clip-path (not overflow: hidden)", () => {
+    // Without rounded clipping, the file header's top corners and the
+    // diff body's bottom corners would stay square even though the outer
+    // container is rounded — the children would paint over the rounded
+    // boundary. `clip-path: inset(0 round 6px)` provides the clip without
+    // making `.tour-file-outer` a scroll container; `overflow: hidden`
+    // would have done both, breaking the sticky file-header (which would
+    // then resolve `top: 0` against this never-scrolling element instead
+    // of `.app-main`). Pin both: clip-path present, overflow: hidden
+    // absent — the wrong fix can't sneak back in.
+    expect(outerRule).toMatch(/clip-path:\s*inset\(0\s+round\s+6px\)/);
+    expect(outerRule).not.toMatch(/overflow:\s*hidden/);
   });
 
   it("sets background-color to theme.canvas.default so the card sits over the page canvas", () => {
