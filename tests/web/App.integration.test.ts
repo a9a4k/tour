@@ -252,6 +252,28 @@ describe("App integration smoke (Issue #235)", () => {
     expect(directChildren[1]!.classList.contains("sequence-pill")).toBe(true);
     expect(directChildren[2]!.classList.contains("layout-toggle")).toBe(true);
   });
+
+  // Issue #308: the .tour-refs span used to render the user's typed
+  // ref names (`${base_source} ← ${head_source}`). On a re-opened tour
+  // those labels mis-read as "current main / current HEAD" — the fix
+  // renders the stable 7-char short SHAs instead.
+  it("header source pair renders as 7-char short SHAs, not ref names (issue #308)", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const refs = container.querySelector(".tour-refs");
+    expect(refs).not.toBeNull();
+    // Fixture SHAs are 8-char ("deadbeef" / "cafebabe"); the 7-char slice
+    // gives "deadbee" / "cafebab".
+    expect(refs!.textContent).toContain("cafebab ← deadbee");
+    // The ref names must NOT leak — that would re-introduce the drift.
+    expect(refs!.textContent).not.toContain("main");
+    expect(refs!.textContent).not.toContain("feature/x");
+  });
 });
 
 // Issue #304: web per-file Expand-all `↕` chrome stays visible when the
@@ -419,5 +441,96 @@ describe("App per-file Expand-all chrome — collapse gate (Issue #304)", () => 
         '.tour-file-outer[data-file="src/gap.ts"] .tour-file-expand-all-button',
       ),
     ).not.toBeNull();
+  });
+});
+
+// Issue #308: WIP-tour special case. The head SHA on a wip_snapshot tour
+// is a synthetic working-tree commit the user can't `git show`; rendering
+// its short SHA in the header would be misleading. The fix prints the
+// literal word "WIP" on the head side; the base side still renders as a
+// real short SHA. The discriminator is the `wip_snapshot` boolean —
+// NOT a string match against `head_source === "WIP"`.
+
+const wipTourId = "2026-05-14-000000-wip-header";
+
+const wipTourSummary = {
+  id: wipTourId,
+  title: "WIP header fixture",
+  status: "open" as const,
+  created_at: "2026-05-14T00:00:00Z",
+  closed_at: "",
+  head_sha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  base_sha: "cafebabecafebabecafebabecafebabecafebabe",
+  // head_source is intentionally "HEAD" (a real ref the user might have
+  // typed) — the WIP literal must come from wip_snapshot, not from
+  // matching head_source against "WIP".
+  head_source: "HEAD",
+  base_source: "main",
+  wip_snapshot: true,
+};
+
+const wipBundle = {
+  kind: "ok" as const,
+  tour: wipTourSummary,
+  annotations: [],
+  diff: "",
+  files: [],
+};
+
+describe("App header source pair — WIP tour (Issue #308)", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([wipTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${wipTourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(wipBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${wipTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+  });
+
+  it("renders `<base[:7]> ← WIP` for a tour with wip_snapshot === true", async () => {
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: wipTourId }));
+    });
+    await flush();
+
+    const refs = container.querySelector(".tour-refs");
+    expect(refs).not.toBeNull();
+    expect(refs!.textContent).toContain("cafebab ← WIP");
+    // The head SHA prefix is "deadbee"; it must NOT appear (the WIP
+    // synthetic snapshot SHA is meaningless to a human and rendering it
+    // would be the precise mis-cue the special case avoids).
+    expect(refs!.textContent).not.toContain("deadbee");
+    // Ref names must not leak either.
+    expect(refs!.textContent).not.toContain("HEAD");
+    expect(refs!.textContent).not.toContain("main");
   });
 });

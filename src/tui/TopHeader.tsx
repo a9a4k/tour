@@ -1,5 +1,6 @@
 import type { Tour } from "../core/types.js";
 import type { DiffStats } from "../core/diff-stats.js";
+import { headerSourcePair } from "../core/header-source-pair.js";
 import { theme } from "../core/theme.js";
 import { HamburgerButtonTui } from "./HamburgerButton.js";
 
@@ -71,7 +72,7 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
               truncate
               maxWidth={60}
             >
-              {`  ${tour.base_source} ← ${tour.head_source}`}
+              {`  ${headerSourcePair(tour)}`}
             </text>
           </box>
         </box>
