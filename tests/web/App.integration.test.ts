@@ -819,3 +819,204 @@ describe("App fold-unfold restores classifier-default (issue #316)", () => {
     expect(interactiveRows().length).toBeGreaterThan(0);
   });
 });
+
+// Issue #332: webapp footer's `s: send to {agent}` segment must mount
+// only when `--reply-agent` is configured AND the cursor is on a human
+// annotation card AND the reply-lock is free. The fixture's single
+// top-level annotation is human-authored, so the bundle-load re-anchor
+// (re-anchor-policy.ts) lands the cursor on it; the footer's predicate
+// then resolves to `showSendHint: true` iff replyAgent is also set.
+
+const sendHintTourId = "2026-05-15-000000-footer-send-hint";
+
+const sendHintTourSummary = {
+  id: sendHintTourId,
+  title: "Footer send-hint fixture",
+  status: "open" as const,
+  created_at: "2026-05-15T00:00:00Z",
+  closed_at: "",
+  head_sha: "deadbeef",
+  base_sha: "cafebabe",
+  head_source: "feature/x",
+  base_source: "main",
+  wip_snapshot: false,
+};
+
+const sendHintDiff = `diff --git a/src/foo.ts b/src/foo.ts
+index 1..2 100644
+--- a/src/foo.ts
++++ b/src/foo.ts
+@@ -1,2 +1,3 @@
+ first line
+-old line
++new line
++added line
+`;
+
+const humanAnnotation = {
+  id: "ann-human",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 2,
+  line_end: 2,
+  body: "human comment",
+  author: "alice",
+  author_kind: "human" as const,
+  created_at: "2026-05-15T00:00:00Z",
+};
+
+const agentAnnotation = {
+  id: "ann-agent",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 3,
+  line_end: 3,
+  body: "agent comment",
+  author: "claude",
+  author_kind: "agent" as const,
+  created_at: "2026-05-15T00:00:01Z",
+};
+
+const sendHintBundle = {
+  kind: "ok" as const,
+  tour: sendHintTourSummary,
+  annotations: [humanAnnotation, agentAnnotation],
+  diff: sendHintDiff,
+  files: [
+    {
+      name: "src/foo.ts",
+      type: "modified",
+      hunks: [],
+      oldContent: "first line\nold line\n",
+      newContent: "first line\nnew line\nadded line\n",
+      classification: { collapsed: false },
+      orphanWindows: [],
+    },
+  ],
+};
+
+function stubFetch(replyLock: unknown): typeof fetch {
+  return vi.fn((input: RequestInfo | URL) => {
+    const u = typeof input === "string" ? input : input.toString();
+    if (u.includes("/api/tours?")) {
+      return Promise.resolve(
+        new Response(JSON.stringify([sendHintTourSummary]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${sendHintTourId}`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(sendHintBundle), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${sendHintTourId}/reply-lock`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(replyLock), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as unknown as typeof fetch;
+}
+
+describe("App footer dynamic send-hint (Issue #332)", () => {
+  it("renders `s: send to {agent}` when reply-agent is configured and cursor is on a human card", async () => {
+    globalThis.fetch = stubFetch(null);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(App, {
+          initialTourId: sendHintTourId,
+          replyAgent: "claude",
+        }),
+      );
+    });
+    await flush();
+
+    const footer = container.querySelector("footer.app-footer");
+    expect(footer).not.toBeNull();
+    expect(footer!.textContent).toContain("s: send to claude");
+  });
+
+  it("omits the send-hint segment when reply-agent is unset, even on a human card", async () => {
+    globalThis.fetch = stubFetch(null);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(App, { initialTourId: sendHintTourId }),
+      );
+    });
+    await flush();
+
+    const footer = container.querySelector("footer.app-footer");
+    expect(footer).not.toBeNull();
+    expect(footer!.textContent).not.toContain("s: send to");
+  });
+
+  it("omits the send-hint segment when the reply-lock is held tour-wide", async () => {
+    globalThis.fetch = stubFetch({
+      agent: "claude",
+      tour_id: sendHintTourId,
+      annotation_id: "ann-human",
+      acquired_at: "2026-05-15T00:00:02Z",
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(App, {
+          initialTourId: sendHintTourId,
+          replyAgent: "claude",
+        }),
+      );
+    });
+    await flush();
+
+    const footer = container.querySelector("footer.app-footer");
+    expect(footer).not.toBeNull();
+    expect(footer!.textContent).not.toContain("s: send to");
+  });
+
+  it("omits the send-hint segment when the cursor moves to an agent card", async () => {
+    globalThis.fetch = stubFetch(null);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(App, {
+          initialTourId: sendHintTourId,
+          replyAgent: "claude",
+        }),
+      );
+    });
+    await flush();
+
+    // Bundle-load re-anchor lands on the first top-level (human) — segment present.
+    const footer = container.querySelector("footer.app-footer");
+    expect(footer!.textContent).toContain("s: send to claude");
+
+    // `n` walks top-level forward — lands on the agent annotation. Segment must drop.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "n", bubbles: true }),
+      );
+    });
+    await flush();
+
+    expect(footer!.textContent).not.toContain("s: send to");
+  });
+});

@@ -1672,7 +1672,21 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           </>
         )}
       </div>
-      <Footer legend={composeFooterHints({ surface: "web" })} />
+      <Footer
+        legend={composeFooterHints({
+          surface: "web",
+          replyAgent: replyAgent ?? undefined,
+          // Mirrors the issue #332 predicate: cursor on a human-authored
+          // annotation card AND the reply-lock is free. `replyAgent`
+          // gating is handled inside the composer — passing it through
+          // unconditionally keeps the predicate readable here.
+          showSendHint:
+            view.kind === "ok" &&
+            view.cursor.onCard &&
+            view.cursor.cardAnnotation?.author_kind === "human" &&
+            replyLock === null,
+        })}
+      />
       {sessionState.picker.kind === "open" ? (
         <TourPicker
           rows={sessionState.picker.rows}

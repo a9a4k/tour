@@ -60,6 +60,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #331
 
+- **Webapp: footer `s: send to {agent}` segment is now dynamic
+  (issue #332).** The legend now toggles the send-hint with the
+  same predicate the TUI footer uses: `--reply-agent` is configured
+  AND the cursor is on a human-authored annotation card AND the
+  reply-lock is free tour-wide. Cursor moves, lock acquires /
+  releases, and bundle reloads recompute the legend on the next
+  render — no new timer or subscription beyond the App's existing
+  render-time inputs. When the hint is suppressed, the legend is
+  byte-identical to the static slice-1 string. Second slice of
+  PRD #330; the transient status surface lands in a subsequent
+  slice.
+
+  Issue: #332
+
 - **TUI: `y` yanks the focused file's repo-relative path to the system
   clipboard (issue #326).** Webapp parity for the copy-path affordance
   added by issues #16 / #225 / #317 / #319. Pressing `y` resolves the
