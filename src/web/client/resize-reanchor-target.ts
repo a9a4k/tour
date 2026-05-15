@@ -5,9 +5,8 @@ import type { FlatRow } from "../../core/flat-rows.js";
 /**
  * Issue #327 (follow-up to #323): preserveScreenY target priority for
  * sidebar-resize reflow on the web. Mirrors the TUI's
- * `resizeReanchorTargetId` (#318). The pre-#327 capture path fired only
- * when `cursor !== null`, so users who hadn't moved yet saw the diff
- * body shift visibly under their eyes during a drag.
+ * `resizeReanchorTargetId` (#318) — same priority, different substrate
+ * (HTMLElement vs OpenTUI id).
  *
  * Priority:
  *   1. Cursor — when the cursor exists AND (for row cursors) resolves
@@ -18,14 +17,6 @@ import type { FlatRow } from "../../core/flat-rows.js";
  *      (i.e. `selectedFile`). No cursor, or a stale row cursor pointing
  *      at an unrendered row, falls through here.
  *   3. null — caller no-ops.
- *
- * The capture path resolves the descriptor to an `Element`
- * (`findCursorRowEl` for cursor targets, `findFileBlock` for file
- * targets), reads `getBoundingClientRect().top`, and stashes both. The
- * apply path re-resolves the same descriptor against the post-reflow DOM
- * and `window.scrollBy`'s the delta. The pixel-vs-id mismatch with the
- * TUI is documented at the call site: same priority, different
- * substrate.
  */
 export type ResizeReanchorTarget =
   | { kind: "cursor"; cursor: Cursor }

@@ -230,9 +230,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // re-render; consumed by the resize-apply useLayoutEffect after
   // React commits the new width. Same pattern as
   // `layoutToggleSnapshotRef` — the only difference is the trigger.
-  // Issue #327: carries the `ResizeReanchorTarget` descriptor so the
-  // apply path re-resolves the same logical target post-reflow (cursor
-  // when present, active file when not).
+  // Issue #327 added the `target` descriptor so the apply path can
+  // re-resolve the same logical target post-reflow; priority owned by
+  // `resizeReanchorTarget`.
   const resizeSnapshotRef = useRef<{
     top: number;
     target: ResizeReanchorTarget;
@@ -643,12 +643,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // BEFORE the browser paints, and scrolls by the delta so the target
   // stays put. Same algorithm as the layout-toggle effect above — the
   // only difference is the trigger (sidebarWidth, not layout).
-  //
-  // Issue #327: target is the cursor row when a cursor exists, the
-  // active file's block when not (mirrors the TUI #318
-  // `resizeReanchorTargetId` priority). Pre-#327 the effect early-
-  // returned on `!cursor`, so dragging the handle in a tour the user
-  // hadn't keyboard-navigated yet shifted the diff body visibly.
+  // Target resolution (cursor → active-file, issue #327) is owned by
+  // `resizeReanchorTarget`; this effect just re-resolves the descriptor.
   useLayoutEffect(() => {
     const snap = resizeSnapshotRef.current;
     if (!snap) return;
@@ -673,11 +669,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [sidebarWidth]);
 
   // Issue #327: shared capture helper for both resize writers (auto-fit
-  // effect and drag handler). Resolves the cursor → active-file priority
-  // via `resizeReanchorTarget`, then materialises the descriptor to an
-  // Element via `findCursorRowEl` / `findFileBlock` and writes the
-  // snapshot. The apply useLayoutEffect re-resolves the same descriptor
-  // post-reflow.
+  // effect and drag handler). Priority owned by `resizeReanchorTarget`.
   const captureResizeSnapshot = useCallback(() => {
     if (view.kind !== "ok") return;
     const target = resizeReanchorTarget({
