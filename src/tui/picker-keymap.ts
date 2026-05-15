@@ -22,7 +22,7 @@ export type PickerKeyAction =
 
 export function dispatchPickerKey(key: KeyInput): PickerKeyAction {
   if (key.name === "escape") return { type: "close" };
-  if (key.shift && !key.ctrl && key.name === "t") return { type: "close" };
+  if (!key.ctrl && key.shift && key.name === "t") return { type: "close" };
   if (key.ctrl || key.shift) return { type: "noop" };
   if (key.name === "j" || key.name === "down") return { type: "move", delta: 1 };
   if (key.name === "k" || key.name === "up") return { type: "move", delta: -1 };
