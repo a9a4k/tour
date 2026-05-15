@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { waitForLog } from "../_helpers/wait-for-file.js";
 
 const execP = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/main.ts");
@@ -209,7 +210,8 @@ describe("bare `tour --editor` smart-default dispatch (issue #364)", () => {
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(true);
     expect(data.message).toBe("Opened hello.txt:1");
-    await new Promise((r) => setTimeout(r, 100));
+    // Poll until the fake-editor's argv write lands on disk (issue #370).
+    await waitForLog(logPath);
     const argv = (await readFile(logPath, "utf8")).trim().split("\n");
     // realpath collapses macOS's /var → /private/var symlink so the
     // comparison holds on both platforms — the subprocess's cwd is

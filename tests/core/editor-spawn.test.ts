@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnGuiEditor } from "../../src/core/editor-spawn.js";
 import type { EditorConfig } from "../../src/core/editor-config.js";
+import { waitForLog } from "../_helpers/wait-for-file.js";
 
 // PRD #349 / ADR 0032 / issue #352 — integration coverage of the
 // detached-spawn lifecycle: argv assembly, ENOENT, non-zero exit
@@ -61,8 +62,8 @@ describe("spawnGuiEditor — happy path", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.message).toBe("Opened src/foo.ts:42");
-    // Wait a tick so the fake-editor process has time to write argv to disk.
-    await new Promise((r) => setTimeout(r, 50));
+    // Poll until the fake-editor's argv write lands on disk (issue #370).
+    await waitForLog(log);
     const argv = (await readFile(log, "utf8")).trim().split("\n");
     expect(argv).toEqual(["-g", "/repo/root/src/foo.ts:42"]);
   });
@@ -76,7 +77,7 @@ describe("spawnGuiEditor — happy path", () => {
       { env: { FAKE_EDITOR_LOG: log } },
     );
     expect(result.ok).toBe(true);
-    await new Promise((r) => setTimeout(r, 50));
+    await waitForLog(log);
     const argv = (await readFile(log, "utf8")).trim().split("\n");
     expect(argv[1]).toBe("/some/repo/deep/nested/x.ts:7");
   });
