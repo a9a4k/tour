@@ -71,6 +71,10 @@ import {
   clampSidebarWidthManualPx,
   computeAutoFitWidthPx,
 } from "./sidebar-width.js";
+import {
+  resizeReanchorTarget,
+  type ResizeReanchorTarget,
+} from "./resize-reanchor-target.js";
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -226,7 +230,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // re-render; consumed by the resize-apply useLayoutEffect after
   // React commits the new width. Same pattern as
   // `layoutToggleSnapshotRef` — the only difference is the trigger.
-  const resizeSnapshotRef = useRef<{ top: number } | null>(null);
+  // Issue #327: carries the `ResizeReanchorTarget` descriptor so the
+  // apply path re-resolves the same logical target post-reflow (cursor
+  // when present, active file when not).
+  const resizeSnapshotRef = useRef<{
+    top: number;
+    target: ResizeReanchorTarget;
+  } | null>(null);
   // Refs holding the latest React-state inputs the intent handlers need.
   // The intent listener fires synchronously inside `store.dispatch`, BEFORE
   // React re-renders, so the listener's closure captures stale values. The
@@ -628,18 +638,27 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   // Issue #323: sidebar-width-change preserveScreenY. The auto-fit
   // effect and the drag handler both write `resizeSnapshotRef` BEFORE
-  // calling `setSidebarWidth`; this useLayoutEffect re-reads the cursor
-  // row's new on-screen y after React commits the width change but
-  // BEFORE the browser paints, and scrolls by the delta so the row
+  // calling `setSidebarWidth`; this useLayoutEffect re-reads the
+  // target's new on-screen y after React commits the width change but
+  // BEFORE the browser paints, and scrolls by the delta so the target
   // stays put. Same algorithm as the layout-toggle effect above — the
   // only difference is the trigger (sidebarWidth, not layout).
+  //
+  // Issue #327: target is the cursor row when a cursor exists, the
+  // active file's block when not (mirrors the TUI #318
+  // `resizeReanchorTargetId` priority). Pre-#327 the effect early-
+  // returned on `!cursor`, so dragging the handle in a tour the user
+  // hadn't keyboard-navigated yet shifted the diff body visibly.
   useLayoutEffect(() => {
     const snap = resizeSnapshotRef.current;
     if (!snap) return;
     resizeSnapshotRef.current = null;
-    if (!cursor || view.kind !== "ok") return;
+    if (view.kind !== "ok") return;
     if (typeof window === "undefined") return;
-    const el = findCursorRowEl(cursor, view.rows.flatRowsList);
+    const el =
+      snap.target.kind === "cursor"
+        ? findCursorRowEl(snap.target.cursor, view.rows.flatRowsList)
+        : findFileBlock(snap.target.path);
     if (!el) return;
     const newTop = el.getBoundingClientRect().top;
     const delta = newTop - snap.top;
@@ -653,6 +672,31 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarWidth]);
 
+  // Issue #327: shared capture helper for both resize writers (auto-fit
+  // effect and drag handler). Resolves the cursor → active-file priority
+  // via `resizeReanchorTarget`, then materialises the descriptor to an
+  // Element via `findCursorRowEl` / `findFileBlock` and writes the
+  // snapshot. The apply useLayoutEffect re-resolves the same descriptor
+  // post-reflow.
+  const captureResizeSnapshot = useCallback(() => {
+    if (view.kind !== "ok") return;
+    const target = resizeReanchorTarget({
+      cursor,
+      flatRows: view.rows.flatRowsList,
+      activeFile: selectedFile,
+    });
+    if (!target) return;
+    const el =
+      target.kind === "cursor"
+        ? findCursorRowEl(target.cursor, view.rows.flatRowsList)
+        : findFileBlock(target.path);
+    if (!el) return;
+    resizeSnapshotRef.current = {
+      top: el.getBoundingClientRect().top,
+      target,
+    };
+  }, [cursor, view, selectedFile, findCursorRowEl, findFileBlock]);
+
   // Issue #323: auto-fit the sidebar on every tour switch. Runs at
   // most once per `tour.id` (gated by `lastFittedTourIdRef`); folder
   // expand / collapse within a tour does NOT re-fit. Manual drag
@@ -664,16 +708,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (lastFittedTourIdRef.current === id) return;
     if (view.tree.visibleRows.length === 0) return;
     lastFittedTourIdRef.current = id;
-    // Capture the cursor row's pre-resize on-screen y so the width
-    // change reflows without walking the cursor up or down the screen.
-    if (cursor) {
-      const el = findCursorRowEl(cursor, view.rows.flatRowsList);
-      if (el) {
-        resizeSnapshotRef.current = {
-          top: el.getBoundingClientRect().top,
-        };
-      }
-    }
+    captureResizeSnapshot();
     const fitted = computeAutoFitWidthPx(
       view.tree.visibleRows,
       window.innerWidth,
@@ -690,15 +725,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
       const next = clampSidebarWidthManualPx(rawWidth, vw);
       if (next === sidebarWidth) return;
-      if (cursor && view.kind === "ok") {
-        const el = findCursorRowEl(cursor, view.rows.flatRowsList);
-        if (el) {
-          resizeSnapshotRef.current = { top: el.getBoundingClientRect().top };
-        }
-      }
+      captureResizeSnapshot();
       setSidebarWidth(next);
     },
-    [sidebarWidth, cursor, view, findCursorRowEl],
+    [sidebarWidth, captureResizeSnapshot],
   );
 
   const handleSidebarResizeStart = useCallback(() => {
