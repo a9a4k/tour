@@ -207,6 +207,7 @@ async function main(): Promise<void> {
           tourId: positional[0],
           cwd,
           replyAgent: flag(flags, "reply-agent"),
+          editor: resolveEditor(flag(flags, "editor"), process.env),
         });
         break;
       }

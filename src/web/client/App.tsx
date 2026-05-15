@@ -56,6 +56,7 @@ import {
   type TourSessionView,
 } from "../../core/tour-session-view.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
+import { resolveOpenTarget } from "../../core/open-target-resolver.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
 import { tourDiffStats } from "../../core/diff-stats.js";
 import { headerSourcePair } from "../../core/header-source-pair.js";
@@ -78,6 +79,18 @@ import {
 import { Footer } from "./Footer.js";
 import { composeFooterHints } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
+import { resolveYankTarget } from "../../core/yank-target.js";
+
+// PRD #356 / issue #358: footer flash for `y` on a diff-row preview
+// truncates the displayed text to keep the legend strip readable while
+// the full text reaches the clipboard. ~60-char ceiling + ellipsis,
+// mirroring the TUI surface's `truncateForPreview` (src/tui/app.tsx).
+const YANK_PREVIEW_MAX = 60;
+function truncateForPreview(text: string): string {
+  return text.length <= YANK_PREVIEW_MAX
+    ? text
+    : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
+}
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -1547,6 +1560,87 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             tourId,
             commentId: target.leafId,
           });
+          return;
+        }
+        case "yank-at-cursor": {
+          // PRD #356 / issue #358: context-aware yank. Symmetric to
+          // the TUI handler (#357 / src/tui/app.tsx). Resolver collapses
+          // (paneFocus, cursor, sidebar selection, comments, bundle
+          // files) into a YankTarget; this handler is the thin transport
+          // + footer-flash wrapper. Diff-row cursor → line text; card /
+          // interactive / sidebar-file → path; degenerate state →
+          // labelled none. Clipboard rejection is silent (matches #319).
+          const target = resolveYankTarget({
+            paneFocus,
+            cursor,
+            sidebarSelectedRow: selectedRow ?? null,
+            comments: view.kind === "ok" ? view.bundle.comments : [],
+            bundleFiles:
+              view.kind === "ok" ? view.bundle.filesByName : new Map(),
+          });
+          if (target.kind === "none") {
+            flashFooterStatus(
+              target.reason === "no-file-selected"
+                ? "y: no file selected"
+                : "y: no cursor",
+            );
+            return;
+          }
+          const text = target.kind === "path" ? target.path : target.text;
+          const message =
+            target.kind === "path"
+              ? `Copied ${target.path}`
+              : `Copied "${truncateForPreview(target.text)}"`;
+          const write = navigator.clipboard?.writeText?.(text);
+          if (!write) return;
+          write.then(
+            () => flashFooterStatus(message),
+            () => {},
+          );
+          return;
+        }
+        case "open-in-editor": {
+          // PRD #349 / ADR 0032 / issue #353: webapp parity for `o`.
+          // Resolve the target client-side via the shared
+          // open-target-resolver; null → footer hint, no roundtrip.
+          // Otherwise POST to /api/tours/<id>/open-in-editor and pipe
+          // the response's `message` field verbatim into the footer —
+          // no status-code branching, the server is the source of truth
+          // for user-facing strings (matches the wording the TUI
+          // surfaces from core/editor-spawn).
+          const target = resolveOpenTarget(cursor);
+          if (!target) {
+            if (cursor && cursor.kind === "card") {
+              flashFooterStatus("o: card cursor — j/k to land on a row first");
+            } else if (cursor && cursor.kind === "row" && cursor.interactive) {
+              flashFooterStatus("o: not on a diff row — j/k to land on a line");
+            } else {
+              flashFooterStatus("o: no file under cursor");
+            }
+            return;
+          }
+          if (!tourId) return;
+          void fetch(`/api/tours/${tourId}/open-in-editor`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              file: target.file,
+              line: target.line,
+              side: cursor && cursor.kind === "row" ? cursor.side : "additions",
+            }),
+          }).then(
+            async (res) => {
+              const data = (await res
+                .json()
+                .catch(() => ({ message: "o: server error" }))) as {
+                message?: string;
+              };
+              flashFooterStatus(data.message ?? "o: server error");
+            },
+            () => {
+              flashFooterStatus("o: server unreachable");
+            },
+          );
           return;
         }
       }

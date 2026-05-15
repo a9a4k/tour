@@ -80,7 +80,13 @@ export type CursorAction =
   | { type: "nav-prev-comment" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
+  // PRD #349 / ADR 0032 / issue #353: bare lowercase `o` → spawn the
+  // configured editor on the server's side via POST /api/tours/<id>/
+  // open-in-editor. Fires above the composer-open gate (matches n/p) so
+  // mid-compose fact-checking still works; suppressed by picker / editable.
+  | { type: "open-in-editor" }
   | { type: "status"; message: string }
+  | { type: "yank-at-cursor" }
   | { type: "noop" }
   // Pane-focus + sidebar-mode (PRD #343 / ADR 0031 / issue #346).
   | { type: "pane-focus-toggle" }
@@ -138,6 +144,26 @@ export function dispatchCursorKey(
   // `T` (Shift+t) opens picker (ADR 0030 — capital = global). PRD #335 /
   // ADR 0029 promoted `t → T` in lockstep with the `a → c` cutover.
   if (e.shiftKey && e.key === "T") return { type: "open-picker" };
+
+  // PRD #356 / issue #358: context-aware `y` yank. Bare lowercase `y`
+  // dispatches `yank-at-cursor` in BOTH pane modes — ADR 0031's auto-
+  // flip rationale for c/r/s doesn't apply because `y` is read-only and
+  // doesn't risk losing context. The App-side handler routes through
+  // the shared `core/yank-target.ts` resolver to discriminate
+  // line / path / none. Modifier-decorated `y` (Cmd-Y / Ctrl-Y / Alt-Y
+  // → handled by the top-of-function guard) is preserved as the
+  // browser/OS shortcut; `Shift-Y` is reserved per ADR 0030.
+  if (!e.shiftKey && e.key === "y") return { type: "yank-at-cursor" };
+
+  // PRD #349 / ADR 0032 / issue #353: bare lowercase `o` opens the
+  // cursor's file in the configured editor. Pane-agnostic: dispatched
+  // in both sidebar and diff modes — the App-side handler resolves the
+  // cursor + sidebar selection and surfaces a footer hint when no
+  // target is available (slice 1 resolver returns null outside row
+  // cursors; permissive resolution lands in #354). Above the
+  // composer-open gate so mid-compose fact-checking still works
+  // (matches `n`/`p`/`Shift+T`).
+  if (!e.shiftKey && e.key === "o") return { type: "open-in-editor" };
 
   const paneFocus: PaneFocus = ctx.paneFocus ?? "diff";
 

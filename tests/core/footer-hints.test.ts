@@ -181,7 +181,7 @@ describe("composeFooterHints (core, surface: web)", () => {
   // are unchanged.
   it("emits the diff-mode webapp legend with `Esc: sidebar` when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -192,7 +192,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -223,16 +223,39 @@ describe("composeFooterHints (core, surface: web)", () => {
     for (const out of cases) {
       // The web diff legend's `Esc: sidebar` is the only `Esc` token
       // it should ever contain; TUI's `Enter: expand`, `e: expand all`,
-      // `y: yank path`, `Space: page`, `[/]: width`, `q: quit`, `Tab`
-      // are all forbidden.
+      // `Space: page`, `[/]: width`, `q: quit`, `Tab` are all forbidden.
+      // PRD #356 / issue #358 added webapp `y: yank` parity, so `y: yank`
+      // is no longer TUI-only. PRD #349 / issue #353: `o: open` is bound
+      // on both surfaces now, so it's allowed too.
       expect(out).not.toContain("Enter:");
       expect(out).not.toContain("e: expand all");
-      expect(out).not.toContain("y: yank");
       expect(out).not.toContain("Space");
       expect(out).not.toContain("Tab");
       expect(out).not.toContain("[/]");
       expect(out).not.toContain("q: quit");
     }
+  });
+
+  // PRD #349 / ADR 0032 / issue #353: `o: open` slots into the webapp
+  // legends in both pane modes (web parity for the TUI's `o`).
+  it("diff-mode web legend includes `o: open` between `r: reply` and `L: layout`", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    expect(out).toContain("o: open");
+    const r = out.indexOf("r: reply");
+    const o = out.indexOf("o: open");
+    const layout = out.indexOf("L: layout");
+    expect(r).toBeGreaterThanOrEqual(0);
+    expect(o).toBeGreaterThan(r);
+    expect(layout).toBeGreaterThan(o);
+  });
+
+  it("sidebar-mode web legend includes `o: open` before `L: layout`", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
+    expect(out).toContain("o: open");
+    const o = out.indexOf("o: open");
+    const layout = out.indexOf("L: layout");
+    expect(o).toBeGreaterThanOrEqual(0);
+    expect(layout).toBeGreaterThan(o);
   });
 });
 
@@ -258,6 +281,7 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
     expect(out).toContain("n/p: nav");
     expect(out).toContain("c: comment");
     expect(out).toContain("r: reply");
+    expect(out).toContain("y: yank");
     expect(out).toContain("L: layout");
     expect(out).toContain("T: picker");
   });
@@ -275,7 +299,7 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
   it("sidebar-mode web legend emits the documented pane-relevant string", () => {
     const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
     expect(out).toBe(
-      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  L: layout  ·  T: picker  ·  Esc: diff",
+      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff",
     );
   });
 
@@ -307,5 +331,34 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
   it("sidebar-mode web legend includes `Esc: diff` as the pane-toggle hint", () => {
     const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
     expect(out).toContain("Esc: diff");
+  });
+
+  // PRD #356 / issue #358: webapp `y` yank parity with the TUI. The
+  // legend gains `y: yank` in BOTH pane modes (read-only — ADR 0031's
+  // auto-flip rationale doesn't apply).
+  it("diff-mode web legend places `y: yank` after `r: reply`", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    const r = out.indexOf("r: reply");
+    const y = out.indexOf("y: yank");
+    expect(r).toBeGreaterThanOrEqual(0);
+    expect(y).toBeGreaterThan(r);
+  });
+
+  it("diff-mode web legend places `y: yank` after `s: send to {agent}` when the send hint is visible", () => {
+    const out = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    const s = out.indexOf("s: send to claude");
+    const y = out.indexOf("y: yank");
+    expect(s).toBeGreaterThanOrEqual(0);
+    expect(y).toBeGreaterThan(s);
+  });
+
+  it("sidebar-mode web legend includes `y: yank` (PRD #356 — y is read-only, works in both panes)", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
+    expect(out).toContain("y: yank");
   });
 });

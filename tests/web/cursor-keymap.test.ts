@@ -287,6 +287,57 @@ describe("dispatchCursorKey: suppression rules", () => {
     });
   });
 
+  // PRD #349 / ADR 0032 / issue #353: `o` fires when the composer is
+  // open (mid-compose fact-checking) but is suppressed by picker and
+  // editable-focus like every other action key. Modifier guards also
+  // apply (Ctrl/Cmd/Alt/Shift+O → noop so browser shortcuts are
+  // unaffected).
+  it("o → open-in-editor on a row cursor in diff mode", () => {
+    expect(dispatchCursorKey(key({ key: "o" }), baseCtx)).toEqual({
+      type: "open-in-editor",
+    });
+  });
+
+  it("o still fires when the composer is open (above the composer-open gate)", () => {
+    const ctx = { ...baseCtx, composerOpen: true };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({
+      type: "open-in-editor",
+    });
+  });
+
+  it("o is suppressed when the picker is open", () => {
+    const ctx = { ...baseCtx, pickerOpen: true };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({ type: "noop" });
+  });
+
+  it("o is suppressed when focus is in an editable element", () => {
+    const ctx = { ...baseCtx, focusInEditable: true };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({ type: "noop" });
+  });
+
+  it("Shift+O / Ctrl+O / Cmd+O → noop (modifier guards)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "o", shiftKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "o", ctrlKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "o", metaKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("o fires in sidebar mode too — App-side handler surfaces the resolution-failure hint when no row is under cursor", () => {
+    const ctx: CursorKeymapContext = {
+      ...baseCtx,
+      paneFocus: "sidebar",
+      selectedRowKind: "file",
+    };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({
+      type: "open-in-editor",
+    });
+  });
+
   it("Cmd / Ctrl / Alt modifiers → noop (browser shortcuts)", () => {
     expect(dispatchCursorKey(key({ key: "j", metaKey: true }), baseCtx)).toEqual({
       type: "noop",
@@ -484,5 +535,85 @@ describe("dispatchCursorKey: sidebar-mode key surface (PRD #343 / issue #346)", 
     expect(dispatchCursorKey(key({ key: "j" }), baseCtx)).toEqual({
       type: "move-down",
     });
+  });
+});
+
+// PRD #356 / issue #358: context-aware `y` yank on the webapp. Mirrors
+// the TUI slice (#357) — bare lowercase `y` dispatches `yank-at-cursor`
+// in both pane modes; modifier-decorated `y` is a noop (preserves
+// browser/OS shortcuts like Cmd-Y redo); `y` inside an editable / picker
+// is absorbed by the existing suppression gates. The App-side handler
+// invokes the shared `resolveYankTarget` resolver to discriminate
+// line / path / none.
+describe("dispatchCursorKey: context-aware yank (PRD #356 / issue #358)", () => {
+  it("bare y in diff mode → yank-at-cursor", () => {
+    expect(dispatchCursorKey(key({ key: "y" }), baseCtx)).toEqual({
+      type: "yank-at-cursor",
+    });
+  });
+
+  it("bare y in sidebar mode → yank-at-cursor (read-only, no auto-flip — ADR 0031 spirit check)", () => {
+    const sidebar: CursorKeymapContext = {
+      ...baseCtx,
+      paneFocus: "sidebar",
+      selectedRowKind: "file",
+    };
+    expect(dispatchCursorKey(key({ key: "y" }), sidebar)).toEqual({
+      type: "yank-at-cursor",
+    });
+    // Folder / null selection also dispatch — the resolver is the
+    // arbiter of "no-file-selected" via `kind: "none"`.
+    expect(
+      dispatchCursorKey(key({ key: "y" }), { ...sidebar, selectedRowKind: "folder" }),
+    ).toEqual({ type: "yank-at-cursor" });
+    expect(
+      dispatchCursorKey(key({ key: "y" }), { ...sidebar, selectedRowKind: null }),
+    ).toEqual({ type: "yank-at-cursor" });
+  });
+
+  it("bare y on a card cursor still dispatches yank-at-cursor (resolver falls back to path)", () => {
+    expect(dispatchCursorKey(key({ key: "y" }), cardCtx)).toEqual({
+      type: "yank-at-cursor",
+    });
+  });
+
+  it("Cmd-Y / Ctrl-Y / Alt-Y → noop (preserves browser/OS shortcuts: redo, back, etc.)", () => {
+    expect(dispatchCursorKey(key({ key: "y", metaKey: true }), baseCtx)).toEqual({
+      type: "noop",
+    });
+    expect(dispatchCursorKey(key({ key: "y", ctrlKey: true }), baseCtx)).toEqual({
+      type: "noop",
+    });
+    expect(dispatchCursorKey(key({ key: "y", altKey: true }), baseCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("Shift-Y → noop (reserved per ADR 0030 for a future capital-variant binding)", () => {
+    expect(dispatchCursorKey(key({ key: "Y", shiftKey: true }), baseCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("y while focus is in an editable → noop (user is typing the letter)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "y" }), { ...baseCtx, focusInEditable: true }),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("y while picker is open → noop (picker absorbs all input)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "y" }), { ...baseCtx, pickerOpen: true }),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("y while composer is open still dispatches yank-at-cursor (matches n/p/L/T survival rule)", () => {
+    // The composer's textarea owns its own `focusInEditable` gate when
+    // focus is inside it; this branch covers an unfocused-composer
+    // edge case (e.g. click-outside leaves composer open but document
+    // body is focused), mirroring how n/p continue to dispatch.
+    expect(
+      dispatchCursorKey(key({ key: "y" }), { ...baseCtx, composerOpen: true }),
+    ).toEqual({ type: "yank-at-cursor" });
   });
 });

@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`o` on a webapp diff row opens the file at that line in your GUI
+  editor (issue #353, PRD #349, ADR 0032).** Webapp parity for the
+  cross-surface open-in-editor feature. `tour serve --editor 'code -g'`
+  honors the same precedence chain as the TUI (`--editor` →
+  `$TOUR_EDITOR` → `$VISUAL` → `$EDITOR` → null). Pressing bare `o` on
+  a diff row resolves `(file, line)` client-side, POSTs to a new
+  `/api/tours/<id>/open-in-editor` endpoint, and pipes the server's
+  `message` verbatim into the footer — `Opened <file>:<line>` on
+  success, `o: <bin>: command not found` / `o: editor failed (code N)`
+  on spawn failure, `o: editor not configured — set $TOUR_EDITOR or
+  pass --editor` when no editor is configured, `o: terminal editor —
+  open from TUI instead` when a terminal-classified editor is
+  configured (the server refuses these with HTTP 409 — the webapp has
+  no terminal to lend; users with vim/nvim/nano/emacs/hx/micro keep
+  using the TUI for `o`). The server validates `file ∈ tour.diff.files`
+  as defense-in-depth on top of the 127.0.0.1-only bind; a misbehaving
+  local script can't compound into arbitrary spawn. `o` is suppressed
+  by picker-open and editable-focus but fires through the
+  composer-open gate so mid-compose fact-checking works. Footer legend
+  gains `o: open` next to `r: reply` on both pane modes.
+
+  Issue: #353 · PRD: #349 · ADR: 0032
+
 - **`o` on a TUI diff row opens the file at that line in your GUI editor
   (issue #352, PRD #349, ADR 0032).** Tracer-bullet slice 1 of the
   cross-surface open-in-editor feature: `tour tui --editor 'code -g'`
@@ -25,6 +48,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   support) reuse.
 
   Issue: #352
+
+- **TUI now honors terminal editors (`vim`, `nvim`, `vi`, `nano`,
+  `emacs`, `hx`, `micro`) on `o` (issue #355, PRD #349, ADR 0032).**
+  Replaces the slice-1 placeholder footer ("terminal editor — TUI
+  support coming in a follow-up") with the real suspend / inherit /
+  resume lifecycle, mirroring `git commit`'s editor dance and
+  lazygit's `e`-key behavior. Pressing `o` with `$TOUR_EDITOR=vim`
+  pauses the opentui renderer, hands the terminal to vim via
+  `stdio: 'inherit'`, awaits exit, and resumes the renderer with a
+  full repaint. Exit code is not surfaced (`:q` and `:cq` both
+  return `Opened <file>:<line>`). Resume is guaranteed via
+  try/finally even if the editor crashes or is killed (SIGKILL),
+  so the TUI is never left in a paused state. The webapp continues
+  to refuse terminal editors with 409 — that asymmetry is physics
+  (no terminal to lend), not policy.
+
+  Issue: #355 · PRD: #349
 
 ### Changed
 
@@ -44,6 +84,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `y: yank` (replacing `y: yank path`) to cover both outcomes.
 
   Issue: #357 · PRD: #356
+
+- **Webapp `y` keyboard yank (PRD #356, issue #358).** Cross-surface
+  parity with the TUI slice (#357): pressing bare lowercase `y` on the
+  webapp resolves the context-aware yank target via the shared
+  `core/yank-target.ts` resolver, writes the result to the clipboard
+  via `navigator.clipboard.writeText`, and flashes a transient footer
+  message through the existing `Footer.tsx` `aria-live="polite"` slot
+  (screen-reader-announced). Diff-row cursor → line text; card /
+  interactive / sidebar-file selection → file path; folder / null
+  state → `y: no file selected` / `y: no cursor`. `Cmd-Y` / `Ctrl-Y` /
+  `Alt-Y` keep their host shortcuts (redo / history-back); `Shift-Y`
+  is reserved per ADR 0030; `y` inside an editable / open picker is
+  absorbed by the existing suppression gates. `y` fires in BOTH pane
+  modes (read-only — ADR 0031's auto-flip rationale for c/r/s
+  doesn't apply). The existing per-file `📋` button (#317) and its
+  checkmark indicator (#319) are unchanged. Webapp footer legend now
+  reads `y: yank` in both diff and sidebar pane sections.
+
+  Issue: #358 · PRD: #356
 
 ## [3.1.1] — 2026-05-15
 
