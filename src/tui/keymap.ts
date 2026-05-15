@@ -160,10 +160,6 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "j" || key.name === "down") return { type: "move-file-down" };
     if (key.name === "k" || key.name === "up") return { type: "move-file-up" };
     if (key.name === "return") return { type: "select-file" };
-    // The prior sidebar `c` arm (toggle-folder / toggle-collapse) was
-    // retired in issue #337 — `h`/`l` already cover folder expand /
-    // collapse and per-file diff collapse in the sidebar, and lowercase
-    // `c` is the cursor-target comment binding (diff-pane only).
     if ((key.name === "right" || key.name === "l") && ctx.selectedRowKind === "folder") {
       return { type: "expand-folder" };
     }

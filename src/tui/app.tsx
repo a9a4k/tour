@@ -535,10 +535,11 @@ function App(props: AppProps) {
   const plannedRowsByFile = rowsSlice?.plannedRowsByFile ?? EMPTY_PLANNED_ROWS;
   const classifications = bundleSlice?.classifications ?? EMPTY_CLASSIFICATIONS;
 
-  // Body-level visibility (binary placeholder + user-driven `c` collapse).
-  // The view's planner uses the same rule internally for its
-  // classifierCollapsed flag; this surface-side mirror gates body render
-  // of binary files and honours the `c` override.
+  // Body-level visibility. Binary files are collapsed by default; the
+  // per-file override slot lets the annotation-jump path force a file
+  // open. The view's planner uses the same rule internally for its
+  // classifierCollapsed flag; this surface-side mirror gates body
+  // render of binary files and honours per-file overrides.
   const isFileCollapsed = (fileName: string): boolean => {
     const override = collapsedOverrides[fileName];
     if (override !== undefined) return override;
