@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tour` commands now resolve `.tour/` from the enclosing repo root,
+  not `process.cwd()` (issue #369).** Pre-fix, every subcommand
+  (`create`, `serve`, `tui`, `list`, `show`, `close`, `delete`, `prune`,
+  `pickup`, `comment`) read and wrote `.tour/` at the literal current
+  working directory; two shells in the same repo but different
+  sub-directories saw two unrelated stores, and `tour tui <id>` from a
+  fresh sub-directory failed with the same `No tours found` message as
+  an unmatched prefix. A new resolver walks up from `cwd` looking for
+  a `.git` ancestor (file or directory — git worktrees keep working)
+  and threads that path through every CLI handler as the single
+  "tour root" for the invocation. Outside a git repo the walk-up
+  honours an existing `.tour/` ancestor; only when neither marker is
+  found does behaviour fall back to today's `cwd`-grounded layout.
+  `resolveIdPrefix` now distinguishes "no `.tour/` directory at
+  `<root>`" from "no tour matching prefix" so the two failure modes are
+  no longer indistinguishable. Sub-directory `.tour/` left over from
+  before this change is surfaced as a one-line stderr warning pointing
+  at the orphaned path; no files are moved automatically.
+
+  Issue: #369
+
 - **Sidebar keyboard cursor is now visible on folder rows (issue #367,
   PRD #343, ADR 0031).** Pressing `j` / `k` in sidebar mode moves the
   `:focus-visible` accent outline across every visible row — folders

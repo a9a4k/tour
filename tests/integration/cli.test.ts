@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -872,6 +872,67 @@ describe("CLI integration", () => {
       const result = await run(["bogus"], repo);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Unknown command");
+    });
+  });
+
+  // Issue #369. The store lives at the repo root, not at `process.cwd()`,
+  // so any two shells in the same repo see the same tours regardless of
+  // their sub-directory cwd.
+  describe("tour root resolution (issue #369)", () => {
+    // Tests are invoked via a sub-process and `bun src/main.ts`; on macOS
+    // /tmp resolves through /private/var, so the repo path the bun cwd
+    // observes is realpath-normalised. Match that here when asserting.
+    // Issue #365 / #368.
+    let realRepo: string;
+    beforeEach(async () => {
+      realRepo = await realpath(repo);
+    });
+
+    it("writes .tour/ at the git root when create runs from a sub-directory", async () => {
+      const sub = join(repo, "deep", "nested");
+      await mkdir(sub, { recursive: true });
+      const cr = await run(["create", "--head", "HEAD", "--json"], sub);
+      expect(cr.exitCode).toBe(0);
+      const tour = JSON.parse(cr.stdout);
+      // The tour folder lives at <repo>/.tour/, not <sub>/.tour/.
+      expect(existsSync(join(repo, ".tour", tour.id))).toBe(true);
+      expect(existsSync(join(sub, ".tour"))).toBe(false);
+    });
+
+    it("list from a sub-directory finds tours created from the repo root", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--title", "from-root", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const sub = join(repo, "deep");
+      await mkdir(sub, { recursive: true });
+      const r = await run(["list", "--json"], sub);
+      expect(r.exitCode).toBe(0);
+      const tours = JSON.parse(r.stdout);
+      expect(tours.map((t: { id: string }) => t.id)).toContain(tour.id);
+    });
+
+    it("show <unknown-id> reports `No .tour/ directory at <root>` when no tours exist", async () => {
+      const r = await run(["show", "ghost"], repo);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("No .tour/ directory at");
+      expect(r.stderr).toContain(realRepo);
+    });
+
+    it("show <unknown-id> keeps `No tour matching prefix` when .tour/ exists", async () => {
+      await run(["create", "--head", "HEAD", "--json"], repo);
+      const r = await run(["show", "ghost"], repo);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain('No tour matching prefix "ghost"');
+      expect(r.stderr).not.toContain("No .tour/ directory");
+    });
+
+    it("warns about stray sub-directory .tour/ found below the resolved root", async () => {
+      const stale = join(repo, "src");
+      await mkdir(join(stale, ".tour"), { recursive: true });
+      const realStale = await realpath(stale);
+      const r = await run(["list"], stale);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toContain("stray .tour/");
+      expect(r.stderr).toContain(join(realStale, ".tour"));
     });
   });
 });

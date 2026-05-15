@@ -82,7 +82,11 @@ export async function resolveIdPrefix(
   try {
     entries = await readdir(base);
   } catch {
-    throw new Error(`No tours found`);
+    // Issue #369: distinguish "no `.tour/` directory at this root" from
+    // "the prefix doesn't match anything in `.tour/`". The path is the
+    // resolved tour-root (not `<root>/.tour`) so the message names the
+    // place the user can `cd` to or `tour create` from.
+    throw new Error(`No .tour/ directory at ${repoRoot}`);
   }
   const matches = entries.filter((e) => e.startsWith(prefix));
   if (matches.length === 0) {

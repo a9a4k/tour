@@ -132,6 +132,16 @@ describe("tour-store", () => {
       await createTour(dir, makeTour());
       await expect(resolveIdPrefix(dir, "9999")).rejects.toThrow("No tour matching");
     });
+
+    // Issue #369: a missing `.tour/` directory is reported distinctly from
+    // "no tour matching prefix" — the former includes the resolved root so
+    // the user can tell `tour tui xyz` apart from `tour tui` against a repo
+    // where they've never run `tour create`.
+    it("throws a path-bearing error when .tour/ does not exist", async () => {
+      await expect(resolveIdPrefix(dir, "anything")).rejects.toThrow(
+        `No .tour/ directory at ${dir}`,
+      );
+    });
   });
 
   describe("pruneTours", () => {
