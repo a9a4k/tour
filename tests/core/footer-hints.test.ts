@@ -45,7 +45,7 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
 describe("composeFooterHints (core, surface: web)", () => {
   it("emits exactly the 8-key webapp subset when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: comment  ·  r: reply  ·  L: layout  ·  t: picker",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  L: layout  ·  T: picker",
     );
   });
 
@@ -56,7 +56,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: comment  ·  r: reply  ·  s: send to claude  ·  L: layout  ·  t: picker",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  L: layout  ·  T: picker",
     );
   });
 
@@ -87,7 +87,6 @@ describe("composeFooterHints (core, surface: web)", () => {
     for (const out of cases) {
       expect(out).not.toContain("Enter");
       expect(out).not.toContain("e:");
-      expect(out).not.toContain("c:");
       expect(out).not.toContain("y:");
       expect(out).not.toContain("Space");
       expect(out).not.toContain("Tab");

@@ -5,11 +5,16 @@
  * for cursor motion, and the lowercase `l → L` rebind for layout toggle.
  *
  * Action-key gating by cursor row kind (PRD #192): `r` / `s` dispatch only
- * when the cursor is on an Annotation card; `a` dispatches only when the
- * cursor is on a row (or null — App-side `a` lazy-materializes to a row).
+ * when the cursor is on a Comment card; `c` dispatches only when the
+ * cursor is on a row (or null — App-side `c` lazy-materializes to a row).
  * The single `cursorOnCard` flag in `KeymapContext` collapses the routing
  * decision into the pure dispatcher so the action contract is testable
  * independent of React state plumbing.
+ *
+ * Keybinding convention (ADR 0030): lowercase keys target the cursor;
+ * capitals are global. PRD #335 / ADR 0029 cut over the primary verb
+ * from `a` to `c` and promoted `t → T` so the picker fits the rule with
+ * no exemption. Bare `a` and bare `t` are now unbound noops.
  */
 
 export interface CursorKeymapContext {
@@ -22,10 +27,10 @@ export interface CursorKeymapContext {
   /** Focus is in an INPUT / TEXTAREA / contentEditable — never steal
    *  text input. */
   focusInEditable: boolean;
-  /** Cursor is on an Annotation card (CardAnchor). Routes `r`/`s` to the
-   *  card-targeting actions and `a` to a no-op (PRD #192 stories 6-11). */
+  /** Cursor is on a Comment card (CardAnchor). Routes `r`/`s` to the
+   *  card-targeting actions and `c` to a no-op (PRD #192 stories 6-11). */
   cursorOnCard: boolean;
-  /** Cursor is on a *human*-authored Annotation card. `s` only sends a
+  /** Cursor is on a *human*-authored Comment card. `s` only sends a
    *  reply to the configured agent on human cards; sending on an agent
    *  card surfaces the wrong-target footer status (PRD #330). */
   cursorOnHumanCard: boolean;
@@ -74,7 +79,7 @@ export function dispatchCursorKey(
 ): CursorAction {
   if (e.metaKey || e.ctrlKey || e.altKey) return { type: "noop" };
 
-  // Picker absorbs all input. The picker's own keymap handles `t` to close.
+  // Picker absorbs all input. The picker owns its close binding.
   if (ctx.pickerOpen) return { type: "noop" };
 
   // Inside an editable element the only escape is the explicit cancel /
@@ -84,18 +89,21 @@ export function dispatchCursorKey(
   // Layout toggle moved from `l` to Shift-L (ADR 0012, mirrors ADR 0011).
   if (e.shiftKey && e.key === "L") return { type: "toggle-layout" };
 
-  // `t` opens picker. Annotation nav `n`/`p` walks the card lane (PRD #192).
+  // `T` (Shift+t) opens picker (ADR 0030 — capital = global). PRD #335 /
+  // ADR 0029 promoted `t → T` in lockstep with the `a → c` cutover.
+  if (e.shiftKey && e.key === "T") return { type: "open-picker" };
+
+  // Annotation nav `n`/`p` walks the card lane (PRD #192).
   if (!e.shiftKey) {
-    if (e.key === "t") return { type: "open-picker" };
     if (e.key === "n") return { type: "nav-next-annotation" };
     if (e.key === "p") return { type: "nav-prev-annotation" };
-    // `r` / `s` dispatch only on a CardAnchor; `a` only on a row (or null).
+    // `r` / `s` dispatch only on a CardAnchor; `c` only on a row (or null).
     // Cross-axis misses (ADR 0028 / PRD #330): the webapp footer status
     // surface flashes the miss reason; the off-screen-card case still goes
     // through the App-side auto-recall handler, which scrolls the card in.
     if (e.key === "r") {
       if (ctx.cursorOnCard) return { type: "open-reply-on-card" };
-      return { type: "status", message: "No annotation under cursor." };
+      return { type: "status", message: "No comment under cursor." };
     }
     if (e.key === "s") {
       // `s` is a hidden silent no-op when reply-agent isn't configured —
@@ -103,17 +111,17 @@ export function dispatchCursorKey(
       // status flash would surprise the user.
       if (!ctx.replyAgent) return { type: "noop" };
       if (!ctx.cursorOnCard) {
-        return { type: "status", message: "Send only works on annotation cards." };
+        return { type: "status", message: "Send only works on comment cards." };
       }
       if (!ctx.cursorOnHumanCard) {
-        return { type: "status", message: "Send only works on human annotations." };
+        return { type: "status", message: "Send only works on human comments." };
       }
       if (ctx.replyLockHeld) {
         return { type: "status", message: `${ctx.replyAgent} is already replying.` };
       }
       return { type: "send-on-card" };
     }
-    if (e.key === "a") {
+    if (e.key === "c") {
       return ctx.cursorOnCard ? { type: "noop" } : { type: "annotate-at-cursor" };
     }
   }
