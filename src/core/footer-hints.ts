@@ -65,7 +65,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       : "";
   if (opts.surface === "tui") {
     return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
+      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's

@@ -90,7 +90,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("Enter: expand");
     expect(out).toContain("e: expand all");
     expect(out).toContain("C: collapse replies");
-    expect(out).toContain("y: yank path");
+    expect(out).toContain("y: yank");
     expect(out).toContain("Space: page");
     expect(out).toContain("L: layout");
     expect(out).toContain("T: picker");

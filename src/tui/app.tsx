@@ -27,6 +27,7 @@ import {
   type OrphanWindow,
 } from "../core/expansion-state.js";
 import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
+import { resolveYankTarget } from "../core/yank-target.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
 import { CURSOR_FG, CURSOR_GLYPH } from "./DiffLine.js";
@@ -155,6 +156,16 @@ type AppProps = Partial<StartTuiProps> & { bundle: TourBundle };
 
 // Stitch BundleFile.orphanWindows (file-grouped, no `file` field) into the
 // flat OrphanWindow[] shape `seedFromOrphans` consumes.
+// PRD #356 / issue #357: footer flash for `y` on a diff-row preview
+// truncates the displayed text to keep the legend strip readable while
+// the full text reaches the clipboard. ~60 char ceiling + ellipsis.
+const YANK_PREVIEW_MAX = 60;
+function truncateForPreview(text: string): string {
+  return text.length <= YANK_PREVIEW_MAX
+    ? text
+    : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
+}
+
 function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] {
   const out: OrphanWindow[] = [];
   for (const f of files) {
@@ -1694,39 +1705,56 @@ function App(props: AppProps) {
         expandAllInFile(targetFile);
         return;
       }
-      case "yank-file-path": {
-        // Issue #326: resolve the focused file with the same permissive
-        // policy as expand-file-all (#297) — cursor first, sidebar's
-        // selected file as fallback. The original strict pane-gate
-        // (sidebarFocused → selection; else → cursor) silently no-op'd
-        // whenever the user was focused in one pane but the file was
-        // in the other, which gave zero feedback. On null resolution
-        // surface a footer hint so `y` is never invisibly inert.
-        let targetFile: string | null = null;
-        if (cursor) {
-          if (cursor.kind === "row") targetFile = cursor.file;
-          else {
-            const ann = comments.find((a) => a.id === cursor.commentId);
-            targetFile = ann?.file ?? null;
+      case "yank-at-cursor": {
+        // Issue #326 / PRD #356 / issue #357: context-aware yank. The
+        // shared `resolveYankTarget` resolver collapses (paneFocus,
+        // cursor, sidebar selection, comments, bundleFiles) into a
+        // discriminated `YankTarget`; this handler is the thin
+        // transport + footer-flash wrapper. Diff-row cursor → line
+        // text; card / interactive / sidebar-file → path; degenerate
+        // state → labelled none.
+        const bundleFiles = new Map<string, BundleFile>();
+        if (bundle.kind === "ok") {
+          for (const bf of bundle.files) bundleFiles.set(bf.name, bf);
+        }
+        const sidebarSelectedRow =
+          selectedRow?.kind === "file"
+            ? { kind: "file" as const, path: selectedRow.path }
+            : selectedRow?.kind === "folder"
+              ? { kind: "folder" as const }
+              : null;
+        const target = resolveYankTarget({
+          paneFocus,
+          cursor,
+          sidebarSelectedRow,
+          comments,
+          bundleFiles,
+        });
+        const flash = (message: string): void => {
+          setFooterStatus(message);
+          if (yankFooterTimerRef.current !== null) {
+            clearTimeout(yankFooterTimerRef.current);
           }
-        }
-        if (targetFile === null && selectedRow?.kind === "file") {
-          targetFile = selectedRow.path;
-        }
-        if (targetFile === null) {
-          setFooterStatus("y: no file under cursor");
+          yankFooterTimerRef.current = setTimeout(() => {
+            yankFooterTimerRef.current = null;
+            setFooterStatus((cur) => (cur === message ? null : cur));
+          }, 1200);
+        };
+        if (target.kind === "none") {
+          flash(
+            target.reason === "no-file-selected"
+              ? "y: no file selected"
+              : "y: no cursor",
+          );
           return;
         }
-        yankToClipboard(targetFile, renderer);
-        const message = `Copied ${targetFile}`;
-        setFooterStatus(message);
-        if (yankFooterTimerRef.current !== null) {
-          clearTimeout(yankFooterTimerRef.current);
+        if (target.kind === "path") {
+          yankToClipboard(target.path, renderer);
+          flash(`Copied ${target.path}`);
+          return;
         }
-        yankFooterTimerRef.current = setTimeout(() => {
-          yankFooterTimerRef.current = null;
-          setFooterStatus((cur) => (cur === message ? null : cur));
-        }, 1200);
+        yankToClipboard(target.text, renderer);
+        flash(`Copied "${truncateForPreview(target.text)}"`);
         return;
       }
       case "noop-reply-on-row":
