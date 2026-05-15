@@ -72,14 +72,35 @@ jobs:
       - name: Publish sub-packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Idempotent: each sub-package skips publish if name@version is
+        # already on npm. Handles partial-publish recovery — when a
+        # transient Sigstore/OIDC failure aborts the loop mid-way (we
+        # hit IDENTITY_TOKEN_READ_ERROR on v3.0.0), re-running the
+        # workflow finishes the publish instead of failing with E409.
         run: |
           for pkg in dist/packages/*; do
-            (cd "$pkg" && npm publish --access public --provenance)
+            (
+              cd "$pkg"
+              name=$(node -p "require('./package.json').name")
+              ver=$(node -p "require('./package.json').version")
+              if npm view "$name@$ver" version >/dev/null 2>&1; then
+                echo "skip: $name@$ver already published"
+              else
+                npm publish --access public --provenance
+              fi
+            )
           done
       - name: Publish parent
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: |
+          name=$(node -p "require('./package.json').name")
+          ver=$(node -p "require('./package.json').version")
+          if npm view "$name@$ver" version >/dev/null 2>&1; then
+            echo "skip: $name@$ver already published"
+          else
+            npm publish --access public --provenance
+          fi
       - name: Stage release assets
         run: |
           mkdir -p dist/release
