@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Default diff layout is now Unified on first open (issue #329).**
+  The initial value of `TourSessionState.layout` flips from `"split"`
+  to `"unified"`. Tour is annotation-driven, not diff-driven: users
+  come to read a walkthrough, and unified's narrative top-to-bottom
+  flow lines up with `n`/`p` annotation traversal — split forces eye
+  zig-zag between columns while cards sit one side or span both.
+  Cards also render cleanly inline as a row between diff lines in
+  unified, where split clusters them one side or forces alignment
+  beneath. And Tour eats more horizontal width before the diff
+  starts (sidebar + annotation cards) than general code-review tools
+  do, so halving the remaining real estate hurts more here. Split
+  remains one click / keystroke away (`LayoutToggle` button on web,
+  `Shift+L` on TUI); only the never-touched default changes. Users
+  who explicitly chose Split see no change once per-tour persistence
+  is wired (the persistence shape itself is unchanged by this issue).
+
+  Issue: #329
+
 - **Internal: scalar sidebar-width clamps lifted to `src/core/`
   (issue #328).** The TUI and webapp each inlined the same pair of
   clamp formulas — auto-fit `[hardMin, max(hardMin, container -

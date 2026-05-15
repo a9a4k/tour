@@ -190,7 +190,7 @@ export function initialTourSessionState(): TourSessionState {
     bundle: { kind: "idle" },
     replyLock: { kind: "idle" },
     picker: { kind: "closed" },
-    layout: "split",
+    layout: "unified",
     cursor: null,
     expansion: emptyExpansion(),
     composer: { kind: "closed" },

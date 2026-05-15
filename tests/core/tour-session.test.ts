@@ -111,7 +111,7 @@ describe("RemoteData<T> helpers", () => {
 });
 
 describe("initialTourSessionState", () => {
-  it("starts idle for every RemoteData slot, closed picker, split layout, null cursor, empty expansion, closed composer, empty folds", () => {
+  it("starts idle for every RemoteData slot, closed picker, unified layout, null cursor, empty expansion, closed composer, empty folds", () => {
     const s = initialTourSessionState();
     expect(s).toEqual({
       currentTourId: null,
@@ -119,7 +119,7 @@ describe("initialTourSessionState", () => {
       bundle: { kind: "idle" },
       replyLock: { kind: "idle" },
       picker: { kind: "closed" },
-      layout: "split",
+      layout: "unified",
       cursor: null,
       expansion: new Map(),
       composer: { kind: "closed" },
@@ -1885,19 +1885,19 @@ describe("reduce — folds.* + expansion.* → revalidateCursor wiring (issue #3
 });
 
 describe("reduce — layout slice (slice 3 foundation)", () => {
-  it("layout.set switches split → unified (no intents)", () => {
+  it("layout.set switches unified → split (no intents)", () => {
     const r = reduce(initialTourSessionState(), {
       type: "layout.set",
-      layout: "unified",
+      layout: "split",
     });
-    expect(r.state.layout).toBe("unified");
+    expect(r.state.layout).toBe("split");
     expect(r.intents).toEqual([]);
   });
 
   it("layout.set is a same-state-ref no-op when the layout is unchanged", () => {
     const before = initialTourSessionState();
-    expect(before.layout).toBe("split");
-    const r = reduce(before, { type: "layout.set", layout: "split" });
+    expect(before.layout).toBe("unified");
+    const r = reduce(before, { type: "layout.set", layout: "unified" });
     expect(r.state).toBe(before);
     expect(r.intents).toEqual([]);
   });
