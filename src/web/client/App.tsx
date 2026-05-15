@@ -1970,6 +1970,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       row={row}
                       onToggle={toggleFolder}
                       onActivate={onSidebarRowClick}
+                      registerRef={registerSidebarRef}
                       // PRD #343 / ADR 0031 / issue #346: roving
                       // tabindex — exactly one row has tabindex=0 at
                       // any time (the sidebar keyboard cursor), all
@@ -2174,6 +2175,12 @@ interface FolderRowProps {
   // also flips paneFocus to sidebar and moves the sidebar keyboard
   // cursor to this row.
   onActivate?: (path: string, kind: "folder") => void;
+  // Issue #367: folder rows participate in the same App-level ref
+  // registry as file rows so the paneFocus = sidebar focus-realisation
+  // effect can call `.focus()` on whichever row carries the keyboard
+  // cursor. Without registration the lookup returns undefined and the
+  // `:focus-visible` outline never appears on folders.
+  registerRef?: (path: string, el: HTMLButtonElement | null) => void;
   // PRD #343 / ADR 0031 / issue #346: roving tabindex flag. The row
   // with isTabStop=true carries `tabindex=0`; every other row carries
   // `tabindex=-1`. Exactly one row in the sidebar tree should hold
@@ -2189,6 +2196,7 @@ export const FolderRow = React.memo(function FolderRow({
   row,
   onToggle,
   onActivate,
+  registerRef,
   isTabStop,
 }: FolderRowProps): React.JSX.Element {
   const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
@@ -2196,8 +2204,15 @@ export const FolderRow = React.memo(function FolderRow({
     if (onActivate) onActivate(row.path, "folder");
     else onToggle(row.path);
   }, [onActivate, onToggle, row.path]);
+  const handleRef = useCallback(
+    (el: HTMLButtonElement | null) => {
+      if (registerRef) registerRef(row.path, el);
+    },
+    [registerRef, row.path],
+  );
   return (
     <button
+      ref={handleRef}
       type="button"
       className="folder-entry"
       style={{ paddingLeft: 16 + row.depth * 16 }}
