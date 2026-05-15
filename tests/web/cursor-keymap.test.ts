@@ -10,9 +10,15 @@ const baseCtx: CursorKeymapContext = {
   pickerOpen: false,
   focusInEditable: false,
   cursorOnCard: false,
+  cursorOnHumanCard: false,
+  replyLockHeld: false,
 };
 
-const cardCtx: CursorKeymapContext = { ...baseCtx, cursorOnCard: true };
+const cardCtx: CursorKeymapContext = {
+  ...baseCtx,
+  cursorOnCard: true,
+  cursorOnHumanCard: true,
+};
 
 const key = (over: Partial<KeyEvent> & Pick<KeyEvent, "key">): KeyEvent => ({
   key: over.key,
@@ -101,20 +107,14 @@ describe("dispatchCursorKey: r / s gated by cursor row kind (PRD #192)", () => {
     });
   });
 
-  it("r on a row / null cursor → noop", () => {
-    expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({
-      type: "noop",
-    });
+  it("s on a human card with no lock and reply-agent configured → send-on-card", () => {
+    expect(
+      dispatchCursorKey(key({ key: "s" }), { ...cardCtx, replyAgent: "claude" }),
+    ).toEqual({ type: "send-on-card" });
   });
 
-  it("s on a card cursor → send-on-card", () => {
+  it("s on a card cursor with no reply-agent configured → noop (hidden silent — legend hides the hint too)", () => {
     expect(dispatchCursorKey(key({ key: "s" }), cardCtx)).toEqual({
-      type: "send-on-card",
-    });
-  });
-
-  it("s on a row / null cursor → noop", () => {
-    expect(dispatchCursorKey(key({ key: "s" }), baseCtx)).toEqual({
       type: "noop",
     });
   });
@@ -124,12 +124,63 @@ describe("dispatchCursorKey: r / s gated by cursor row kind (PRD #192)", () => {
     // handler is responsible for that. Here we simply confirm the dispatcher
     // doesn't treat composerOpen as a card-action suppressor (consistent
     // with how n/p/L/t survive composer-open).
-    const ctx: CursorKeymapContext = { ...cardCtx, composerOpen: true };
+    const ctx: CursorKeymapContext = {
+      ...cardCtx,
+      composerOpen: true,
+      replyAgent: "claude",
+    };
     expect(dispatchCursorKey(key({ key: "r" }), ctx)).toEqual({
       type: "open-reply-on-card",
     });
     expect(dispatchCursorKey(key({ key: "s" }), ctx)).toEqual({
       type: "send-on-card",
+    });
+  });
+});
+
+describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", () => {
+  // ADR 0028 / PRD #330: cross-axis misses on the webapp footer flash a
+  // reason via the transient status slot. The keymap emits the message; the
+  // App-side handler routes it into setFooterStatus with a ~2s auto-dismiss.
+
+  it("r on a diff-row cursor → status `No annotation under cursor.`", () => {
+    expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({
+      type: "status",
+      message: "No annotation under cursor.",
+    });
+  });
+
+  it("s on a diff-row cursor with reply-agent configured → status `Send only works on annotation cards.`", () => {
+    expect(
+      dispatchCursorKey(key({ key: "s" }), { ...baseCtx, replyAgent: "claude" }),
+    ).toEqual({
+      type: "status",
+      message: "Send only works on annotation cards.",
+    });
+  });
+
+  it("s on a non-human (agent) card → status `Send only works on human annotations.`", () => {
+    const agentCardCtx: CursorKeymapContext = {
+      ...baseCtx,
+      cursorOnCard: true,
+      cursorOnHumanCard: false,
+      replyAgent: "claude",
+    };
+    expect(dispatchCursorKey(key({ key: "s" }), agentCardCtx)).toEqual({
+      type: "status",
+      message: "Send only works on human annotations.",
+    });
+  });
+
+  it("s on a human card while the reply-lock is held → status `<agent> is already replying.`", () => {
+    const lockedCtx: CursorKeymapContext = {
+      ...cardCtx,
+      replyAgent: "claude",
+      replyLockHeld: true,
+    };
+    expect(dispatchCursorKey(key({ key: "s" }), lockedCtx)).toEqual({
+      type: "status",
+      message: "claude is already replying.",
     });
   });
 });

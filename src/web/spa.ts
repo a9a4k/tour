@@ -273,6 +273,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     flex-wrap: wrap;
     gap: 0 8px;
   }
+  .app-footer-status,
   .app-footer-legend {
     overflow-wrap: anywhere;
   }
