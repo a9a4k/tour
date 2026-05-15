@@ -13,9 +13,9 @@ import type { FlatRow } from "../../core/flat-rows.js";
  *      in `flatRows`. Card cursors return the descriptor unconditionally
  *      since the runtime `annotationRefs` lookup is the cheaper check;
  *      the capture path no-ops when the ref is missing.
- *   2. Active file — the file the sticky `TourHeaderPath` is showing
- *      (i.e. `selectedFile`). No cursor, or a stale row cursor pointing
- *      at an unrendered row, falls through here.
+ *   2. Active file — `selectedFile` (the value the sidebar's row-
+ *      highlight tracks). No cursor, or a stale row cursor pointing at
+ *      an unrendered row, falls through here.
  *   3. null — caller no-ops.
  */
 export type ResizeReanchorTarget =

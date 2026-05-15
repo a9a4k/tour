@@ -1521,7 +1521,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           />
           <LayoutToggle layout={layout} onChange={setLayoutChoice} />
         </div>
-        <TourHeaderPath path={selectedFile} />
       </div>
       <div className="app-body">
         {view.kind === "snapshot-lost" ? (
@@ -1684,18 +1683,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ) : null}
     </>
   );
-}
-
-// Renders the currently-selected sidebar file's full filesystem path in the
-// left cluster of `.tour-header`, prefixed with `·` (U+00B7) to match the
-// TUI's separator glyph so the two surfaces feel consistent. Renders
-// nothing when no file is selected. The path is echoed verbatim — no
-// basename, no app-side truncation; CSS handles horizontal overflow the
-// same way it does for the existing title / source-refs siblings.
-// Exported so unit tests can mount the slot in isolation.
-export function TourHeaderPath({ path }: { path: string | null }): React.JSX.Element | null {
-  if (!path) return null;
-  return <span className="tour-header-path">{`· ${path}`}</span>;
 }
 
 // Tour-level (PR-equivalent) `+N -M` diff-stats indicator for the title bar
