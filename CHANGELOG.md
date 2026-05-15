@@ -26,6 +26,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #352
 
+- **TUI now honors terminal editors (`vim`, `nvim`, `vi`, `nano`,
+  `emacs`, `hx`, `micro`) on `o` (issue #355, PRD #349, ADR 0032).**
+  Replaces the slice-1 placeholder footer ("terminal editor — TUI
+  support coming in a follow-up") with the real suspend / inherit /
+  resume lifecycle, mirroring `git commit`'s editor dance and
+  lazygit's `e`-key behavior. Pressing `o` with `$TOUR_EDITOR=vim`
+  pauses the opentui renderer, hands the terminal to vim via
+  `stdio: 'inherit'`, awaits exit, and resumes the renderer with a
+  full repaint. Exit code is not surfaced (`:q` and `:cq` both
+  return `Opened <file>:<line>`). Resume is guaranteed via
+  try/finally even if the editor crashes or is killed (SIGKILL),
+  so the TUI is never left in a paused state. The webapp continues
+  to refuse terminal editors with 409 — that asymmetry is physics
+  (no terminal to lend), not policy.
+
+  Issue: #355 · PRD: #349
+
 ### Changed
 
 - **TUI `y` is now context-aware (PRD #356, issue #357).** Semantics

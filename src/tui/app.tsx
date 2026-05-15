@@ -127,6 +127,7 @@ import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
+import { spawnTerminalEditor } from "./terminal-editor-spawn.js";
 import { existsSync as existsSyncSafe } from "node:fs";
 import { isAbsolute as isAbsolutePath, join as joinPath } from "node:path";
 
@@ -1769,19 +1770,15 @@ function App(props: AppProps) {
         return;
       }
       case "open-in-editor": {
-        // PRD #349 / ADR 0032 / issue #352 — Slice 1: row-cursor only.
-        // Card cursor, sidebar fallback, folder selection, and null
-        // cursor all surface placeholder footer-hints; permissive
-        // resolution lands in #351. Terminal-classified editors footer-
-        // fail with a placeholder; full suspend/resume lifecycle lands
-        // in #355.
+        // PRD #349 / ADR 0032. Issue #352 shipped row-cursor + GUI-editor.
+        // Issue #355 replaces the terminal-editor placeholder with the
+        // suspend/inherit/resume lifecycle (mirrors `git commit`'s editor
+        // dance). Card cursor, sidebar fallback, folder selection, and
+        // null cursor still surface placeholder footer-hints; permissive
+        // resolution lands in #354.
         const editor = props.editor ?? null;
         if (!editor) {
           setFooterStatus("o: editor not configured — set $TOUR_EDITOR or pass --editor");
-          return;
-        }
-        if (editor.terminal) {
-          setFooterStatus("o: terminal editor — TUI support coming in a follow-up");
           return;
         }
         const target = resolveOpenTarget(cursor);
@@ -1805,7 +1802,10 @@ function App(props: AppProps) {
           setFooterStatus(`o: ${target.file} not in working tree`);
           return;
         }
-        void spawnGuiEditor(editor, target, cwd).then((result) => {
+        const spawned = editor.terminal
+          ? spawnTerminalEditor(editor, target, cwd, renderer)
+          : spawnGuiEditor(editor, target, cwd);
+        void spawned.then((result) => {
           setFooterStatus(result.message);
           if (openFooterTimerRef.current !== null) {
             clearTimeout(openFooterTimerRef.current);
