@@ -26,13 +26,24 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   /* Issue #323: sidebar width is now React state (default 280px before
      auto-fit lands), so the inline style wins at runtime. The 280px
      rule below is kept as a fallback for any pre-mount paint.
-     position: relative anchors the absolute drag handle. */
+     position: relative anchors the absolute drag handle.
+     Scroll lives on the inner .sidebar-scroll, not on the aside.
+     When the aside scrolls itself, its vertical scrollbar (~16 px on
+     macOS Chromium) shifts the absolute drag handle inward by the
+     same amount, hiding the handle behind the scrollbar and leaving
+     a dead zone between the handle and the visible right edge. */
   .app-sidebar {
     width: 280px;
     border-right: 1px solid var(--border-default);
-    overflow-y: auto;
     flex-shrink: 0;
     position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-scroll {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
   }
   .sidebar-resize-handle {
     position: absolute;

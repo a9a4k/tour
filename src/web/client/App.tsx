@@ -1530,7 +1530,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
               style={{ width: sidebarWidth }}
             >
-              <h2>Files</h2>
+              <div className="sidebar-scroll">
+                <h2>Files</h2>
+              </div>
               <SidebarResizeHandle
                 width={sidebarWidth}
                 onResize={handleSidebarResize}
@@ -1566,20 +1568,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
               style={{ width: sidebarWidth }}
             >
-              <h2>Files</h2>
-              {view.tree.visibleRows.map((row) =>
-                row.kind === "folder" ? (
-                  <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
-                ) : (
-                  <FileRow
-                    key={`f:${row.path}`}
-                    row={row}
-                    selected={selectedFile === row.path}
-                    registerRef={registerSidebarRef}
-                    onSelect={selectFile}
-                  />
-                ),
-              )}
+              <div className="sidebar-scroll">
+                <h2>Files</h2>
+                {view.tree.visibleRows.map((row) =>
+                  row.kind === "folder" ? (
+                    <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
+                  ) : (
+                    <FileRow
+                      key={`f:${row.path}`}
+                      row={row}
+                      selected={selectedFile === row.path}
+                      registerRef={registerSidebarRef}
+                      onSelect={selectFile}
+                    />
+                  ),
+                )}
+              </div>
               <SidebarResizeHandle
                 width={sidebarWidth}
                 onResize={handleSidebarResize}
