@@ -5,9 +5,6 @@ import type { PickerRow } from "../../src/core/tour-list.js";
 // Mirrors the React-tree introspection idiom from
 // `tests/tui/hamburger-button.test.ts`: call the function component
 // directly and walk the returned element tree to assert click wiring.
-// Issue #321 — clicks on tour-picker rows must reach the host so it can
-// dispatch the same `picker.move` + `picker.commit` / `picker.close`
-// sequence the keyboard branch in app.tsx dispatches on Enter.
 
 interface AnyElement {
   type: string;

@@ -12,9 +12,8 @@ interface TourPickerProps {
   // listener can realize `scrollPickerRow` by scrolling
   // `picker-row-${idx}` into view.
   scrollRef?: Ref<ScrollBoxRenderable | null>;
-  // Issue #321: row clicks. The host owns the close-vs-commit decision
-  // (mirrors the Enter branch in app.tsx) so the picker stays a
-  // controlled view that doesn't read currentTourId equality itself.
+  // Host owns the close-vs-commit decision (mirrors the Enter branch
+  // in app.tsx) so the picker stays a controlled view. Issue #321.
   onSelect: (idx: number) => void;
 }
 
