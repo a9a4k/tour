@@ -2205,9 +2205,7 @@ export const FolderRow = React.memo(function FolderRow({
     else onToggle(row.path);
   }, [onActivate, onToggle, row.path]);
   const handleRef = useCallback(
-    (el: HTMLButtonElement | null) => {
-      if (registerRef) registerRef(row.path, el);
-    },
+    (el: HTMLButtonElement | null) => registerRef?.(row.path, el),
     [registerRef, row.path],
   );
   return (
