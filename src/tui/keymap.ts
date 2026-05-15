@@ -141,11 +141,12 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "y") return { type: "yank-at-cursor" };
     // PRD #349 / ADR 0032 / issue #352: `o` opens the cursor's file at
     // its line in the configured editor. Available in both panes — the
-    // App-side handler resolves the target (slice 1 row-cursor only;
-    // permissive resolution lands in #351) and routes to
-    // `core/editor-spawn`. Bare lowercase per ADR 0030 (cursor-target
-    // action). `e` is taken by expand-file-all (#297) — convention
-    // concession recorded in ADR 0032.
+    // App-side handler resolves the target (permissive resolution per
+    // issue #354: row → (file, line); card → annotation `line_end`;
+    // sidebar file → (file, 1); folder / null → footer no-op) and
+    // routes to `core/editor-spawn`. Bare lowercase per ADR 0030
+    // (cursor-target action). `e` is taken by expand-file-all (#297) —
+    // convention concession recorded in ADR 0032.
     if (key.name === "o") return { type: "open-in-editor" };
     // Row-kind-aware action dispatch (PRD #192 / ADR 0022). The unified
     // cursor routes action keys by row kind: `c` (issue #337, ADR 0029)
