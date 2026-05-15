@@ -4,13 +4,9 @@ import {
   clampPaneWidthManual,
 } from "../../src/core/sidebar-width-clamp.js";
 
-// Unit-agnostic scalar clamps shared by the TUI and web sidebar-width
-// modules (issue #328). The per-surface wrappers pass their own unit
-// constants (cols / px) into these helpers. The two surface-specific
-// test files pin the call-site math against their own units; this file
-// pins the generic shape itself so a future change to the formula —
-// e.g. introducing a hysteresis band or a soft warning ceiling — can be
-// caught here once rather than twice.
+// Tests for the unit-agnostic scalar clamps (issue #328). The
+// surface-specific test files cover per-unit call sites; this file
+// pins the generic shape.
 
 describe("clampPaneWidth (auto-fit clamp)", () => {
   it("returns the input when inside [hardMin, container - softMin]", () => {

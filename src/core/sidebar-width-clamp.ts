@@ -1,17 +1,12 @@
 // Unit-agnostic scalar clamps for sidebar / diff-pane width math
-// (issue #328). Lifted from `src/tui/sidebar-width.ts` and
-// `src/web/client/sidebar-width.ts`, both of which used to inline the
-// same formula in different units (cols vs. pixels). The surface-
-// specific modules keep their unit constants and `computeAutoFitWidth*`
-// helpers (which couple to per-surface row-cost helpers); only the two
-// scalar clamps lift to core so any future change to the shape — e.g. a
-// soft warning ceiling or a hysteresis band — is applied once rather
-// than twice.
+// (issue #328). Per-surface modules supply their own unit constants
+// (cols vs. px) and own their `computeAutoFitWidth*` helpers, which
+// couple to per-surface row-cost helpers.
 //
 //   * `clampPaneWidth(width, container, softMin, hardMin)` — auto-fit
 //     range `[hardMin, max(hardMin, container - softMin)]`. `softMin`
-//     reserves a readability floor for the other pane. The auto-fit
-//     path cannot squeeze the other pane past this floor.
+//     reserves a readability floor for the other pane; the auto-fit
+//     path cannot squeeze it past this floor.
 //
 //   * `clampPaneWidthManual(width, container, hardMin)` — drag /
 //     keypress range `[hardMin, max(hardMin, container - hardMin)]`.
