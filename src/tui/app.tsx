@@ -156,16 +156,6 @@ type AppProps = Partial<StartTuiProps> & { bundle: TourBundle };
 
 // Stitch BundleFile.orphanWindows (file-grouped, no `file` field) into the
 // flat OrphanWindow[] shape `seedFromOrphans` consumes.
-// PRD #356 / issue #357: footer flash for `y` on a diff-row preview
-// truncates the displayed text to keep the legend strip readable while
-// the full text reaches the clipboard. ~60 char ceiling + ellipsis.
-const YANK_PREVIEW_MAX = 60;
-function truncateForPreview(text: string): string {
-  return text.length <= YANK_PREVIEW_MAX
-    ? text
-    : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
-}
-
 function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] {
   const out: OrphanWindow[] = [];
   for (const f of files) {
@@ -174,6 +164,16 @@ function flattenOrphanWindows(files: ReadonlyArray<BundleFile>): OrphanWindow[] 
     }
   }
   return out;
+}
+
+// PRD #356 / issue #357: footer flash for `y` on a diff-row preview
+// truncates the displayed text to keep the legend strip readable while
+// the full text reaches the clipboard. ~60 char ceiling + ellipsis.
+const YANK_PREVIEW_MAX = 60;
+function truncateForPreview(text: string): string {
+  return text.length <= YANK_PREVIEW_MAX
+    ? text
+    : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
 }
 
 function fileCardBody(
@@ -1717,16 +1717,10 @@ function App(props: AppProps) {
         if (bundle.kind === "ok") {
           for (const bf of bundle.files) bundleFiles.set(bf.name, bf);
         }
-        const sidebarSelectedRow =
-          selectedRow?.kind === "file"
-            ? { kind: "file" as const, path: selectedRow.path }
-            : selectedRow?.kind === "folder"
-              ? { kind: "folder" as const }
-              : null;
         const target = resolveYankTarget({
           paneFocus,
           cursor,
-          sidebarSelectedRow,
+          sidebarSelectedRow: selectedRow ?? null,
           comments,
           bundleFiles,
         });
