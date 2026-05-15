@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Wire-format change (envelope only): `tour show --json` and `tour
+  pickup --json` envelope key renamed from `annotations` to `comments`
+  (PRD #335, ADR 0029).** Downstream agent scripts that parse the
+  top-level array on either command must update from
+  `data.annotations` to `data.comments`. The per-record schema is
+  unchanged (`id`, `file`, `side`, `line_start`, `line_end`, `body`,
+  `author`, `author_kind`, `created_at`, `replies_to?`, `kind`) — only
+  the envelope key shifted. Decision recorded in ADR 0029's Stage B
+  addendum; no back-compat alias is added (the CLI verb's permanent
+  `tour annotate` alias covers write paths but envelope-key
+  compatibility is not symmetric).
+
 - **Source-identifier rename: `Annotation` → `Comment` across source,
   tests, intents, and CONTEXT.md prose (issue #341, PRD #335, ADR
   0029).** Stage B mechanical slice. The `Annotation` type renames to
