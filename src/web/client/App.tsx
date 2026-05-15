@@ -1675,11 +1675,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       <Footer
         legend={composeFooterHints({
           surface: "web",
+          // `replyAgent` gating lives in the composer (issue #332) —
+          // pass it through unconditionally and let `showSendHint`
+          // carry only the cursor + lock predicate at this call site.
           replyAgent: replyAgent ?? undefined,
-          // Mirrors the issue #332 predicate: cursor on a human-authored
-          // annotation card AND the reply-lock is free. `replyAgent`
-          // gating is handled inside the composer — passing it through
-          // unconditionally keeps the predicate readable here.
           showSendHint:
             view.kind === "ok" &&
             view.cursor.onCard &&

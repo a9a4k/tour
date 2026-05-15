@@ -820,12 +820,11 @@ describe("App fold-unfold restores classifier-default (issue #316)", () => {
   });
 });
 
-// Issue #332: webapp footer's `s: send to {agent}` segment must mount
-// only when `--reply-agent` is configured AND the cursor is on a human
-// annotation card AND the reply-lock is free. The fixture's single
-// top-level annotation is human-authored, so the bundle-load re-anchor
-// (re-anchor-policy.ts) lands the cursor on it; the footer's predicate
-// then resolves to `showSendHint: true` iff replyAgent is also set.
+// Issue #332: dynamic send-hint matrix at the App's footer call site.
+// The fixture's first top-level annotation is human-authored, so the
+// bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on a
+// human card by default — the lock/agent/cursor permutations below
+// then exercise each leg of the predicate without manual `j` walking.
 
 const sendHintTourId = "2026-05-15-000000-footer-send-hint";
 
