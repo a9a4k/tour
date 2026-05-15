@@ -4,7 +4,7 @@ import type { Cursor } from "../core/cursor-state.js";
 import { resolveCursorRowIdx } from "../core/cursor-state.js";
 
 export function flatRowId(r: FlatRow): string {
-  if (r.kind === "card") return `annotation-${r.annotationId}`;
+  if (r.kind === "card") return `comment-${r.commentId}`;
   return r.kind === "diff"
     ? `diff-row-${r.file}-${r.side}-${r.lineNumber}`
     : `interactive-row-${r.file}-${r.subKind}-${r.boundaryRef}`;
@@ -28,7 +28,7 @@ export function cursorRowDomId(
   cursor: Cursor,
   flatRows: ReadonlyArray<FlatRow>,
 ): string | null {
-  if (cursor.kind === "card") return `annotation-${cursor.annotationId}`;
+  if (cursor.kind === "card") return `comment-${cursor.commentId}`;
   const idx = resolveCursorRowIdx(cursor, flatRows);
   if (idx === -1) return null;
   return flatRowId(flatRows[idx]);

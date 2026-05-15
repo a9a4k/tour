@@ -8,7 +8,7 @@ import {
   planRows,
   type PlannedRow,
 } from "../../src/core/diff-rows.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 
 function parseFile(rawDiff: string): FileDiffMetadata {
   const patches = parsePatchFiles(rawDiff);
@@ -18,7 +18,7 @@ function parseFile(rawDiff: string): FileDiffMetadata {
   return patches[0].files[0];
 }
 
-function ann(overrides: Partial<Annotation> & Pick<Annotation, "id" | "side" | "line_start" | "line_end">): Annotation {
+function ann(overrides: Partial<Comment> & Pick<Comment, "id" | "side" | "line_start" | "line_end">): Comment {
   return {
     id: overrides.id,
     file: overrides.file ?? "x.txt",
@@ -65,19 +65,19 @@ describe("planRows", () => {
     }
   });
 
-  it("returns rows with no annotations when annotations list is empty", () => {
+  it("returns rows with no comments when comments list is empty", () => {
     const file = parseFile(SIMPLE_DIFF);
     const rows = planRows(file, [], "split");
-    expect(rows.some((r) => r.kind === "annotation")).toBe(false);
+    expect(rows.some((r) => r.kind === "comment")).toBe(false);
     expect(rows.some((r) => r.kind === "hunk-header")).toBe(true);
     expect(rows.some((r) => r.kind === "diff-row")).toBe(true);
   });
 
-  it("inserts a single-line annotation on additions directly after its anchor row", () => {
+  it("inserts a single-line comment on additions directly after its anchor row", () => {
     const file = parseFile(SIMPLE_DIFF);
     const a = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 });
     const rows = planRows(file, [a], "split");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     expect(prev.kind).toBe("diff-row");
@@ -85,23 +85,23 @@ describe("planRows", () => {
       expect(prev.rightLineNumber).toBe(2);
     }
     const annRow = rows[annIdx];
-    if (annRow.kind === "annotation") {
+    if (annRow.kind === "comment") {
       expect(annRow.id).toBe("a1");
-      expect(annRow.annotation.id).toBe("a1");
+      expect(annRow.comment.id).toBe("a1");
     }
   });
 
-  it("places the card after the row matching line_end for a multi-line annotation on additions", () => {
+  it("places the card after the row matching line_end for a multi-line comment on additions", () => {
     const file = parseFile(SIMPLE_DIFF);
     const a = ann({ id: "a1", side: "additions", line_start: 2, line_end: 3 });
     const rows = planRows(file, [a], "split");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     if (prev.kind === "diff-row") {
       expect(prev.rightLineNumber).toBe(3);
     } else {
-      throw new Error("expected diff-row before annotation");
+      throw new Error("expected diff-row before comment");
     }
   });
 
@@ -119,34 +119,34 @@ index 1..2 100644
     const file = parseFile(diff);
     const a = ann({ id: "a1", side: "deletions", line_start: 1, line_end: 3 });
     const rows = planRows(file, [a], "split");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     if (prev.kind === "diff-row") {
       expect(prev.leftLineNumber).toBe(3);
     } else {
-      throw new Error("expected diff-row before annotation");
+      throw new Error("expected diff-row before comment");
     }
   });
 
-  it("places multiple annotations on different anchor rows independently", () => {
+  it("places multiple comments on different anchor rows independently", () => {
     const file = parseFile(SIMPLE_DIFF);
     const a1 = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 });
     const a2 = ann({ id: "a2", side: "additions", line_start: 3, line_end: 3 });
     const rows = planRows(file, [a1, a2], "split");
     const annIds = rows
-      .filter((r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation")
+      .filter((r): r is Extract<PlannedRow, { kind: "comment" }> => r.kind === "comment")
       .map((r) => r.id);
     expect(annIds).toEqual(["a1", "a2"]);
-    const a1Idx = rows.findIndex((r) => r.kind === "annotation" && r.id === "a1");
-    const a2Idx = rows.findIndex((r) => r.kind === "annotation" && r.id === "a2");
+    const a1Idx = rows.findIndex((r) => r.kind === "comment" && r.id === "a1");
+    const a2Idx = rows.findIndex((r) => r.kind === "comment" && r.id === "a2");
     const before1 = rows[a1Idx - 1];
     const before2 = rows[a2Idx - 1];
     if (before1.kind === "diff-row") expect(before1.rightLineNumber).toBe(2);
     if (before2.kind === "diff-row") expect(before2.rightLineNumber).toBe(3);
   });
 
-  it("stacks multiple annotations sharing the same line_end in created_at ascending order", () => {
+  it("stacks multiple comments sharing the same line_end in created_at ascending order", () => {
     const file = parseFile(SIMPLE_DIFF);
     const earlier = ann({
       id: "z-id",
@@ -164,7 +164,7 @@ index 1..2 100644
     });
     const rows = planRows(file, [later, earlier], "split");
     const annIds = rows
-      .filter((r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation")
+      .filter((r): r is Extract<PlannedRow, { kind: "comment" }> => r.kind === "comment")
       .map((r) => r.id);
     expect(annIds).toEqual(["z-id", "a-id"]);
   });
@@ -187,12 +187,12 @@ index 1..2 100644
     });
     const rows = planRows(file, [a, b], "split");
     const annIds = rows
-      .filter((r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation")
+      .filter((r): r is Extract<PlannedRow, { kind: "comment" }> => r.kind === "comment")
       .map((r) => r.id);
     expect(annIds).toEqual(["a", "b"]);
   });
 
-  // Issue #300: an annotation whose `line_end` falls outside the planner's
+  // Issue #300: a comment whose `line_end` falls outside the planner's
   // emitted same-side diff rows used to be silently dropped, breaking n/p
   // navigation when the bundle bookmark counter `[K/M]` claimed the card
   // existed. The fallback ladder is: exact match → nearest preceding same-
@@ -204,7 +204,7 @@ index 1..2 100644
     // behavior was to silently drop the card.
     const a = ann({ id: "ghost", side: "additions", line_start: 99, line_end: 99 });
     const rows = planRows(file, [a], "split");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     if (prev.kind === "diff-row") {
@@ -235,7 +235,7 @@ index 1..2 100644
     const file = parseFile(diff);
     const a = ann({ id: "gap", side: "additions", line_start: 7, line_end: 7 });
     const rows = planRows(file, [a], "split");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     if (prev.kind === "diff-row") {
@@ -260,7 +260,7 @@ index 1..2 100644
     const file = parseFile(diff);
     const a = ann({ id: "early", side: "additions", line_start: 2, line_end: 2 });
     const rows = planRows(file, [a], "split");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     if (prev.kind === "diff-row") {
@@ -270,24 +270,24 @@ index 1..2 100644
     }
   });
 
-  it("CardFlatRow.lineEnd preserves the annotation's authored line_end after a fallback snap (issue #300)", () => {
-    // Even when the card snaps to a fallback diff row, the AnnotationRow it
-    // emits carries the original annotation (line_end intact) so downstream
+  it("CardFlatRow.lineEnd preserves the comment's authored line_end after a fallback snap (issue #300)", () => {
+    // Even when the card snaps to a fallback diff row, the CommentRow it
+    // emits carries the original comment (line_end intact) so downstream
     // consumers (URL, click routing, agent reply targets) see the true
     // anchor — not the snap target.
     const file = parseFile(SIMPLE_DIFF);
     const a = ann({ id: "ghost", side: "additions", line_start: 99, line_end: 99 });
     const rows = planRows(file, [a], "split");
-    const annRow = rows.find((r) => r.kind === "annotation");
-    if (annRow?.kind === "annotation") {
-      expect(annRow.annotation.line_end).toBe(99);
-      expect(annRow.annotation.line_start).toBe(99);
+    const annRow = rows.find((r) => r.kind === "comment");
+    if (annRow?.kind === "comment") {
+      expect(annRow.comment.line_end).toBe(99);
+      expect(annRow.comment.line_start).toBe(99);
     } else {
-      throw new Error("expected annotation row to be emitted");
+      throw new Error("expected comment row to be emitted");
     }
   });
 
-  it("places a deletions-side annotation after the matching row in unified layout", () => {
+  it("places a deletions-side comment after the matching row in unified layout", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -300,7 +300,7 @@ index 1..2 100644
     const file = parseFile(diff);
     const a = ann({ id: "u1", side: "deletions", line_start: 1, line_end: 1 });
     const rows = planRows(file, [a], "unified");
-    const annIdx = rows.findIndex((r) => r.kind === "annotation");
+    const annIdx = rows.findIndex((r) => r.kind === "comment");
     expect(annIdx).toBeGreaterThan(0);
     const prev = rows[annIdx - 1];
     if (prev.kind === "diff-row") {
@@ -308,7 +308,7 @@ index 1..2 100644
       expect(prev.leftLineNumber).toBe(1);
       expect(prev.rightLineNumber).toBeNull();
     } else {
-      throw new Error("expected diff-row before annotation");
+      throw new Error("expected diff-row before comment");
     }
   });
 
@@ -335,7 +335,7 @@ index 1..2 100644
   });
 
   describe("tint + gutter flags", () => {
-    it("does not set any tint/gutter flags when annotations list is empty", () => {
+    it("does not set any tint/gutter flags when comments list is empty", () => {
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
       const diffRows = rows.filter(
@@ -349,7 +349,7 @@ index 1..2 100644
       }
     });
 
-    it("sets right-only flags for an additions annotation in split layout", () => {
+    it("sets right-only flags for an additions comment in split layout", () => {
       const file = parseFile(SIMPLE_DIFF);
       const a = ann({ id: "a1", side: "additions", line_start: 2, line_end: 3 });
       const rows = planRows(file, [a], "split");
@@ -368,7 +368,7 @@ index 1..2 100644
       expect(ctx?.leftTinted).toBeFalsy();
     });
 
-    it("sets left-only flags for a deletions annotation in split layout", () => {
+    it("sets left-only flags for a deletions comment in split layout", () => {
       const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -435,7 +435,7 @@ index 1..2 100644
       expect(target?.leftLineNumber).toBeNull();
     });
 
-    it("unions per-side flags when multiple annotations cover the same rows", () => {
+    it("unions per-side flags when multiple comments cover the same rows", () => {
       const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -465,7 +465,7 @@ index 1..2 100644
       expect(leftOnly?.rightTinted).toBeFalsy();
     });
 
-    it("unions flags when two additions annotations have overlapping ranges", () => {
+    it("unions flags when two additions comments have overlapping ranges", () => {
       const file = parseFile(SIMPLE_DIFF);
       const a1 = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 });
       const a2 = ann({ id: "a2", side: "additions", line_start: 2, line_end: 3 });
@@ -481,7 +481,7 @@ index 1..2 100644
       expect(r3?.rightGutter).toBe(true);
     });
 
-    it("produces a different flag distribution when toggling layout for the same annotations", () => {
+    it("produces a different flag distribution when toggling layout for the same comments", () => {
       const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -512,7 +512,7 @@ index 1..2 100644
       expect(unifiedRight).toBe(3);
     });
 
-    it("sets flags on a single-line annotation the same as on multi-line ones", () => {
+    it("sets flags on a single-line comment the same as on multi-line ones", () => {
       const file = parseFile(SIMPLE_DIFF);
       const a = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 });
       const rows = planRows(file, [a], "split");
@@ -527,13 +527,13 @@ index 1..2 100644
     });
   });
 
-  // issue #199: `planRows(file, annotations, ...)` was matching annotation
+  // issue #199: `planRows(file, comments, ...)` was matching comment
   // anchors by `(side, line_end)` without checking `ann.file`. Calling it
-  // with the cross-file annotation list — as the webapp does — leaked card
+  // with the cross-file comment list — as the webapp does — leaked card
   // rows AND tint/gutter flags into every file whose line range overlapped
-  // another file's annotation `line_end`. Fix: filter at the top of
+  // another file's comment `line_end`. Fix: filter at the top of
   // planRows so every downstream helper inherits a file-scoped list.
-  describe("file-scoped annotations (issue #199)", () => {
+  describe("file-scoped comments (issue #199)", () => {
     // Two diffs whose line ranges overlap at line 2 on the additions side.
     const DIFF_A = `diff --git a/a.txt b/a.txt
 index 1..2 100644
@@ -556,30 +556,30 @@ index 1..2 100644
 +added
 `;
 
-    it("emits the card row in the annotation's own file", () => {
+    it("emits the card row in the comment's own file", () => {
       const fileA = parsePatchFiles(DIFF_A)[0].files[0];
       const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
       const rows = planRows(fileA, [a], "split");
       const cards = rows.filter(
-        (r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation",
+        (r): r is Extract<PlannedRow, { kind: "comment" }> => r.kind === "comment",
       );
       expect(cards.map((c) => c.id)).toEqual(["a1"]);
     });
 
-    it("emits zero card rows in a foreign file even when an annotation's line_end falls inside it", () => {
-      // Bug repro: pass an annotation anchored to a.txt while planning b.txt.
+    it("emits zero card rows in a foreign file even when a comment's line_end falls inside it", () => {
+      // Bug repro: pass a comment anchored to a.txt while planning b.txt.
       // The leak puts a phantom card row into b.txt's planned stream.
       const fileB = parsePatchFiles(DIFF_B)[0].files[0];
       const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
       const rows = planRows(fileB, [a], "split");
-      const cards = rows.filter((r) => r.kind === "annotation");
+      const cards = rows.filter((r) => r.kind === "comment");
       expect(cards.length).toBe(0);
     });
 
-    it("does not set tint/gutter flags from a foreign file's annotation", () => {
-      // Same class of bug as the phantom card: applyAnnotationFlags matched
+    it("does not set tint/gutter flags from a foreign file's comment", () => {
+      // Same class of bug as the phantom card: applyCommentFlags matched
       // `(side, line)` without a file check. Verify diff-rows in b.txt stay
-      // un-tinted when only a.txt has an overlapping-line annotation.
+      // un-tinted when only a.txt has an overlapping-line comment.
       const fileB = parsePatchFiles(DIFF_B)[0].files[0];
       const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 3 });
       const rows = planRows(fileB, [a], "split");
@@ -594,16 +594,16 @@ index 1..2 100644
       }
     });
 
-    it("still emits the card + tint in the home file when both files are in the annotation list", () => {
-      // Smoke test: planning a.txt with the same cross-file annotation list
+    it("still emits the card + tint in the home file when both files are in the comment list", () => {
+      // Smoke test: planning a.txt with the same cross-file comment list
       // emits exactly the home-file card and its tint, unaffected by the
-      // foreign annotation that the webapp also forwards.
+      // foreign comment that the webapp also forwards.
       const fileA = parsePatchFiles(DIFF_A)[0].files[0];
       const own = ann({ id: "own", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
       const foreign = ann({ id: "foreign", file: "b.txt", side: "additions", line_start: 2, line_end: 2 });
       const rows = planRows(fileA, [own, foreign], "split");
       const cards = rows.filter(
-        (r): r is Extract<PlannedRow, { kind: "annotation" }> => r.kind === "annotation",
+        (r): r is Extract<PlannedRow, { kind: "comment" }> => r.kind === "comment",
       );
       expect(cards.map((c) => c.id)).toEqual(["own"]);
       const tintedRight = rows.filter(
@@ -1025,11 +1025,11 @@ index 1..2 100644
       }
     });
 
-    it("suppresses annotation rows when collapsed (no diff rows means no anchors to attach to)", () => {
+    it("suppresses comment rows when collapsed (no diff rows means no anchors to attach to)", () => {
       const file = parseFile(SIMPLE_DIFF);
       const a = ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 });
       const rows = planRows(file, [a], "split", { classifierCollapsed: true });
-      expect(rows.some((r) => r.kind === "annotation")).toBe(false);
+      expect(rows.some((r) => r.kind === "comment")).toBe(false);
       expect(rows.length).toBe(1);
     });
   });

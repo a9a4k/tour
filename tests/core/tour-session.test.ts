@@ -18,7 +18,7 @@ import {
 } from "../../src/core/tour-session.js";
 import type { PickerRow } from "../../src/core/tour-list.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
-import type { Tour, Annotation } from "../../src/core/types.js";
+import type { Tour, Comment } from "../../src/core/types.js";
 import type { Cursor, RowAnchor, CardAnchor } from "../../src/core/cursor-state.js";
 import { validateCursor, cursorAtFirstFileRow } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
@@ -31,7 +31,7 @@ function pickerRow(id: string, over: Partial<PickerRow> = {}): PickerRow {
     status: "open",
     glyph: "●",
     age: "1m ago",
-    annotationCount: 0,
+    commentCount: 0,
     ...over,
   };
 }
@@ -52,7 +52,7 @@ function tour(over: Partial<Tour> & { id: string }): Tour {
 }
 
 function mkBundle(id: string): TourBundle {
-  return { kind: "snapshot-lost", tour: tour({ id }), annotations: [] as Annotation[] };
+  return { kind: "snapshot-lost", tour: tour({ id }), comments: [] as Comment[] };
 }
 
 function bundleFile(
@@ -75,7 +75,7 @@ function okBundle(
   return {
     kind: "ok",
     tour: tour({ id }),
-    annotations: [] as Annotation[],
+    comments: [] as Comment[],
     diff: "",
     files,
   };
@@ -440,7 +440,7 @@ describe("selectors", () => {
     const snapBundle: TourBundle = {
       kind: "snapshot-lost",
       tour: tour({ id: "b" }),
-      annotations: [] as Annotation[],
+      comments: [] as Comment[],
     };
     const snapState = reduce(initialTourSessionState(), {
       type: "tour.switched",
@@ -589,7 +589,7 @@ function rowAnchor(over: Partial<RowAnchor> = {}): RowAnchor {
 function cardAnchor(over: Partial<CardAnchor> = {}): CardAnchor {
   return {
     kind: "card",
-    annotationId: over.annotationId ?? "ann-1",
+    commentId: over.commentId ?? "ann-1",
     preferredSide: over.preferredSide ?? "additions",
   };
 }
@@ -658,36 +658,36 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     // After the split, `revealSidebarFile` is removed from the intent
     // vocabulary — only `selectSidebarFile` is emitted on cursor file
     // change. Explicit force-unfold lives at the call site (sidebar
-    // click, n/p annotation jump, ...).
+    // click, n/p comment jump, ...).
     expect(
       r.intents.some((i) => (i as { type: string }).type === "revealSidebarFile"),
     ).toBe(false);
   });
 
-  it("cursor.set from RowAnchor to CardAnchor emits mirrorAnnUrl { annotationId }", () => {
+  it("cursor.set from RowAnchor to CardAnchor emits mirrorAnnUrl { commentId }", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts" }),
     }).state;
     const r = reduce(s, {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-7" }),
+      anchor: cardAnchor({ commentId: "ann-7" }),
     });
-    expect(r.state.cursor).toEqual(cardAnchor({ annotationId: "ann-7" }));
+    expect(r.state.cursor).toEqual(cardAnchor({ commentId: "ann-7" }));
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
-        target: { kind: "card", annotationId: "ann-7" },
+        target: { kind: "card", commentId: "ann-7" },
         placement: "nearest",
       },
-      { type: "mirrorAnnUrl", annotationId: "ann-7" },
+      { type: "mirrorAnnUrl", commentId: "ann-7" },
     ]);
   });
 
-  it("cursor.set from CardAnchor to RowAnchor emits mirrorAnnUrl { annotationId: null }", () => {
+  it("cursor.set from CardAnchor to RowAnchor emits mirrorAnnUrl { commentId: null }", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-1" }),
+      anchor: cardAnchor({ commentId: "ann-1" }),
     }).state;
     const r = reduce(s, {
       type: "cursor.set",
@@ -700,42 +700,42 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         placement: "nearest",
       },
       { type: "selectSidebarFile", file: "foo.ts" },
-      { type: "mirrorAnnUrl", annotationId: null },
+      { type: "mirrorAnnUrl", commentId: null },
     ]);
   });
 
   it("cursor.set from CardAnchor to a different CardAnchor emits mirrorAnnUrl { newId } (no selectSidebarFile)", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-1" }),
+      anchor: cardAnchor({ commentId: "ann-1" }),
     }).state;
     const r = reduce(s, {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-2" }),
+      anchor: cardAnchor({ commentId: "ann-2" }),
     });
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
-        target: { kind: "card", annotationId: "ann-2" },
+        target: { kind: "card", commentId: "ann-2" },
         placement: "nearest",
       },
-      { type: "mirrorAnnUrl", annotationId: "ann-2" },
+      { type: "mirrorAnnUrl", commentId: "ann-2" },
     ]);
   });
 
-  it("cursor.set within the same Card (same annotationId) emits scrollCursorTarget but no mirrorAnnUrl", () => {
+  it("cursor.set within the same Card (same commentId) emits scrollCursorTarget but no mirrorAnnUrl", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-1" }),
+      anchor: cardAnchor({ commentId: "ann-1" }),
     }).state;
     const r = reduce(s, {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-1", preferredSide: "deletions" }),
+      anchor: cardAnchor({ commentId: "ann-1", preferredSide: "deletions" }),
     });
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
-        target: { kind: "card", annotationId: "ann-1" },
+        target: { kind: "card", commentId: "ann-1" },
         placement: "nearest",
       },
     ]);
@@ -751,14 +751,14 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
-  it("cursor.clear after a CardAnchor emits mirrorAnnUrl { annotationId: null }", () => {
+  it("cursor.clear after a CardAnchor emits mirrorAnnUrl { commentId: null }", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-1" }),
+      anchor: cardAnchor({ commentId: "ann-1" }),
     }).state;
     const r = reduce(s, { type: "cursor.clear" });
     expect(r.state.cursor).toBeNull();
-    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", annotationId: null }]);
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
   it("cursor.clear on a null cursor is a no-op (same state ref, no intents)", () => {
@@ -769,16 +769,16 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
   });
 
   it("cursor.materialize on a null cursor sets the cursor and emits the same intents as cursor.set", () => {
-    const anchor = cardAnchor({ annotationId: "ann-5" });
+    const anchor = cardAnchor({ commentId: "ann-5" });
     const r = reduce(initialTourSessionState(), { type: "cursor.materialize", anchor });
     expect(r.state.cursor).toBe(anchor);
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
-        target: { kind: "card", annotationId: "ann-5" },
+        target: { kind: "card", commentId: "ann-5" },
         placement: "center",
       },
-      { type: "mirrorAnnUrl", annotationId: "ann-5" },
+      { type: "mirrorAnnUrl", commentId: "ann-5" },
     ]);
   });
 
@@ -819,12 +819,12 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
   it("cursor.setSide on a CardAnchor updates only preferredSide (no intents)", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
-      anchor: cardAnchor({ annotationId: "ann-1", preferredSide: "additions" }),
+      anchor: cardAnchor({ commentId: "ann-1", preferredSide: "additions" }),
     }).state;
     const r = reduce(s, { type: "cursor.setSide", side: "deletions" });
     expect(r.state.cursor).toEqual({
       kind: "card",
-      annotationId: "ann-1",
+      commentId: "ann-1",
       preferredSide: "deletions",
     });
     expect(r.intents).toEqual([]);
@@ -1191,7 +1191,7 @@ function replyTarget(replies_to: string = "parent-1"): ComposerTarget {
   return { kind: "reply", replies_to };
 }
 
-function mkAnnotation(over: Partial<Annotation> & { id: string }): Annotation {
+function mkComment(over: Partial<Comment> & { id: string }): Comment {
   return {
     id: over.id,
     file: over.file ?? "foo.ts",
@@ -1289,7 +1289,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
-  it("composer.submit on open → submitting; emits submitAnnotation { tourId, target, body }", () => {
+  it("composer.submit on open → submitting; emits submitComment { tourId, target, body }", () => {
     let s = stateWithTourLoaded("tour-a");
     const target = topLevelTarget({ file: "foo.ts", line_start: 1, line_end: 1 });
     s = reduce(s, { type: "composer.open", target }).state;
@@ -1297,7 +1297,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     const r = reduce(s, { type: "composer.submit" });
     expect(r.state.composer).toEqual({ kind: "submitting", target, body: "the draft" });
     expect(r.intents).toEqual([
-      { type: "submitAnnotation", tourId: "tour-a", target, body: "the draft" },
+      { type: "submitComment", tourId: "tour-a", target, body: "the draft" },
     ]);
   });
 
@@ -1328,53 +1328,53 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r3.intents).toEqual([]);
   });
 
-  it("composer.submitted on submitting → closed; emits scrollToAnnotation { annotationId }", () => {
+  it("composer.submitted on submitting → closed; emits scrollToComment { commentId }", () => {
     let s = stateWithTourLoaded();
     s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
     s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
     s = reduce(s, { type: "composer.submit" }).state;
-    const ann = mkAnnotation({ id: "fresh-ann-1" });
-    const r = reduce(s, { type: "composer.submitted", annotation: ann });
+    const ann = mkComment({ id: "fresh-ann-1" });
+    const r = reduce(s, { type: "composer.submitted", comment: ann });
     expect(r.state.composer).toEqual({ kind: "closed" });
-    expect(r.intents).toEqual([{ type: "scrollToAnnotation", annotationId: "fresh-ann-1" }]);
+    expect(r.intents).toEqual([{ type: "scrollToComment", commentId: "fresh-ann-1" }]);
   });
 
   it("composer.submitted on non-submitting states is a no-op (same state ref, no intents)", () => {
-    const ann = mkAnnotation({ id: "x" });
+    const ann = mkComment({ id: "x" });
     // closed
     const before = initialTourSessionState();
-    const r1 = reduce(before, { type: "composer.submitted", annotation: ann });
+    const r1 = reduce(before, { type: "composer.submitted", comment: ann });
     expect(r1.state).toBe(before);
     expect(r1.intents).toEqual([]);
     // open
     const opened = reduce(before, { type: "composer.open", target: topLevelTarget() }).state;
-    const r2 = reduce(opened, { type: "composer.submitted", annotation: ann });
+    const r2 = reduce(opened, { type: "composer.submitted", comment: ann });
     expect(r2.state).toBe(opened);
     expect(r2.intents).toEqual([]);
   });
 
-  // Issue #322: optimistic annotation insert. The freshly-created Annotation
-  // must be folded into the resolved bundle's annotations array on the same
+  // Issue #322: optimistic comment insert. The freshly-created Comment
+  // must be folded into the resolved bundle's comments array on the same
   // dispatch that closes the composer, so the new card renders in the same
   // React commit as the textarea removal — no visible gap while the SSE-
   // driven bundle.refreshed round-trips (~500-600ms on large tours).
-  describe("composer.submitted optimistic bundle annotations insert (issue #322)", () => {
-    it("appends the new annotation to a resolved snapshot-lost bundle's annotations array", () => {
+  describe("composer.submitted optimistic bundle comments insert (issue #322)", () => {
+    it("appends the new comment to a resolved snapshot-lost bundle's comments array", () => {
       let s = stateWithTourLoaded();
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
       s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const ann = mkAnnotation({ id: "fresh-ann-1" });
-      const r = reduce(s, { type: "composer.submitted", annotation: ann });
+      const ann = mkComment({ id: "fresh-ann-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
-        expect(r.state.bundle.value.annotations.map((a) => a.id)).toContain("fresh-ann-1");
+        expect(r.state.bundle.value.comments.map((a) => a.id)).toContain("fresh-ann-1");
         // Variant is preserved across the optimistic fold.
         expect(r.state.bundle.value.kind).toBe("snapshot-lost");
       }
     });
 
-    it("appends the new annotation to a resolved ok-bundle's annotations array (preserves diff + files)", () => {
+    it("appends the new comment to a resolved ok-bundle's comments array (preserves diff + files)", () => {
       const b = okBundle("tour-a", [bundleFile("foo.ts")]);
       let s = reduce(initialTourSessionState(), {
         type: "tour.switched",
@@ -1384,12 +1384,12 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
       s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const ann = mkAnnotation({ id: "fresh-ann-ok" });
-      const r = reduce(s, { type: "composer.submitted", annotation: ann });
+      const ann = mkComment({ id: "fresh-ann-ok" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         expect(r.state.bundle.value.kind).toBe("ok");
-        expect(r.state.bundle.value.annotations.map((a) => a.id)).toContain("fresh-ann-ok");
+        expect(r.state.bundle.value.comments.map((a) => a.id)).toContain("fresh-ann-ok");
         if (r.state.bundle.value.kind === "ok") {
           // diff / files refs preserved (no full bundle rebuild).
           expect(r.state.bundle.value.diff).toBe(b.diff);
@@ -1399,11 +1399,11 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     });
 
     it("reply submission path produces the same optimistic insertion", () => {
-      const parent = mkAnnotation({ id: "parent-1" });
+      const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
         kind: "snapshot-lost",
         tour: tour({ id: "tour-a" }),
-        annotations: [parent],
+        comments: [parent],
       };
       let s = reduce(initialTourSessionState(), {
         type: "tour.switched",
@@ -1413,11 +1413,11 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
       s = reduce(s, { type: "composer.setBody", body: "a reply" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const reply = mkAnnotation({ id: "reply-1", replies_to: "parent-1" });
-      const r = reduce(s, { type: "composer.submitted", annotation: reply });
+      const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: reply });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
-        const ids = r.state.bundle.value.annotations.map((a) => a.id);
+        const ids = r.state.bundle.value.comments.map((a) => a.id);
         expect(ids).toEqual(["parent-1", "reply-1"]);
       }
     });
@@ -1427,20 +1427,20 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
       s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const ann = mkAnnotation({ id: "dedup-1" });
-      s = reduce(s, { type: "composer.submitted", annotation: ann }).state;
+      const ann = mkComment({ id: "dedup-1" });
+      s = reduce(s, { type: "composer.submitted", comment: ann }).state;
       // Server bundle from the SSE-triggered refetch — also carries the
-      // same annotation. The refresh must overwrite the optimistic copy,
+      // same comment. The refresh must overwrite the optimistic copy,
       // not double-insert.
       const refreshed: TourBundle = {
         kind: "snapshot-lost",
         tour: tour({ id: "tour-a" }),
-        annotations: [ann],
+        comments: [ann],
       };
       const r = reduce(s, { type: "bundle.refreshed", bundle: refreshed });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
-        const matching = r.state.bundle.value.annotations.filter((a) => a.id === "dedup-1");
+        const matching = r.state.bundle.value.comments.filter((a) => a.id === "dedup-1");
         expect(matching).toHaveLength(1);
       }
     });
@@ -1450,21 +1450,21 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
       s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const optimistic = mkAnnotation({ id: "optimistic-1" });
-      s = reduce(s, { type: "composer.submitted", annotation: optimistic }).state;
+      const optimistic = mkComment({ id: "optimistic-1" });
+      s = reduce(s, { type: "composer.submitted", comment: optimistic }).state;
       // Multi-client scenario: another writer concurrently created a
-      // different annotation; ours never reached disk. The refreshed
-      // bundle carries someone else's annotation but not ours.
-      const otherAnn = mkAnnotation({ id: "other-writer-1" });
+      // different comment; ours never reached disk. The refreshed
+      // bundle carries someone else's comment but not ours.
+      const otherAnn = mkComment({ id: "other-writer-1" });
       const refreshed: TourBundle = {
         kind: "snapshot-lost",
         tour: tour({ id: "tour-a" }),
-        annotations: [otherAnn],
+        comments: [otherAnn],
       };
       const r = reduce(s, { type: "bundle.refreshed", bundle: refreshed });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
-        const ids = r.state.bundle.value.annotations.map((a) => a.id);
+        const ids = r.state.bundle.value.comments.map((a) => a.id);
         expect(ids).toEqual(["other-writer-1"]);
         expect(ids).not.toContain("optimistic-1");
       }
@@ -1485,12 +1485,12 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
           body: "draft",
         },
       };
-      const ann = mkAnnotation({ id: "fresh-but-bundleless" });
-      const r = reduce(s, { type: "composer.submitted", annotation: ann });
+      const ann = mkComment({ id: "fresh-but-bundleless" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
       expect(r.state.composer).toEqual({ kind: "closed" });
       expect(r.state.bundle).toEqual({ kind: "loading" });
       expect(r.intents).toEqual([
-        { type: "scrollToAnnotation", annotationId: "fresh-but-bundleless" },
+        { type: "scrollToComment", commentId: "fresh-but-bundleless" },
       ]);
     });
   });
@@ -1518,7 +1518,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
-  it("composer.retry on errored → submitting; re-emits submitAnnotation", () => {
+  it("composer.retry on errored → submitting; re-emits submitComment", () => {
     let s = stateWithTourLoaded("tour-x");
     const target = topLevelTarget();
     s = reduce(s, { type: "composer.open", target }).state;
@@ -1528,7 +1528,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     const r = reduce(s, { type: "composer.retry" });
     expect(r.state.composer).toEqual({ kind: "submitting", target, body: "retry body" });
     expect(r.intents).toEqual([
-      { type: "submitAnnotation", tourId: "tour-x", target, body: "retry body" },
+      { type: "submitComment", tourId: "tour-x", target, body: "retry body" },
     ]);
   });
 
@@ -1779,7 +1779,7 @@ describe("reduce — folds.* + expansion.* → revalidateCursor wiring (issue #3
   // `folds.setOverride`. The revalidateCursor wiring remains valuable as
   // defence in depth for programmatic `folds.*` and `expansion.*` mutations
   // that DO still mutate flat-rows shape from explicit user actions
-  // (sidebar click, annotation jump, ...).
+  // (sidebar click, comment jump, ...).
   it("folds.setOverride { value: false } with cursor !== null emits revalidateCursor", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
@@ -1922,20 +1922,20 @@ describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
   it("on a CardAnchor with lock not held → emits scrollCursorTarget (auto-recall) then requestReply", () => {
     let s = initialTourSessionState();
     s = { ...s, currentTourId: "tour-a", replyLock: { kind: "ok", value: null } };
-    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ annotationId: "root" }) }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "root" }) }).state;
     const r = reduce(s, {
       type: "send-to-agent",
       tourId: "tour-a",
-      annotationId: "leaf",
+      commentId: "leaf",
     });
     expect(r.state).toBe(s);
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
-        target: { kind: "card", annotationId: "root" },
+        target: { kind: "card", commentId: "root" },
         placement: "center",
       },
-      { type: "requestReply", tourId: "tour-a", annotationId: "leaf" },
+      { type: "requestReply", tourId: "tour-a", commentId: "leaf" },
     ]);
   });
 
@@ -1944,7 +1944,7 @@ describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
     const r = reduce(before, {
       type: "send-to-agent",
       tourId: "tour-a",
-      annotationId: "leaf",
+      commentId: "leaf",
     });
     expect(r.state).toBe(before);
     expect(r.intents).toEqual([]);
@@ -1956,7 +1956,7 @@ describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
     const r = reduce(s, {
       type: "send-to-agent",
       tourId: "tour-a",
-      annotationId: "leaf",
+      commentId: "leaf",
     });
     expect(r.state).toBe(s);
     expect(r.intents).toEqual([]);
@@ -1976,33 +1976,33 @@ describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
         },
       },
     };
-    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ annotationId: "root" }) }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "root" }) }).state;
     const r = reduce(s, {
       type: "send-to-agent",
       tourId: "tour-a",
-      annotationId: "leaf",
+      commentId: "leaf",
     });
     expect(r.state).toBe(s);
     expect(r.intents).toEqual([]);
   });
 
-  it("uses the cursor's CardAnchor for auto-recall, not the action's annotationId (leaf may differ from root)", () => {
+  it("uses the cursor's CardAnchor for auto-recall, not the action's commentId (leaf may differ from root)", () => {
     let s = initialTourSessionState();
-    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ annotationId: "root" }) }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "root" }) }).state;
     const r = reduce(s, {
       type: "send-to-agent",
       tourId: "tour-a",
-      annotationId: "leaf-reply",
+      commentId: "leaf-reply",
     });
     expect(r.intents[0]).toEqual({
       type: "scrollCursorTarget",
-      target: { kind: "card", annotationId: "root" },
+      target: { kind: "card", commentId: "root" },
       placement: "center",
     });
     expect(r.intents[1]).toEqual({
       type: "requestReply",
       tourId: "tour-a",
-      annotationId: "leaf-reply",
+      commentId: "leaf-reply",
     });
   });
 });
@@ -2072,8 +2072,8 @@ describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
     // nothing composer-related.
     expect(intents).toEqual([{ type: "revalidateCursor" }]);
     expect(intents.every((i) => !i.type.startsWith("composer."))).toBe(true);
-    expect(intents.every((i) => i.type !== "submitAnnotation")).toBe(true);
-    expect(intents.every((i) => i.type !== "scrollToAnnotation")).toBe(true);
+    expect(intents.every((i) => i.type !== "submitComment")).toBe(true);
+    expect(intents.every((i) => i.type !== "scrollToComment")).toBe(true);
   });
 
   it("with no cursor set, bundle.refreshed still leaves composer untouched and emits no intents at all", () => {

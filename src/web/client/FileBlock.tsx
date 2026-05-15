@@ -4,7 +4,7 @@ import type {
   PlannedRow,
   HunkHeaderRow,
   InteractiveRow as InteractiveRowKind,
-  AnnotationRow,
+  CommentRow,
   BoundaryRef,
 } from "../../core/diff-rows.js";
 import type { Cursor } from "../../core/cursor-state.js";
@@ -61,22 +61,22 @@ export type ExpandAction =
   | { kind: "expand-file"; file: string }
   | { kind: "expand-file-all"; file: string };
 
-/** Pass-through fields to `<CardRow>` / `AnnotationCard`. Bundled into one
+/** Pass-through fields to `<CardRow>` / `CommentCard`. Bundled into one
  *  prop so the FileBlock signature stays narrow — App-level callbacks all
  *  ride this object. */
-export interface AnnotationProps {
+export interface CommentProps {
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
   composerBody?: string;
   composerError?: string | null;
   onComposerBodyChange?: (body: string) => void;
   replyTargetId?: string | null;
-  onOpenReply?: (annotationId: string) => void;
+  onOpenReply?: (commentId: string) => void;
   onSubmitReply?: () => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
-  onSendToAgent?: (annotationId: string) => void;
-  /** 1-based position in the top-level nav order, per annotation id.
+  onSendToAgent?: (commentId: string) => void;
+  /** 1-based position in the top-level nav order, per comment id.
    *  Pre-built by App so the lookup stays O(1). */
   navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
@@ -100,8 +100,8 @@ export interface FileBlockProps {
    *  don't re-render the file block (visibility / ghost state are CSS-
    *  driven via `[data-composer-open]` on `<html>`). */
   onAnnotate?: (anchor: RowClickAnchor) => void;
-  onCardClick: (annotationId: string) => void;
-  annotationProps?: AnnotationProps;
+  onCardClick: (commentId: string) => void;
+  commentProps?: CommentProps;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   /** Issue #298: the file-header chrome `↕` Expand-all button renders
@@ -196,7 +196,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     onRowClick,
     onAnnotate,
     onCardClick,
-    annotationProps,
+    commentProps,
     isCollapsed,
     onToggleCollapse,
     hasMultipleHiddenGaps,
@@ -213,13 +213,13 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
 
   const reason = file.classification?.reason;
 
-  // Pre-compute card-anchor flag per annotation id so the cursor flow into
+  // Pre-compute card-anchor flag per comment id so the cursor flow into
   // <CardRow>'s `isCurrent` lookup is one O(1) check per row dispatch.
   const cursorCardId =
-    cursor && cursor.kind === "card" ? cursor.annotationId : null;
+    cursor && cursor.kind === "card" ? cursor.commentId : null;
 
-  const navIndexById = annotationProps?.navIndexById;
-  const navTotal = annotationProps?.navTotal ?? 0;
+  const navIndexById = commentProps?.navIndexById;
+  const navTotal = commentProps?.navTotal ?? 0;
 
   const Chevron = isCollapsed ? ChevronRightIcon : ChevronDownIcon;
   const { Icon: StatusIcon, statusClass } = fileIcon(file.type);
@@ -352,13 +352,13 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
               return [renderInteractive(row, idx, file, cursor, onDispatchExpand)];
             }
             return [
-              renderAnnotation(
+              renderComment(
                 row,
                 idx,
                 layout,
                 cursorCardId,
                 onCardClick,
-                annotationProps,
+                commentProps,
                 navIndexById,
                 navTotal,
               ),
@@ -609,40 +609,40 @@ function renderInteractive(
   );
 }
 
-function renderAnnotation(
-  row: AnnotationRow,
+function renderComment(
+  row: CommentRow,
   idx: number,
   layout: Layout,
   cursorCardId: string | null,
-  onCardClick: (annotationId: string) => void,
-  annotationProps: AnnotationProps | undefined,
+  onCardClick: (commentId: string) => void,
+  commentProps: CommentProps | undefined,
   navIndexById: ReadonlyMap<string, number> | undefined,
   navTotal: number,
 ): React.ReactNode {
-  const ann = row.annotation;
+  const ann = row.comment;
   const isCurrent = ann.id === cursorCardId;
   const navIndex = navIndexById?.get(ann.id) ?? null;
   return (
     <CardRow
       key={`ann-${ann.id}`}
-      annotation={ann}
+      comment={ann}
       replies={row.replies}
       isCurrent={isCurrent}
       navIndex={navIndex}
       navTotal={navTotal}
       side={ann.side}
       layout={layout}
-      registerRef={annotationProps?.registerRef}
-      composerBody={annotationProps?.composerBody ?? ""}
-      composerError={annotationProps?.composerError ?? null}
-      onComposerBodyChange={annotationProps?.onComposerBodyChange}
-      replyTargetId={annotationProps?.replyTargetId ?? null}
-      onOpenReply={annotationProps?.onOpenReply}
-      onSubmitReply={annotationProps?.onSubmitReply}
-      onCancelReply={annotationProps?.onCancelReply}
-      replyLock={annotationProps?.replyLock ?? null}
-      replyAgent={annotationProps?.replyAgent ?? null}
-      onSendToAgent={annotationProps?.onSendToAgent}
+      registerRef={commentProps?.registerRef}
+      composerBody={commentProps?.composerBody ?? ""}
+      composerError={commentProps?.composerError ?? null}
+      onComposerBodyChange={commentProps?.onComposerBodyChange}
+      replyTargetId={commentProps?.replyTargetId ?? null}
+      onOpenReply={commentProps?.onOpenReply}
+      onSubmitReply={commentProps?.onSubmitReply}
+      onCancelReply={commentProps?.onCancelReply}
+      replyLock={commentProps?.replyLock ?? null}
+      replyAgent={commentProps?.replyAgent ?? null}
+      onSendToAgent={commentProps?.onSendToAgent}
       onCardClick={onCardClick}
     />
   );

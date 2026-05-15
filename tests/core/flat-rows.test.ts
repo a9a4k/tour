@@ -12,13 +12,13 @@ import {
   validateCursor,
 } from "../../src/core/cursor-state.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 
 function fileFromDiff(rawDiff: string, name: string): DiffFile {
   return { name, type: "change", hunks: [] };
 }
 
-function plannedFor(rawDiff: string, anns: Annotation[], layout: "split" | "unified"): PlannedRow[] {
+function plannedFor(rawDiff: string, anns: Comment[], layout: "split" | "unified"): PlannedRow[] {
   const meta = parsePatchFiles(rawDiff)[0].files[0];
   return planRows(meta, anns, layout);
 }
@@ -43,7 +43,7 @@ index 1..2 100644
 -only-del
 `;
 
-function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "side" | "line_start" | "line_end">): Annotation {
+function ann(o: Partial<Comment> & Pick<Comment, "id" | "side" | "line_start" | "line_end">): Comment {
   return {
     id: o.id,
     file: o.file ?? "x.txt",
@@ -75,17 +75,17 @@ describe("flatRows", () => {
     expect(rows[rows.length - 1].file).toBe("z.txt");
   });
 
-  it("emits cursor-walkable rows for diff-row + annotation cards, skips inert hunk-header rows (PRD #192)", () => {
+  it("emits cursor-walkable rows for diff-row + comment cards, skips inert hunk-header rows (PRD #192)", () => {
     // Issue #280: hunk-headers are cursor-addressable iff
     // `primaryExpand !== null` (i.e. `gapAbove > 0`). SIMPLE_DIFF's
     // first hunk starts at line 1, so its hunk-header is inert
     // (primaryExpand null) and excluded from the flat stream.
-    // PRD #192: annotation rows ARE cursor-addressable now (as card
+    // PRD #192: comment rows ARE cursor-addressable now (as card
     // rows), so they contribute one card flat row each.
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
-    const annotations = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
+    const comments = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
     const planned = new Map<string, PlannedRow[]>([
-      ["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")],
+      ["x.txt", plannedFor(SIMPLE_DIFF, comments, "split")],
     ]);
     const rows = flatRows([f], planned, () => false);
     const cursorables = planned
@@ -93,17 +93,17 @@ describe("flatRows", () => {
       .filter(
         (r) =>
           r.kind === "diff-row" ||
-          r.kind === "annotation" ||
+          r.kind === "comment" ||
           (r.kind === "hunk-header" && r.primaryExpand !== null),
       );
     expect(rows.length).toBe(cursorables.length);
     // No interactive rows expected — first hunk's gapAbove is 0.
     expect(rows.some((r) => r.kind === "interactive")).toBe(false);
-    // The card flat row carries the annotation id.
+    // The card flat row carries the comment id.
     const cardRow = rows.find((r) => r.kind === "card");
     expect(cardRow).toBeDefined();
     if (cardRow?.kind !== "card") throw new Error("narrow");
-    expect(cardRow.annotationId).toBe("a1");
+    expect(cardRow.commentId).toBe("a1");
     expect(cardRow.lineEnd).toBe(2);
     expect(cardRow.side).toBe("additions");
   });
@@ -202,13 +202,13 @@ describe("flatRows", () => {
     expect(flatRows([], new Map(), () => false)).toEqual([]);
   });
 
-  // issue #199: regression. When the webapp routed the cross-file annotation
+  // issue #199: regression. When the webapp routed the cross-file comment
   // list through planRows per-file (no upstream filter), the planner emitted
   // a phantom card row into every file whose line range overlapped another
-  // file's annotation `line_end`. resolveCursorRowIdx then resolved the
+  // file's comment `line_end`. resolveCursorRowIdx then resolved the
   // CardAnchor to the first (alphabetically-earliest) phantom — moveCursor
   // from a card stepped into the wrong file.
-  it("emits exactly one card row per top-level Annotation in a multi-file Tour with overlapping line ranges", () => {
+  it("emits exactly one card row per top-level Comment in a multi-file Tour with overlapping line ranges", () => {
     const diffA = `diff --git a/a.txt b/a.txt
 index 1..2 100644
 --- a/a.txt
@@ -241,10 +241,10 @@ index 1..2 100644
     expect(cardRows.length).toBe(1);
     if (cardRows[0].kind !== "card") throw new Error("narrow");
     expect(cardRows[0].file).toBe("b.txt");
-    expect(cardRows[0].annotationId).toBe("ann-b");
+    expect(cardRows[0].commentId).toBe("ann-b");
 
     const idx = resolveCursorRowIdx(
-      { kind: "card", annotationId: "ann-b", preferredSide: "additions" },
+      { kind: "card", commentId: "ann-b", preferredSide: "additions" },
       flat,
     );
     expect(idx).toBeGreaterThanOrEqual(0);
@@ -255,10 +255,10 @@ index 1..2 100644
   // emitted diff row, `nextCard` returns the successor's CardAnchor (the
   // walker reads the canonical topLevel list directly) AND `validateCursor`
   // resolves the anchor against flatRows (not null), because the planner's
-  // fallback ladder ensures every top-level annotation produces a
+  // fallback ladder ensures every top-level comment produces a
   // `CardFlatRow` in the stream.
   it("n from card K lands on K+1 even when K+1's line_end sits outside any emitted diff row (issue #300)", () => {
-    // Single-hunk diff: additions side emits lines 2 and 3. Annotation 3's
+    // Single-hunk diff: additions side emits lines 2 and 3. Comment 3's
     // line_end = 35 sits past every emitted addition line, mirroring the
     // sandcastle fixture `2026-05-14-084002-8wzf` (.sandcastle/run.ts:18-35
     // on a `@@ -1,9 +1,34 @@` hunk emitting up to line 34 only).
@@ -272,9 +272,9 @@ index 1..2 100644
     ]);
     const flat = flatRows([f], planned, () => false);
     // The card-walker advances purely from the topLevel list.
-    const onA2 = { kind: "card" as const, annotationId: "a2", preferredSide: "additions" as const };
+    const onA2 = { kind: "card" as const, commentId: "a2", preferredSide: "additions" as const };
     const advanced = nextCard(onA2, topLevel);
-    expect(advanced).toEqual({ kind: "card", annotationId: "a3", preferredSide: "additions" });
+    expect(advanced).toEqual({ kind: "card", commentId: "a3", preferredSide: "additions" });
     // Pre-#300 the view-validator would have nulled this anchor because a3
     // wasn't in flatRows. After the fix, the planner's fallback emits a
     // CardFlatRow for a3, so the validator returns the cursor unchanged.
@@ -457,22 +457,22 @@ describe("flatRows hunk-header banner (issue #280)", () => {
   });
 });
 
-// PRD #192 / ADR 0022: annotation cards are first-class cursor stops.
+// PRD #192 / ADR 0022: comment cards are first-class cursor stops.
 // The flat-rows builder emits a CardFlatRow directly after the diff row
-// the annotation anchors to (matching the planner's interleave order).
+// the comment anchors to (matching the planner's interleave order).
 // Multiple cards at the same anchor stack in `created_at` order.
 describe("flatRows card rows (PRD #192)", () => {
-  it("emits a CardFlatRow with the annotation's id, side, and lineEnd", () => {
+  it("emits a CardFlatRow with the comment's id, side, and lineEnd", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
-    const annotations = [
+    const comments = [
       ann({ id: "card-a", side: "additions", line_start: 2, line_end: 3, body: "hello world" }),
     ];
-    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")]]);
+    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, comments, "split")]]);
     const rows = flatRows([f], planned, () => false);
     const card = rows.find((r) => r.kind === "card");
     expect(card).toBeDefined();
     if (card?.kind !== "card") throw new Error("narrow");
-    expect(card.annotationId).toBe("card-a");
+    expect(card.commentId).toBe("card-a");
     expect(card.side).toBe("additions");
     expect(card.lineEnd).toBe(3);
     expect(card.file).toBe("x.txt");
@@ -480,8 +480,8 @@ describe("flatRows card rows (PRD #192)", () => {
 
   it("places the card row directly after the anchor diff row in the flat sequence", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
-    const annotations = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
-    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")]]);
+    const comments = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
+    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, comments, "split")]]);
     const rows = flatRows([f], planned, () => false);
     const cardIdx = rows.findIndex((r) => r.kind === "card");
     expect(cardIdx).toBeGreaterThanOrEqual(1);
@@ -496,7 +496,7 @@ describe("flatRows card rows (PRD #192)", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     // Same anchor (line 2 additions), distinct created_at — the planner's
     // interleave step orders by created_at ascending.
-    const annotations = [
+    const comments = [
       ann({
         id: "a-second",
         side: "additions",
@@ -512,19 +512,19 @@ describe("flatRows card rows (PRD #192)", () => {
         created_at: "2026-01-01T00:00:00Z",
       }),
     ];
-    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")]]);
+    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, comments, "split")]]);
     const rows = flatRows([f], planned, () => false);
     const cards = rows.filter((r) => r.kind === "card");
     expect(cards.length).toBe(2);
     if (cards[0].kind !== "card" || cards[1].kind !== "card") throw new Error("narrow");
-    expect(cards[0].annotationId).toBe("a-first");
-    expect(cards[1].annotationId).toBe("a-second");
+    expect(cards[0].commentId).toBe("a-first");
+    expect(cards[1].commentId).toBe("a-second");
   });
 
   it("omits card rows from a folded file", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
-    const annotations = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
-    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, annotations, "split")]]);
+    const comments = [ann({ id: "a1", side: "additions", line_start: 2, line_end: 2 })];
+    const planned = new Map([["x.txt", plannedFor(SIMPLE_DIFF, comments, "split")]]);
     const rows = flatRows([f], planned, () => true);
     expect(rows).toEqual([]);
   });

@@ -266,14 +266,14 @@ describe("CLI integration", () => {
       expect(result.stdout).toContain(tour.head_sha.slice(0, 12));
     });
 
-    it("supports --json with annotations included", async () => {
+    it("supports --json with comments included", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       const result = await run(["show", tour.id, "--json"], repo);
       expect(result.exitCode).toBe(0);
       const data = JSON.parse(result.stdout);
       expect(data.id).toBe(tour.id);
-      expect(data.annotations).toEqual([]);
+      expect(data.comments).toEqual([]);
     });
 
     it("supports prefix matching", async () => {
@@ -288,7 +288,7 @@ describe("CLI integration", () => {
   });
 
   describe("annotate", () => {
-    it("adds a single annotation", async () => {
+    it("adds a single comment", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       const result = await run([
@@ -303,12 +303,12 @@ describe("CLI integration", () => {
 
       const showResult = await run(["show", tour.id, "--json"], repo);
       const data = JSON.parse(showResult.stdout);
-      expect(data.annotations).toHaveLength(1);
-      expect(data.annotations[0].file).toBe("hello.txt");
-      expect(data.annotations[0].body).toBe("Looks good");
+      expect(data.comments).toHaveLength(1);
+      expect(data.comments[0].file).toBe("hello.txt");
+      expect(data.comments[0].body).toBe("Looks good");
     });
 
-    it("adds batch annotations from stdin", async () => {
+    it("adds batch comments from stdin", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       // hello.txt is the only file in the test repo's diff; both items
@@ -324,8 +324,8 @@ describe("CLI integration", () => {
         { stdin: batch },
       );
       expect(result.exitCode).toBe(0);
-      const annotations = JSON.parse(result.stdout);
-      expect(annotations).toHaveLength(2);
+      const comments = JSON.parse(result.stdout);
+      expect(comments).toHaveLength(2);
     });
 
     it("accepts JSONL on stdin in --batch mode (issue #172)", async () => {
@@ -340,10 +340,10 @@ describe("CLI integration", () => {
         { stdin: jsonl },
       );
       expect(result.exitCode).toBe(0);
-      const annotations = JSON.parse(result.stdout);
-      expect(annotations).toHaveLength(2);
-      expect(annotations[0].body).toBe("Note 1");
-      expect(annotations[1].body).toBe("Note 2");
+      const comments = JSON.parse(result.stdout);
+      expect(comments).toHaveLength(2);
+      expect(comments[0].body).toBe("Note 1");
+      expect(comments[1].body).toBe("Note 2");
     });
 
     it("accepts line_start/line_end anchor shape and mixes with `line` (issue #172)", async () => {
@@ -359,12 +359,12 @@ describe("CLI integration", () => {
         { stdin: jsonl },
       );
       expect(result.exitCode).toBe(0);
-      const annotations = JSON.parse(result.stdout);
-      expect(annotations).toHaveLength(2);
-      expect(annotations[0].line_start).toBe(1);
-      expect(annotations[0].line_end).toBe(1);
-      expect(annotations[1].line_start).toBe(1);
-      expect(annotations[1].line_end).toBe(1);
+      const comments = JSON.parse(result.stdout);
+      expect(comments).toHaveLength(2);
+      expect(comments[0].line_start).toBe(1);
+      expect(comments[0].line_end).toBe(1);
+      expect(comments[1].line_start).toBe(1);
+      expect(comments[1].line_end).toBe(1);
     });
 
     it("supports replies_to in JSONL --batch mode (issue #172)", async () => {
@@ -392,10 +392,10 @@ describe("CLI integration", () => {
         { stdin: jsonl },
       );
       expect(result.exitCode).toBe(0);
-      const annotations = JSON.parse(result.stdout);
-      expect(annotations).toHaveLength(1);
-      expect(annotations[0].replies_to).toBe(root.id);
-      expect(annotations[0].body).toBe("reply via JSONL");
+      const comments = JSON.parse(result.stdout);
+      expect(comments).toHaveLength(1);
+      expect(comments[0].replies_to).toBe(root.id);
+      expect(comments[0].body).toBe("reply via JSONL");
     });
 
     it("reports the offending line number on JSONL parse failure (issue #172)", async () => {
@@ -413,7 +413,7 @@ describe("CLI integration", () => {
       expect(result.stderr).toMatch(/Line 2:/);
     });
 
-    it("rejects annotation whose file is not in the Tour's diff (slice 4 / #144)", async () => {
+    it("rejects comment whose file is not in the Tour's diff (slice 4 / #144)", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       const result = await run([
@@ -427,7 +427,7 @@ describe("CLI integration", () => {
       expect(result.stderr).toContain("no-such-file.ts");
     });
 
-    it("rejects annotation whose line_end exceeds the file's line count (slice 4 / #144)", async () => {
+    it("rejects comment whose line_end exceeds the file's line count (slice 4 / #144)", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       const result = await run([
@@ -544,7 +544,7 @@ describe("CLI integration", () => {
       expect(r.stderr).toContain("mutually exclusive");
     });
 
-    // Issue #336: stdout prose flips from "annotation"/"annotations" to
+    // Issue #336: stdout prose flips from "comment"/"comments" to
     // "comment"/"comments" per ADR 0029. Both verbs share the same handler,
     // so both surfaces emit the new prose.
     it("prints 'Added comment to <id>: <f>:<line>' on a single create", async () => {
@@ -605,8 +605,8 @@ describe("CLI integration", () => {
       // On-disk file is `comments.jsonl` after Stage B (issue #342).
       const showR = await run(["show", tour.id, "--json"], repo);
       const data = JSON.parse(showR.stdout);
-      expect(data.annotations).toHaveLength(1);
-      expect(data.annotations[0].id).toBe(ann.id);
+      expect(data.comments).toHaveLength(1);
+      expect(data.comments[0].id).toBe(ann.id);
     });
 
     it("`tour comment ...` and `tour annotate ...` produce byte-identical --json on the same input", async () => {
@@ -752,12 +752,12 @@ describe("CLI integration", () => {
       expect(tree.head_source).toBe(tour.head_source);
       expect(tree.base_source).toBe(tour.base_source);
       expect(tree.status).toBe("open");
-      expect(tree.annotations).toHaveLength(1);
-      expect(tree.annotations[0].id).toBe(root.id);
-      expect(tree.annotations[0].body).toBe("initial review");
-      expect(tree.annotations[0].replies).toHaveLength(1);
-      expect(tree.annotations[0].replies[0].body).toBe("thanks");
-      expect(tree.annotations[0].replies[0].author_kind).toBe("human");
+      expect(tree.comments).toHaveLength(1);
+      expect(tree.comments[0].id).toBe(root.id);
+      expect(tree.comments[0].body).toBe("initial review");
+      expect(tree.comments[0].replies).toHaveLength(1);
+      expect(tree.comments[0].replies[0].body).toBe("thanks");
+      expect(tree.comments[0].replies[0].author_kind).toBe("human");
       expect(tree).not.toHaveProperty("wip_snapshot");
       expect(tree).not.toHaveProperty("closed_at");
     });
@@ -770,7 +770,7 @@ describe("CLI integration", () => {
       expect(r.exitCode).toBe(0);
       const tree = JSON.parse(r.stdout);
       expect(tree.id).toBe(tour.id);
-      expect(tree.annotations).toEqual([]);
+      expect(tree.comments).toEqual([]);
     });
 
     it("exits non-zero on missing Tour with a clear error", async () => {

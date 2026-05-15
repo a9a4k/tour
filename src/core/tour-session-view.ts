@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Annotation, Tour } from "./types.js";
+import type { Comment, Tour } from "./types.js";
 import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { FileClassification } from "./file-classifier.js";
 import type { FileContentPair } from "./file-content-provider.js";
@@ -19,7 +19,7 @@ import { flatRows, type FlatRow } from "./flat-rows.js";
 import {
   buildThreads,
   isTopLevel,
-  topLevelAnnotations,
+  topLevelComments,
 } from "./threads.js";
 import type { Layout, TourSessionState, TourSessionStore } from "./tour-session.js";
 import { useTourSession } from "./tour-session.js";
@@ -40,7 +40,7 @@ export interface ViewOptions {
 
 export interface BundleSlice {
   tour: Tour;
-  annotations: ReadonlyArray<Annotation>;
+  comments: ReadonlyArray<Comment>;
   files: ReadonlyArray<BundleFile>;
   filesByName: ReadonlyMap<string, BundleFile>;
   classifications: Readonly<Record<string, FileClassification>>;
@@ -51,17 +51,17 @@ export interface BundleSlice {
  *  branches so snapshot-lost rendering can read top-level / replies / nav
  *  index without re-deriving them inline. */
 export interface NavBase {
-  topLevel: ReadonlyArray<Annotation>;
-  repliesByRoot: ReadonlyMap<string, ReadonlyArray<Annotation>>;
+  topLevel: ReadonlyArray<Comment>;
+  repliesByRoot: ReadonlyMap<string, ReadonlyArray<Comment>>;
   /** 1-based, top-level only — replies are absent from the map. */
   navIndexById: ReadonlyMap<string, number>;
   navTotal: number;
 }
 
 export interface NavSlice extends NavBase {
-  /** 1-based index of the cursor's top-level Annotation when the cursor is
+  /** 1-based index of the cursor's top-level Comment when the cursor is
    *  on a card; 0 otherwise (null cursor, row cursor, card to deleted
-   *  annotation). */
+   *  comment). */
   currentIdx: number;
   /** Latest-human-leaf rule — null when the cursor isn't on a card, or
    *  the latest turn in the focused Thread is agent-authored. */
@@ -77,20 +77,20 @@ export interface RowsSlice {
 export interface TreeSlice {
   root: FolderNode<BundleFile>;
   visibleRows: ReadonlyArray<VisibleRow<BundleFile>>;
-  /** Per-file top-level annotation count; folder rollup happens inside
+  /** Per-file top-level comment count; folder rollup happens inside
    *  `flatten` so consumers reading `visibleRows` see folder totals. */
-  annotationCounts: Readonly<Record<string, number>>;
+  commentCounts: Readonly<Record<string, number>>;
 }
 
 export interface CursorSlice {
   /** state.cursor pruned against the live flatRowsList — a CardAnchor to a
-   *  deleted annotation resolves to null; a RowAnchor in a folded-but-still-
+   *  deleted comment resolves to null; a RowAnchor in a folded-but-still-
    *  in-bundle file is preserved. */
   anchor: Cursor | null;
   onCard: boolean;
   onInteractive: boolean;
   cardId: string | null;
-  cardAnnotation: Annotation | null;
+  cardComment: Comment | null;
   /** resolveCursorRowIdx(anchor, flatRowsList) — -1 when unresolved. */
   rowIdx: number;
 }
@@ -107,7 +107,7 @@ export type TourSessionView =
   | {
       kind: "snapshot-lost";
       tour: Tour;
-      annotations: ReadonlyArray<Annotation>;
+      comments: ReadonlyArray<Comment>;
       /** NavBase populates on both branches (issue #246): snapshot-lost
        *  rendering reads top-level / replies / nav index from one place
        *  rather than re-deriving them inline. `currentIdx` / `sendTarget`
@@ -135,7 +135,7 @@ function deriveBundleSlice(bundle: OkBundle): BundleSlice {
   }
   return {
     tour: bundle.tour,
-    annotations: bundle.annotations,
+    comments: bundle.comments,
     files: bundle.files,
     filesByName,
     classifications,
@@ -143,12 +143,12 @@ function deriveBundleSlice(bundle: OkBundle): BundleSlice {
   };
 }
 
-function deriveNavBase(annotations: ReadonlyArray<Annotation>): NavBase {
-  const annArr = [...annotations];
-  const topLevel = topLevelAnnotations(annArr);
+function deriveNavBase(comments: ReadonlyArray<Comment>): NavBase {
+  const annArr = [...comments];
+  const topLevel = topLevelComments(annArr);
   const navIndexById = new Map<string, number>();
   topLevel.forEach((a, i) => navIndexById.set(a.id, i + 1));
-  const repliesByRoot = new Map<string, ReadonlyArray<Annotation>>();
+  const repliesByRoot = new Map<string, ReadonlyArray<Comment>>();
   for (const t of buildThreads(annArr)) {
     repliesByRoot.set(t.root.id, t.replies);
   }
@@ -166,7 +166,7 @@ function deriveNavSlice(
 ): NavSlice {
   let currentIdx = 0;
   if (cursor && cursor.kind === "card") {
-    const idx = base.topLevel.findIndex((a) => a.id === cursor.annotationId);
+    const idx = base.topLevel.findIndex((a) => a.id === cursor.commentId);
     if (idx !== -1) currentIdx = idx + 1;
   }
   const target = sendTarget(cursor, base.topLevel, base.repliesByRoot);
@@ -180,16 +180,16 @@ function deriveNavSlice(
 function deriveTreeSlice(
   files: ReadonlyArray<BundleFile>,
   collapsedFolders: ReadonlySet<string>,
-  annotations: ReadonlyArray<Annotation>,
+  comments: ReadonlyArray<Comment>,
 ): TreeSlice {
   const root = compress(buildTree([...files]));
-  const annotationCounts: Record<string, number> = {};
-  for (const a of annotations) {
+  const commentCounts: Record<string, number> = {};
+  for (const a of comments) {
     if (!isTopLevel(a)) continue;
-    annotationCounts[a.file] = (annotationCounts[a.file] ?? 0) + 1;
+    commentCounts[a.file] = (commentCounts[a.file] ?? 0) + 1;
   }
-  const visibleRows = flatten(root, collapsedFolders, annotationCounts);
-  return { root, visibleRows, annotationCounts };
+  const visibleRows = flatten(root, collapsedFolders, commentCounts);
+  return { root, visibleRows, commentCounts };
 }
 
 function deriveRowsSlice(
@@ -200,7 +200,7 @@ function deriveRowsSlice(
 ): RowsSlice {
   const filesByName = new Map<string, BundleFile>();
   for (const f of bundle.files) filesByName.set(f.name, f);
-  const annotations = bundle.annotations;
+  const comments = bundle.comments;
   const { expansion, collapsedOverrides, layout } = state;
 
   const isClassifierCollapsed = (name: string): boolean => {
@@ -227,7 +227,7 @@ function deriveRowsSlice(
   const plannedRowsByFile = new Map<string, PlannedRow[]>();
   for (const f of parsedFiles) {
     const bf = filesByName.get(f.name);
-    const fileAnns = annotations.filter((a) => a.file === f.name);
+    const fileAnns = comments.filter((a) => a.file === f.name);
     plannedRowsByFile.set(
       f.name,
       planRows(f, fileAnns, layout, {
@@ -263,7 +263,7 @@ function deriveCursorSlice(
   cursor: Cursor | null,
   flatRowsList: ReadonlyArray<FlatRow>,
   files: ReadonlyArray<BundleFile>,
-  annotations: ReadonlyArray<Annotation>,
+  comments: ReadonlyArray<Comment>,
 ): CursorSlice {
   const flatRowsArr = [...flatRowsList];
   const anchor = validateCursor(cursor, flatRowsArr, files);
@@ -271,11 +271,11 @@ function deriveCursorSlice(
   const onInteractive =
     anchor !== null && anchor.kind === "row" && !!anchor.interactive;
   const cardId =
-    anchor !== null && anchor.kind === "card" ? anchor.annotationId : null;
-  const cardAnnotation =
-    cardId !== null ? annotations.find((a) => a.id === cardId) ?? null : null;
+    anchor !== null && anchor.kind === "card" ? anchor.commentId : null;
+  const cardComment =
+    cardId !== null ? comments.find((a) => a.id === cardId) ?? null : null;
   const rowIdx = resolveCursorRowIdx(anchor, flatRowsArr);
-  return { anchor, onCard, onInteractive, cardId, cardAnnotation, rowIdx };
+  return { anchor, onCard, onInteractive, cardId, cardComment, rowIdx };
 }
 
 /**
@@ -289,12 +289,12 @@ export function deriveTourSessionView(
   state: TourSessionState,
   options: ViewOptions = {},
 ): TourSessionView {
-  const navBase = deriveNavBase(bundle.annotations);
+  const navBase = deriveNavBase(bundle.comments);
   if (bundle.kind === "snapshot-lost") {
     return {
       kind: "snapshot-lost",
       tour: bundle.tour,
-      annotations: bundle.annotations,
+      comments: bundle.comments,
       nav: navBase,
     };
   }
@@ -303,7 +303,7 @@ export function deriveTourSessionView(
   const treeSlice = deriveTreeSlice(
     bundle.files,
     state.collapsedFolders,
-    bundle.annotations,
+    bundle.comments,
   );
   const parsedFiles = sortFilesForStream(parseFileDiffMetadata(bundle.diff));
   const rowsSlice = deriveRowsSlice(bundle, state, parsedFiles, options);
@@ -311,7 +311,7 @@ export function deriveTourSessionView(
     state.cursor,
     rowsSlice.flatRowsList,
     bundle.files,
-    bundle.annotations,
+    bundle.comments,
   );
   return {
     kind: "ok",
@@ -339,13 +339,13 @@ export function useTourSessionView(
   options: ViewOptions = {},
 ): TourSessionView {
   const state = useTourSession(store);
-  const annotations: ReadonlyArray<Annotation> = bundle.annotations;
+  const comments: ReadonlyArray<Comment> = bundle.comments;
   const cursor = state.cursor;
   const isOk = bundle.kind === "ok";
 
   const navBase = useMemo<NavBase>(
-    () => deriveNavBase(annotations),
-    [annotations],
+    () => deriveNavBase(comments),
+    [comments],
   );
 
   const bundleSlice = useMemo<BundleSlice | null>(
@@ -364,10 +364,10 @@ export function useTourSessionView(
         ? deriveTreeSlice(
             (bundle as OkBundle).files,
             state.collapsedFolders,
-            annotations,
+            comments,
           )
         : null,
-    [isOk, bundle, state.collapsedFolders, annotations],
+    [isOk, bundle, state.collapsedFolders, comments],
   );
 
   const parsedFiles = useMemo<ReadonlyArray<FileDiffMetadata>>(
@@ -405,17 +405,17 @@ export function useTourSessionView(
             cursor,
             rowsSlice.flatRowsList,
             (bundle as OkBundle).files,
-            annotations,
+            comments,
           )
         : null,
-    [isOk, cursor, rowsSlice, bundle, annotations],
+    [isOk, cursor, rowsSlice, bundle, comments],
   );
 
   if (!isOk) {
     return {
       kind: "snapshot-lost",
       tour: bundle.tour,
-      annotations: bundle.annotations,
+      comments: bundle.comments,
       nav: navBase,
     };
   }

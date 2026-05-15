@@ -1,16 +1,16 @@
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
-  createAnnotation,
+  createComment,
   createReply,
-  readAnnotations,
-} from "../core/annotations-store.js";
+  readComments,
+} from "../core/comments-store.js";
 import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import type {
   StartTuiProps,
-  WriteAnnotationInput,
-} from "../core/write-annotation-input.js";
+  WriteCommentInput,
+} from "../core/write-comment-input.js";
 
 interface TuiArgs {
   tourId?: string;
@@ -20,7 +20,7 @@ interface TuiArgs {
 
 // Re-export so the single source-of-truth import path stays `src/cli/tui.js`
 // for downstream callers that don't reach across into `src/core/*` directly.
-export type { WriteAnnotationInput };
+export type { WriteCommentInput };
 
 export async function tui(args: TuiArgs): Promise<void> {
   // Hard-fail at startup if the requested reply-agent isn't shipped, with
@@ -48,8 +48,8 @@ export async function tui(args: TuiArgs): Promise<void> {
 
   // Static-string specifier so Bun --compile embeds the TUI module; cast hides
   // the path from tsc since src/tui is excluded (JSX). The cast's TYPES are
-  // sourced from `core/write-annotation-input.ts` so the cast can't lie about
-  // the props shape — pre-fix the cast inlined an `input: WriteAnnotationInput`
+  // sourced from `core/write-comment-input.ts` so the cast can't lie about
+  // the props shape — pre-fix the cast inlined an `input: WriteCommentInput`
   // signature that diverged from the App's local copy (top-level missing
   // `bundle`), and the writer crashed at runtime when `input.bundle` came
   // through `undefined`. Issue #254.
@@ -61,7 +61,7 @@ export async function tui(args: TuiArgs): Promise<void> {
     replyLock: initialReplyLock,
     loadTour: (id) => loadTourBundle(args.cwd, id),
     loadReplyLock: (id) => readReplyLock(args.cwd, id),
-    writeAnnotation: (id, input) => {
+    writeComment: (id, input) => {
       if (input.kind === "reply") {
         return createReply(args.cwd, id, {
           replies_to: input.parent.id,
@@ -72,7 +72,7 @@ export async function tui(args: TuiArgs): Promise<void> {
       // The bundle the App is currently rendering is the source of truth
       // for anchor validation — no second bundle load on the TUI write
       // path (PRD #140 / slice 4 #144).
-      return createAnnotation(
+      return createComment(
         args.cwd,
         id,
         {
@@ -92,14 +92,14 @@ export async function tui(args: TuiArgs): Promise<void> {
       await Promise.all(
         tours.map(async (t) => {
           try {
-            const ann = await readAnnotations(args.cwd, t.id);
+            const ann = await readComments(args.cwd, t.id);
             counts[t.id] = ann.length;
           } catch {
             counts[t.id] = 0;
           }
         }),
       );
-      return { tours, annotationCounts: counts };
+      return { tours, commentCounts: counts };
     },
     cwd: args.cwd,
     replyAgent: args.replyAgent,

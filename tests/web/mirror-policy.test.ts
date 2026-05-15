@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { decideMirrorUrl } from "../../src/web/client/mirror-policy.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
-function ann(id: string, file = "x.txt"): Annotation {
+function ann(id: string, file = "x.txt"): Comment {
   return {
     id,
     file,
@@ -25,15 +25,15 @@ const TOUR = "tour-X";
 describe("decideMirrorUrl (issue #198)", () => {
   // Tour-load defer: cursor is briefly null before the re-anchor effect
   // seeds it from `#<ann-id>`. The mirror must NOT strip-then-restore the
-  // valid annotation id in a single cycle (preserves Issue #180 / PRD UX 26).
+  // valid comment id in a single cycle (preserves Issue #180 / PRD UX 26).
   it("skip when cursor is null and topLevel is non-empty (tour-load defer)", () => {
     expect(decideMirrorUrl(null, topLevel, TOUR)).toEqual({ kind: "skip" });
   });
 
   // Empty Tour: nothing to defer for — write a bare `/<tour-id>`. (Existing
   // behaviour from before #197: the topLevel.length > 0 part of the gate
-  // gates the defer specifically on "annotations exist".)
-  it("write bare tour url when cursor is null and topLevel is empty (no annotations to seed)", () => {
+  // gates the defer specifically on "comments exist".)
+  it("write bare tour url when cursor is null and topLevel is empty (no comments to seed)", () => {
     expect(decideMirrorUrl(null, [], TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}`,
@@ -41,7 +41,7 @@ describe("decideMirrorUrl (issue #198)", () => {
   });
 
   it("write `/tour#ann` when cursor is a CardAnchor", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "annA", preferredSide: "additions" };
+    const cursor: Cursor = { kind: "card", commentId: "annA", preferredSide: "additions" };
     expect(decideMirrorUrl(cursor, topLevel, TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}#annA`,
@@ -92,7 +92,7 @@ describe("decideMirrorUrl (issue #198)", () => {
       side: "additions",
       preferredSide: "additions",
     };
-    const cardCursor: Cursor = { kind: "card", annotationId: "annB", preferredSide: "additions" };
+    const cardCursor: Cursor = { kind: "card", commentId: "annB", preferredSide: "additions" };
     expect(decideMirrorUrl(rowCursor, topLevel, TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}`,
@@ -103,13 +103,13 @@ describe("decideMirrorUrl (issue #198)", () => {
     });
   });
 
-  // CardAnchor for an annotation that's no longer top-level (deleted /
+  // CardAnchor for a comment that's no longer top-level (deleted /
   // restructured between bundle loads). The mirror still writes the URL;
   // the re-anchor effect's stale-fallback branch handles the cursor
   // correction. Asymmetric with decideReanchor: the mirror is a pure
   // serialiser of the cursor's intent.
   it("write `/tour#ann` even when the CardAnchor id is not in topLevel (mirror is unaware of staleness)", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
+    const cursor: Cursor = { kind: "card", commentId: "ghost", preferredSide: "additions" };
     expect(decideMirrorUrl(cursor, topLevel, TOUR)).toEqual({
       kind: "write",
       url: `/${TOUR}#ghost`,

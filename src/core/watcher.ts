@@ -2,7 +2,7 @@ import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 
 export type WatchEvent =
-  | { type: "annotation-changed"; tourId: string }
+  | { type: "comment-changed"; tourId: string }
   | { type: "reply-in-flight"; tourId: string }
   | { type: "reply-cleared"; tourId: string };
 
@@ -37,7 +37,7 @@ function fingerprint(path: string): FileFingerprint | null {
 // `comments.jsonl`, fall back to `annotations.jsonl`. A folder that gets
 // migrated mid-watch transitions from the legacy fingerprint to the new
 // one — the values won't match, so the watcher emits.
-function effectiveAnnotationsFingerprint(dir: string): FileFingerprint | null {
+function effectiveCommentsFingerprint(dir: string): FileFingerprint | null {
   const newFp = fingerprint(join(dir, COMMENTS_FILENAME));
   if (newFp) return newFp;
   return fingerprint(join(dir, LEGACY_ANNOTATIONS_FILENAME));
@@ -51,21 +51,21 @@ function sameFingerprint(a: FileFingerprint | null, b: FileFingerprint | null): 
 
 export class TourWatcher {
   private watcher: FSWatcher | null = null;
-  private annotationDebounce: ReturnType<typeof setTimeout> | null = null;
+  private commentDebounce: ReturnType<typeof setTimeout> | null = null;
   private lockDebounce: ReturnType<typeof setTimeout> | null = null;
   private readonly debounceMs: number;
   private readonly tourId: string;
   private readonly tourDir: string;
   private listeners: WatchCallback[] = [];
   private lastLockExists: boolean;
-  private lastAnnotationsFp: FileFingerprint | null;
+  private lastCommentsFp: FileFingerprint | null;
 
   constructor(repoRoot: string, tourId: string, debounceMs = 100) {
     this.tourId = tourId;
     this.tourDir = join(repoRoot, ".tour", tourId);
     this.debounceMs = debounceMs;
     this.lastLockExists = existsSync(join(this.tourDir, REPLY_LOCK_FILENAME));
-    this.lastAnnotationsFp = effectiveAnnotationsFingerprint(this.tourDir);
+    this.lastCommentsFp = effectiveCommentsFingerprint(this.tourDir);
   }
 
   on(callback: WatchCallback): void {
@@ -83,7 +83,7 @@ export class TourWatcher {
       this.watcher = watch(this.tourDir, { recursive: false }, (_eventType, filename) => {
         if (!filename) return;
         if (filename.endsWith(".jsonl")) {
-          this.scheduleAnnotationEmit();
+          this.scheduleCommentEmit();
         } else if (filename === REPLY_LOCK_FILENAME) {
           this.scheduleLockEmit();
         }
@@ -94,9 +94,9 @@ export class TourWatcher {
   }
 
   stop(): void {
-    if (this.annotationDebounce) {
-      clearTimeout(this.annotationDebounce);
-      this.annotationDebounce = null;
+    if (this.commentDebounce) {
+      clearTimeout(this.commentDebounce);
+      this.commentDebounce = null;
     }
     if (this.lockDebounce) {
       clearTimeout(this.lockDebounce);
@@ -112,17 +112,17 @@ export class TourWatcher {
   // macOS fs.watch fires spurious `rename` events for sibling files when an
   // unrelated file in the same directory is created or deleted. Without a
   // fingerprint check, writing `.reply-lock.json` would emit a phantom
-  // `annotation-changed` because the Comment-log file shows up in the
+  // `comment-changed` because the Comment-log file shows up in the
   // watch callback. Stat at fire time and only emit if mtime+size actually
   // changed. The effective fingerprint prefers `comments.jsonl` and falls
   // back to `annotations.jsonl`, mirroring the reader (ADR 0029 addendum).
-  private scheduleAnnotationEmit(): void {
-    if (this.annotationDebounce) clearTimeout(this.annotationDebounce);
-    this.annotationDebounce = setTimeout(() => {
-      const fp = effectiveAnnotationsFingerprint(this.tourDir);
-      if (sameFingerprint(fp, this.lastAnnotationsFp)) return;
-      this.lastAnnotationsFp = fp;
-      this.emit({ type: "annotation-changed", tourId: this.tourId });
+  private scheduleCommentEmit(): void {
+    if (this.commentDebounce) clearTimeout(this.commentDebounce);
+    this.commentDebounce = setTimeout(() => {
+      const fp = effectiveCommentsFingerprint(this.tourDir);
+      if (sameFingerprint(fp, this.lastCommentsFp)) return;
+      this.lastCommentsFp = fp;
+      this.emit({ type: "comment-changed", tourId: this.tourId });
     }, this.debounceMs);
   }
 

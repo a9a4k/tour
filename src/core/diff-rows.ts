@@ -1,6 +1,6 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { Annotation } from "./types.js";
-import { buildThreads, topLevelAnnotations } from "./threads.js";
+import type { Comment } from "./types.js";
+import { buildThreads, topLevelComments } from "./threads.js";
 import {
   getBoundary,
   getFileExpanded,
@@ -11,7 +11,7 @@ import {
 export type PlannedRow =
   | DiffRow
   | HunkHeaderRow
-  | AnnotationRow
+  | CommentRow
   | InteractiveRow;
 
 export interface DiffRow {
@@ -50,10 +50,10 @@ export interface HunkHeaderRow {
   primaryExpand: "up" | "all" | null;
 }
 
-export interface AnnotationRow {
-  kind: "annotation";
-  annotation: Annotation;
-  replies: Annotation[];
+export interface CommentRow {
+  kind: "comment";
+  comment: Comment;
+  replies: Comment[];
   id: string;
 }
 
@@ -105,7 +105,7 @@ export interface PlanRowsOptions {
 
 export function planRows(
   file: FileDiffMetadata,
-  annotations: Annotation[],
+  comments: Comment[],
   layout: "split" | "unified",
   options: PlanRowsOptions = {},
 ): PlannedRow[] {
@@ -117,14 +117,14 @@ export function planRows(
       return [collapsedFileRow(file)];
     }
   }
-  // Scope to this file before passing on: applyAnnotationFlags and
-  // interleaveAnnotations match anchors by `(side, line_end)` only, so an
+  // Scope to this file before passing on: applyCommentFlags and
+  // interleaveComments match anchors by `(side, line_end)` only, so an
   // unfiltered list leaks phantom card rows + tint flags into every file
-  // whose line range overlaps a foreign annotation's `line_end` (issue #199).
-  const fileAnnotations = annotations.filter((a) => a.file === file.name);
+  // whose line range overlaps a foreign comment's `line_end` (issue #199).
+  const fileComments = comments.filter((a) => a.file === file.name);
   const diffRows = walkHunks(file, layout, options);
-  applyAnnotationFlags(diffRows, fileAnnotations, layout);
-  return interleaveAnnotations(diffRows, fileAnnotations);
+  applyCommentFlags(diffRows, fileComments, layout);
+  return interleaveComments(diffRows, fileComments);
 }
 
 function collapsedFileRow(file: FileDiffMetadata): InteractiveRow {
@@ -140,9 +140,9 @@ function collapsedFileRow(file: FileDiffMetadata): InteractiveRow {
   };
 }
 
-function repliesByRoot(annotations: Annotation[]): Map<string, Annotation[]> {
-  const out = new Map<string, Annotation[]>();
-  for (const t of buildThreads(annotations)) {
+function repliesByRoot(comments: Comment[]): Map<string, Comment[]> {
+  const out = new Map<string, Comment[]>();
+  for (const t of buildThreads(comments)) {
     out.set(t.root.id, t.replies);
   }
   return out;
@@ -520,13 +520,13 @@ function expandDownRowText(): string {
   return `↓ Expand Down`;
 }
 
-function applyAnnotationFlags(
+function applyCommentFlags(
   rows: PlannedRow[],
-  annotations: Annotation[],
+  comments: Comment[],
   layout: "split" | "unified",
 ): void {
-  if (annotations.length === 0) return;
-  for (const ann of annotations) {
+  if (comments.length === 0) return;
+  for (const ann of comments) {
     for (const row of rows) {
       if (row.kind !== "diff-row") continue;
       const lineOnAnnSide =
@@ -544,16 +544,16 @@ function applyAnnotationFlags(
   }
 }
 
-function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): PlannedRow[] {
-  if (annotations.length === 0) return rows;
+function interleaveComments(rows: PlannedRow[], comments: Comment[]): PlannedRow[] {
+  if (comments.length === 0) return rows;
 
-  // Only top-level annotations get cards; replies render nested inside the
+  // Only top-level comments get cards; replies render nested inside the
   // root's card. Reply anchors are inherited from the root, so a reply would
   // produce a duplicate card at the same line if interleaved here.
-  const tops = topLevelAnnotations(annotations);
+  const tops = topLevelComments(comments);
   if (tops.length === 0) return rows;
 
-  const replies = repliesByRoot(annotations);
+  const replies = repliesByRoot(comments);
 
   const sorted = [...tops].sort((a, b) => {
     if (a.created_at < b.created_at) return -1;
@@ -563,7 +563,7 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
     return 0;
   });
 
-  const insertions = new Map<number, Annotation[]>();
+  const insertions = new Map<number, Comment[]>();
   for (const ann of sorted) {
     const idx = findAnchorRowIndex(rows, ann);
     if (idx === -1) continue;
@@ -581,8 +581,8 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
     if (!anns) continue;
     for (const ann of anns) {
       out.push({
-        kind: "annotation",
-        annotation: ann,
+        kind: "comment",
+        comment: ann,
         replies: replies.get(ann.id) ?? [],
         id: ann.id,
       });
@@ -591,8 +591,8 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
   return out;
 }
 
-/** Resolve the row index an annotation's card should anchor onto, with a
- *  fallback ladder so a top-level annotation whose `line_end` doesn't
+/** Resolve the row index a comment's card should anchor onto, with a
+ *  fallback ladder so a top-level comment whose `line_end` doesn't
  *  match any emitted diff row never silently drops out of the flat stream
  *  (issue #300). The card-walker (`n`/`p`) walks the canonical top-level
  *  list directly, so dropping the card here broke the bookmark pill's
@@ -610,10 +610,10 @@ function interleaveAnnotations(rows: PlannedRow[], annotations: Annotation[]): P
  *     never silently omitted from a file that has anything to render.
  *
  *  Returns -1 only when `rows` is fully empty (binary file / empty diff).
- *  Note: the resulting `CardFlatRow.lineEnd` still carries the annotation's
+ *  Note: the resulting `CardFlatRow.lineEnd` still carries the comment's
  *  authored `line_end`, not the snap target — downstream consumers (URL,
  *  click routing, agent reply targets, side derivation) see the true anchor. */
-function findAnchorRowIndex(rows: PlannedRow[], ann: Annotation): number {
+function findAnchorRowIndex(rows: PlannedRow[], ann: Comment): number {
   let nearestPrecedingIdx = -1;
   let nearestPrecedingLine = -1;
   let firstSameSideIdx = -1;

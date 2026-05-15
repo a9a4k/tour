@@ -8,6 +8,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Source-identifier rename: `Annotation` → `Comment` across source,
+  tests, intents, and CONTEXT.md prose (issue #341, PRD #335, ADR
+  0029).** Stage B mechanical slice. The `Annotation` type renames to
+  `Comment` in `src/core/types.ts`; every type annotation, import, and
+  structural use across `src/` and `tests/` updates in lockstep. Module
+  files `core/annotations-store.ts` → `core/comments-store.ts`,
+  `core/write-annotation-input.ts` → `core/write-comment-input.ts`,
+  `web/client/markdown/AnnotationMarkdown.tsx` →
+  `web/client/markdown/CommentMarkdown.tsx`, plus paired TUI/test
+  files (`tui/AnnotationCard.tsx`, `tui/annotation-jump.ts`,
+  `tui/annotation-placement.ts`, `cli/annotate.ts`, and their paired
+  test files) all rename to the `comment` vocabulary; every import
+  that pointed at the old paths now points at the new ones. Function
+  renames sweep through `createAnnotation` → `createComment`,
+  `createAnnotations` → `createComments`, `readAnnotations` →
+  `readComments`, `latestAnnotationId` → `latestCommentId`,
+  `cursorFromAnnotation` → `cursorFromComment`, plus every other
+  identifier carrying `Annotation` / `annotation`. The four keymap
+  intent strings flip atomically: `next-annotation` → `next-comment`
+  and `prev-annotation` → `prev-comment` (TUI),
+  `nav-next-annotation` → `nav-next-comment` and
+  `nav-prev-annotation` → `nav-prev-comment` (webapp); the verb
+  intent `annotate-at-cursor` becomes `comment-at-cursor`. The
+  `triggering_annotation` field on the agent-adapter envelope renames
+  to `triggering_comment`. `LEGACY_ANNOTATIONS_FILENAME` and the
+  string literal `"annotations.jsonl"` stay — they name the legacy
+  on-disk filename per ADR 0029 addendum. CLI verbs (`tour annotate`
+  alias, `case "annotate":` switch arm) stay — permanent alias per
+  PRD #335. The "Rename in flight" callout at the top of CONTEXT.md's
+  Language section is removed; the body prose flips. JSON wire-format
+  (`--json` output keys: `id`, `file`, `side`, `line_start`,
+  `line_end`, `body`, `author`, `author_kind`, `created_at`,
+  `replies_to`, `kind`) is unchanged. No behavioural change —
+  identifier-only rename. Test count: 2147 / 2147 pass.
+
+  Issue: #341
+
 - **On-disk: `annotations.jsonl` → `comments.jsonl` with permanent
   read-fallback (issue #342, PRD #335, ADR 0029 addendum).** Stage B
   on-disk slice. The per-Tour Comment log filename is now

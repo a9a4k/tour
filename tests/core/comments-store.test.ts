@@ -1,18 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
-  createAnnotation,
+  createComment,
   createReply,
-  createAnnotations,
-  readAnnotations,
-} from "../../src/core/annotations-store.js";
-import type { Annotation, Tour } from "../../src/core/types.js";
+  createComments,
+  readComments,
+} from "../../src/core/comments-store.js";
+import type { Comment, Tour } from "../../src/core/types.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import { mkdtemp, mkdir, appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { appendFileSync, existsSync } from "node:fs";
 
-function makeAnnotation(overrides?: Partial<Annotation>): Annotation {
+function makeComment(overrides?: Partial<Comment>): Comment {
   return {
     id: "ann-1",
     file: "src/main.ts",
@@ -29,11 +29,11 @@ function makeAnnotation(overrides?: Partial<Annotation>): Annotation {
 
 // Direct JSONL append helper — sidesteps the seam to seed records with a
 // caller-supplied id when the test needs to assert about that id (e.g.
-// reply-parent lookup). The store's own `appendAnnotation` is private.
-async function seedAnnotation(
+// reply-parent lookup). The store's own `appendComment` is private.
+async function seedComment(
   dir: string,
   tourId: string,
-  ann: Annotation,
+  ann: Comment,
 ): Promise<void> {
   const path = join(dir, ".tour", tourId, "annotations.jsonl");
   await appendFile(path, JSON.stringify(ann) + "\n");
@@ -85,13 +85,13 @@ function makeBundle(
   return {
     kind: "ok",
     tour,
-    annotations: [],
+    comments: [],
     diff: "",
     files: bundleFiles,
   };
 }
 
-describe("annotations-store", () => {
+describe("comments-store", () => {
   let dir: string;
   const tourId = "2026-05-08-120000-abcd";
 
@@ -100,10 +100,10 @@ describe("annotations-store", () => {
     await mkdir(join(dir, ".tour", tourId), { recursive: true });
   });
 
-  describe("createAnnotation", () => {
-    it("writes a top-level annotation that round-trips through readAnnotations", async () => {
+  describe("createComment", () => {
+    it("writes a top-level comment that round-trips through readComments", async () => {
       const bundle = makeBundle([{ name: "src/main.ts", newLines: 20 }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -121,14 +121,14 @@ describe("annotations-store", () => {
       expect(typeof ann.created_at).toBe("string");
       expect(ann.replies_to).toBeUndefined();
 
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toHaveLength(1);
       expect(loaded[0]).toEqual(ann);
     });
 
     it("defaults author to 'agent' when omitted and author_kind is 'agent' (slice 3 / #143)", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -146,7 +146,7 @@ describe("annotations-store", () => {
 
     it("defaults author to 'human' when omitted and author_kind is 'human' (slice 3 / #143)", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -164,7 +164,7 @@ describe("annotations-store", () => {
 
     it("preserves a supplied author verbatim regardless of author_kind (slice 3 / #143)", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -184,7 +184,7 @@ describe("annotations-store", () => {
     it("rejects whitespace-only body and writes nothing (slice 2 / #142)", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -198,13 +198,13 @@ describe("annotations-store", () => {
           bundle,
         ),
       ).rejects.toThrow(/body/i);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("appends across multiple invocations", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
-      const a = await createAnnotation(
+      const a = await createComment(
         dir,
         tourId,
         {
@@ -213,7 +213,7 @@ describe("annotations-store", () => {
         },
         bundle,
       );
-      const b = await createAnnotation(
+      const b = await createComment(
         dir,
         tourId,
         {
@@ -222,16 +222,16 @@ describe("annotations-store", () => {
         },
         bundle,
       );
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((x) => x.id)).toEqual([a.id, b.id]);
     });
   });
 
-  describe("createAnnotation anchor validation (slice 4 / #144)", () => {
+  describe("createComment anchor validation (slice 4 / #144)", () => {
     it("rejects when file is not in bundle.files and writes nothing", async () => {
       const bundle = makeBundle([{ name: "real.ts" }]);
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -245,14 +245,14 @@ describe("annotations-store", () => {
           bundle,
         ),
       ).rejects.toThrow(/typo\.ts/);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("rejects when line_start < 1", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -271,7 +271,7 @@ describe("annotations-store", () => {
     it("rejects when line_end < line_start", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -290,7 +290,7 @@ describe("annotations-store", () => {
     it("rejects when additions line_end exceeds the head line count", async () => {
       const bundle = makeBundle([{ name: "x.ts", newLines: 10 }]);
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -309,7 +309,7 @@ describe("annotations-store", () => {
     it("rejects when deletions line_end exceeds the base line count", async () => {
       const bundle = makeBundle([{ name: "x.ts", oldLines: 5, newLines: 20 }]);
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -330,7 +330,7 @@ describe("annotations-store", () => {
       // "between hunks" / "outside hunks". The seam validates file
       // membership and line-range bounds only, not hunk membership.
       const bundle = makeBundle([{ name: "x.ts", newLines: 50 }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -343,14 +343,14 @@ describe("annotations-store", () => {
         },
         bundle,
       );
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toHaveLength(1);
       expect(loaded[0]).toEqual(ann);
     });
 
     it("accepts an anchor on an unchanged context row with side=additions (CONTEXT.md convention)", async () => {
       const bundle = makeBundle([{ name: "x.ts", newLines: 100, oldLines: 100 }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -369,7 +369,7 @@ describe("annotations-store", () => {
 
     it("accepts line_end at exactly the file's line count (inclusive upper bound)", async () => {
       const bundle = makeBundle([{ name: "x.ts", newLines: 7 }]);
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -400,10 +400,10 @@ describe("annotations-store", () => {
           base_source: "",
           wip_snapshot: false,
         },
-        annotations: [],
+        comments: [],
       };
       await expect(
-        createAnnotation(
+        createComment(
           dir,
           tourId,
           {
@@ -422,14 +422,14 @@ describe("annotations-store", () => {
 
   describe("createReply", () => {
     it("inherits the parent's anchor and stamps replies_to", async () => {
-      const parent = makeAnnotation({
+      const parent = makeComment({
         id: "parent-1",
         file: "src/lib/x.ts",
         side: "deletions",
         line_start: 12,
         line_end: 14,
       });
-      await seedAnnotation(dir, tourId, parent);
+      await seedComment(dir, tourId, parent);
 
       const reply = await createReply(dir, tourId, {
         replies_to: "parent-1",
@@ -447,7 +447,7 @@ describe("annotations-store", () => {
       expect(reply.author_kind).toBe("human");
       expect(reply.body).toBe("because of legacy compat");
 
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toHaveLength(2);
       expect(loaded[1]).toEqual(reply);
     });
@@ -460,13 +460,13 @@ describe("annotations-store", () => {
           author_kind: "human",
         }),
       ).rejects.toThrow(/no-such-id/);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("rejects whitespace-only reply body and writes nothing (slice 2 / #142)", async () => {
-      const parent = makeAnnotation({ id: "p-trim" });
-      await seedAnnotation(dir, tourId, parent);
+      const parent = makeComment({ id: "p-trim" });
+      await seedComment(dir, tourId, parent);
       await expect(
         createReply(dir, tourId, {
           replies_to: "p-trim",
@@ -475,13 +475,13 @@ describe("annotations-store", () => {
         }),
       ).rejects.toThrow(/body/i);
       // Only the seeded parent is on disk; no reply landed.
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["p-trim"]);
     });
 
     it("defaults reply author to the author_kind literal when omitted (slice 3 / #143)", async () => {
-      const parent = makeAnnotation({ id: "p-author-default" });
-      await seedAnnotation(dir, tourId, parent);
+      const parent = makeComment({ id: "p-author-default" });
+      await seedComment(dir, tourId, parent);
 
       const replyHuman = await createReply(dir, tourId, {
         replies_to: "p-author-default",
@@ -501,8 +501,8 @@ describe("annotations-store", () => {
     it("always re-reads the on-disk Comment log (caller cannot bypass with stale in-memory data)", async () => {
       // Parent is added between the caller's "decision" to reply and the
       // seam call — createReply finds it because it re-reads on every call.
-      const parent = makeAnnotation({ id: "p-late" });
-      await seedAnnotation(dir, tourId, parent);
+      const parent = makeComment({ id: "p-late" });
+      await seedComment(dir, tourId, parent);
       const reply = await createReply(dir, tourId, {
         replies_to: "p-late",
         body: "found it",
@@ -512,7 +512,7 @@ describe("annotations-store", () => {
     });
   });
 
-  describe("createAnnotations (atomic batch)", () => {
+  describe("createComments (atomic batch)", () => {
     it("writes every record in a single appendFile call", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }, { name: "c.ts" }]);
       // Issue #342: the writer writes to `comments.jsonl` after Stage B.
@@ -520,7 +520,7 @@ describe("annotations-store", () => {
       const before = await readFile(path, "utf-8").catch(() => "");
       expect(before).toBe("");
 
-      const results = await createAnnotations(
+      const results = await createComments(
         dir,
         tourId,
         [
@@ -544,7 +544,7 @@ describe("annotations-store", () => {
       );
 
       expect(results).toHaveLength(3);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.body)).toEqual(["first", "second", "third"]);
       // All three records land on the same write — the file's exact
       // content matches a single newline-joined block.
@@ -554,10 +554,10 @@ describe("annotations-store", () => {
 
     it("supports mixed top-level + reply requests in a single batch", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "src/main.ts" }]);
-      const parent = makeAnnotation({ id: "p1", side: "deletions" });
-      await seedAnnotation(dir, tourId, parent);
+      const parent = makeComment({ id: "p1", side: "deletions" });
+      await seedComment(dir, tourId, parent);
 
-      const results = await createAnnotations(
+      const results = await createComments(
         dir,
         tourId,
         [
@@ -584,7 +584,7 @@ describe("annotations-store", () => {
     it("rejects whole batch (no write) when any item has a whitespace-only body (slice 2 / #142)", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
       await expect(
-        createAnnotations(
+        createComments(
           dir,
           tourId,
           [
@@ -602,14 +602,14 @@ describe("annotations-store", () => {
           bundle,
         ),
       ).rejects.toThrow(/body/i);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("rejects whole batch (no write) when any reply parent is missing", async () => {
       const bundle = makeBundle([{ name: "a.ts" }]);
       await expect(
-        createAnnotations(
+        createComments(
           dir,
           tourId,
           [
@@ -629,14 +629,14 @@ describe("annotations-store", () => {
       ).rejects.toThrow(/no-such-parent/);
 
       // No partial write: the file is still empty.
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("rejects whole batch (no write) when any anchor file is not in the bundle (slice 4 / #144)", async () => {
       const bundle = makeBundle([{ name: "a.ts" }]);
       await expect(
-        createAnnotations(
+        createComments(
           dir,
           tourId,
           [
@@ -654,22 +654,22 @@ describe("annotations-store", () => {
           bundle,
         ),
       ).rejects.toThrow(/typo\.ts/);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
   });
 
-  describe("readAnnotations", () => {
+  describe("readComments", () => {
     it("returns empty array when file does not exist", async () => {
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
     });
 
     it("skips malformed lines", async () => {
       const path = join(dir, ".tour", tourId, "annotations.jsonl");
-      const good = JSON.stringify(makeAnnotation({ id: "good" }));
+      const good = JSON.stringify(makeComment({ id: "good" }));
       appendFileSync(path, good + "\n" + "NOT JSON\n" + good.replace("good", "also-good") + "\n");
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded).toHaveLength(2);
       expect(loaded[0].id).toBe("good");
       expect(loaded[1].id).toBe("also-good");
@@ -688,24 +688,24 @@ describe("annotations-store", () => {
         created_at: "2026-01-01T00:00:00Z",
       });
       appendFileSync(path, legacy + "\n");
-      await expect(readAnnotations(dir, tourId)).rejects.toThrow(/author_kind/);
+      await expect(readComments(dir, tourId)).rejects.toThrow(/author_kind/);
     });
 
     it("throws on records with an invalid author_kind value", async () => {
       const path = join(dir, ".tour", tourId, "annotations.jsonl");
       const bad = JSON.stringify({
-        ...makeAnnotation({ id: "bad" }),
+        ...makeComment({ id: "bad" }),
         author_kind: "robot",
       });
       appendFileSync(path, bad + "\n");
-      await expect(readAnnotations(dir, tourId)).rejects.toThrow(/author_kind/);
+      await expect(readComments(dir, tourId)).rejects.toThrow(/author_kind/);
     });
   });
 
   describe("multi-line ranges", () => {
     it("stores and retrieves line_start != line_end", async () => {
       const bundle = makeBundle([{ name: "x.ts", newLines: 20 }]);
-      await createAnnotation(
+      await createComment(
         dir,
         tourId,
         {
@@ -718,7 +718,7 @@ describe("annotations-store", () => {
         },
         bundle,
       );
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded[0].line_start).toBe(5);
       expect(loaded[0].line_end).toBe(15);
     });
@@ -737,32 +737,32 @@ describe("annotations-store", () => {
       return join(dir, ".tour", tourId, "annotations.jsonl");
     }
 
-    it("readAnnotations prefers comments.jsonl when both exist (post-migration shape)", async () => {
-      appendFileSync(commentsPath(), JSON.stringify(makeAnnotation({ id: "primary" })) + "\n");
+    it("readComments prefers comments.jsonl when both exist (post-migration shape)", async () => {
+      appendFileSync(commentsPath(), JSON.stringify(makeComment({ id: "primary" })) + "\n");
       // Stranded legacy file (shouldn't happen in practice, but the reader
       // must be deterministic if it does).
-      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "stranded" })) + "\n");
-      const loaded = await readAnnotations(dir, tourId);
+      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "stranded" })) + "\n");
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["primary"]);
     });
 
-    it("readAnnotations falls back to annotations.jsonl when comments.jsonl is absent", async () => {
-      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "legacy" })) + "\n");
-      const loaded = await readAnnotations(dir, tourId);
+    it("readComments falls back to annotations.jsonl when comments.jsonl is absent", async () => {
+      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "legacy" })) + "\n");
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["legacy"]);
     });
 
-    it("readAnnotations is a no-op on the legacy file: never writes, never renames", async () => {
-      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "legacy" })) + "\n");
-      await readAnnotations(dir, tourId);
-      await readAnnotations(dir, tourId);
+    it("readComments is a no-op on the legacy file: never writes, never renames", async () => {
+      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "legacy" })) + "\n");
+      await readComments(dir, tourId);
+      await readComments(dir, tourId);
       expect(existsSync(legacyPath())).toBe(true);
       expect(existsSync(commentsPath())).toBe(false);
     });
 
-    it("createAnnotation on an empty folder writes comments.jsonl (annotations.jsonl never appears)", async () => {
+    it("createComment on an empty folder writes comments.jsonl (annotations.jsonl never appears)", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      await createAnnotation(
+      await createComment(
         dir,
         tourId,
         {
@@ -779,11 +779,11 @@ describe("annotations-store", () => {
       expect(existsSync(legacyPath())).toBe(false);
     });
 
-    it("createAnnotation on a legacy-only folder renames annotations.jsonl → comments.jsonl then appends", async () => {
+    it("createComment on a legacy-only folder renames annotations.jsonl → comments.jsonl then appends", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      const legacy = makeAnnotation({ id: "legacy-1" });
+      const legacy = makeComment({ id: "legacy-1" });
       appendFileSync(legacyPath(), JSON.stringify(legacy) + "\n");
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -799,15 +799,15 @@ describe("annotations-store", () => {
       // After: only comments.jsonl exists, contains both records in order.
       expect(existsSync(legacyPath())).toBe(false);
       expect(existsSync(commentsPath())).toBe(true);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["legacy-1", ann.id]);
     });
 
-    it("createAnnotation on a comments-only folder appends without touching annotations.jsonl", async () => {
+    it("createComment on a comments-only folder appends without touching annotations.jsonl", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      const existing = makeAnnotation({ id: "already-migrated" });
+      const existing = makeComment({ id: "already-migrated" });
       appendFileSync(commentsPath(), JSON.stringify(existing) + "\n");
-      const ann = await createAnnotation(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -821,19 +821,19 @@ describe("annotations-store", () => {
         bundle,
       );
       expect(existsSync(legacyPath())).toBe(false);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["already-migrated", ann.id]);
     });
 
-    it("createAnnotation when both files exist logs a stderr warning, skips the rename, appends to comments.jsonl", async () => {
+    it("createComment when both files exist logs a stderr warning, skips the rename, appends to comments.jsonl", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "stranded" })) + "\n");
-      appendFileSync(commentsPath(), JSON.stringify(makeAnnotation({ id: "primary" })) + "\n");
+      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "stranded" })) + "\n");
+      appendFileSync(commentsPath(), JSON.stringify(makeComment({ id: "primary" })) + "\n");
       const stderrSpy = vi
         .spyOn(process.stderr, "write")
         .mockImplementation(() => true);
       try {
-        const ann = await createAnnotation(
+        const ann = await createComment(
           dir,
           tourId,
           {
@@ -848,12 +848,12 @@ describe("annotations-store", () => {
         );
         expect(stderrSpy).toHaveBeenCalled();
         const calls = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
-        expect(calls).toMatch(/annotations\.jsonl/);
+        expect(calls).toMatch(/comments\.jsonl/);
         expect(calls).toMatch(/comments\.jsonl/);
         // Legacy file left alone; comments.jsonl is authoritative and gains
         // the new record.
         expect(existsSync(legacyPath())).toBe(true);
-        const loaded = await readAnnotations(dir, tourId);
+        const loaded = await readComments(dir, tourId);
         expect(loaded.map((a) => a.id)).toEqual(["primary", ann.id]);
       } finally {
         stderrSpy.mockRestore();
@@ -861,7 +861,7 @@ describe("annotations-store", () => {
     });
 
     it("createReply on a legacy-only folder renames and appends", async () => {
-      const parent = makeAnnotation({ id: "p-legacy", author_kind: "human" });
+      const parent = makeComment({ id: "p-legacy", author_kind: "human" });
       appendFileSync(legacyPath(), JSON.stringify(parent) + "\n");
       const reply = await createReply(dir, tourId, {
         replies_to: "p-legacy",
@@ -870,14 +870,14 @@ describe("annotations-store", () => {
       });
       expect(existsSync(legacyPath())).toBe(false);
       expect(existsSync(commentsPath())).toBe(true);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["p-legacy", reply.id]);
     });
 
-    it("createAnnotations (batch) on a legacy-only folder renames once and appends the whole batch", async () => {
+    it("createComments (batch) on a legacy-only folder renames once and appends the whole batch", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
-      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "legacy-batch" })) + "\n");
-      const results = await createAnnotations(
+      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "legacy-batch" })) + "\n");
+      const results = await createComments(
         dir,
         tourId,
         [
@@ -895,7 +895,7 @@ describe("annotations-store", () => {
         bundle,
       );
       expect(existsSync(legacyPath())).toBe(false);
-      const loaded = await readAnnotations(dir, tourId);
+      const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.id)).toEqual(["legacy-batch", results[0].id, results[1].id]);
     });
   });

@@ -1,11 +1,11 @@
-import type { Annotation } from "../../core/types.js";
+import type { Comment } from "../../core/types.js";
 import type { Cursor } from "../../core/cursor-state.js";
 
 /**
  * Bundle-load re-anchor policy (issue #197). Decides what the
- * "re-anchor cursor to a top-level Annotation card on bundle load"
+ * "re-anchor cursor to a top-level Comment card on bundle load"
  * effect should do given the current cursor, the URL fragment, and
- * the loaded Tour's top-level annotations.
+ * the loaded Tour's top-level comments.
  *
  * The discriminator is `cursor === null` (true tour-load / tour-switch),
  * NOT `cursorCardId === null` — a `RowAnchor` cursor written by `j` / `k`
@@ -17,13 +17,13 @@ import type { Cursor } from "../../core/cursor-state.js";
  */
 export type ReanchorEffect =
   | { kind: "noop" }
-  | { kind: "url-restore"; target: Annotation }
-  | { kind: "stale-fallback"; target: Annotation };
+  | { kind: "url-restore"; target: Comment }
+  | { kind: "stale-fallback"; target: Comment };
 
 export function decideReanchor(
   cursor: Cursor | null,
   annFromUrl: string | null,
-  topLevel: ReadonlyArray<Annotation>,
+  topLevel: ReadonlyArray<Comment>,
 ): ReanchorEffect {
   if (topLevel.length === 0) return { kind: "noop" };
   if (cursor === null) {
@@ -31,7 +31,7 @@ export function decideReanchor(
     return { kind: "url-restore", target };
   }
   if (cursor.kind === "card") {
-    const found = topLevel.some((a) => a.id === cursor.annotationId);
+    const found = topLevel.some((a) => a.id === cursor.commentId);
     if (!found) return { kind: "stale-fallback", target: topLevel[0] };
   }
   // RowAnchor cursor: user is walking rows; never override.

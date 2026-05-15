@@ -10,7 +10,7 @@ import {
   assertShippedAgent,
   availableShippedAgents,
 } from "../../src/agents/index.js";
-import type { Annotation, Tour } from "../../src/core/types.js";
+import type { Comment, Tour } from "../../src/core/types.js";
 
 function tour(over: Partial<Tour> = {}): Tour {
   return {
@@ -28,7 +28,7 @@ function tour(over: Partial<Tour> = {}): Tour {
   };
 }
 
-function ann(over: Partial<Annotation> & { id: string }): Annotation {
+function ann(over: Partial<Comment> & { id: string }): Comment {
   return {
     id: over.id,
     file: "src/main.ts",
@@ -102,11 +102,11 @@ describe("buildEnvelope", () => {
     });
     const env = buildEnvelope(tour(), [root, r1, r2], r1);
     expect(env.tour.id).toBe("2026-05-10-120000-test");
-    expect(env.triggering_annotation.id).toBe("a2");
+    expect(env.triggering_comment.id).toBe("a2");
     expect(env.thread.map((a) => a.id)).toEqual(["a1", "a2", "a3"]);
   });
 
-  it("packs just the root when triggering on a top-level annotation", () => {
+  it("packs just the root when triggering on a top-level comment", () => {
     const root = ann({ id: "a1" });
     const env = buildEnvelope(tour(), [root], root);
     expect(env.thread.map((a) => a.id)).toEqual(["a1"]);

@@ -1,17 +1,17 @@
 import type { Cursor } from "../core/cursor-state.js";
-import type { Annotation } from "../core/types.js";
+import type { Comment } from "../core/types.js";
 import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hints.js";
 
 // The bottom-bar key-action hint surfaced by the TUI app shell. The
 // comment binding (formerly `a`, now `c` per ADR 0029 + issue #337) is
 // labelled "comment" to align with the verb every collaborative code-
 // review tool reaches for; ADR 0029 records the unit-name flip from
-// Annotation to Comment, and ADR 0030 records the lowercase/capital
+// Comment to Comment, and ADR 0030 records the lowercase/capital
 // convention that motivated the `t → T`, `c → C` rebinds shipping in
 // the same slice.
 //
 // `s send to {agent}` (issue #184, PRD #181) is surfaced conditionally —
-// only when the focused card is a human Annotation, `--reply-agent` is
+// only when the focused card is a human Comment, `--reply-agent` is
 // set, AND the lock is free. When the lock is held tour-wide the hint
 // stays in the footer but is rendered muted; pressing `s` is a no-op
 // with a one-line footer status driven by App.tsx, not by this constant.
@@ -47,7 +47,7 @@ function truncateTitle(s: string): string {
 
 export interface FooterPreviewOptions {
   cursor: Cursor | null;
-  annotations: ReadonlyArray<Annotation>;
+  comments: ReadonlyArray<Comment>;
   /**
    * The rendered card's position relative to the diff scrollbox's
    * viewport rect — `"in"` when the card's box intersects the
@@ -80,11 +80,11 @@ export interface FooterPreviewOptions {
  * already a labelled no-op so the user knows nothing will happen.
  */
 export function composeFooterPreview(opts: FooterPreviewOptions): string {
-  const { cursor, annotations, cardViewportPosition } = opts;
+  const { cursor, comments, cardViewportPosition } = opts;
   if (!cursor || cursor.kind !== "card") {
     return `r: — (no comment under cursor)`;
   }
-  const ann = annotations.find((a) => a.id === cursor.annotationId);
+  const ann = comments.find((a) => a.id === cursor.commentId);
   if (!ann) return `r: — (no comment under cursor)`;
   const title = truncateTitle(ann.body);
   const base = `r: reply to "${title}"`;

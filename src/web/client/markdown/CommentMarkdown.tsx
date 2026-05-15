@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import { MermaidBlock } from "./MermaidBlock.js";
 import { ShikiCode } from "./ShikiCode.js";
 
-interface AnnotationMarkdownProps {
+interface CommentMarkdownProps {
   body: string;
 }
 
@@ -13,7 +13,7 @@ interface CodeChildProps {
   children?: React.ReactNode;
 }
 
-export function AnnotationMarkdown({ body }: AnnotationMarkdownProps): React.JSX.Element {
+export function CommentMarkdown({ body }: CommentMarkdownProps): React.JSX.Element {
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}

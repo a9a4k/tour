@@ -409,7 +409,7 @@ export const FILE_GRID_CSS = `
      muted-border token. Scoped to [data-layout="split"] so unified-layout
      rows do not paint a phantom line; clipped to the file-card's rounded
      corners by the .tour-file-outer overflow:hidden (issue 249). Banner
-     rows (hunk-header, interactive-row) and annotation cards span the full
+     rows (hunk-header, interactive-row) and comment cards span the full
      width without an additions-side gutter, so the rule naturally breaks at
      each banner — matches GitHub. */
   .tour-file-block[data-layout="split"] .tour-row-gutter[data-side="additions"] {

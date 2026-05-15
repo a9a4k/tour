@@ -1,4 +1,4 @@
-import type { Annotation } from "../core/types.js";
+import type { Comment } from "../core/types.js";
 import type { ComposerSlice, ComposerTarget } from "../core/tour-session.js";
 import { theme } from "../core/theme.js";
 import { shortId } from "../core/ids.js";
@@ -10,12 +10,12 @@ import { shortId } from "../core/ids.js";
 interface ComposerProps {
   state: Exclude<ComposerSlice, { kind: "closed" }>;
   /**
-   * Parent annotation resolved from the live bundle when `state.target.kind
+   * Parent comment resolved from the live bundle when `state.target.kind
    * === "reply"`. Null otherwise. Used purely to render the context label —
    * the slice itself stores only the parent id so the draft survives a
    * bundle refresh.
    */
-  parent: Annotation | null;
+  parent: Comment | null;
   onInput: (body: string) => void;
   onSubmit: () => void;
 }
@@ -24,9 +24,9 @@ function rangeLabel(line_start: number, line_end: number): string {
   return line_start === line_end ? String(line_start) : `${line_start}-${line_end}`;
 }
 
-function contextLabel(target: ComposerTarget, parent: Annotation | null): string {
+function contextLabel(target: ComposerTarget, parent: Comment | null): string {
   if (target.kind === "top-level") {
-    return ` New annotation · ${target.file}:${rangeLabel(target.line_start, target.line_end)} (${target.side}) `;
+    return ` New comment · ${target.file}:${rangeLabel(target.line_start, target.line_end)} (${target.side}) `;
   }
   if (parent) {
     return ` Reply to #${shortId(parent.id)} · ${parent.file}:${rangeLabel(parent.line_start, parent.line_end)} (${parent.side}) `;

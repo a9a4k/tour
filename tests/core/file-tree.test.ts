@@ -32,7 +32,7 @@ describe("file-tree", () => {
         displayName: "README.md",
         depth: 0,
         file: { name: "README.md" },
-        annotationCount: 0,
+        commentCount: 0,
       },
     ]);
   });
@@ -46,7 +46,7 @@ describe("file-tree", () => {
         displayName: "a/b/c",
         depth: 0,
         hasChildren: true,
-        annotationCount: 0,
+        commentCount: 0,
         collapsed: false,
       },
       {
@@ -55,7 +55,7 @@ describe("file-tree", () => {
         displayName: "d.txt",
         depth: 1,
         file: { name: "a/b/c/d.txt" },
-        annotationCount: 0,
+        commentCount: 0,
       },
     ]);
   });
@@ -108,19 +108,19 @@ describe("file-tree", () => {
     expect((folder as { collapsed: boolean }).collapsed).toBe(true);
   });
 
-  it("rolls up annotation counts from descendants onto folder rows", () => {
+  it("rolls up comment counts from descendants onto folder rows", () => {
     const out = rows(
       [f("src/a.ts"), f("src/sub/b.ts"), f("src/sub/c.ts"), f("README.md")],
       new Set(),
       { "src/a.ts": 2, "src/sub/b.ts": 1, "src/sub/c.ts": 5, "README.md": 0 },
     );
     const byPath = new Map(out.map((r) => [r.path, r]));
-    expect(byPath.get("src")).toMatchObject({ kind: "folder", annotationCount: 8 });
-    expect(byPath.get("src/sub")).toMatchObject({ kind: "folder", annotationCount: 6 });
-    expect(byPath.get("src/a.ts")).toMatchObject({ annotationCount: 2 });
-    expect(byPath.get("src/sub/b.ts")).toMatchObject({ annotationCount: 1 });
-    expect(byPath.get("src/sub/c.ts")).toMatchObject({ annotationCount: 5 });
-    expect(byPath.get("README.md")).toMatchObject({ annotationCount: 0 });
+    expect(byPath.get("src")).toMatchObject({ kind: "folder", commentCount: 8 });
+    expect(byPath.get("src/sub")).toMatchObject({ kind: "folder", commentCount: 6 });
+    expect(byPath.get("src/a.ts")).toMatchObject({ commentCount: 2 });
+    expect(byPath.get("src/sub/b.ts")).toMatchObject({ commentCount: 1 });
+    expect(byPath.get("src/sub/c.ts")).toMatchObject({ commentCount: 5 });
+    expect(byPath.get("README.md")).toMatchObject({ commentCount: 0 });
   });
 
   it("reveals the compressed ancestor folder path of a deeply-nested file", () => {

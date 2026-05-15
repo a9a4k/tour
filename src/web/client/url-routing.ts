@@ -4,11 +4,11 @@
 // is invoked. To make that URL reach the right tour in the probe-reuse case
 // (Issue #178 — the already-running server's HTML carries the OLD
 // `__INITIAL_TOUR_ID__`), the SPA reads tour-id from the URL path with
-// higher precedence than the baked global. Annotation-id moves to the URL
+// higher precedence than the baked global. Comment-id moves to the URL
 // fragment to match the idiomatic web shape `<resource>#<element-within>`.
 //
 // Reader precedence: path → query → fallback (for tour-id), fragment →
-// query (for annotation-id). The query forms are accepted only as a
+// query (for comment-id). The query forms are accepted only as a
 // back-compat fallback so existing links keep working; new navigation
 // always writes path + fragment via `composeUrl`.
 
@@ -65,7 +65,7 @@ export function readAnnFromLocation(
 }
 
 // Compose a path + fragment URL from state. `/` when no tour;
-// `/<tour-id>` when tour but no annotation; `/<tour-id>#<ann-id>` when
+// `/<tour-id>` when tour but no comment; `/<tour-id>#<ann-id>` when
 // both. Encodes both segments so ids with reserved characters survive.
 export function composeUrl(
   tourId: string | null,

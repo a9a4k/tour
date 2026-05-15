@@ -11,7 +11,7 @@ import { statusIcon } from "./file-entry-label.js";
 // caller never duplicates the constants.
 //
 // File rows (issue #265) carry per-file diff stats `+N -M` between the
-// filename and the annotation badge — `+N` paints in `theme.fg.success`,
+// filename and the comment badge — `+N` paints in `theme.fg.success`,
 // `-M` in `theme.fg.danger`. To support per-segment colouring the file
 // row exposes `fileRowSegments` instead of a single string: the caller
 // renders each non-empty segment as its own `<text>` inside a row box.
@@ -34,7 +34,7 @@ export interface FileRowSegments {
   additions: string;
   // " -M" or "" when deletions === 0. Paints in theme.fg.danger.
   deletions: string;
-  // " [N]" or "" when annotationCount === 0.
+  // " [N]" or "" when commentCount === 0.
   badge: string;
   // Single trailing space for row padding.
   trailing: string;
@@ -52,8 +52,8 @@ const ICON_AND_SPACE = 2;  // "M " etc.
 // the cost of an API change to four exported functions.
 const INDENT_PER_DEPTH = 1;
 
-function badgeFor(annotationCount: number): string {
-  return annotationCount > 0 ? ` [${annotationCount}]` : "";
+function badgeFor(commentCount: number): string {
+  return commentCount > 0 ? ` [${commentCount}]` : "";
 }
 
 function additionsSegment(additions: number): string {
@@ -75,7 +75,7 @@ export function fileRowFixedCost(row: FileRow, stats: FileRowStats): number {
     ICON_AND_SPACE +
     additionsSegment(stats.additions).length +
     deletionsSegment(stats.deletions).length +
-    badgeFor(row.annotationCount).length +
+    badgeFor(row.commentCount).length +
     TRAILING
   );
 }
@@ -99,7 +99,7 @@ export function fileRowSegments(
     leading: ` ${indent}${icon} ${name}`,
     additions: additionsSegment(stats.additions),
     deletions: deletionsSegment(stats.deletions),
-    badge: badgeFor(row.annotationCount),
+    badge: badgeFor(row.commentCount),
     trailing: " ",
   };
 }

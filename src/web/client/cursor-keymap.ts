@@ -51,11 +51,11 @@ export type CursorAction =
   | { type: "move-down" }
   | { type: "set-side-additions" }
   | { type: "set-side-deletions" }
-  | { type: "annotate-at-cursor" }
+  | { type: "comment-at-cursor" }
   | { type: "open-reply-on-card" }
   | { type: "send-on-card" }
-  | { type: "nav-next-annotation" }
-  | { type: "nav-prev-annotation" }
+  | { type: "nav-next-comment" }
+  | { type: "nav-prev-comment" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
   | { type: "status"; message: string }
@@ -93,10 +93,10 @@ export function dispatchCursorKey(
   // ADR 0029 promoted `t → T` in lockstep with the `a → c` cutover.
   if (e.shiftKey && e.key === "T") return { type: "open-picker" };
 
-  // Annotation nav `n`/`p` walks the card lane (PRD #192).
+  // Comment nav `n`/`p` walks the card lane (PRD #192).
   if (!e.shiftKey) {
-    if (e.key === "n") return { type: "nav-next-annotation" };
-    if (e.key === "p") return { type: "nav-prev-annotation" };
+    if (e.key === "n") return { type: "nav-next-comment" };
+    if (e.key === "p") return { type: "nav-prev-comment" };
     // `r` / `s` dispatch only on a CardAnchor; `c` only on a row (or null).
     // Cross-axis misses (ADR 0028 / PRD #330): the webapp footer status
     // surface flashes the miss reason; the off-screen-card case still goes
@@ -122,7 +122,7 @@ export function dispatchCursorKey(
       return { type: "send-on-card" };
     }
     if (e.key === "c") {
-      return ctx.cursorOnCard ? { type: "noop" } : { type: "annotate-at-cursor" };
+      return ctx.cursorOnCard ? { type: "noop" } : { type: "comment-at-cursor" };
     }
   }
 

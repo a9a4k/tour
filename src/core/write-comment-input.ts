@@ -1,13 +1,13 @@
-import type { Annotation, Tour } from "./types.js";
+import type { Comment, Tour } from "./types.js";
 import type { TourBundle } from "./tour-bundle.js";
 import type { ComposerTarget } from "./tour-session.js";
 import type { ReplyLock } from "./reply-lock.js";
 
-// The payload a TUI / CLI surface hands to its `writeAnnotation` callback.
+// The payload a TUI / CLI surface hands to its `writeComment` callback.
 // The top-level variant carries the live `bundle` so the validator inside
-// `createAnnotation` can resolve the file + line range without a second
+// `createComment` can resolve the file + line range without a second
 // disk read (PRD #140 / slice 4 #144). The reply variant carries the
-// resolved parent Annotation — `createReply` re-reads the on-disk Comment
+// resolved parent Comment — `createReply` re-reads the on-disk Comment
 // log to prove the parent at write time, so passing the parent here is
 // purely for routing and the reply-payload shape `createReply` expects.
 //
@@ -15,7 +15,7 @@ import type { ReplyLock } from "./reply-lock.js";
 // implementation) and `src/tui/app.tsx` (the input's constructor). Pre-fix
 // this type was declared twice — the App's copy was missing `bundle`,
 // which the CLI's writer then dereferenced and crashed. Issue #254.
-export type WriteAnnotationInput =
+export type WriteCommentInput =
   | {
       kind: "top-level";
       file: string;
@@ -25,7 +25,7 @@ export type WriteAnnotationInput =
       body: string;
       bundle: TourBundle;
     }
-  | { kind: "reply"; parent: Annotation; body: string };
+  | { kind: "reply"; parent: Comment; body: string };
 
 // The cross-process bridge from `src/cli/tui.ts` to `src/tui/app.tsx`.
 // Co-located here so the dynamic-import cast in `src/cli/tui.ts` can't lie
@@ -38,14 +38,14 @@ export interface StartTuiProps {
   replyLock: ReplyLock | null;
   loadTour: (id: string) => Promise<TourBundle>;
   loadReplyLock: (id: string) => Promise<ReplyLock | null>;
-  loadTours: () => Promise<{ tours: Tour[]; annotationCounts: Record<string, number> }>;
-  writeAnnotation: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
+  loadTours: () => Promise<{ tours: Tour[]; commentCounts: Record<string, number> }>;
+  writeComment: (tourId: string, input: WriteCommentInput) => Promise<Comment>;
   cwd: string;
   replyAgent?: string;
 }
 
-export type BuildWriteAnnotationInputResult =
-  | { kind: "ok"; input: WriteAnnotationInput }
+export type BuildWriteCommentInputResult =
+  | { kind: "ok"; input: WriteCommentInput }
   | { kind: "parent-missing" };
 
 // Pure builder for the input the surface passes to its writer. Centralised
@@ -54,14 +54,14 @@ export type BuildWriteAnnotationInputResult =
 // submit time. The App layer's intent listener calls this and routes the
 // result; the surface translates `parent-missing` into a
 // `composer.failed` dispatch rather than calling the writer with a stale
-// target. The reply branch resolves the parent from `bundle.annotations`
+// target. The reply branch resolves the parent from `bundle.comments`
 // (present on both `ok` and `snapshot-lost` variants) — the bundle is the
-// single source of truth for live state and the live annotation list.
-export function buildWriteAnnotationInput(args: {
+// single source of truth for live state and the live comment list.
+export function buildWriteCommentInput(args: {
   target: ComposerTarget;
   body: string;
   bundle: TourBundle;
-}): BuildWriteAnnotationInputResult {
+}): BuildWriteCommentInputResult {
   const target = args.target;
   if (target.kind === "top-level") {
     return {
@@ -77,7 +77,7 @@ export function buildWriteAnnotationInput(args: {
       },
     };
   }
-  const parent = args.bundle.annotations.find((a) => a.id === target.replies_to);
+  const parent = args.bundle.comments.find((a) => a.id === target.replies_to);
   if (!parent) return { kind: "parent-missing" };
   return {
     kind: "ok",

@@ -7,7 +7,7 @@ import {
   requestReply,
   httpStatusForRequestReplyResult,
 } from "../../src/core/reply-runner.js";
-import { readAnnotations } from "../../src/core/annotations-store.js";
+import { readComments } from "../../src/core/comments-store.js";
 import {
   writeReplyLock,
   readReplyLock,
@@ -19,7 +19,7 @@ import type {
   SpawnedAdapter,
   SpawnResult,
 } from "../../src/core/agent-adapter.js";
-import type { Annotation, Tour } from "../../src/core/types.js";
+import type { Comment, Tour } from "../../src/core/types.js";
 
 const tourId = "2026-05-12-090000-test";
 
@@ -38,7 +38,7 @@ function mkTour(): Tour {
   };
 }
 
-function mkAnn(over: Partial<Annotation> & { id: string }): Annotation {
+function mkAnn(over: Partial<Comment> & { id: string }): Comment {
   return {
     id: over.id,
     file: "src/main.ts",
@@ -53,10 +53,10 @@ function mkAnn(over: Partial<Annotation> & { id: string }): Annotation {
   };
 }
 
-async function seedAnnotation(
+async function seedComment(
   cwd: string,
   tour: string,
-  ann: Annotation,
+  ann: Comment,
 ): Promise<void> {
   const path = join(cwd, ".tour", tour, "annotations.jsonl");
   await appendFile(path, JSON.stringify(ann) + "\n");
@@ -200,7 +200,7 @@ describe("requestReply", () => {
   });
 
   it("on the happy path: dispatches, captures stdout as Reply body, releases lock", async () => {
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     const adapter = fixtureAdapter({
       code: 0,
       signal: null,
@@ -210,17 +210,17 @@ describe("requestReply", () => {
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       agent: "fixture",
       adapter,
     });
 
     expect(result).toEqual({ kind: "dispatched" });
     expect(adapter.invocations).toHaveLength(1);
-    expect(adapter.invocations[0].envelope.triggering_annotation.id).toBe("ann-1");
+    expect(adapter.invocations[0].envelope.triggering_comment.id).toBe("ann-1");
 
-    const annotations = await readAnnotations(dir, tourId);
-    const reply = annotations.find((a) => a.replies_to === "ann-1");
+    const comments = await readComments(dir, tourId);
+    const reply = comments.find((a) => a.replies_to === "ann-1");
     expect(reply).toBeDefined();
     expect(reply?.body).toBe("fixture: heard you.");
     expect(reply?.author).toBe("fixture");
@@ -230,7 +230,7 @@ describe("requestReply", () => {
   });
 
   it("returns { kind: 'busy' } when the lock is already held by another in-flight dispatch", async () => {
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     // Held by this very test's process so the pid-liveness probe stays alive.
     await writeReplyLock(dir, tourId, {
       agent: "claude",
@@ -247,18 +247,18 @@ describe("requestReply", () => {
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       agent: "fixture",
       adapter,
     });
 
     expect(result).toEqual({ kind: "busy" });
     expect(adapter.invocations).toHaveLength(0);
-    const annotations = await readAnnotations(dir, tourId);
-    expect(annotations.find((a) => a.replies_to === "ann-1")).toBeUndefined();
+    const comments = await readComments(dir, tourId);
+    expect(comments.find((a) => a.replies_to === "ann-1")).toBeUndefined();
   });
 
-  it("returns { kind: 'invalid-annotation' } when no annotation with that id exists", async () => {
+  it("returns { kind: 'invalid-comment' } when no comment with that id exists", async () => {
     const adapter = fixtureAdapter({
       code: 0,
       signal: null,
@@ -267,17 +267,17 @@ describe("requestReply", () => {
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "missing",
+      commentId: "missing",
       agent: "fixture",
       adapter,
     });
-    expect(result).toEqual({ kind: "invalid-annotation" });
+    expect(result).toEqual({ kind: "invalid-comment" });
     expect(adapter.invocations).toHaveLength(0);
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
 
-  it("returns { kind: 'invalid-annotation' } on an agent-authored annotation (precondition: shouldDispatchReply)", async () => {
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "agent" }));
+  it("returns { kind: 'invalid-comment' } on an agent-authored comment (precondition: shouldDispatchReply)", async () => {
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "agent" }));
     const adapter = fixtureAdapter({
       code: 0,
       signal: null,
@@ -286,18 +286,18 @@ describe("requestReply", () => {
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       agent: "fixture",
       adapter,
     });
-    expect(result).toEqual({ kind: "invalid-annotation" });
+    expect(result).toEqual({ kind: "invalid-comment" });
     expect(adapter.invocations).toHaveLength(0);
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
 
-  it("returns { kind: 'invalid-annotation' } when the parent already has a Reply (one-shot terminal)", async () => {
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
-    await seedAnnotation(
+  it("returns { kind: 'invalid-comment' } when the parent already has a Reply (one-shot terminal)", async () => {
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(
       dir,
       tourId,
       mkAnn({ id: "ann-1-reply", author_kind: "agent", replies_to: "ann-1" }),
@@ -310,31 +310,31 @@ describe("requestReply", () => {
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       agent: "fixture",
       adapter,
     });
-    expect(result).toEqual({ kind: "invalid-annotation" });
+    expect(result).toEqual({ kind: "invalid-comment" });
     expect(adapter.invocations).toHaveLength(0);
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
 
   it("returns { kind: 'no-reply-agent' } when the renderer was launched without --reply-agent", async () => {
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       // No `agent` supplied — the renderer was launched without --reply-agent.
     });
     expect(result).toEqual({ kind: "no-reply-agent" });
-    const annotations = await readAnnotations(dir, tourId);
-    expect(annotations.find((a) => a.replies_to === "ann-1")).toBeUndefined();
+    const comments = await readComments(dir, tourId);
+    expect(comments.find((a) => a.replies_to === "ann-1")).toBeUndefined();
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
 
   it("releases the lock even on adapter non-zero exit (no Reply written)", async () => {
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     const adapter = fixtureAdapter({
       code: 1,
       signal: null,
@@ -343,14 +343,14 @@ describe("requestReply", () => {
     const result = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       agent: "fixture",
       adapter,
     });
     expect(result).toEqual({ kind: "dispatched" });
     expect(await readReplyLock(dir, tourId)).toBeNull();
-    const annotations = await readAnnotations(dir, tourId);
-    expect(annotations.find((a) => a.replies_to === "ann-1")).toBeUndefined();
+    const comments = await readComments(dir, tourId);
+    expect(comments.find((a) => a.replies_to === "ann-1")).toBeUndefined();
   });
 
   it("rejects with { kind: 'busy' } on a concurrent second call without spawning a second adapter", async () => {
@@ -370,8 +370,8 @@ describe("requestReply", () => {
     //      can't complete (and clear the lock) before `second` observes it.
     //   2. Poll the lock file for existence before firing `second`. With
     //      the gate, the lock window is unbounded, so the poll is reliable.
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
-    await seedAnnotation(dir, tourId, mkAnn({ id: "ann-2", author_kind: "human" }));
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(dir, tourId, mkAnn({ id: "ann-2", author_kind: "human" }));
     const slowAdapter = gatedFixtureAdapter({
       code: 0,
       signal: null,
@@ -386,7 +386,7 @@ describe("requestReply", () => {
     const first = requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-1",
+      commentId: "ann-1",
       agent: "fixture",
       adapter: slowAdapter,
     });
@@ -394,7 +394,7 @@ describe("requestReply", () => {
     const second = await requestReply({
       cwd: dir,
       tourId,
-      annotationId: "ann-2",
+      commentId: "ann-2",
       agent: "fixture",
       adapter: fastAdapter,
     });
@@ -421,8 +421,8 @@ describe("httpStatusForRequestReplyResult (issue #184)", () => {
   it("maps `busy` → 409 (Conflict)", () => {
     expect(httpStatusForRequestReplyResult({ kind: "busy" })).toBe(409);
   });
-  it("maps `invalid-annotation` → 404 (Not Found)", () => {
-    expect(httpStatusForRequestReplyResult({ kind: "invalid-annotation" })).toBe(404);
+  it("maps `invalid-comment` → 404 (Not Found)", () => {
+    expect(httpStatusForRequestReplyResult({ kind: "invalid-comment" })).toBe(404);
   });
   it("maps `no-reply-agent` → 400 (Bad Request)", () => {
     expect(httpStatusForRequestReplyResult({ kind: "no-reply-agent" })).toBe(400);

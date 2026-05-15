@@ -15,7 +15,7 @@ const ENVELOPE: ReplyEnvelope = {
     base_source: "HEAD^",
     wip_snapshot: false,
   },
-  triggering_annotation: {
+  triggering_comment: {
     id: "abc123",
     file: "src/main.ts",
     side: "additions",

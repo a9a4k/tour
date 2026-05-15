@@ -1,5 +1,5 @@
 import type { DiffFile } from "../core/diff-model.js";
-import type { Annotation } from "../core/types.js";
+import type { Comment } from "../core/types.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { isTopLevel } from "../core/threads.js";
 import { formatRenameLabel, RENAME_PLACEHOLDER_BODY } from "../core/rename-label.js";
@@ -15,8 +15,8 @@ export function statusIcon(type: string): string {
   }
 }
 
-function annotationCountForFile(annotations: Annotation[], fileName: string): number {
-  return annotations.filter((a) => a.file === fileName && isTopLevel(a)).length;
+function commentCountForFile(comments: Comment[], fileName: string): number {
+  return comments.filter((a) => a.file === fileName && isTopLevel(a)).length;
 }
 
 export function fileClassification(
@@ -34,9 +34,9 @@ function reasonLabel(reason?: string): string {
 export function fileEntryLabel(
   file: DiffFile,
   classifications: Record<string, FileClassification> | undefined,
-  annotations: Annotation[],
+  comments: Comment[],
 ): string {
-  const annCount = annotationCountForFile(annotations, file.name);
+  const annCount = commentCountForFile(comments, file.name);
   const cls = fileClassification(classifications, file.name);
   const icon = statusIcon(file.type);
   const path = formatRenameLabel(file.name, file.prevName) ?? file.name;

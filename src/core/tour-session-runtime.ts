@@ -1,6 +1,6 @@
 import type { TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 import {
   isBundleResolved,
   type ComposerTarget,
@@ -9,9 +9,9 @@ import {
   type TourSessionStore,
 } from "./tour-session.js";
 import {
-  buildWriteAnnotationInput,
-  type WriteAnnotationInput,
-} from "./write-annotation-input.js";
+  buildWriteCommentInput,
+  type WriteCommentInput,
+} from "./write-comment-input.js";
 import { deriveTourSessionView, type ViewOptions } from "./tour-session-view.js";
 
 // The TourEvent vocabulary is the existing watcher / SSE event set. The
@@ -19,7 +19,7 @@ import { deriveTourSessionView, type ViewOptions } from "./tour-session-view.js"
 // `EventSource` messages into this shape so the runtime stays substrate-
 // agnostic.
 export type TourEvent =
-  | { type: "annotation-changed" }
+  | { type: "comment-changed" }
   | { type: "reply-in-flight" }
   | { type: "reply-cleared" };
 
@@ -38,8 +38,8 @@ export type ScrollRowAnchor = Extract<ScrollCursorTarget, { kind: "row" }>;
 export interface TourSessionAdapter {
   fetchBundle(id: string): Promise<TourBundle>;
   fetchReplyLock(id: string): Promise<ReplyLock | null>;
-  writeAnnotation(tourId: string, input: WriteAnnotationInput): Promise<Annotation>;
-  requestReply(args: { tourId: string; annotationId: string }): Promise<void>;
+  writeComment(tourId: string, input: WriteCommentInput): Promise<Comment>;
+  requestReply(args: { tourId: string; commentId: string }): Promise<void>;
   subscribeTourEvents(tourId: string, handler: TourEventHandler): () => void;
   scrollToCard(id: string, mode: ScrollPlacement): void;
   scrollToRow(anchor: ScrollRowAnchor, mode: ScrollPlacement): void;
@@ -87,21 +87,21 @@ export class TourSessionRuntime {
         case "loadTour":
           void this.handleLoadTour(intent.tourId);
           return;
-        case "submitAnnotation":
-          this.handleSubmitAnnotation(intent.tourId, intent.target, intent.body);
+        case "submitComment":
+          this.handleSubmitComment(intent.tourId, intent.target, intent.body);
           return;
         case "scrollPickerRow":
           this.adapter.scrollToPickerRow(intent.idx);
           return;
         case "scrollCursorTarget":
           if (intent.target.kind === "card") {
-            this.adapter.scrollToCard(intent.target.annotationId, intent.placement);
+            this.adapter.scrollToCard(intent.target.commentId, intent.placement);
           } else {
             this.adapter.scrollToRow(intent.target, intent.placement);
           }
           return;
-        case "scrollToAnnotation":
-          this.adapter.scrollToCard(intent.annotationId, "center");
+        case "scrollToComment":
+          this.adapter.scrollToCard(intent.commentId, "center");
           return;
         case "scrollToComposer":
           this.adapter.scrollToComposer(intent.target);
@@ -110,7 +110,7 @@ export class TourSessionRuntime {
           this.adapter.mirrorTourUrl(intent.tourId);
           return;
         case "mirrorAnnUrl":
-          this.adapter.mirrorAnnUrl(intent.annotationId);
+          this.adapter.mirrorAnnUrl(intent.commentId);
           return;
         case "selectSidebarFile":
           // Sidebar selection only — issue #310 split out the implicit
@@ -118,9 +118,9 @@ export class TourSessionRuntime {
           // traversal into a classifier-collapsed file into an unwanted
           // auto-unfold (560+ rows of lockfile churn appear, cursor parks
           // on row 1). Explicit-reveal callsites (sidebar click, n/p
-          // annotation jump, URL `?ann=` restore) dispatch `folds.setOverride`
+          // comment jump, URL `?ann=` restore) dispatch `folds.setOverride`
           // themselves alongside the `cursor.set`, mirroring the existing
-          // pattern for annotation navigation.
+          // pattern for comment navigation.
           this.adapter.revealFileInSidebar(intent.file);
           return;
         case "revalidateCursor":
@@ -128,11 +128,11 @@ export class TourSessionRuntime {
           return;
         case "requestReply":
           // Fire-and-forget — the watcher's reply-* events drive the in-flight
-          // pill and the landed Reply Annotation. Adapter rejections are
+          // pill and the landed Reply Comment. Adapter rejections are
           // swallowed at the seam (transient transport failures shouldn't
           // escape to the React layer). PRD #278 slice 7.
           this.adapter
-            .requestReply({ tourId: intent.tourId, annotationId: intent.annotationId })
+            .requestReply({ tourId: intent.tourId, commentId: intent.commentId })
             .catch(() => {
               // transient — the watcher's reload surfaces any state change
             });
@@ -190,15 +190,15 @@ export class TourSessionRuntime {
     this.store.dispatch({ type: "replyLock.loaded", replyLock: lock });
   }
 
-  // Realises the `submitAnnotation` intent (PRD #278 slice 4). Trim-and-
+  // Realises the `submitComment` intent (PRD #278 slice 4). Trim-and-
   // reject for whitespace-only bodies (PRD #140 — every surface treats an
   // empty submit as cancel, not a disk write). Resolves the reply parent
   // (or attaches the live bundle for top-level) via the shared
-  // `buildWriteAnnotationInput` builder so both surfaces converge on the
-  // same `WriteAnnotationInput` shape. On success dispatches
-  // `composer.submitted` (the reducer emits `scrollToAnnotation`); on
+  // `buildWriteCommentInput` builder so both surfaces converge on the
+  // same `WriteCommentInput` shape. On success dispatches
+  // `composer.submitted` (the reducer emits `scrollToComment`); on
   // rejection dispatches `composer.failed`.
-  private handleSubmitAnnotation(
+  private handleSubmitComment(
     tourId: string,
     target: ComposerTarget,
     body: string,
@@ -215,30 +215,30 @@ export class TourSessionRuntime {
       });
       return;
     }
-    const built = buildWriteAnnotationInput({ target, body, bundle: liveBundle });
+    const built = buildWriteCommentInput({ target, body, bundle: liveBundle });
     if (built.kind === "parent-missing") {
       this.store.dispatch({
         type: "composer.failed",
-        error: "Parent annotation no longer exists",
+        error: "Parent comment no longer exists",
       });
       return;
     }
-    void this.writeAnnotationAndDispatch(tourId, built.input);
+    void this.writeCommentAndDispatch(tourId, built.input);
   }
 
-  private async writeAnnotationAndDispatch(
+  private async writeCommentAndDispatch(
     tourId: string,
-    input: WriteAnnotationInput,
+    input: WriteCommentInput,
   ): Promise<void> {
-    let created: Annotation;
+    let created: Comment;
     try {
-      created = await this.adapter.writeAnnotation(tourId, input);
+      created = await this.adapter.writeComment(tourId, input);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       this.store.dispatch({ type: "composer.failed", error });
       return;
     }
-    this.store.dispatch({ type: "composer.submitted", annotation: created });
+    this.store.dispatch({ type: "composer.submitted", comment: created });
   }
 
   // Realises the `revalidateCursor` intent (PRD #278 slice 5). Fires
@@ -280,7 +280,7 @@ export class TourSessionRuntime {
   }
 
   private async handleTourEvent(tourId: string, event: TourEvent): Promise<void> {
-    if (event.type === "annotation-changed") {
+    if (event.type === "comment-changed") {
       try {
         const bundle = await this.adapter.fetchBundle(tourId);
         // Stale-tour guard: a tour-switch may have moved the store off

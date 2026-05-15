@@ -6,7 +6,7 @@ import { FileBlock, type ExpandAction } from "../../src/web/client/FileBlock.js"
 import type { BundleFile } from "../../src/web/client/types.js";
 import type { PlannedRow } from "../../src/core/diff-rows.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
-import type { Annotation } from "../../src/web/client/types.js";
+import type { Comment } from "../../src/web/client/types.js";
 
 // `<FileBlock>` is the per-file React component the Tour-owned web row
 // renderer mounts (PRD #212 slice 5). It owns the file-level grid, calls
@@ -109,19 +109,19 @@ function rowsCanonical(): PlannedRow[] {
   ];
 }
 
-function withAnnotation(rows: PlannedRow[], ann: Annotation): PlannedRow[] {
+function withComment(rows: PlannedRow[], ann: Comment): PlannedRow[] {
   return [
     ...rows,
     {
-      kind: "annotation",
-      annotation: ann,
+      kind: "comment",
+      comment: ann,
       replies: [],
       id: ann.id,
     },
   ];
 }
 
-const ann1: Annotation = {
+const ann1: Comment = {
   id: "ann-1",
   file: "x.ts",
   side: "additions",
@@ -942,8 +942,8 @@ describe("<FileBlock> — planner walk + dispatch", () => {
     expect((tourRows[3] as HTMLElement).dataset.subkind).toBe("boundary-top");
   });
 
-  it("dispatches annotation rows to <CardRow>, anchored after the matching diff row", () => {
-    const rows = withAnnotation(rowsCanonical(), ann1);
+  it("dispatches comment rows to <CardRow>, anchored after the matching diff row", () => {
+    const rows = withComment(rowsCanonical(), ann1);
     const c = mount(createElement(FileBlock, defaultProps({ rows })));
     const card = c.querySelector(".tour-card");
     expect(card).not.toBeNull();
@@ -972,8 +972,8 @@ describe("<FileBlock> — planner walk + dispatch", () => {
     expect(calls).toEqual([{ file: "x.ts", side: "additions", lineNumber: 2 }]);
   });
 
-  it("invokes onCardClick with the annotation id when a card is clicked", () => {
-    const rows = withAnnotation(rowsCanonical(), ann1);
+  it("invokes onCardClick with the comment id when a card is clicked", () => {
+    const rows = withComment(rowsCanonical(), ann1);
     const ids: string[] = [];
     const c = mount(
       createElement(
@@ -984,7 +984,7 @@ describe("<FileBlock> — planner walk + dispatch", () => {
         }),
       ),
     );
-    const card = c.querySelector(".annotation-block") as HTMLElement;
+    const card = c.querySelector(".comment-block") as HTMLElement;
     act(() => {
       card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -1373,16 +1373,16 @@ describe("<FileBlock> — isCursor flow", () => {
   });
 
   it("applies .is-cursor to the matching CardRow for a CardAnchor cursor", () => {
-    const rows = withAnnotation(rowsCanonical(), ann1);
+    const rows = withComment(rowsCanonical(), ann1);
     const cursor: Cursor = {
       kind: "card",
-      annotationId: "ann-1",
+      commentId: "ann-1",
       preferredSide: "additions",
     };
     const c = mount(createElement(FileBlock, defaultProps({ rows, cursor })));
-    // CardRow doesn't itself emit `.is-cursor`; the AnnotationCard's
-    // `isCurrent` styling does. Probe AnnotationCard's "current" class.
-    const card = c.querySelector(".annotation-block");
+    // CardRow doesn't itself emit `.is-cursor`; the CommentCard's
+    // `isCurrent` styling does. Probe CommentCard's "current" class.
+    const card = c.querySelector(".comment-block");
     expect(card!.className).toContain("current");
   });
 

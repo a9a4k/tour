@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { sendTarget } from "../../src/core/send-target.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
-function ann(o: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
+function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
   return {
     id: o.id,
     file: o.file ?? "x.txt",
@@ -18,9 +18,9 @@ function ann(o: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
   };
 }
 
-const cardCursor = (annotationId: string): Cursor => ({
+const cardCursor = (commentId: string): Cursor => ({
   kind: "card",
-  annotationId,
+  commentId,
   preferredSide: "additions",
 });
 
@@ -33,10 +33,10 @@ const rowCursor: Cursor = {
 };
 
 function index(
-  topLevel: Annotation[],
-  descendantsByRoot: Record<string, Annotation[]>,
+  topLevel: Comment[],
+  descendantsByRoot: Record<string, Comment[]>,
 ) {
-  return new Map<string, Annotation[]>(
+  return new Map<string, Comment[]>(
     Object.entries(descendantsByRoot),
   );
 }
@@ -56,7 +56,7 @@ describe("sendTarget", () => {
     expect(sendTarget(rowCursor, [], new Map())).toBeNull();
   });
 
-  it("returns null when the cursor's card id is not in the annotation list (stale)", () => {
+  it("returns null when the cursor's card id is not in the comment list (stale)", () => {
     const top = ann({ id: "a1", author_kind: "human" });
     expect(
       sendTarget(cardCursor("ghost"), [top], index([top], { a1: [] })),

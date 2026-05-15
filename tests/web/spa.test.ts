@@ -27,7 +27,7 @@ describe("spa shell html()", () => {
     const out = html();
     expect(out).toMatch(/\.send-to-agent-button\s*\{/);
     expect(out).toMatch(
-      /\.annotation-block\.current\s+\.send-to-agent-button:not\(:disabled\)\s*\{[^}]*color:\s*var\(--fg-accent\)/,
+      /\.comment-block\.current\s+\.send-to-agent-button:not\(:disabled\)\s*\{[^}]*color:\s*var\(--fg-accent\)/,
     );
     expect(out).toMatch(
       /\.send-to-agent-button:disabled\s*\{[^}]*cursor:\s*not-allowed/,
@@ -126,19 +126,19 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.empty\s*\{[^}]*padding-top:\s*16px/);
   });
 
-  it("styles the current annotation card with an accent border + soft shadow (Issue #162)", () => {
+  it("styles the current comment card with an accent border + soft shadow (Issue #162)", () => {
     const out = html();
     // Focus is additive: swap border color to accent + add elevation shadow.
     // Background fill stays the same as rest so only 1–2 channels change.
-    expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*border-color:\s*var\(--border-accent\)/);
-    expect(out).toMatch(/\.annotation-block\.current\s*\{[^}]*box-shadow/);
+    expect(out).toMatch(/\.comment-block\.current\s*\{[^}]*border-color:\s*var\(--border-accent\)/);
+    expect(out).toMatch(/\.comment-block\.current\s*\{[^}]*box-shadow/);
   });
 
   it("styles the selection-marker glyph in accent so the `●` reads on the current card (TUI parity)", () => {
     // Third cue, parallel to the TUI's heavy-border + bg-tier + `●` triad
     // (#169): the marker is painted by the React tree only when isCurrent,
     // and the rule sets it to the accent foreground.
-    expect(html()).toMatch(/\.annotation-block\s+\.selection-marker\s*\{[^}]*color:\s*var\(--fg-accent\)/);
+    expect(html()).toMatch(/\.comment-block\s+\.selection-marker\s*\{[^}]*color:\s*var\(--fg-accent\)/);
   });
 
   it("renders a baseline container at rest — neutral 1px border + tinted surface (Issue #162)", () => {
@@ -146,9 +146,9 @@ describe("spa shell html()", () => {
     // The unfocused card must read as a card, not raw text: visible neutral
     // border on top/right/bottom + faint fill, in addition to the existing
     // left accent stripe.
-    expect(out).toMatch(/\.annotation-block\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
-    expect(out).toMatch(/\.annotation-block\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
-    expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*border:\s*2px solid transparent/);
+    expect(out).toMatch(/\.comment-block\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
+    expect(out).toMatch(/\.comment-block\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
+    expect(out).not.toMatch(/\.comment-block\s*\{[^}]*border:\s*2px solid transparent/);
   });
 
   it("relocates the sequence pill into the header — no longer fixed-positioned (Issue #69)", () => {
@@ -249,39 +249,39 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.layout-toggle-btn\.active\s*\{/);
   });
 
-  it("drops the monospace pre-wrap body styling now that annotation body is rich markdown", () => {
+  it("drops the monospace pre-wrap body styling now that comment body is rich markdown", () => {
     const out = html();
-    expect(out).not.toMatch(/\.annotation-block\s+\.ann-body\s*\{[^}]*white-space:\s*pre-wrap/);
-    expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*font-family:\s*'SF Mono'/);
+    expect(out).not.toMatch(/\.comment-block\s+\.ann-body\s*\{[^}]*white-space:\s*pre-wrap/);
+    expect(out).not.toMatch(/\.comment-block\s*\{[^}]*font-family:\s*'SF Mono'/);
   });
 
-  it("uses a proportional system font for the annotation card body", () => {
-    expect(html()).toMatch(/\.annotation-block\s*\{[^}]*font-family:[^}]*-apple-system/);
+  it("uses a proportional system font for the comment card body", () => {
+    expect(html()).toMatch(/\.comment-block\s*\{[^}]*font-family:[^}]*-apple-system/);
   });
 
-  it("preserves the blue left accent on the annotation card via the shared theme token", () => {
-    expect(html()).toMatch(/\.annotation-block\s*\{[^}]*border-left:\s*3px solid var\(--border-accent\)/);
+  it("preserves the blue left accent on the comment card via the shared theme token", () => {
+    expect(html()).toMatch(/\.comment-block\s*\{[^}]*border-left:\s*3px solid var\(--border-accent\)/);
   });
 
-  it("zeroes the annotation card's left margin so the accent border column-aligns with the gutter stripe (Issue #68)", () => {
+  it("zeroes the comment card's left margin so the accent border column-aligns with the gutter stripe (Issue #68)", () => {
     const out = html();
     // The card no longer offsets its border inward — left margin is 0 so the
     // border-left lands at the same x-column as the gutter accent stripe
     // painted by `buildRangeBackgroundCSS` on the annotated [data-line] rows.
-    expect(out).toMatch(/\.annotation-block\s*\{[^}]*margin:\s*4px\s+16px\s+4px\s+0/);
+    expect(out).toMatch(/\.comment-block\s*\{[^}]*margin:\s*4px\s+16px\s+4px\s+0/);
     // Old symmetric `margin: 4px 16px` (which inset the border 16px) is gone.
-    expect(out).not.toMatch(/\.annotation-block\s*\{[^}]*margin:\s*4px\s+16px\s*;/);
+    expect(out).not.toMatch(/\.comment-block\s*\{[^}]*margin:\s*4px\s+16px\s*;/);
   });
 
   it("styles inner markdown elements (headings, lists, tables, blockquotes, links, code, pre)", () => {
     const out = html();
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+h2\b/);
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+ul\b/);
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+table\b/);
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+blockquote\b/);
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+a\b/);
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+code\b/);
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s+pre\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+h2\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+ul\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+table\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+blockquote\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+a\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+code\b/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s+pre\b/);
   });
 
   it("overrides Pierre's inherited white-space: pre-wrap on .ann-body so newlines between <li>s don't render as visible gaps (Issue #173)", () => {
@@ -290,7 +290,7 @@ describe("spa shell html()", () => {
     // tags; under pre-wrap those render as a full line-height of vertical
     // space, producing loose-list rendering on tight Markdown source.
     const out = html();
-    expect(out).toMatch(/\.annotation-block\s+\.ann-body\s*\{[^}]*white-space:\s*normal/);
+    expect(out).toMatch(/\.comment-block\s+\.ann-body\s*\{[^}]*white-space:\s*normal/);
   });
 
   it("declares a mermaid-block rule whose svg fits the card width without an inner scrollbar", () => {
@@ -319,18 +319,18 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.picker-row\.cursor\s*\{[^}]*border-left-color:\s*var\(--border-accent\)/);
   });
 
-  it("constrains the annotation card to its host column so long inline content cannot push it wider (Issue #47)", () => {
+  it("constrains the comment card to its host column so long inline content cannot push it wider (Issue #47)", () => {
     const out = html();
-    expect(out).toMatch(/\.annotation-block\s*\{[^}]*min-width:\s*0/);
-    expect(out).toMatch(/\.annotation-block\s*\{[^}]*max-width:\s*100%/);
+    expect(out).toMatch(/\.comment-block\s*\{[^}]*min-width:\s*0/);
+    expect(out).toMatch(/\.comment-block\s*\{[^}]*max-width:\s*100%/);
   });
 
-  it("wraps long unbreakable tokens inside the annotation body so they do not force horizontal overflow (Issue #47)", () => {
-    expect(html()).toMatch(/\.annotation-block\s+\.ann-body\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  it("wraps long unbreakable tokens inside the comment body so they do not force horizontal overflow (Issue #47)", () => {
+    expect(html()).toMatch(/\.comment-block\s+\.ann-body\s*\{[^}]*overflow-wrap:\s*anywhere/);
   });
 
   it("preserves horizontal scroll on fenced code blocks so pre content does not wrap (Issue #47)", () => {
-    expect(html()).toMatch(/\.annotation-block\s+\.ann-body\s+pre\s*\{[^}]*overflow-x:\s*auto/);
+    expect(html()).toMatch(/\.comment-block\s+\.ann-body\s+pre\s*\{[^}]*overflow-x:\s*auto/);
   });
 
   it("removes the .tour-title-btn rule — title is plain text, hamburger owns picker (Issue #69)", () => {

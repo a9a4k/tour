@@ -1,16 +1,16 @@
 import {
-  createAnnotation,
-  createAnnotations,
+  createComment,
+  createComments,
   createReply,
   type CreateRequest,
-} from "../core/annotations-store.js";
+} from "../core/comments-store.js";
 import { resolveIdPrefix } from "../core/tour-store.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import { printOutput } from "./output.js";
 import { parseBatch, type BatchItem } from "./parse-batch.js";
 import type { AuthorKind } from "../core/types.js";
 
-interface AnnotateArgs {
+interface CommentArgs {
   tourId: string;
   file?: string;
   side?: string;
@@ -63,7 +63,7 @@ function resolveAuthorKind(asAgent?: boolean, asHuman?: boolean): AuthorKind {
   return "agent";
 }
 
-export async function annotate(args: AnnotateArgs): Promise<void> {
+export async function comment(args: CommentArgs): Promise<void> {
   const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
   const authorKind = resolveAuthorKind(args.asAgent, args.asHuman);
 
@@ -101,11 +101,11 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
     });
     // Single bundle load for the whole batch — PRD #140 / slice 4 #144.
     const bundle = await loadTourBundle(args.cwd, resolvedId);
-    const annotations = await createAnnotations(args.cwd, resolvedId, requests, bundle);
+    const comments = await createComments(args.cwd, resolvedId, requests, bundle);
     if (args.json) {
-      printOutput(annotations, true);
+      printOutput(comments, true);
     } else {
-      console.log(`Added ${annotations.length} comments to ${resolvedId}`);
+      console.log(`Added ${comments.length} comments to ${resolvedId}`);
     }
     return;
   }
@@ -139,7 +139,7 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
 
   const { start, end } = parseLine(args.line);
   const bundle = await loadTourBundle(args.cwd, resolvedId);
-  const annotation = await createAnnotation(
+  const created = await createComment(
     args.cwd,
     resolvedId,
     {
@@ -155,7 +155,7 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   );
 
   if (args.json) {
-    printOutput(annotation, true);
+    printOutput(created, true);
   } else {
     console.log(`Added comment to ${resolvedId}: ${args.file}:${start}`);
   }

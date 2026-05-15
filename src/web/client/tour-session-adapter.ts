@@ -5,14 +5,14 @@ import type {
 } from "../../core/tour-session-runtime.js";
 import type { TourBundle } from "../../core/tour-bundle.js";
 import type { ReplyLock } from "../../core/reply-lock.js";
-import type { Annotation } from "../../core/types.js";
+import type { Comment } from "../../core/types.js";
 import {
   isBundleResolved,
   type ScrollPlacement,
   type TourSessionState,
   type TourSessionStore,
 } from "../../core/tour-session.js";
-import type { WriteAnnotationInput } from "../../core/write-annotation-input.js";
+import type { WriteCommentInput } from "../../core/write-comment-input.js";
 import { composeUrl } from "./url-routing.js";
 
 // Webapp substrate dependencies the adapter needs. Refs are read at
@@ -21,7 +21,7 @@ import { composeUrl } from "./url-routing.js";
 // render without rebuilding the adapter.
 export interface WebTourSessionAdapterDeps {
   store: TourSessionStore;
-  annotationRefs: { current: Map<string, HTMLDivElement> };
+  commentRefs: { current: Map<string, HTMLDivElement> };
   callbacksRef: {
     current: {
       findFileBlock: (name: string) => HTMLElement | null;
@@ -76,7 +76,7 @@ export function createWebTourSessionAdapter(
       if (data && typeof data === "object" && "error" in data) return null;
       return data as ReplyLock | null;
     },
-    writeAnnotation: async (tourId: string, input: WriteAnnotationInput): Promise<Annotation> => {
+    writeComment: async (tourId: string, input: WriteCommentInput): Promise<Comment> => {
       const body = input.body.trim();
       const payload: Record<string, unknown> =
         input.kind === "reply"
@@ -88,7 +88,7 @@ export function createWebTourSessionAdapter(
               line_start: input.line_start,
               line_end: input.line_end,
             };
-      const res = await fetch(`/api/tours/${tourId}/annotations`, {
+      const res = await fetch(`/api/tours/${tourId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -97,9 +97,9 @@ export function createWebTourSessionAdapter(
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as Annotation;
+      return (await res.json()) as Comment;
     },
-    requestReply: async ({ tourId, annotationId }) => {
+    requestReply: async ({ tourId, commentId }) => {
       // SSE `reply-in-flight` / `reply-cleared` events drive the in-flight
       // pill; transport-level failures (non-2xx or network) reject so the
       // adapter contract matches the TUI's in-process path (issue #291).
@@ -107,7 +107,7 @@ export function createWebTourSessionAdapter(
       const res = await fetch(`/api/tours/${tourId}/request-reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ annotation_id: annotationId }),
+        body: JSON.stringify({ comment_id: commentId }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -124,7 +124,7 @@ export function createWebTourSessionAdapter(
           return;
         }
         if (
-          msg.type === "annotation-changed" ||
+          msg.type === "comment-changed" ||
           msg.type === "reply-in-flight" ||
           msg.type === "reply-cleared"
         ) {
@@ -136,7 +136,7 @@ export function createWebTourSessionAdapter(
     scrollToCard: (id: string, mode: ScrollPlacement) => {
       if (typeof document === "undefined") return;
       requestAnimationFrame(() => {
-        deps.annotationRefs.current
+        deps.commentRefs.current
           .get(id)
           ?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
       });
@@ -157,7 +157,7 @@ export function createWebTourSessionAdapter(
     scrollToComposer: (target) => {
       // Issue #320: scroll the anchor row in + focus the inline Composer's
       // textarea. Top-level anchors at a (file, side, line_end) gutter cell;
-      // reply anchors at the parent annotation's card via the annotation refs.
+      // reply anchors at the parent comment's card via the comment refs.
       // Issue #324: if the anchor file is folded, force-reveal first so React
       // commits the body before the rAF-deferred gutter-cell query lands —
       // same explicit-reveal pattern as `n`/`p`/URL `?ann=` restore.
@@ -167,7 +167,7 @@ export function createWebTourSessionAdapter(
       let anchorFile: string | null = null;
       if (target.kind === "reply") {
         if (bundle !== null && bundle.kind === "ok") {
-          const parent = bundle.annotations.find((a) => a.id === target.replies_to);
+          const parent = bundle.comments.find((a) => a.id === target.replies_to);
           anchorFile = parent?.file ?? null;
         }
       } else {
@@ -188,7 +188,7 @@ export function createWebTourSessionAdapter(
         const cbs = deps.callbacksRef.current;
         if (!cbs) return;
         if (target.kind === "reply") {
-          const replyAnchor = deps.annotationRefs.current.get(target.replies_to);
+          const replyAnchor = deps.commentRefs.current.get(target.replies_to);
           replyAnchor?.scrollIntoView({ behavior: "instant", block: "center" });
           replyAnchor
             ?.querySelector<HTMLTextAreaElement>("textarea")
@@ -224,7 +224,7 @@ export function createWebTourSessionAdapter(
       if (typeof window === "undefined" || !window.history) return;
       window.history.pushState({ tourId: id }, "", composeUrl(id, null));
     },
-    mirrorAnnUrl: (annotationId: string | null) => {
+    mirrorAnnUrl: (commentId: string | null) => {
       // `replaceState` (not `pushState`) so back/forward steps over Tour
       // switches, not over every cursor move. Composer reads the store's
       // current tourId so an in-flight tour-switch can't write the wrong
@@ -232,7 +232,7 @@ export function createWebTourSessionAdapter(
       if (typeof window === "undefined" || !window.history) return;
       const tid = deps.store.getState().currentTourId;
       if (tid === null) return;
-      const url = composeUrl(tid, annotationId);
+      const url = composeUrl(tid, commentId);
       const current =
         window.location.pathname + window.location.search + window.location.hash;
       if (url === current) return;

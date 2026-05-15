@@ -48,7 +48,7 @@ describe("TourWatcher", () => {
     if (watcher) watcher.stop();
   });
 
-  it("emits annotation-changed when annotations file is modified", async () => {
+  it("emits comment-changed when comments file is modified", async () => {
     watcher = new TourWatcher(dir, tourId, 50);
 
     const events: WatchEvent[] = [];
@@ -58,7 +58,7 @@ describe("TourWatcher", () => {
 
     await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a1"}\n');
 
-    const changed = await waitForEvent(events, "annotation-changed");
+    const changed = await waitForEvent(events, "comment-changed");
     expect(changed).toBeDefined();
   });
 
@@ -99,7 +99,7 @@ describe("TourWatcher", () => {
 
     await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a1"}\n');
 
-    const changed = await waitForEvent(events, "annotation-changed");
+    const changed = await waitForEvent(events, "comment-changed");
     expect(changed?.tourId).toBe(tourId);
   });
 
@@ -141,9 +141,9 @@ describe("TourWatcher", () => {
 
   // Issue #342 — Stage B on-disk slice. The on-disk filename `annotations.jsonl`
   // is being replaced by `comments.jsonl` with a permanent read-fallback
-  // (ADR 0029 addendum). The watcher must fire annotation-changed for writes
+  // (ADR 0029 addendum). The watcher must fire comment-changed for writes
   // to whichever filename the Tour folder is using at the moment.
-  it("emits annotation-changed when comments.jsonl is modified (post-migration shape)", async () => {
+  it("emits comment-changed when comments.jsonl is modified (post-migration shape)", async () => {
     // Folder is freshly migrated: no annotations.jsonl, only comments.jsonl.
     await unlink(join(tourDir, "annotations.jsonl"));
     await writeFile(join(tourDir, "comments.jsonl"), "");
@@ -155,12 +155,12 @@ describe("TourWatcher", () => {
 
     await appendFile(join(tourDir, "comments.jsonl"), '{"id":"c1"}\n');
 
-    const changed = await waitForEvent(events, "annotation-changed");
+    const changed = await waitForEvent(events, "comment-changed");
     expect(changed).toBeDefined();
     expect(changed?.tourId).toBe(tourId);
   });
 
-  it("emits annotation-changed when annotations.jsonl is renamed to comments.jsonl and then appended", async () => {
+  it("emits comment-changed when annotations.jsonl is renamed to comments.jsonl and then appended", async () => {
     // Legacy-only folder. After the watcher arms, the writer renames the
     // legacy file to the new name and appends. The watcher must observe
     // the resulting change.
@@ -178,11 +178,11 @@ describe("TourWatcher", () => {
     );
     await appendFile(join(tourDir, "comments.jsonl"), '{"id":"new"}\n');
 
-    const changed = await waitForEvent(events, "annotation-changed");
+    const changed = await waitForEvent(events, "comment-changed");
     expect(changed).toBeDefined();
   });
 
-  it("does not emit annotation-changed for .reply-lock.json events", async () => {
+  it("does not emit comment-changed for .reply-lock.json events", async () => {
     watcher = new TourWatcher(dir, tourId, 50);
     const events: WatchEvent[] = [];
     watcher.on((e) => events.push(e));
@@ -195,6 +195,6 @@ describe("TourWatcher", () => {
     );
 
     await new Promise((r) => setTimeout(r, 300));
-    expect(events.some((e) => e.type === "annotation-changed")).toBe(false);
+    expect(events.some((e) => e.type === "comment-changed")).toBe(false);
   });
 });

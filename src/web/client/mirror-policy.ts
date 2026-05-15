@@ -1,11 +1,11 @@
-import type { Annotation } from "../../core/types.js";
+import type { Comment } from "../../core/types.js";
 import type { Cursor } from "../../core/cursor-state.js";
 import { composeUrl } from "./url-routing.js";
 
 /**
  * URL-mirror policy (issue #198). Decides what the "mirror the cursor's
  * card target into the URL" effect should do given the current cursor and
- * the loaded Tour's top-level annotations.
+ * the loaded Tour's top-level comments.
  *
  * The discriminator is `cursor === null` (true tour-load — the re-anchor
  * effect is about to seed from `#<ann-id>`, so we defer the URL write to
@@ -25,10 +25,10 @@ export type MirrorEffect =
 
 export function decideMirrorUrl(
   cursor: Cursor | null,
-  topLevel: ReadonlyArray<Annotation>,
+  topLevel: ReadonlyArray<Comment>,
   tourId: string,
 ): MirrorEffect {
   if (cursor === null && topLevel.length > 0) return { kind: "skip" };
-  const annId = cursor?.kind === "card" ? cursor.annotationId : null;
+  const annId = cursor?.kind === "card" ? cursor.commentId : null;
   return { kind: "write", url: composeUrl(tourId, annId) };
 }

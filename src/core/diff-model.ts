@@ -1,6 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 
 export type { FileDiffMetadata };
 
@@ -53,9 +53,9 @@ export function splitFileDiffByHunk(fileSegment: string): string[] {
   return hunkLines.map((h) => `${header}\n${h.join("\n")}`);
 }
 
-export function resolveAnnotationToHunkIndex(
+export function resolveCommentToHunkIndex(
   file: DiffFile,
-  ann: Pick<Annotation, "side" | "line_start" | "line_end">,
+  ann: Pick<Comment, "side" | "line_start" | "line_end">,
 ): number | null {
   for (let i = 0; i < file.hunks.length; i++) {
     const h = file.hunks[i];

@@ -2,8 +2,8 @@ import { join } from "node:path";
 import { appendFile } from "node:fs/promises";
 import {
   createReply,
-  readAnnotations,
-} from "./annotations-store.js";
+  readComments,
+} from "./comments-store.js";
 import { getTour } from "./tour-store.js";
 import { shouldDispatchReply } from "./reply-dispatch.js";
 import {
@@ -18,10 +18,10 @@ import {
 } from "./agent-adapter.js";
 import { replyAgentSystemPrompt } from "./system-prompt.js";
 import { createDispatchLogger } from "./dispatch-logger.js";
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 
 // The single dispatch entry point both surfaces converge on (issue #182).
-// Validates the annotation, atomically acquires the per-tour reply lock,
+// Validates the comment, atomically acquires the per-tour reply lock,
 // and delegates to the shared `runDispatch` helper. The watcher's
 // auto-dispatch path was removed in issue #184 (ADR 0021); user action
 // — `s` in the TUI, "Send to {agent}" in the webapp — is the only path
@@ -29,7 +29,7 @@ import type { Annotation } from "./types.js";
 export interface RequestReplyOptions {
   cwd: string;
   tourId: string;
-  annotationId: string;
+  commentId: string;
   // The renderer-configured reply-agent name. Absent / empty means the
   // renderer was launched without `--reply-agent` and dispatch is refused
   // at the seam.
@@ -42,7 +42,7 @@ export interface RequestReplyOptions {
 export type RequestReplyResult =
   | { kind: "dispatched" }
   | { kind: "busy" }
-  | { kind: "invalid-annotation" }
+  | { kind: "invalid-comment" }
   | { kind: "no-reply-agent" };
 
 // HTTP status mapping for `POST /api/tours/:id/request-reply` (issue
@@ -50,7 +50,7 @@ export type RequestReplyResult =
 // server endpoint and any future surface (e.g. a JSON-RPC bridge) use
 // the same mapping. The mapping is the user-facing contract — the
 // PRD pins it explicitly: 202 dispatched / 409 busy / 404 invalid-
-// annotation / 400 no-reply-agent.
+// comment / 400 no-reply-agent.
 export function httpStatusForRequestReplyResult(
   result: RequestReplyResult,
 ): number {
@@ -59,7 +59,7 @@ export function httpStatusForRequestReplyResult(
       return 202;
     case "busy":
       return 409;
-    case "invalid-annotation":
+    case "invalid-comment":
       return 404;
     case "no-reply-agent":
       return 400;
@@ -71,22 +71,22 @@ export async function requestReply(
 ): Promise<RequestReplyResult> {
   if (!opts.agent) return { kind: "no-reply-agent" };
 
-  const annotations = await readAnnotationsSafely(opts.cwd, opts.tourId);
-  const triggering = annotations.find((a) => a.id === opts.annotationId);
+  const comments = await readCommentsSafely(opts.cwd, opts.tourId);
+  const triggering = comments.find((a) => a.id === opts.commentId);
   // Three precondition rejections collapse to one result kind — the caller
-  // only needs "this annotation isn't a valid dispatch target", not the
+  // only needs "this comment isn't a valid dispatch target", not the
   // sub-reason (the UI already encoded those at affordance-visibility time
   // via `canSendToAgent`; defence-in-depth here is enough).
-  if (!triggering) return { kind: "invalid-annotation" };
-  if (!shouldDispatchReply(triggering)) return { kind: "invalid-annotation" };
-  if (annotations.some((a) => a.replies_to === opts.annotationId)) {
-    return { kind: "invalid-annotation" };
+  if (!triggering) return { kind: "invalid-comment" };
+  if (!shouldDispatchReply(triggering)) return { kind: "invalid-comment" };
+  if (comments.some((a) => a.replies_to === opts.commentId)) {
+    return { kind: "invalid-comment" };
   }
 
   const startedAt = new Date().toISOString();
   const acquired = await tryAcquireReplyLock(opts.cwd, opts.tourId, {
     agent: opts.agent,
-    responding_to: opts.annotationId,
+    responding_to: opts.commentId,
     started_at: startedAt,
     pid: 0,
   });
@@ -98,18 +98,18 @@ export async function requestReply(
     agent: opts.agent,
     adapter: opts.adapter,
     triggering,
-    annotations,
+    comments,
     startedAt,
   });
   return { kind: "dispatched" };
 }
 
-async function readAnnotationsSafely(
+async function readCommentsSafely(
   cwd: string,
   tourId: string,
-): Promise<Annotation[]> {
+): Promise<Comment[]> {
   try {
-    return await readAnnotations(cwd, tourId);
+    return await readComments(cwd, tourId);
   } catch {
     return [];
   }
@@ -123,15 +123,15 @@ interface RunDispatchOptions {
   tourId: string;
   agent: string;
   adapter?: ShippedAdapter;
-  triggering: Annotation;
-  annotations: Annotation[];
+  triggering: Comment;
+  comments: Comment[];
   startedAt: string;
 }
 
 async function runDispatch(opts: RunDispatchOptions): Promise<void> {
   try {
     const tour = await getTour(opts.cwd, opts.tourId);
-    const envelope = buildEnvelope(tour, opts.annotations, opts.triggering);
+    const envelope = buildEnvelope(tour, opts.comments, opts.triggering);
     const tourDir = join(opts.cwd, ".tour", opts.tourId);
     const systemPrompt = replyAgentSystemPrompt();
     const logPath = join(tourDir, "logs", `reply-${opts.triggering.id}.log`);
@@ -189,7 +189,7 @@ async function persistReply(
   cwd: string,
   tourId: string,
   agent: string,
-  triggering: Annotation,
+  triggering: Comment,
   result: { code: number | null; stdout: string; error?: Error },
   logPath: string,
 ): Promise<void> {

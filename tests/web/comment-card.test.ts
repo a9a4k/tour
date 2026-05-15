@@ -2,10 +2,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { AnnotationCard } from "../../src/web/client/App.js";
-import type { Annotation } from "../../src/web/client/types.js";
+import { CommentCard } from "../../src/web/client/App.js";
+import type { Comment } from "../../src/web/client/types.js";
 
-// Collapse rule mirrors the TUI side (see tests/tui/annotation-card.test.ts):
+// Collapse rule mirrors the TUI side (see tests/tui/comment-card.test.ts):
 // ADR 0016 keeps `author = author_kind` as the on-disk default, but the
 // renderer suppresses the redundant identity slot when it would just
 // re-state the kind bracket. `[human] human · file:42` becomes
@@ -37,7 +37,7 @@ function mount(element: React.ReactElement): HTMLElement {
   return container;
 }
 
-const baseAnnotation: Annotation = {
+const baseComment: Comment = {
   id: "ann-1",
   file: "x.txt",
   side: "additions",
@@ -49,21 +49,21 @@ const baseAnnotation: Annotation = {
   created_at: "2026-05-11T00:00:00Z",
 };
 
-function headerText(container: HTMLElement, annotationId = "ann-1"): string {
-  // The top-level header is `.annotation-block > .ann-header`; the reply
+function headerText(container: HTMLElement, commentId = "ann-1"): string {
+  // The top-level header is `.comment-block > .ann-header`; the reply
   // headers are `.ann-reply > .ann-header`. Both carry the kind bracket
   // and the optional author token.
   const block = container.querySelector(
-    `.annotation-block, [id="annotation-${annotationId}"]`,
+    `.comment-block, [id="comment-${commentId}"]`,
   );
   return block?.querySelector(".ann-header")?.textContent ?? "";
 }
 
-describe("AnnotationCard header collapses redundant `author` when author === author_kind", () => {
+describe("CommentCard header collapses redundant `author` when author === author_kind", () => {
   it("omits the `human ·` prefix on the top-level header when author was defaulted", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -77,8 +77,8 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
 
   it("keeps the `alice ·` prefix on the top-level header when author is customised", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: { ...baseAnnotation, author: "alice" },
+      createElement(CommentCard, {
+        comment: { ...baseComment, author: "alice" },
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -91,17 +91,17 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
   });
 
   it("omits the trailing `human` on a reply header when author was defaulted", () => {
-    const parent: Annotation = { ...baseAnnotation, author: "alice" };
-    const reply: Annotation = {
-      ...baseAnnotation,
+    const parent: Comment = { ...baseComment, author: "alice" };
+    const reply: Comment = {
+      ...baseComment,
       id: "ann-2",
       body: "reply body",
       author: "human",
       replies_to: parent.id,
     };
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: parent,
+      createElement(CommentCard, {
+        comment: parent,
         replies: [reply],
         isCurrent: false,
         navIndex: 1,
@@ -109,7 +109,7 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
       }),
     );
     const replyHeader = container
-      .querySelector(`[id="annotation-${reply.id}"]`)
+      .querySelector(`[id="comment-${reply.id}"]`)
       ?.querySelector(".ann-header");
     expect(replyHeader).not.toBeNull();
     const text = replyHeader?.textContent ?? "";
@@ -119,9 +119,9 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
   });
 
   it("keeps `claude` on a reply header when the agent supplied its name", () => {
-    const parent: Annotation = { ...baseAnnotation, author: "alice" };
-    const reply: Annotation = {
-      ...baseAnnotation,
+    const parent: Comment = { ...baseComment, author: "alice" };
+    const reply: Comment = {
+      ...baseComment,
       id: "ann-2",
       body: "reply body",
       author: "claude",
@@ -129,8 +129,8 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
       replies_to: parent.id,
     };
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: parent,
+      createElement(CommentCard, {
+        comment: parent,
         replies: [reply],
         isCurrent: false,
         navIndex: 1,
@@ -138,7 +138,7 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
       }),
     );
     const replyHeader = container
-      .querySelector(`[id="annotation-${reply.id}"]`)
+      .querySelector(`[id="comment-${reply.id}"]`)
       ?.querySelector(".ann-header");
     const text = replyHeader?.textContent ?? "";
     expect(text).toContain("[agent]");
@@ -150,8 +150,8 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
     // the parenthetical collapses, the `.author-kind.<kind>` class must
     // always be present so the redundant colour/structure pair survives.
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -161,17 +161,17 @@ describe("AnnotationCard header collapses redundant `author` when author === aut
   });
 });
 
-describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", () => {
+describe("CommentCard `Send to {agent}` affordance (issue #184, PRD #181)", () => {
   // The "Send to {agent}" button lives next to the existing "Reply"
-  // button on every human Annotation card. Visibility is delegated to
+  // button on every human Comment card. Visibility is delegated to
   // `canSendToAgent` in core; this suite covers the rendering side —
   // is the button there, is the label correct, is the disabled state
   // wired to the tour-wide lock.
 
   it("renders the button labelled with the agent name on a human card when replyAgent is set", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -187,8 +187,8 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
 
   it("interpolates a different agent name verbatim from the prop", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -204,8 +204,8 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
 
   it("hides the button on agent-authored cards (agent-card precedence)", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: { ...baseAnnotation, author_kind: "agent", author: "claude" },
+      createElement(CommentCard, {
+        comment: { ...baseComment, author_kind: "agent", author: "claude" },
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -219,8 +219,8 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
 
   it("hides the button when replyAgent is unset (renderer launched without --reply-agent)", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -232,17 +232,17 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
   });
 
   it("hides the button when a reply has already landed (already-replied terminal)", () => {
-    const reply: Annotation = {
-      ...baseAnnotation,
+    const reply: Comment = {
+      ...baseComment,
       id: "ann-2",
       author: "claude",
       author_kind: "agent",
-      replies_to: baseAnnotation.id,
+      replies_to: baseComment.id,
       body: "agent reply body",
     };
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         replies: [reply],
         isCurrent: false,
         navIndex: 1,
@@ -257,8 +257,8 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
 
   it("disables the button + carries an agent-name tooltip when a reply-lock is held tour-wide", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -284,8 +284,8 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
   it("fires onSendToAgent on click when enabled, swallowing event propagation", () => {
     let fired = 0;
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -308,8 +308,8 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
 
   it("renders Reply and Send buttons side-by-side in the ann-actions row", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: baseAnnotation,
+      createElement(CommentCard, {
+        comment: baseComment,
         isCurrent: true,
         navIndex: 1,
         navTotal: 1,
@@ -325,25 +325,25 @@ describe("AnnotationCard `Send to {agent}` affordance (issue #184, PRD #181)", (
   });
 });
 
-describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () => {
+describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
   // A Thread renders exactly one action row at the bottom of the card,
-  // collapsing the per-Annotation rows from #189 / #190 into a single
-  // row. The Reply button targets the latest Annotation in the Thread
+  // collapsing the per-Comment rows from #189 / #190 into a single
+  // row. The Reply button targets the latest Comment in the Thread
   // (so a new Reply continues from where the conversation is); the
   // Send button targets the latest human leaf per the unchanged rule
   // from #190.
 
-  const agentTop: Annotation = {
-    ...baseAnnotation,
+  const agentTop: Comment = {
+    ...baseComment,
     id: "top-agent",
     author: "claude",
     author_kind: "agent",
     created_at: "2026-05-08T00:00:00Z",
   };
 
-  function humanReplyAt(id: string, t: string): Annotation {
+  function humanReplyAt(id: string, t: string): Comment {
     return {
-      ...baseAnnotation,
+      ...baseComment,
       id,
       author: "alice",
       author_kind: "human",
@@ -357,8 +357,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [r1, r2],
         isCurrent: false,
         navIndex: 1,
@@ -375,8 +375,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [r1, r2],
         isCurrent: false,
         navIndex: 1,
@@ -387,7 +387,7 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
       }),
     );
     for (const reply of [r1, r2]) {
-      const block = container.querySelector(`[id="annotation-${reply.id}"]`);
+      const block = container.querySelector(`[id="comment-${reply.id}"]`);
       expect(block).not.toBeNull();
       expect(block?.querySelector(".ann-actions")).toBeNull();
     }
@@ -396,8 +396,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
   it("renders the bottom action row after the inline Replies list", () => {
     const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [r1],
         isCurrent: false,
         navIndex: 1,
@@ -407,7 +407,7 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
         onOpenReply: () => {},
       }),
     );
-    const block = container.querySelector(".annotation-block");
+    const block = container.querySelector(".comment-block");
     const children = Array.from(block?.children ?? []);
     const repliesIdx = children.findIndex((c) =>
       c.classList?.contains("ann-replies"),
@@ -423,8 +423,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [r1, r2],
         isCurrent: false,
         navIndex: 1,
@@ -439,8 +439,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
 
   it("renders NO Send button anywhere when the latest turn in the Thread is agent-authored", () => {
     const human = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
-    const agentLatest: Annotation = {
-      ...baseAnnotation,
+    const agentLatest: Comment = {
+      ...baseComment,
       id: "ann-r-agent-latest",
       author: "claude",
       author_kind: "agent",
@@ -449,8 +449,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
       created_at: "2026-05-08T00:00:02Z",
     };
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [human, agentLatest],
         isCurrent: false,
         navIndex: 1,
@@ -467,8 +467,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     // PRD #181 — Reply is always available so the user can drive the
     // conversation. Send is not, but Reply is.
     const human = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
-    const agentLatest: Annotation = {
-      ...baseAnnotation,
+    const agentLatest: Comment = {
+      ...baseComment,
       id: "ann-r-agent-latest",
       author: "claude",
       author_kind: "agent",
@@ -477,8 +477,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
       created_at: "2026-05-08T00:00:02Z",
     };
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [human, agentLatest],
         isCurrent: false,
         navIndex: 1,
@@ -493,8 +493,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
 
   it("renders the Reply button on an agent-only Thread (agent top-level, no replies)", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -508,13 +508,13 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(0);
   });
 
-  it("Reply button fires onOpenReply with the latest Annotation's id (not the top-level's)", () => {
+  it("Reply button fires onOpenReply with the latest Comment's id (not the top-level's)", () => {
     let lastId: string | null = null;
     const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [r1, r2],
         isCurrent: false,
         navIndex: 1,
@@ -537,8 +537,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
   it("Reply button fires onOpenReply with the top-level's id when the Thread has no Replies", () => {
     let lastId: string | null = null;
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -557,19 +557,19 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     expect(lastId).toBe(agentTop.id);
   });
 
-  it("Reply button targets the latest Annotation by created_at when it's a Reply-to-Reply descendant", () => {
+  it("Reply button targets the latest Comment by created_at when it's a Reply-to-Reply descendant", () => {
     // [human] top + [agent] r1 + [human] r2 (latest leaf) — the chain
     // descends through r1; Reply must target r2, not the top-level.
     let lastId: string | null = null;
-    const humanTop: Annotation = {
-      ...baseAnnotation,
+    const humanTop: Comment = {
+      ...baseComment,
       id: "top-human",
       author: "alice",
       author_kind: "human",
       created_at: "2026-05-08T00:00:00Z",
     };
-    const r1: Annotation = {
-      ...baseAnnotation,
+    const r1: Comment = {
+      ...baseComment,
       id: "ann-r1",
       author: "claude",
       author_kind: "agent",
@@ -577,8 +577,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
       body: "agent r1 body",
       created_at: "2026-05-08T00:00:01Z",
     };
-    const r2: Annotation = {
-      ...baseAnnotation,
+    const r2: Comment = {
+      ...baseComment,
       id: "ann-r2",
       author: "alice",
       author_kind: "human",
@@ -587,8 +587,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
       created_at: "2026-05-08T00:00:02Z",
     };
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: humanTop,
+      createElement(CommentCard, {
+        comment: humanTop,
         replies: [r1, r2],
         isCurrent: false,
         navIndex: 1,
@@ -613,8 +613,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     const older = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const latest = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [older, latest],
         isCurrent: false,
         navIndex: 1,
@@ -640,8 +640,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     const older = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
     const latest = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [older, latest],
         isCurrent: false,
         navIndex: 1,
@@ -668,8 +668,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
 
   it("suppresses the bottom action row when the composer is open under the top-level", () => {
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -688,8 +688,8 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
   it("suppresses the bottom action row when the composer is open under an inline Reply", () => {
     const r1 = humanReplyAt("ann-r1", "2026-05-08T00:00:01Z");
     const container = mount(
-      createElement(AnnotationCard, {
-        annotation: agentTop,
+      createElement(CommentCard, {
+        comment: agentTop,
         replies: [r1],
         isCurrent: false,
         navIndex: 1,
@@ -704,7 +704,7 @@ describe("AnnotationCard single bottom action row (issue #191, PRD #181)", () =>
     );
     expect(container.querySelectorAll(".ann-actions")).toHaveLength(0);
     // Composer renders inline within the Reply block.
-    const replyBlock = container.querySelector(`[id="annotation-${r1.id}"]`);
+    const replyBlock = container.querySelector(`[id="comment-${r1.id}"]`);
     expect(replyBlock?.querySelector(".ann-reply-composer")).not.toBeNull();
   });
 });

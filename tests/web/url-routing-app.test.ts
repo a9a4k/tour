@@ -143,7 +143,7 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
   const bundle = {
     kind: "ok" as const,
     tour: tourSummary,
-    annotations: [annA, annB],
+    comments: [annA, annB],
     diff: "",
     files: [],
   };
@@ -226,10 +226,10 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
 
   // PRD #192 / ADR 0022 slice 2: `?ann=<id>` / `#<ann-id>` in the URL
   // materializes the cursor as a CardAnchor when the id matches a top-level
-  // Annotation; a stale id (deleted / Reply / hand-edited) falls back to
-  // the first top-level Annotation and the URL is rewritten to drop the
+  // Comment; a stale id (deleted / Reply / hand-edited) falls back to
+  // the first top-level Comment and the URL is rewritten to drop the
   // stale anchor.
-  it("mount with URL fragment matching a top-level annotation materializes a CardAnchor (URL preserved)", async () => {
+  it("mount with URL fragment matching a top-level comment materializes a CardAnchor (URL preserved)", async () => {
     installBundleFetch();
     window.history.replaceState(null, "", `/${tourId}#${annB.id}`);
     const container = document.getElementById("root")!;
@@ -244,9 +244,9 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
     expect(window.location.hash).toBe(`#${annB.id}`);
   });
 
-  it("mount with a stale fragment falls back to the first top-level annotation (URL rewritten)", async () => {
+  it("mount with a stale fragment falls back to the first top-level comment (URL rewritten)", async () => {
     installBundleFetch();
-    window.history.replaceState(null, "", `/${tourId}#missing-annotation-id`);
+    window.history.replaceState(null, "", `/${tourId}#missing-comment-id`);
     const container = document.getElementById("root")!;
     await act(async () => {
       root = createRoot(container);

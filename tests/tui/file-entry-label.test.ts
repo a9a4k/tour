@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DiffFile } from "../../src/core/diff-model.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 import type { FileClassification } from "../../src/core/file-classifier.js";
 import {
   fileCardPlaceholder,
@@ -16,10 +16,10 @@ function makeFile(partial: Partial<DiffFile> & { name: string }): DiffFile {
   };
 }
 
-const NO_ANNOTATIONS: Annotation[] = [];
+const NO_ANNOTATIONS: Comment[] = [];
 
 describe("fileEntryLabel", () => {
-  it("renders just the path when no classification / annotations / rename", () => {
+  it("renders just the path when no classification / comments / rename", () => {
     const file = makeFile({ name: "src/a.ts" });
     expect(fileEntryLabel(file, undefined, NO_ANNOTATIONS)).toBe(" M src/a.ts ");
   });

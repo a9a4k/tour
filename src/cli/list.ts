@@ -1,5 +1,5 @@
 import { listTours } from "../core/tour-store.js";
-import { readAnnotations } from "../core/annotations-store.js";
+import { readComments } from "../core/comments-store.js";
 import { printOutput } from "./output.js";
 
 interface ListArgs {
@@ -22,8 +22,8 @@ export async function list(args: ListArgs): Promise<void> {
   }
 
   for (const t of tours) {
-    const annotations = await readAnnotations(args.cwd, t.id);
-    const annotCount = annotations.length;
+    const comments = await readComments(args.cwd, t.id);
+    const annotCount = comments.length;
     const status = t.status === "open" ? "●" : "○";
     const title = t.title || "(untitled)";
     const annLabel = annotCount > 0 ? ` [${annotCount} comments]` : "";

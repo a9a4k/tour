@@ -1,7 +1,7 @@
 import { readFile, appendFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Annotation, AuthorKind } from "./types.js";
+import type { Comment, AuthorKind } from "./types.js";
 import type { TourBundle, BundleFile } from "./tour-bundle.js";
 import { generateId } from "./ids.js";
 
@@ -24,7 +24,7 @@ function commentsPath(repoRoot: string, tourId: string): string {
   return join(tourDir(repoRoot, tourId), COMMENTS_FILENAME);
 }
 
-function legacyAnnotationsPath(repoRoot: string, tourId: string): string {
+function legacyCommentLogPath(repoRoot: string, tourId: string): string {
   return join(tourDir(repoRoot, tourId), LEGACY_ANNOTATIONS_FILENAME);
 }
 
@@ -36,7 +36,7 @@ function legacyAnnotationsPath(repoRoot: string, tourId: string): string {
 function readPath(repoRoot: string, tourId: string): string | null {
   const newPath = commentsPath(repoRoot, tourId);
   if (existsSync(newPath)) return newPath;
-  const oldPath = legacyAnnotationsPath(repoRoot, tourId);
+  const oldPath = legacyCommentLogPath(repoRoot, tourId);
   if (existsSync(oldPath)) return oldPath;
   return null;
 }
@@ -53,7 +53,7 @@ function readPath(repoRoot: string, tourId: string): string | null {
 // ADR 0015), so no additional locking is needed across the rename.
 async function ensureWritePath(repoRoot: string, tourId: string): Promise<string> {
   const newPath = commentsPath(repoRoot, tourId);
-  const oldPath = legacyAnnotationsPath(repoRoot, tourId);
+  const oldPath = legacyCommentLogPath(repoRoot, tourId);
   const hasNew = existsSync(newPath);
   const hasOld = existsSync(oldPath);
   if (hasOld && !hasNew) {
@@ -77,7 +77,7 @@ function isValidAuthorKind(v: unknown): v is "agent" | "human" {
 // reply-runner) gets the same wording (slice 2 / #142).
 function validateBody(body: string): void {
   if (body.trim().length === 0) {
-    throw new Error("Annotation body must not be empty or whitespace-only");
+    throw new Error("Comment body must not be empty or whitespace-only");
   }
 }
 
@@ -100,23 +100,23 @@ function validateAnchor(
 ): void {
   if (bundle.kind !== "ok") {
     throw new Error(
-      "Cannot validate annotation anchor against a snapshot-lost tour bundle",
+      "Cannot validate comment anchor against a snapshot-lost tour bundle",
     );
   }
   const file: BundleFile | undefined = bundle.files.find((f) => f.name === request.file);
   if (!file) {
     throw new Error(
-      `Annotation file "${request.file}" is not in the Tour's diff (no renderer can display anchors outside the diff)`,
+      `Comment file "${request.file}" is not in the Tour's diff (no renderer can display anchors outside the diff)`,
     );
   }
   if (request.line_start < 1) {
     throw new Error(
-      `Annotation line_start must be >= 1 (got ${request.line_start})`,
+      `Comment line_start must be >= 1 (got ${request.line_start})`,
     );
   }
   if (request.line_end < request.line_start) {
     throw new Error(
-      `Annotation line_end (${request.line_end}) must be >= line_start (${request.line_start})`,
+      `Comment line_end (${request.line_end}) must be >= line_start (${request.line_start})`,
     );
   }
   const max =
@@ -125,12 +125,12 @@ function validateAnchor(
       : lineCount(file.oldContent);
   if (request.line_end > max) {
     throw new Error(
-      `Annotation line_end (${request.line_end}) exceeds ${request.file}'s line count on ${request.side} side (${max})`,
+      `Comment line_end (${request.line_end}) exceeds ${request.file}'s line count on ${request.side} side (${max})`,
     );
   }
 }
 
-interface BuildAnnotationInput {
+interface BuildCommentInput {
   file: string;
   side: "additions" | "deletions";
   line_start: number;
@@ -140,7 +140,7 @@ interface BuildAnnotationInput {
   author_kind: AuthorKind;
 }
 
-function buildAnnotation(input: BuildAnnotationInput): Annotation {
+function buildComment(input: BuildCommentInput): Comment {
   return {
     id: generateId(),
     file: input.file,
@@ -161,10 +161,10 @@ interface BuildReplyInput {
   author_kind: AuthorKind;
 }
 
-function buildReply(input: BuildReplyInput, existing: Annotation[]): Annotation {
+function buildReply(input: BuildReplyInput, existing: Comment[]): Comment {
   const parent = existing.find((a) => a.id === input.replies_to);
   if (!parent) {
-    throw new Error(`No annotation with id "${input.replies_to}" in this tour`);
+    throw new Error(`No comment with id "${input.replies_to}" in this tour`);
   }
   return {
     id: generateId(),
@@ -180,32 +180,32 @@ function buildReply(input: BuildReplyInput, existing: Annotation[]): Annotation 
   };
 }
 
-async function appendAnnotation(
+async function appendComment(
   repoRoot: string,
   tourId: string,
-  annotation: Annotation,
+  comment: Comment,
 ): Promise<void> {
   const path = await ensureWritePath(repoRoot, tourId);
-  await appendFile(path, JSON.stringify(annotation) + "\n");
+  await appendFile(path, JSON.stringify(comment) + "\n");
 }
 
-async function appendAnnotations(
+async function appendComments(
   repoRoot: string,
   tourId: string,
-  annotations: Annotation[],
+  comments: Comment[],
 ): Promise<void> {
   const path = await ensureWritePath(repoRoot, tourId);
-  const lines = annotations.map((a) => JSON.stringify(a)).join("\n") + "\n";
+  const lines = comments.map((a) => JSON.stringify(a)).join("\n") + "\n";
   await appendFile(path, lines);
 }
 
-// The Annotation creation seam (PRD #140 / slice 1 #141). All four writers —
-// CLI, TUI, webapp, reply-runner — funnel through `createAnnotation`,
-// `createReply`, `createAnnotations`. Subsequent slices add validation rules
+// The Comment creation seam (PRD #140 / slice 1 #141). All four writers —
+// CLI, TUI, webapp, reply-runner — funnel through `createComment`,
+// `createReply`, `createComments`. Subsequent slices add validation rules
 // (body-trim, author-default, anchor-in-diff) behind this seam; slice 1
 // keeps behaviour identical and only narrows the public surface.
 
-export interface CreateAnnotationRequest {
+export interface CreateCommentRequest {
   file: string;
   side: "additions" | "deletions";
   line_start: number;
@@ -223,19 +223,19 @@ export interface CreateReplyRequest {
 }
 
 export type CreateRequest =
-  | ({ kind: "top-level" } & CreateAnnotationRequest)
+  | ({ kind: "top-level" } & CreateCommentRequest)
   | ({ kind: "reply" } & CreateReplyRequest);
 
-export async function createAnnotation(
+export async function createComment(
   repoRoot: string,
   tourId: string,
-  request: CreateAnnotationRequest,
+  request: CreateCommentRequest,
   bundle: TourBundle,
-): Promise<Annotation> {
+): Promise<Comment> {
   validateBody(request.body);
   validateAnchor(request, bundle);
-  const ann = buildAnnotation(request);
-  await appendAnnotation(repoRoot, tourId, ann);
+  const ann = buildComment(request);
+  await appendComment(repoRoot, tourId, ann);
   return ann;
 }
 
@@ -246,42 +246,42 @@ export async function createReply(
   repoRoot: string,
   tourId: string,
   request: CreateReplyRequest,
-): Promise<Annotation> {
+): Promise<Comment> {
   validateBody(request.body);
-  const existing = await readAnnotations(repoRoot, tourId);
+  const existing = await readComments(repoRoot, tourId);
   const reply = buildReply(request, existing);
-  await appendAnnotation(repoRoot, tourId, reply);
+  await appendComment(repoRoot, tourId, reply);
   return reply;
 }
 
 // Atomic batch: build every record first (replies resolve against the
 // on-disk Comment log read once), then a single `appendFile` for the
 // whole batch. A bad reply parent rejects before any write happens.
-export async function createAnnotations(
+export async function createComments(
   repoRoot: string,
   tourId: string,
   requests: CreateRequest[],
   bundle: TourBundle,
-): Promise<Annotation[]> {
+): Promise<Comment[]> {
   for (const req of requests) {
     validateBody(req.body);
     if (req.kind === "top-level") validateAnchor(req, bundle);
   }
-  const existing = await readAnnotations(repoRoot, tourId);
-  const built: Annotation[] = requests.map((req) => {
+  const existing = await readComments(repoRoot, tourId);
+  const built: Comment[] = requests.map((req) => {
     if (req.kind === "reply") {
       return buildReply(req, existing);
     }
-    return buildAnnotation(req);
+    return buildComment(req);
   });
-  await appendAnnotations(repoRoot, tourId, built);
+  await appendComments(repoRoot, tourId, built);
   return built;
 }
 
-export async function readAnnotations(
+export async function readComments(
   repoRoot: string,
   tourId: string,
-): Promise<Annotation[]> {
+): Promise<Comment[]> {
   const path = readPath(repoRoot, tourId);
   if (path === null) return [];
   let content: string;
@@ -290,7 +290,7 @@ export async function readAnnotations(
   } catch {
     return [];
   }
-  const annotations: Annotation[] = [];
+  const comments: Comment[] = [];
   for (const line of content.split("\n")) {
     if (!line.trim()) continue;
     let parsed: unknown;
@@ -299,13 +299,13 @@ export async function readAnnotations(
     } catch {
       continue;
     }
-    const ann = parsed as Annotation;
+    const ann = parsed as Comment;
     if (!isValidAuthorKind(ann.author_kind)) {
       throw new Error(
-        `Annotation ${ann.id ?? "(no id)"} in tour ${tourId} is missing or has invalid "author_kind" — pre-bidirectional .tour/ data is not supported`,
+        `Comment ${ann.id ?? "(no id)"} in tour ${tourId} is missing or has invalid "author_kind" — pre-bidirectional .tour/ data is not supported`,
       );
     }
-    annotations.push(ann);
+    comments.push(ann);
   }
-  return annotations;
+  return comments;
 }

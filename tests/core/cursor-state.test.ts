@@ -8,7 +8,7 @@ import {
   setCursorSide,
   validateCursor,
   resolveCursorRowIdx,
-  cursorFromAnnotation,
+  cursorFromComment,
   cursorAtFirstFileRow,
   cursorOnInteractive,
   cursorAfterExpand,
@@ -19,7 +19,7 @@ import {
   type CardAnchor,
 } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 
 function flat(parts: {
   file: string;
@@ -69,14 +69,14 @@ function cardFlat(parts: {
   file: string;
   side: "additions" | "deletions";
   lineEnd: number;
-  annotationId: string;
+  commentId: string;
 }): FlatRow {
   return {
     kind: "card",
     file: parts.file,
     side: parts.side,
     lineEnd: parts.lineEnd,
-    annotationId: parts.annotationId,
+    commentId: parts.commentId,
   };
 }
 
@@ -84,7 +84,7 @@ function row(c: Partial<RowAnchor> & Pick<RowAnchor, "file" | "lineNumber" | "si
   return { kind: "row", ...c };
 }
 
-function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "side" | "line_start" | "line_end">): Annotation {
+function ann(o: Partial<Comment> & Pick<Comment, "id" | "side" | "line_start" | "line_end">): Comment {
   return {
     id: o.id,
     file: o.file ?? "x.txt",
@@ -101,32 +101,32 @@ function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "side" | "line_sta
 
 describe("initialCursor", () => {
   it("returns null when there are no rows", () => {
-    expect(initialCursor({ topLevelAnnotations: [], flatRows: [] })).toBeNull();
+    expect(initialCursor({ topLevelComments: [], flatRows: [] })).toBeNull();
   });
 
-  it("seeds a CardAnchor on the first top-level annotation when its card row is in the stream (PRD #192)", () => {
+  it("seeds a CardAnchor on the first top-level comment when its card row is in the stream (PRD #192)", () => {
     const rows: FlatRow[] = [
       pairedFlat("x.txt", 1, 1),
       pairedFlat("x.txt", 2, 2),
-      cardFlat({ file: "x.txt", side: "additions", lineEnd: 2, annotationId: "a1" }),
+      cardFlat({ file: "x.txt", side: "additions", lineEnd: 2, commentId: "a1" }),
     ];
     const a = ann({ id: "a1", file: "x.txt", side: "additions", line_start: 2, line_end: 2 });
-    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
-    expect(cursor).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    const cursor = initialCursor({ topLevelComments: [a], flatRows: rows });
+    expect(cursor).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
   });
 
-  it("falls back to the first diff row when there are no annotations", () => {
+  it("falls back to the first diff row when there are no comments", () => {
     const rows: FlatRow[] = [pairedFlat("x.txt", 5, 5)];
-    const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
+    const cursor = initialCursor({ topLevelComments: [], flatRows: rows });
     expect(cursor).toEqual(row({ file: "x.txt", lineNumber: 5, side: "additions", preferredSide: "additions" }));
   });
 
-  it("falls back to the first diff row when the top annotation's card row isn't in the flat stream", () => {
-    // Card row missing (e.g., card row emission disabled or annotation
+  it("falls back to the first diff row when the top comment's card row isn't in the flat stream", () => {
+    // Card row missing (e.g., card row emission disabled or comment
     // pointed at a missing anchor). The fallback is the first diff row.
     const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
     const a = ann({ id: "g", file: "x.txt", side: "additions", line_start: 999, line_end: 999 });
-    const cursor = initialCursor({ topLevelAnnotations: [a], flatRows: rows });
+    const cursor = initialCursor({ topLevelComments: [a], flatRows: rows });
     expect(cursor?.kind).toBe("row");
     if (cursor?.kind !== "row") throw new Error("narrow");
     expect(cursor.lineNumber).toBe(1);
@@ -195,26 +195,26 @@ describe("moveCursor", () => {
   // destination filter. Cards are valid stops; the cursor lands ON a
   // card when stepping onto it, then steps off on the next press.
   describe("row lane is the STEP gesture (ADR 0023 / issue #200)", () => {
-    it("`j` from a diff row whose line_end matches an annotation's anchor lands ON the card", () => {
+    it("`j` from a diff row whose line_end matches a comment's anchor lands ON the card", () => {
       // Bug repro per the issue: cursor on the anchor row, press j,
       // expected to land on the card, not skip past it.
       const mixed: FlatRow[] = [
         pairedFlat("x.txt", 1, 1),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
         pairedFlat("x.txt", 2, 2),
       ];
       const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "down", mixed);
-      expect(next).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+      expect(next).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
     });
 
     it("`j` from a CardAnchor steps to the next row after the card", () => {
       const mixed: FlatRow[] = [
         pairedFlat("x.txt", 1, 1),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
         pairedFlat("x.txt", 2, 2),
       ];
-      const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+      const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
       const next = moveCursor(c, "down", mixed);
       if (!isRowAnchor(next)) throw new Error("narrow");
       expect(next.lineNumber).toBe(2);
@@ -223,26 +223,26 @@ describe("moveCursor", () => {
     it("`k` from a row preceded by a card lands ON the card", () => {
       const mixed: FlatRow[] = [
         pairedFlat("x.txt", 1, 1),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
         pairedFlat("x.txt", 2, 2),
       ];
       const c = row({ file: "x.txt", lineNumber: 2, side: "additions", preferredSide: "additions" });
       const next = moveCursor(c, "up", mixed);
-      expect(next).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+      expect(next).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
     });
 
     it("stacked cards each count as a step: anchor → first card → second card → next row", () => {
       const mixed: FlatRow[] = [
         pairedFlat("x.txt", 1, 1),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a2" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a2" }),
         pairedFlat("x.txt", 2, 2),
       ];
       const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
       const s1 = moveCursor(c, "down", mixed);
-      expect(s1).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+      expect(s1).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
       const s2 = moveCursor(s1, "down", mixed);
-      expect(s2).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
+      expect(s2).toEqual({ kind: "card", commentId: "a2", preferredSide: "additions" });
       const s3 = moveCursor(s2, "down", mixed);
       if (!isRowAnchor(s3)) throw new Error("narrow");
       expect(s3.lineNumber).toBe(2);
@@ -254,7 +254,7 @@ describe("moveCursor", () => {
       // "deletions" so the second row landing honours the side choice.
       const mixed: FlatRow[] = [
         pairedFlat("x.txt", 1, 1),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
         pairedFlat("x.txt", 2, 2),
       ];
       const c = row({ file: "x.txt", lineNumber: 1, side: "deletions", preferredSide: "deletions" });
@@ -331,7 +331,7 @@ describe("moveCursor", () => {
 
 // Card lane walker (PRD #192 / ADR 0022; reordering fix issue #197).
 // `n`/`p` is the **jump** gesture (ADR 0023) and walks the canonical
-// top-level Annotation order — the same order the `[N/M]` pill counter
+// top-level Comment order — the same order the `[N/M]` pill counter
 // reads — NOT flat-row display order (#197). From a null cursor or a
 // RowAnchor the walk enters the track at the topLevel edge; the cursor's
 // `(file, line)` is **not** consulted (issue #206 revert of #203).
@@ -340,51 +340,51 @@ describe("nextCard / prevCard (PRD #192, issue #197)", () => {
   const a2 = ann({ id: "a2", file: "x.txt", side: "additions", line_start: 2, line_end: 2 });
   const topLevel = [a1, a2];
 
-  it("nextCard from a row cursor enters the track at the first top-level annotation", () => {
+  it("nextCard from a row cursor enters the track at the first top-level comment", () => {
     const c = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "deletions" });
-    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "deletions" });
+    expect(nextCard(c, topLevel)).toEqual({ kind: "card", commentId: "a1", preferredSide: "deletions" });
   });
 
   it("nextCard from a card cursor lands on the following card in top-level order", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    expect(nextCard(c, topLevel)).toEqual({ kind: "card", commentId: "a2", preferredSide: "additions" });
   });
 
   it("nextCard from the last card returns null", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a2", preferredSide: "additions" };
+    const c: CardAnchor = { kind: "card", commentId: "a2", preferredSide: "additions" };
     expect(nextCard(c, topLevel)).toBeNull();
   });
 
   it("prevCard from a card cursor lands on the preceding card in top-level order", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a2", preferredSide: "additions" };
-    expect(prevCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    const c: CardAnchor = { kind: "card", commentId: "a2", preferredSide: "additions" };
+    expect(prevCard(c, topLevel)).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
   });
 
   it("prevCard from the first card returns null", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
     expect(prevCard(c, topLevel)).toBeNull();
   });
 
-  it("nextCard from a null cursor picks the first top-level annotation", () => {
-    expect(nextCard(null, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+  it("nextCard from a null cursor picks the first top-level comment", () => {
+    expect(nextCard(null, topLevel)).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
   });
 
-  it("prevCard from a null cursor picks the last top-level annotation", () => {
-    expect(prevCard(null, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "additions" });
+  it("prevCard from a null cursor picks the last top-level comment", () => {
+    expect(prevCard(null, topLevel)).toEqual({ kind: "card", commentId: "a2", preferredSide: "additions" });
   });
 
   it("nextCard preserves a card cursor's preferredSide on the destination CardAnchor (issue #200)", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "deletions" };
-    expect(nextCard(c, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "deletions" });
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "deletions" };
+    expect(nextCard(c, topLevel)).toEqual({ kind: "card", commentId: "a2", preferredSide: "deletions" });
   });
 
-  it("returns null when there are no top-level annotations", () => {
+  it("returns null when there are no top-level comments", () => {
     expect(nextCard(null, [])).toBeNull();
     expect(prevCard(null, [])).toBeNull();
   });
 
   // Bug A repro (issue #197): a Tour whose JSONL `created_at` order
-  // disagrees with file display order — e.g., annotation `aFirst` was
+  // disagrees with file display order — e.g., comment `aFirst` was
   // authored first (top of the topLevel list, pill `1/3`) but anchors
   // to the last file in display order. The walker must follow the
   // top-level order, so `n` from `1/3` lands on `2/3`, not on whichever
@@ -416,22 +416,22 @@ describe("nextCard / prevCard (PRD #192, issue #197)", () => {
     });
     // Top-level order (JSONL / created_at): aFirst, aSecond, aThird.
     const topLevelMixed = [aFirst, aSecond, aThird];
-    const c1: CardAnchor = { kind: "card", annotationId: "aFirst", preferredSide: "additions" };
-    expect(nextCard(c1, topLevelMixed)).toEqual({ kind: "card", annotationId: "aSecond", preferredSide: "additions" });
-    const c2: CardAnchor = { kind: "card", annotationId: "aSecond", preferredSide: "additions" };
-    expect(nextCard(c2, topLevelMixed)).toEqual({ kind: "card", annotationId: "aThird", preferredSide: "additions" });
-    const c3: CardAnchor = { kind: "card", annotationId: "aThird", preferredSide: "additions" };
+    const c1: CardAnchor = { kind: "card", commentId: "aFirst", preferredSide: "additions" };
+    expect(nextCard(c1, topLevelMixed)).toEqual({ kind: "card", commentId: "aSecond", preferredSide: "additions" });
+    const c2: CardAnchor = { kind: "card", commentId: "aSecond", preferredSide: "additions" };
+    expect(nextCard(c2, topLevelMixed)).toEqual({ kind: "card", commentId: "aThird", preferredSide: "additions" });
+    const c3: CardAnchor = { kind: "card", commentId: "aThird", preferredSide: "additions" };
     expect(nextCard(c3, topLevelMixed)).toBeNull();
-    expect(prevCard(c3, topLevelMixed)).toEqual({ kind: "card", annotationId: "aSecond", preferredSide: "additions" });
-    expect(prevCard(c2, topLevelMixed)).toEqual({ kind: "card", annotationId: "aFirst", preferredSide: "additions" });
+    expect(prevCard(c3, topLevelMixed)).toEqual({ kind: "card", commentId: "aSecond", preferredSide: "additions" });
+    expect(prevCard(c2, topLevelMixed)).toEqual({ kind: "card", commentId: "aFirst", preferredSide: "additions" });
   });
 
   // Stale CardAnchor (id not in topLevel): same as null cursor. The
   // validation policy clears the cursor on the next render independently.
-  it("stale CardAnchor (annotation removed from top-level) falls back to the topLevel edge (issue #206)", () => {
-    const ghost: CardAnchor = { kind: "card", annotationId: "ghost", preferredSide: "deletions" };
-    expect(nextCard(ghost, topLevel)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "deletions" });
-    expect(prevCard(ghost, topLevel)).toEqual({ kind: "card", annotationId: "a2", preferredSide: "deletions" });
+  it("stale CardAnchor (comment removed from top-level) falls back to the topLevel edge (issue #206)", () => {
+    const ghost: CardAnchor = { kind: "card", commentId: "ghost", preferredSide: "deletions" };
+    expect(nextCard(ghost, topLevel)).toEqual({ kind: "card", commentId: "a1", preferredSide: "deletions" });
+    expect(prevCard(ghost, topLevel)).toEqual({ kind: "card", commentId: "a2", preferredSide: "deletions" });
   });
 
   // Issue #206: from a RowAnchor, n/p is a pure topLevel-order gesture —
@@ -443,25 +443,25 @@ describe("nextCard / prevCard (PRD #192, issue #197)", () => {
     const ann2 = ann({ id: "ann2", file: "SKILL.md", side: "additions", line_start: 30, line_end: 35 });
     const tl = [ann1, ann2];
 
-    it("nextCard from a row past the last annotation still enters at topLevel[0]", () => {
+    it("nextCard from a row past the last comment still enters at topLevel[0]", () => {
       const c = row({ file: "SKILL.md", lineNumber: 99, side: "additions", preferredSide: "additions" });
-      expect(nextCard(c, tl)).toEqual({ kind: "card", annotationId: "ann1", preferredSide: "additions" });
+      expect(nextCard(c, tl)).toEqual({ kind: "card", commentId: "ann1", preferredSide: "additions" });
     });
 
-    it("prevCard from a row before the first annotation still enters at topLevel[last]", () => {
+    it("prevCard from a row before the first comment still enters at topLevel[last]", () => {
       const c = row({ file: "SKILL.md", lineNumber: 1, side: "additions", preferredSide: "additions" });
-      expect(prevCard(c, tl)).toEqual({ kind: "card", annotationId: "ann2", preferredSide: "additions" });
+      expect(prevCard(c, tl)).toEqual({ kind: "card", commentId: "ann2", preferredSide: "additions" });
     });
 
     it("nextCard from a row threads preferredSide onto the destination card", () => {
       const c = row({ file: "SKILL.md", lineNumber: 22, side: "deletions", preferredSide: "deletions" });
-      expect(nextCard(c, tl)).toEqual({ kind: "card", annotationId: "ann1", preferredSide: "deletions" });
+      expect(nextCard(c, tl)).toEqual({ kind: "card", commentId: "ann1", preferredSide: "deletions" });
     });
 
-    it("nextCard from a row in a different file from any annotation enters at topLevel[0]", () => {
+    it("nextCard from a row in a different file from any comment enters at topLevel[0]", () => {
       const c = row({ file: "other.txt", lineNumber: 5, side: "additions", preferredSide: "additions" });
-      expect(nextCard(c, tl)).toEqual({ kind: "card", annotationId: "ann1", preferredSide: "additions" });
-      expect(prevCard(c, tl)).toEqual({ kind: "card", annotationId: "ann2", preferredSide: "additions" });
+      expect(nextCard(c, tl)).toEqual({ kind: "card", commentId: "ann1", preferredSide: "additions" });
+      expect(prevCard(c, tl)).toEqual({ kind: "card", commentId: "ann2", preferredSide: "additions" });
     });
   });
 });
@@ -494,8 +494,8 @@ describe("setCursorSide", () => {
   });
 
   it("on a card cursor, returns the cursor unchanged (h/l is a no-op on cards)", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const rows: FlatRow[] = [cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" })];
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const rows: FlatRow[] = [cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" })];
     expect(setCursorSide(c, "deletions", rows)).toBe(c);
   });
 
@@ -599,27 +599,27 @@ describe("validateCursor", () => {
   });
 
   // PRD #192 / ADR 0022: a CardAnchor survives bundle reload when its
-  // annotationId is still in the flat-row stream; clears to null
+  // commentId is still in the flat-row stream; clears to null
   // otherwise. No "snap to file's first row" fallback for cards — the
   // card stop is unambiguous or gone.
   describe("CardAnchor survival across reload (PRD #192)", () => {
-    it("preserves a CardAnchor whose annotationId is still in the flat-row stream", () => {
+    it("preserves a CardAnchor whose commentId is still in the flat-row stream", () => {
       const rows: FlatRow[] = [
         pairedFlat("x.txt", 1, 1),
-        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+        cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
       ];
-      const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+      const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
       expect(validateCursor(c, rows)).toBe(c);
     });
 
     it("returns null when the CardAnchor's id is no longer in the stream", () => {
       const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
-      const c: CardAnchor = { kind: "card", annotationId: "gone", preferredSide: "additions" };
+      const c: CardAnchor = { kind: "card", commentId: "gone", preferredSide: "additions" };
       expect(validateCursor(c, rows)).toBeNull();
     });
 
     it("returns null on empty flatRows even for a CardAnchor", () => {
-      const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+      const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
       expect(validateCursor(c, [])).toBeNull();
     });
   });
@@ -700,26 +700,26 @@ describe("cursorAtFirstFileRow", () => {
 });
 
 // PRD #192 / ADR 0022 (revised by ADR 0023, issue #200):
-// cursorFromAnnotation returns a CardAnchor carrying preferredSide so
+// cursorFromComment returns a CardAnchor carrying preferredSide so
 // the side choice survives jumps.
-describe("cursorFromAnnotation", () => {
-  it("returns a CardAnchor pointing at the annotation's id, default preferredSide additions", () => {
+describe("cursorFromComment", () => {
+  it("returns a CardAnchor pointing at the comment's id, default preferredSide additions", () => {
     const a = ann({ id: "a1", file: "src/foo.ts", side: "additions", line_start: 42, line_end: 42 });
-    expect(cursorFromAnnotation(a)).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    expect(cursorFromComment(a)).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
   });
 
   it("threads an explicit preferredSide onto the CardAnchor (issue #200)", () => {
     const a = ann({ id: "a1", file: "src/foo.ts", side: "additions", line_start: 42, line_end: 42 });
-    expect(cursorFromAnnotation(a, "deletions")).toEqual({
+    expect(cursorFromComment(a, "deletions")).toEqual({
       kind: "card",
-      annotationId: "a1",
+      commentId: "a1",
       preferredSide: "deletions",
     });
   });
 
-  it("preserves the annotationId verbatim across multi-line ranges", () => {
+  it("preserves the commentId verbatim across multi-line ranges", () => {
     const a = ann({ id: "weirdId", file: "src/foo.ts", side: "additions", line_start: 10, line_end: 20 });
-    expect(cursorFromAnnotation(a).annotationId).toBe("weirdId");
+    expect(cursorFromComment(a).commentId).toBe("weirdId");
   });
 });
 
@@ -746,12 +746,12 @@ describe("resolveCursorRowIdx", () => {
     expect(resolveCursorRowIdx(null, [pairedFlat("x.txt", 1, 1)])).toBe(-1);
   });
 
-  it("resolves a CardAnchor by annotationId match against a card flat row", () => {
+  it("resolves a CardAnchor by commentId match against a card flat row", () => {
     const rows: FlatRow[] = [
       pairedFlat("x.txt", 1, 1),
-      cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, annotationId: "a1" }),
+      cardFlat({ file: "x.txt", side: "additions", lineEnd: 1, commentId: "a1" }),
     ];
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
     expect(resolveCursorRowIdx(c, rows)).toBe(1);
   });
 });
@@ -766,7 +766,7 @@ describe("preferredSideOf (issue #200)", () => {
   });
 
   it("reads a CardAnchor's preferredSide", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "deletions" };
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "deletions" };
     expect(preferredSideOf(c)).toBe("deletions");
   });
 
@@ -780,12 +780,12 @@ describe("type guards", () => {
     const r = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
     expect(isRowAnchor(r)).toBe(true);
     expect(isRowAnchor(null)).toBe(false);
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
     expect(isRowAnchor(c)).toBe(false);
   });
 
   it("isCardAnchor narrows correctly", () => {
-    const c: CardAnchor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+    const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
     expect(isCardAnchor(c)).toBe(true);
     expect(isCardAnchor(null)).toBe(false);
     const r = row({ file: "x.txt", lineNumber: 1, side: "additions", preferredSide: "additions" });
@@ -913,7 +913,7 @@ describe("interactive-row cursor support (PRD #107)", () => {
       interactiveFlat({ file: "x.txt", subKind: "boundary-top", boundaryRef: "top" }),
       pairedFlat("x.txt", 5, 5),
     ];
-    const cursor = initialCursor({ topLevelAnnotations: [], flatRows: rows });
+    const cursor = initialCursor({ topLevelComments: [], flatRows: rows });
     if (!isRowAnchor(cursor)) throw new Error("narrow");
     expect(cursor.interactive).toBeUndefined();
     expect(cursor.lineNumber).toBe(5);
@@ -923,7 +923,7 @@ describe("interactive-row cursor support (PRD #107)", () => {
     const rows: FlatRow[] = [
       interactiveFlat({ file: "x.txt", subKind: "collapsed-file", boundaryRef: "top" }),
     ];
-    expect(initialCursor({ topLevelAnnotations: [], flatRows: rows })).toBeNull();
+    expect(initialCursor({ topLevelComments: [], flatRows: rows })).toBeNull();
   });
 
   it("cursorAtFirstFileRow skips interactive rows to land on the first diff row", () => {
@@ -1071,7 +1071,7 @@ describe("cursorAfterExpand (issue #306)", () => {
     // Cards aren't diff rows; the helper walks past them to the diff row.
     const rows: FlatRow[] = [
       interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
-      cardFlat({ file: "x.txt", side: "additions", lineEnd: 5, annotationId: "a1" }),
+      cardFlat({ file: "x.txt", side: "additions", lineEnd: 5, commentId: "a1" }),
       pairedFlat("x.txt", 20, 20),
     ];
     const c = cursorOnInteractive({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 });

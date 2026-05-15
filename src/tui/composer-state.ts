@@ -1,4 +1,4 @@
-import type { Annotation } from "../core/types.js";
+import type { Comment } from "../core/types.js";
 import type { Cursor } from "../core/cursor-state.js";
 import type { ComposerTarget } from "../core/tour-session.js";
 
@@ -7,12 +7,12 @@ import type { ComposerTarget } from "../core/tour-session.js";
  * `a` annotates exactly the cursor's line. The unified-cursor keymap
  * already gates `a` to a row cursor (cards reject `a` as a no-op with a
  * footer hint), so by the time this helper runs the cursor is either a
- * non-interactive row or null. Null falls back to the currentAnnotation's
+ * non-interactive row or null. Null falls back to the currentComment's
  * anchor so the degraded path still has a target on small Tours.
  */
 export function buildTopLevelComposer(args: {
   cursor: Cursor | null;
-  currentAnnotation: Annotation | null;
+  currentComment: Comment | null;
 }): ComposerTarget | null {
   // Interactive rows are not annotatable (PRD #107 US 9).
   if (args.cursor && args.cursor.kind === "row" && args.cursor.interactive) return null;
@@ -25,11 +25,11 @@ export function buildTopLevelComposer(args: {
       line_end: args.cursor.lineNumber,
     };
   }
-  // Card cursor or null cursor: fall back to the currentAnnotation's
+  // Card cursor or null cursor: fall back to the currentComment's
   // anchor. The App-shell keymap already gates `a` on a card cursor to a
   // labelled no-op via footer hint; this fallback covers degraded direct-
   // call paths and the empty-Tour / null-cursor case.
-  const a = args.currentAnnotation;
+  const a = args.currentComment;
   if (a) {
     return {
       kind: "top-level",
@@ -43,14 +43,14 @@ export function buildTopLevelComposer(args: {
 }
 
 /**
- * Seed a reply ComposerTarget from the cursor-focused parent Annotation.
- * The target carries the parent's id (not the full Annotation) so the
+ * Seed a reply ComposerTarget from the cursor-focused parent Comment.
+ * The target carries the parent's id (not the full Comment) so the
  * slice doesn't go stale when the bundle refreshes mid-composition —
  * surfaces resolve the live parent at submit time (PRD #234).
  */
 export function buildReplyComposer(args: {
-  currentAnnotation: Annotation | null;
+  currentComment: Comment | null;
 }): ComposerTarget | null {
-  if (!args.currentAnnotation) return null;
-  return { kind: "reply", replies_to: args.currentAnnotation.id };
+  if (!args.currentComment) return null;
+  return { kind: "reply", replies_to: args.currentComment.id };
 }

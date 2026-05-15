@@ -18,7 +18,7 @@ const CARD_FLAT: FlatRow = {
   file: "src/a.ts",
   side: "additions",
   lineEnd: 12,
-  annotationId: "ann-1",
+  commentId: "ann-1",
 };
 
 describe("resizeReanchorTarget (web, issue #327)", () => {
@@ -41,7 +41,7 @@ describe("resizeReanchorTarget (web, issue #327)", () => {
   it("returns the cursor when the cursor is a CardAnchor (DOM-readiness is a runtime check)", () => {
     const cursor: Cursor = {
       kind: "card",
-      annotationId: "ann-1",
+      commentId: "ann-1",
       preferredSide: "additions",
     };
     const target = resizeReanchorTarget({

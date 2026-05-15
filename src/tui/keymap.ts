@@ -13,7 +13,7 @@ export interface KeymapContext {
    *  dispatch primary-action in the diff pane (PRD #107). On a regular
    *  diff row Enter is a noop. */
   cursorOnInteractive: boolean;
-  /** Whether the cursor sits on an Annotation card (PRD #192 / ADR 0022).
+  /** Whether the cursor sits on a Comment card (PRD #192 / ADR 0022).
    *  Routes the row-kind-aware dispatch: `r` and `s` fire only when this
    *  is true; `c` fires only when this is false (and the cursor isn't on
    *  an interactive row either). On a card / row mismatch the action is
@@ -32,8 +32,8 @@ export type KeyAction =
   | { type: "collapse-folder" }
   | { type: "collapse-parent" }
   | { type: "toggle-replies-collapse" }
-  | { type: "next-annotation" }
-  | { type: "prev-annotation" }
+  | { type: "next-comment" }
+  | { type: "prev-comment" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
   | { type: "open-top-level-composer" }
@@ -103,8 +103,8 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   }
 
   if (!key.ctrl && !key.shift) {
-    if (key.name === "n") return { type: "next-annotation" };
-    if (key.name === "p") return { type: "prev-annotation" };
+    if (key.name === "n") return { type: "next-comment" };
+    if (key.name === "p") return { type: "prev-comment" };
     // Issue #297: `e` dispatches per-file Expand-all on the cursored
     // file. The keyboard path mirrors the file-header's `↕` mouse
     // affordance — both end on `expansion.expandFileAll(cursor.file)`.

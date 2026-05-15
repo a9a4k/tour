@@ -10,14 +10,14 @@ import {
 } from "../../src/core/tour-session.js";
 import { initialCursor } from "../../src/core/cursor-state.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
-import type { Tour, Annotation } from "../../src/core/types.js";
+import type { Tour, Comment } from "../../src/core/types.js";
 
 /**
- * Issue #256 — TUI: cursor materialises on the first top-level annotation
+ * Issue #256 — TUI: cursor materialises on the first top-level comment
  * on tour load. Reverts ADR 0011's "lazy materialization on tour load"
  * rule for non-empty tours (the parity rationale broke when ADR 0022
- * shipped URL-anchored mount on the webapp; the "land on first annotation"
- * eye-catcher only delivered when the first annotation sat in the initial
+ * shipped URL-anchored mount on the webapp; the "land on first comment"
+ * eye-catcher only delivered when the first comment sat in the initial
  * viewport).
  *
  * On-load contract:
@@ -53,7 +53,7 @@ function tour(id: string): Tour {
   };
 }
 
-function ann(o: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
+function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
   return {
     id: o.id,
     file: o.file ?? "a.ts",
@@ -96,21 +96,21 @@ function fileA(): BundleFile {
   };
 }
 
-function okBundle(annotations: Annotation[]): TourBundle {
+function okBundle(comments: Comment[]): TourBundle {
   return {
     kind: "ok",
     tour: tour("t1"),
-    annotations,
+    comments,
     diff: DIFF_A,
     files: [fileA()],
   };
 }
 
-function snapshotLostBundle(annotations: Annotation[]): TourBundle {
+function snapshotLostBundle(comments: Comment[]): TourBundle {
   return {
     kind: "snapshot-lost",
     tour: tour("t1"),
-    annotations,
+    comments,
   };
 }
 
@@ -125,7 +125,7 @@ function seedOnTourOpen(bundle: TourBundle, state: TourSessionState): TourSessio
   if (topLevel.length === 0) return state;
   const flatRowsList = view.kind === "ok" ? view.rows.flatRowsList : [];
   const seed = initialCursor({
-    topLevelAnnotations: topLevel,
+    topLevelComments: topLevel,
     flatRows: flatRowsList,
   });
   if (!seed) return state;
@@ -144,7 +144,7 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
     const next = seedOnTourOpen(okBundle([a]), initialTourSessionState());
     expect(next.cursor).toEqual({
       kind: "card",
-      annotationId: "a1",
+      commentId: "a1",
       preferredSide: "additions",
     });
   });
@@ -165,18 +165,18 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
   });
 
   it("cursor.materialize on an already-materialised cursor is a strict no-op — same-tour bundle.refreshed survives user motion", () => {
-    // Simulate the user having moved the cursor to a different annotation
+    // Simulate the user having moved the cursor to a different comment
     // after the initial mount.
     const moved = reduce(initialTourSessionState(), {
       type: "cursor.set",
-      anchor: { kind: "card", annotationId: "a2", preferredSide: "deletions" },
+      anchor: { kind: "card", commentId: "a2", preferredSide: "deletions" },
     }).state;
     // The App-shell suppresses the re-seed via `seededTourIdRef` so the
     // dispatch never fires on `bundle.refreshed`. The reducer's
     // belt-and-suspenders branch returns the same state ref if it does.
     const r = reduce(moved, {
       type: "cursor.materialize",
-      anchor: { kind: "card", annotationId: "a1", preferredSide: "additions" },
+      anchor: { kind: "card", commentId: "a1", preferredSide: "additions" },
     });
     expect(r.state).toBe(moved);
     expect(r.intents).toEqual([]);
@@ -193,7 +193,7 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
     const view = deriveTourSessionView(okBundle([a]), initialTourSessionState());
     if (view.kind !== "ok") throw new Error("expected ok view");
     const seed = initialCursor({
-      topLevelAnnotations: view.nav.topLevel,
+      topLevelComments: view.nav.topLevel,
       flatRows: view.rows.flatRowsList,
     });
     if (!seed) throw new Error("expected seed");
@@ -203,7 +203,7 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
     });
     expect(r.intents).toContainEqual({
       type: "scrollCursorTarget",
-      target: { kind: "card", annotationId: "a1" },
+      target: { kind: "card", commentId: "a1" },
       placement: "center",
     });
   });

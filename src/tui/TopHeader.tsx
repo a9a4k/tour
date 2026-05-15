@@ -7,22 +7,22 @@ import { HamburgerButtonTui } from "./HamburgerButton.js";
 interface TopHeaderTuiProps {
   tour: Tour;
   layout: "split" | "unified";
-  currentAnnotationIdx: number;
+  currentCommentIdx: number;
   topLevelTotal: number;
   // Tour-level additions / deletions summed across the bundle (issue #266
   // / webapp parity #233). Zero totals render no indicator. Pure-addition
   // / pure-deletion tours render only the non-zero side.
   tourStats: DiffStats;
   onOpenPicker: () => void;
-  onPrevAnnotation: () => void;
-  onNextAnnotation: () => void;
+  onPrevComment: () => void;
+  onNextComment: () => void;
   onSplit: () => void;
   onUnified: () => void;
 }
 
 // Single-line header per parent PRD #91 / #93. Two flex children inside
 // the row — left cluster (hamburger + title + sources) anchored to the
-// left edge, right cluster (tour-level diff stats + annotation-nav pill +
+// left edge, right cluster (tour-level diff stats + comment-nav pill +
 // layout toggle, in that reading order per issue #277) pushed right via
 // marginLeft="auto". `flexWrap="wrap"` is a safety net for sub-100-col
 // terminals where the row itself can't fit. Title and sources clip with
@@ -34,12 +34,12 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
   const {
     tour,
     layout,
-    currentAnnotationIdx,
+    currentCommentIdx,
     topLevelTotal,
     tourStats,
     onOpenPicker,
-    onPrevAnnotation,
-    onNextAnnotation,
+    onPrevComment,
+    onNextComment,
     onSplit,
     onUnified,
   } = props;
@@ -71,10 +71,10 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
           deletions={tourStats.deletions}
         />
         <SequencePillTui
-          idx={currentAnnotationIdx}
+          idx={currentCommentIdx}
           total={topLevelTotal}
-          onPrev={onPrevAnnotation}
-          onNext={onNextAnnotation}
+          onPrev={onPrevComment}
+          onNext={onNextComment}
         />
         <box width={1} />
         <LayoutToggleTui layout={layout} onSplit={onSplit} onUnified={onUnified} />

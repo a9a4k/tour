@@ -35,7 +35,7 @@ function folder(
     displayName: "src",
     depth: 0,
     hasChildren: true,
-    annotationCount: 0,
+    commentCount: 0,
     collapsed: false,
     ...overrides,
   };
@@ -51,7 +51,7 @@ function file(
     displayName: "a.ts",
     depth: 0,
     file: f,
-    annotationCount: 0,
+    commentCount: 0,
     ...overrides,
   };
 }
@@ -193,7 +193,7 @@ describe("computeAutoFitWidth", () => {
   it("solves the issue #315 reproduction (depth-5 row, 117-col terminal)", () => {
     // Reproduction filename `get-block-answer-grpc.controller.ts` is
     // 35 chars at depth 5. Per the screenshot in the issue, the row
-    // carries `+58` additions and a `[2]` annotation badge — both
+    // carries `+58` additions and a `[2]` comment badge — both
     // contribute to the fixed cost and must be included so the test
     // exercises the real-world width, not a stripped-down hypothetical.
     //
@@ -208,7 +208,7 @@ describe("computeAutoFitWidth", () => {
       file({
         displayName: "get-block-answer-grpc.controller.ts",
         depth: 5,
-        annotationCount: 2,
+        commentCount: 2,
       }),
     ];
     expect(computeAutoFitWidth(rows, () => stats, 117)).toBe(54);

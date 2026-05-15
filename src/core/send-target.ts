@@ -1,10 +1,10 @@
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
 import { latestHumanLeafId } from "./threads.js";
 
 export interface SendTarget {
   leafId: string;
-  leaf: Annotation;
+  leaf: Comment;
 }
 
 // The `s` dispatch target shared by both surfaces (issue #196, PRD #181).
@@ -16,7 +16,7 @@ export interface SendTarget {
 //
 // Returns null when there is no dispatch to perform:
 //   - cursor is null or on a row (no focused Thread)
-//   - the focused top-level's id isn't in the annotation list (stale)
+//   - the focused top-level's id isn't in the comment list (stale)
 //   - the latest turn in the focused Thread is agent-authored (no human
 //     turn to send; user must write a Reply first)
 //
@@ -25,11 +25,11 @@ export interface SendTarget {
 // through `view.nav.sendTarget`.
 export function sendTarget(
   cursor: Cursor | null,
-  topLevel: ReadonlyArray<Annotation>,
-  repliesByRoot: ReadonlyMap<string, ReadonlyArray<Annotation>>,
+  topLevel: ReadonlyArray<Comment>,
+  repliesByRoot: ReadonlyMap<string, ReadonlyArray<Comment>>,
 ): SendTarget | null {
   if (!cursor || cursor.kind !== "card") return null;
-  const cardId = cursor.annotationId;
+  const cardId = cursor.commentId;
   const top = topLevel.find((a) => a.id === cardId);
   if (!top) return null;
   const descendants = repliesByRoot.get(cardId) ?? [];

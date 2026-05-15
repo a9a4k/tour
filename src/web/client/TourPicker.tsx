@@ -115,8 +115,8 @@ export function TourPicker({
                 <span className={`picker-glyph ${r.status}`}>{r.glyph}</span>
                 <span className="picker-age">{r.age}</span>
                 <span className="picker-title">{r.title}</span>
-                {r.annotationCount > 0 ? (
-                  <span className="badge">{r.annotationCount}</span>
+                {r.commentCount > 0 ? (
+                  <span className="badge">{r.commentCount}</span>
                 ) : null}
               </button>
             );

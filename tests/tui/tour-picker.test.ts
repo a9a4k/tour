@@ -29,9 +29,9 @@ function childrenOf(el: AnyElement): AnyElement[] {
 }
 
 const sampleRows: PickerRow[] = [
-  { id: "tour-a", title: "Tour A", status: "open", glyph: "●", age: "1d", annotationCount: 0 },
-  { id: "tour-b", title: "Tour B", status: "closed", glyph: "○", age: "2d", annotationCount: 3 },
-  { id: "tour-c", title: "Tour C", status: "open", glyph: "●", age: "3d", annotationCount: 1 },
+  { id: "tour-a", title: "Tour A", status: "open", glyph: "●", age: "1d", commentCount: 0 },
+  { id: "tour-b", title: "Tour B", status: "closed", glyph: "○", age: "2d", commentCount: 3 },
+  { id: "tour-c", title: "Tour C", status: "open", glyph: "●", age: "3d", commentCount: 1 },
 ];
 
 function renderPicker(opts: {

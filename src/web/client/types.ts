@@ -2,7 +2,7 @@ import type { TourBundle, BundleFile } from "../../core/tour-bundle.js";
 
 export type AuthorKind = "agent" | "human";
 
-export interface Annotation {
+export interface Comment {
   id: string;
   file: string;
   side: "additions" | "deletions";
@@ -34,13 +34,13 @@ export interface TourSummary {
 }
 
 /**
- * Per-line metadata threaded through Pierre's `lineAnnotations`. A
- * tagged union so the same render slot can host an existing Annotation's
- * card OR an inline composer for a new top-level Annotation at a
+ * Per-line metadata threaded through Pierre's `lineComments`. A
+ * tagged union so the same render slot can host an existing Comment's
+ * card OR an inline composer for a new top-level Comment at a
  * specific line.
  */
-export type AnnotationMetadata =
-  | { kind: "annotation"; annotation: Annotation; isAnchor: boolean }
+export type CommentMetadata =
+  | { kind: "comment"; comment: Comment; isAnchor: boolean }
   | {
       kind: "composer";
       file: string;

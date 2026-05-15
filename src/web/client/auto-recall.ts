@@ -1,5 +1,5 @@
 /**
- * Auto-recall for `r` / `s` on an off-screen Annotation card
+ * Auto-recall for `r` / `s` on an off-screen Comment card
  * (PRD #192 / ADR 0022 slice 2). When a card-targeting action fires and
  * the cursor's card is NOT fully in the viewport, smooth-scroll it to
  * centre BEFORE mounting the composer / dispatching the agent. The

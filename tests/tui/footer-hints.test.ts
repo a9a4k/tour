@@ -5,10 +5,10 @@ import {
   composeFooterPreview,
 } from "../../src/tui/footer-hints.js";
 import { composeFooterHints as composeFooterHintsCore } from "../../src/core/footer-hints.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
-function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "body">): Annotation {
+function ann(o: Partial<Comment> & Pick<Comment, "id" | "body">): Comment {
   return {
     id: o.id,
     file: o.file ?? "x.txt",
@@ -119,7 +119,7 @@ describe("composeFooterHints (issue #184)", () => {
 // scrolled-away cursor doesn't surprise the user.
 describe("composeFooterPreview (PRD #192)", () => {
   it("renders the no-comment placeholder when the cursor is null", () => {
-    expect(composeFooterPreview({ cursor: null, annotations: [] })).toBe(
+    expect(composeFooterPreview({ cursor: null, comments: [] })).toBe(
       "r: — (no comment under cursor)",
     );
   });
@@ -132,31 +132,31 @@ describe("composeFooterPreview (PRD #192)", () => {
       side: "additions",
       preferredSide: "additions",
     };
-    expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
+    expect(composeFooterPreview({ cursor, comments: [] })).toBe(
       "r: — (no comment under cursor)",
     );
   });
 
   it("renders `r: reply to \"<title>\"` when the cursor is on a card", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const annotations = [ann({ id: "a1", body: "fix the null check" })];
-    expect(composeFooterPreview({ cursor, annotations })).toBe(
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const comments = [ann({ id: "a1", body: "fix the null check" })];
+    expect(composeFooterPreview({ cursor, comments })).toBe(
       'r: reply to "fix the null check"',
     );
   });
 
   it("renders no-comment placeholder when the CardAnchor's id is gone (stale)", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
-    expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
+    const cursor: Cursor = { kind: "card", commentId: "ghost", preferredSide: "additions" };
+    expect(composeFooterPreview({ cursor, comments: [] })).toBe(
       "r: — (no comment under cursor)",
     );
   });
 
   it("truncates long titles with an ellipsis", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
     const longBody = "a".repeat(100);
-    const annotations = [ann({ id: "a1", body: longBody })];
-    const out = composeFooterPreview({ cursor, annotations });
+    const comments = [ann({ id: "a1", body: longBody })];
+    const out = composeFooterPreview({ cursor, comments });
     // Expect the body to be truncated with an ellipsis somewhere in the
     // output — the exact width budget lives in the helper but the
     // contract is "title is shorter than the body and ends with an
@@ -167,9 +167,9 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("uses only the first line of a multi-line body for the preview", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const annotations = [ann({ id: "a1", body: "first line\nsecond line" })];
-    const out = composeFooterPreview({ cursor, annotations });
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const comments = [ann({ id: "a1", body: "first line\nsecond line" })];
+    const out = composeFooterPreview({ cursor, comments });
     expect(out).toContain("first line");
     expect(out).not.toContain("second line");
   });
@@ -185,33 +185,33 @@ describe("composeFooterPreview (PRD #192)", () => {
   // at the App-shell call site from the rendered card's Y range — and
   // omits the suffix when it's `"in"` or undefined.
   it("appends `(cursor ↑ above viewport)` when the rendered card is above the viewport rect", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const annotations = [ann({ id: "a1", body: "hi" })];
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const comments = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
-      annotations,
+      comments,
       cardViewportPosition: "above",
     });
     expect(out).toContain("(cursor ↑ above viewport)");
   });
 
   it("appends `(cursor ↓ below viewport)` when the rendered card is below the viewport rect", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const annotations = [ann({ id: "a1", body: "hi" })];
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const comments = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
-      annotations,
+      comments,
       cardViewportPosition: "below",
     });
     expect(out).toContain("(cursor ↓ below viewport)");
   });
 
   it("omits the off-screen suffix when the rendered card intersects the viewport rect", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const annotations = [ann({ id: "a1", body: "hi" })];
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const comments = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
-      annotations,
+      comments,
       cardViewportPosition: "in",
     });
     expect(out).not.toContain("above viewport");
@@ -219,11 +219,11 @@ describe("composeFooterPreview (PRD #192)", () => {
   });
 
   it("omits the off-screen suffix when the position probe couldn't resolve (pre-mount / culled)", () => {
-    const cursor: Cursor = { kind: "card", annotationId: "a1", preferredSide: "additions" };
-    const annotations = [ann({ id: "a1", body: "hi" })];
+    const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
+    const comments = [ann({ id: "a1", body: "hi" })];
     const out = composeFooterPreview({
       cursor,
-      annotations,
+      comments,
       cardViewportPosition: undefined,
     });
     expect(out).toBe('r: reply to "hi"');

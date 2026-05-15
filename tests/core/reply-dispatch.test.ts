@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { shouldDispatchReply } from "../../src/core/reply-dispatch.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 
-function ann(over: Partial<Annotation> & { id: string }): Annotation {
+function ann(over: Partial<Comment> & { id: string }): Comment {
   return {
     id: over.id,
     file: "src/main.ts",
@@ -18,7 +18,7 @@ function ann(over: Partial<Annotation> & { id: string }): Annotation {
 }
 
 describe("shouldDispatchReply", () => {
-  it("fires for human-authored top-level annotations", () => {
+  it("fires for human-authored top-level comments", () => {
     expect(shouldDispatchReply(ann({ id: "a1", author_kind: "human" }))).toBe(true);
   });
 
@@ -30,7 +30,7 @@ describe("shouldDispatchReply", () => {
     ).toBe(true);
   });
 
-  it("does not fire for agent-authored annotations", () => {
+  it("does not fire for agent-authored comments", () => {
     expect(shouldDispatchReply(ann({ id: "a3", author_kind: "agent" }))).toBe(false);
   });
 

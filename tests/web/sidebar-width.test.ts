@@ -27,7 +27,7 @@ function folder(
     displayName: "src",
     depth: 0,
     hasChildren: true,
-    annotationCount: 0,
+    commentCount: 0,
     collapsed: false,
     ...overrides,
   };
@@ -49,7 +49,7 @@ function file(
     displayName: "a.ts",
     depth: 0,
     file: f,
-    annotationCount: 0,
+    commentCount: 0,
     ...overrides,
   };
 }
@@ -156,16 +156,16 @@ describe("computeAutoFitWidthPx", () => {
     expect(computeAutoFitWidthPx(rows, 1200)).toBe(600);
   });
 
-  it("includes the annotation badge in the file-row width", () => {
+  it("includes the comment badge in the file-row width", () => {
     // A long-enough name to push both rows past MIN, so the badge tail
     // actually shifts the result instead of getting absorbed by the floor.
     const baseName = "a-quite-long-controller.ts";
     const without = computeAutoFitWidthPx(
-      [file({ displayName: baseName, depth: 0, annotationCount: 0 })],
+      [file({ displayName: baseName, depth: 0, commentCount: 0 })],
       2400,
     );
     const withBadge = computeAutoFitWidthPx(
-      [file({ displayName: baseName, depth: 0, annotationCount: 3 })],
+      [file({ displayName: baseName, depth: 0, commentCount: 3 })],
       2400,
     );
     expect(withBadge).toBeGreaterThan(without);
@@ -198,7 +198,7 @@ describe("computeAutoFitWidthPx", () => {
       file({
         displayName: "get-block-answer-grpc.controller.ts",
         depth: 5,
-        annotationCount: 2,
+        commentCount: 2,
       }),
     ];
     const fitted = computeAutoFitWidthPx(rows, 1500);

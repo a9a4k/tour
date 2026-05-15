@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { PickerRow } from "./tour-list.js";
 import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
-import type { Annotation, Tour } from "./types.js";
+import type { Comment, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
 import { isCardAnchor, isRowAnchor } from "./cursor-state.js";
 import type {
@@ -61,9 +61,9 @@ export type PickerState =
 
 export type Layout = "split" | "unified";
 
-// Composer target: parent annotation id for replies, file + side + line range
-// for a top-level annotation. The reply target deliberately carries the parent
-// annotation **id** (not the full Annotation) so the slice doesn't go stale
+// Composer target: parent comment id for replies, file + side + line range
+// for a top-level comment. The reply target deliberately carries the parent
+// comment **id** (not the full Comment) so the slice doesn't go stale
 // when the bundle refreshes mid-composition — issue #236, PRD #234 under
 // PRD #207.
 export type ComposerTarget =
@@ -76,7 +76,7 @@ export type ComposerTarget =
     }
   | { kind: "reply"; replies_to: string };
 
-// Tagged-union state machine for the annotation composer (PRD #234). The
+// Tagged-union state machine for the comment composer (PRD #234). The
 // surface's three useStates (composerTarget + composerError + textarea body
 // on the webapp; one ComposerState | null on the TUI) collapse to one
 // authoritative slice. `submitting` and `errored` preserve target + body so
@@ -143,7 +143,7 @@ export type Action =
   | { type: "composer.close" }
   | { type: "composer.setBody"; body: string }
   | { type: "composer.submit" }
-  | { type: "composer.submitted"; annotation: Annotation }
+  | { type: "composer.submitted"; comment: Comment }
   | { type: "composer.failed"; error: string }
   | { type: "composer.retry" }
   | { type: "composer.dismissError" }
@@ -153,11 +153,11 @@ export type Action =
   | { type: "folds.clearOverride"; file: string }
   | { type: "folds.clearAll" }
   | { type: "layout.set"; layout: Layout }
-  | { type: "send-to-agent"; tourId: string; annotationId: string };
+  | { type: "send-to-agent"; tourId: string; commentId: string };
 
 export type ScrollCursorTarget =
   | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
-  | { kind: "card"; annotationId: string };
+  | { kind: "card"; commentId: string };
 
 // `nearest`: only scroll when target is off-screen — used for `n`/`p` and
 // `j`/`k` so adjacent landings don't jolt. `center`: always frame the target
@@ -172,11 +172,11 @@ export type Intent =
   | { type: "revalidateCursor" }
   | { type: "scrollCursorTarget"; target: ScrollCursorTarget; placement: ScrollPlacement }
   | { type: "selectSidebarFile"; file: string }
-  | { type: "mirrorAnnUrl"; annotationId: string | null }
-  | { type: "submitAnnotation"; tourId: string; target: ComposerTarget; body: string }
-  | { type: "scrollToAnnotation"; annotationId: string }
+  | { type: "mirrorAnnUrl"; commentId: string | null }
+  | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
+  | { type: "scrollToComment"; commentId: string }
   | { type: "scrollToComposer"; target: ComposerTarget }
-  | { type: "requestReply"; tourId: string; annotationId: string };
+  | { type: "requestReply"; tourId: string; commentId: string };
 
 export interface ReduceResult {
   state: TourSessionState;
@@ -274,7 +274,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
 
     case "bundle.refreshed": {
-      // Same-tour bundle update (watcher reload / SSE annotation-changed).
+      // Same-tour bundle update (watcher reload / SSE comment-changed).
       // Replaces the bundle slice in place; intentionally does NOT touch
       // picker / replyLock / currentTourId — the user is still on the same
       // tour, so the Tour-switch reset cascade must not fire. Emits
@@ -313,7 +313,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // picker / replyLock / cursor / expansion / composer / folds.
       //
       // PRD #278 slice 1: expansion resets to empty, then seeds from the
-      // inbound bundle's orphan windows so Annotations whose anchor lives
+      // inbound bundle's orphan windows so Comments whose anchor lives
       // in Hidden context render inline on first paint of the new tour.
       const expansion =
         action.bundle.kind === "ok"
@@ -363,7 +363,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "cursor.clear": {
       if (state.cursor === null) return { state, intents: NO_INTENTS };
       const intents: Intent[] = isCardAnchor(state.cursor)
-        ? [{ type: "mirrorAnnUrl", annotationId: null }]
+        ? [{ type: "mirrorAnnUrl", commentId: null }]
         : NO_INTENTS;
       return { state: { ...state, cursor: null }, intents };
     }
@@ -473,12 +473,12 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       return enterSubmitting(state, "open");
 
     case "composer.submitted": {
-      // Submitting → closed; emit `scrollToAnnotation` so the freshly-
-      // created annotation card scrolls into view (replaces the TUI's
-      // `pendingScrollAnnotationId` useState per PRD #234).
+      // Submitting → closed; emit `scrollToComment` so the freshly-
+      // created comment card scrolls into view (replaces the TUI's
+      // `pendingScrollCommentId` useState per PRD #234).
       //
-      // Issue #322: also fold the freshly-created annotation into the
-      // resolved bundle's annotations array on the same dispatch — the
+      // Issue #322: also fold the freshly-created comment into the
+      // resolved bundle's comments array on the same dispatch — the
       // new card renders in the same React commit as the textarea
       // removal, instead of waiting for the SSE → bundle-refetch round-
       // trip (~500-600 ms on large tours). The server-driven
@@ -489,16 +489,16 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // gates composer.submit on a resolved bundle).
       if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
       const intents: Intent[] = [
-        { type: "scrollToAnnotation", annotationId: action.annotation.id },
+        { type: "scrollToComment", commentId: action.comment.id },
       ];
       if (state.bundle.kind !== "ok") {
         return { state: { ...state, composer: { kind: "closed" } }, intents };
       }
       const inner = state.bundle.value;
-      const already = inner.annotations.some((a) => a.id === action.annotation.id);
+      const already = inner.comments.some((a) => a.id === action.comment.id);
       const nextBundle: TourBundle = already
         ? inner
-        : { ...inner, annotations: [...inner.annotations, action.annotation] };
+        : { ...inner, comments: [...inner.comments, action.comment] };
       return {
         state: {
           ...state,
@@ -603,7 +603,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "send-to-agent": {
       // Holds no state — the action's job is to emit the auto-recall + dispatch
-      // intent pair (mirrors `composer.submit` → `submitAnnotation`). Defended
+      // intent pair (mirrors `composer.submit` → `submitComment`). Defended
       // in depth: cursor must be on a CardAnchor and the reply-lock must not be
       // held. The full `canSendToAgent` verdict (author-kind, hasReply,
       // replyAgentConfigured) is gated upstream by the surface affordance —
@@ -620,10 +620,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: [
           {
             type: "scrollCursorTarget",
-            target: { kind: "card", annotationId: state.cursor.annotationId },
+            target: { kind: "card", commentId: state.cursor.commentId },
             placement: "center",
           },
-          { type: "requestReply", tourId: action.tourId, annotationId: action.annotationId },
+          { type: "requestReply", tourId: action.tourId, commentId: action.commentId },
         ],
       };
     }
@@ -657,8 +657,8 @@ function revalidateIfCursor(state: TourSessionState): Intent[] {
 }
 
 // Open → submitting and errored → submitting share their entire transition:
-// preserve target + body, move to submitting, emit `submitAnnotation` for the
-// surface to realise via its `writeAnnotation` plumbing (in-process TUI / HTTP
+// preserve target + body, move to submitting, emit `submitComment` for the
+// surface to realise via its `writeComment` plumbing (in-process TUI / HTTP
 // webapp). Guard on currentTourId: composer opens only while a tour is loaded
 // (surface invariant), but a missing tourId would be a bug we surface as a
 // no-op rather than emit an empty-string intent.
@@ -671,7 +671,7 @@ function enterSubmitting(
   const { target, body } = state.composer;
   return {
     state: { ...state, composer: { kind: "submitting", target, body } },
-    intents: [{ type: "submitAnnotation", tourId: state.currentTourId, target, body }],
+    intents: [{ type: "submitComment", tourId: state.currentTourId, target, body }],
   };
 }
 
@@ -685,9 +685,9 @@ function enterSubmitting(
 // sidebar select) into two semantics so a `j` traversal into a classifier-
 // collapsed file no longer dispatches a `folds.setOverride { value: false }`
 // the user never asked for. Issue #313 extends the same rule to sidebar
-// click — explicit-reveal is now reserved for annotation jumps (n/p,
+// click — explicit-reveal is now reserved for comment jumps (n/p,
 // `?ann=` restore), which dispatch `folds.setOverride` themselves
-// alongside the `cursor.set`. `mirrorAnnUrl` fires when the annotation-id
+// alongside the `cursor.set`. `mirrorAnnUrl` fires when the comment-id
 // under the cursor changed (entering, leaving, or switching cards) so the
 // webapp `?ann=` URL stays in sync.
 function setCursor(
@@ -703,16 +703,16 @@ function setCursor(
   if (nextFile !== null && nextFile !== prevFile) {
     intents.push({ type: "selectSidebarFile", file: nextFile });
   }
-  const prevAnnId = isCardAnchor(state.cursor) ? state.cursor.annotationId : null;
-  const nextAnnId = isCardAnchor(next) ? next.annotationId : null;
+  const prevAnnId = isCardAnchor(state.cursor) ? state.cursor.commentId : null;
+  const nextAnnId = isCardAnchor(next) ? next.commentId : null;
   if (prevAnnId !== nextAnnId) {
-    intents.push({ type: "mirrorAnnUrl", annotationId: nextAnnId });
+    intents.push({ type: "mirrorAnnUrl", commentId: nextAnnId });
   }
   return { state: { ...state, cursor: next }, intents };
 }
 
 function scrollTargetOf(c: Cursor): ScrollCursorTarget {
-  if (c.kind === "card") return { kind: "card", annotationId: c.annotationId };
+  if (c.kind === "card") return { kind: "card", commentId: c.commentId };
   return { kind: "row", file: c.file, side: c.side, lineNumber: c.lineNumber };
 }
 

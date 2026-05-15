@@ -6,7 +6,7 @@ import { TourStatsIndicator } from "../../src/web/client/App.js";
 
 // `TourStatsIndicator` is the tour-level (PR-equivalent) `+N -M` diff-stats
 // indicator that sits in the tour-title bar between the SequencePill
-// annotation-nav widget and the Split/Unified layout toggle (issue #233).
+// comment-nav widget and the Split/Unified layout toggle (issue #233).
 // Display-only, no click handler, monospace + tabular numerals so the
 // numbers don't jitter. Sides are independently omitted when their count
 // hits zero, so pure-addition / pure-deletion tours read cleanly.

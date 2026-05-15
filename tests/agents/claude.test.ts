@@ -15,7 +15,7 @@ const ENVELOPE: ReplyEnvelope = {
     base_source: "HEAD^",
     wip_snapshot: false,
   },
-  triggering_annotation: {
+  triggering_comment: {
     id: "abc123",
     file: "src/main.ts",
     side: "additions",
@@ -54,7 +54,7 @@ describe("claude buildArgs", () => {
     expect(argv[sysIdx + 1]).toBe("SYSTEM_PROMPT_TEXT");
   });
 
-  it("includes the envelope tour id and triggering annotation id in the user prompt", () => {
+  it("includes the envelope tour id and triggering comment id in the user prompt", () => {
     const argv = buildArgs(ENVELOPE, "SYSTEM_PROMPT_TEXT");
     const userPrompt = argv[argv.length - 1];
     expect(userPrompt).toContain("abc123");

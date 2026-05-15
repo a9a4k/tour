@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Annotation, BundleFile, TourBundle, TourSummary } from "./types.js";
+import type { Comment, BundleFile, TourBundle, TourSummary } from "./types.js";
 import { fileIcon } from "./file-icon.js";
 import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
-import { AnnotationMarkdown } from "./markdown/AnnotationMarkdown.js";
+import { CommentMarkdown } from "./markdown/CommentMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows, pickAutoTour } from "../../core/tour-list.js";
 import {
@@ -17,7 +17,7 @@ import {
   type Layout,
   type TourSummary as SessionTourSummary,
 } from "../../core/tour-session.js";
-import { latestAnnotationId, latestHumanLeafId } from "../../core/threads.js";
+import { latestCommentId, latestHumanLeafId } from "../../core/threads.js";
 import { ageMs, isStale, type ReplyLock } from "../../core/reply-lock.js";
 import {
   canSendToAgent,
@@ -38,7 +38,7 @@ import { emptyExpansion, getBoundary } from "../../core/expansion-state.js";
 import {
   cursorAfterExpand,
   cursorAtFirstFileRow,
-  cursorFromAnnotation,
+  cursorFromComment,
   initialCursor,
   moveCursor,
   nextCard,
@@ -114,7 +114,7 @@ const EMPTY_BUNDLE: TourBundle = {
     base_source: "",
     wip_snapshot: false,
   },
-  annotations: [],
+  comments: [],
 };
 
 function readTourFromUrl(fallback: string | null): string | null {
@@ -134,7 +134,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // currentTourId. The store's `bundle` slice is the rendering source of
   // truth: `tour.switched` lands on picker.commit / popstate / auto-pick
   // resolves (applies the CONTEXT-pinned reset cascade);
-  // `bundle.refreshed` lands on SSE annotation-changed (same-tour
+  // `bundle.refreshed` lands on SSE comment-changed (same-tour
   // refresh; no resets).
   const storeRef = useRef<TourSessionStore | null>(null);
   if (storeRef.current === null) {
@@ -237,7 +237,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // `bundle.refreshed` branches (PRD #278 slice 1) — the surface no
   // longer dispatches `expansion.seedFromOrphans` as a follow-up.
   const expansion = sessionState.expansion;
-  const annotationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -260,7 +260,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   //   2. The drag handle's `pointermove` frames during a user drag.
   // Both writers wrap their write in capture + applyPreserveScreenY so
   // the cursor row's on-screen y is pinned across the reflow. Without
-  // the wire, an annotation card above the cursor reflows when the
+  // the wire, a comment card above the cursor reflows when the
   // diff pane narrows and the cursor walks up or down the screen.
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_PX);
   const [isResizing, setIsResizing] = useState<boolean>(false);
@@ -297,7 +297,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // Tour-session runtime (PRD #278 slices 2-6). Subscribes to SSE via the
   // web adapter and dispatches `bundle.refreshed` / `replyLock.loaded` on
   // tour events; realises every intent the reducer emits (loadTour,
-  // submitAnnotation, scroll / mirror / reveal). The runtime re-subscribes
+  // submitComment, scroll / mirror / reveal). The runtime re-subscribes
   // itself when `currentTourId` changes, so this effect runs once at mount
   // and tears down at unmount.
   //
@@ -308,7 +308,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   useEffect(() => {
     const adapter = createWebTourSessionAdapter({
       store,
-      annotationRefs,
+      commentRefs,
       callbacksRef: intentInputsRef,
     });
     const runtime = new TourSessionRuntime(store, adapter);
@@ -375,7 +375,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           type: "cursor.set",
           anchor: {
             kind: "card",
-            annotationId: annFromUrl,
+            commentId: annFromUrl,
             preferredSide: preferredSideOf(prev),
           },
         });
@@ -403,7 +403,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // keeps the hook call unconditional before the real bundle lands.
   const view: TourSessionView = useTourSessionView(store, bundle ?? EMPTY_BUNDLE);
 
-  // tourStats re-plans every file with stable args (empty annotations /
+  // tourStats re-plans every file with stable args (empty comments /
   // expansion, "split" layout) to compute the FULL-diff +N -M totals —
   // that pass needs the FileDiffMetadata shape the view doesn't surface,
   // so parse the raw diff once more here.
@@ -459,7 +459,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const topLevel = view.nav.topLevel;
       const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
       if (!target) return;
-      const ann = topLevel.find((a) => a.id === target.annotationId);
+      const ann = topLevel.find((a) => a.id === target.commentId);
       if (!ann) return;
       setSelectedFile(ann.file);
       store.dispatch({
@@ -473,14 +473,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [cursor, view, revealFileAncestors, store],
   );
 
-  // Re-anchor cursor to a top-level Annotation card on bundle load (PRD #192
+  // Re-anchor cursor to a top-level Comment card on bundle load (PRD #192
   // / ADR 0022; issue #197 Bug B). When the URL carries `?ann=<id>` (or its
   // `#<ann-id>` fragment shape from Issue #179), resolve it to a top-level
-  // Annotation; a stale id (deleted, hand-edited, or pointing at a Reply)
-  // falls back to the first top-level Annotation. Gated on the loaded
+  // Comment; a stale id (deleted, hand-edited, or pointing at a Reply)
+  // falls back to the first top-level Comment. Gated on the loaded
   // Tour matching the routing Tour id so the in-flight Tour-switch window
   // doesn't anchor the new URL's `ann=` against the previous Tour's
-  // annotations. The policy discriminator is `cursor === null` (not
+  // comments. The policy discriminator is `cursor === null` (not
   // `cursorCardId === null`) — a RowAnchor cursor from a `j`/`k` press
   // is a noop, so row motion survives the same render. The cursor.set
   // dispatch fires the mirrorAnnUrl intent which keeps `?ann=` in sync;
@@ -488,9 +488,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // already matches.
   useEffect(() => {
     if (!tourMeta || tourMeta.id !== tourId) return;
-    // Re-anchor reads top-level annotations from `view.nav` — NavBase lives
+    // Re-anchor reads top-level comments from `view.nav` — NavBase lives
     // on both branches (issue #246), so snapshot-lost bundles still get
-    // initial-selection / sidebar-reveal effects when annotations are present.
+    // initial-selection / sidebar-reveal effects when comments are present.
     const topLevel = view.nav.topLevel;
     if (topLevel.length === 0) {
       setSelectedFile((curr) => (curr === null ? curr : null));
@@ -499,13 +499,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const action = decideReanchor(cursor, readAnnFromUrl(), topLevel);
     if (action.kind === "noop") return;
     // Fresh landing (URL `?ann=` restore or stale-fallback to first
-    // annotation): cursor.set carries `placement: "center"` so the
+    // comment): cursor.set carries `placement: "center"` so the
     // scrollCursorTarget intent frames the card mid-viewport. In-flight
     // moves (n/p, j/k, click) omit placement and fall back to the
     // reducer's `nearest` default.
     store.dispatch({
       type: "cursor.set",
-      anchor: cursorFromAnnotation(action.target, preferredSideOf(cursor)),
+      anchor: cursorFromComment(action.target, preferredSideOf(cursor)),
       placement: "center",
     });
     setSelectedFile(action.target.file);
@@ -570,10 +570,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const tourListData = store.getState().tourList;
     if (tourListData.kind !== "ok") return;
     const counts: Record<string, number> = {};
-    if (bundle) counts[bundle.tour.id] = bundle.annotations.length;
+    if (bundle) counts[bundle.tour.id] = bundle.comments.length;
     const rows = buildPickerRows({
       tours: tourListData.value,
-      annotationCounts: counts,
+      commentCounts: counts,
       now: Date.now(),
     });
     store.dispatch({ type: "picker.open", rows });
@@ -606,11 +606,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     restoreFocusAfterPicker();
   }, [store, restoreFocusAfterPicker]);
 
-  const registerAnnotationRef = useCallback((id: string, el: HTMLDivElement | null) => {
+  const registerCommentRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) {
-      annotationRefs.current.set(id, el);
+      commentRefs.current.set(id, el);
     } else {
-      annotationRefs.current.delete(id);
+      commentRefs.current.delete(id);
     }
   }, []);
 
@@ -650,7 +650,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   // Issue #303 preserve-cursor-on-layout-toggle: resolve a cursor anchor
   // to the DOM element that hosts its row. Card cursors return the
-  // annotation card wrapper (registered in `annotationRefs`). Diff
+  // comment card wrapper (registered in `commentRefs`). Diff
   // cursors project through `resolveCursorRowIdx` to the FlatRow, then
   // query the `.tour-row` element by its layout-invariant `data-row-id`
   // attribute — emitted by `<DiffRow>` from leftLineNumber / rightLineNumber
@@ -664,12 +664,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     (c: Cursor, flatRows: ReadonlyArray<FlatRow>): HTMLElement | null => {
       if (typeof document === "undefined") return null;
       if (c.kind === "card") {
-        return annotationRefs.current.get(c.annotationId) ?? null;
+        return commentRefs.current.get(c.commentId) ?? null;
       }
       const idx = resolveCursorRowIdx(c, flatRows);
       if (idx === -1) return null;
       const r = flatRows[idx];
-      if (r.kind === "card") return annotationRefs.current.get(r.annotationId) ?? null;
+      if (r.kind === "card") return commentRefs.current.get(r.commentId) ?? null;
       if (r.kind === "interactive") return null;
       const block = findFileBlock(r.file);
       if (!block) return null;
@@ -823,13 +823,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // issue #313. The cursor lands on the file's first walkable row
       // (synthetic `collapsed-file` banner when classifier-collapsed; first
       // diff row otherwise); Enter on the banner is the explicit-reveal
-      // escape hatch. Annotation jumps (n/p, ?ann= restore) still force-
+      // escape hatch. Comment jumps (n/p, ?ann= restore) still force-
       // unfold — see this file's `gotoNextCard` / `gotoPrevCard` callsites.
       // Cursor follows the click — matches the TUI rule (PRD US 20). The
       // reducer's `nearest` default for scrollCursorTarget keeps the
       // first-row scroll from fighting the file-block scroll above: the
       // row is already at the top after `block: "start"`, so `nearest`
-      // is a no-op. `?ann=` (annotation-focus bookmark) is left untouched.
+      // is a no-op. `?ann=` (comment-focus bookmark) is left untouched.
       if (view.kind !== "ok") return;
       const seeded = cursorAtFirstFileRow(name, view.rows.flatRowsList);
       if (seeded) store.dispatch({ type: "cursor.set", anchor: seeded });
@@ -840,10 +840,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // Tour-level (PR-equivalent) `+N -M` totals for the title-bar indicator
   // (issue #233 / PRD #212). Computed once per bundle by planning each
   // file's rows with stable args (split layout, empty expansion, no
-  // annotations, no classifier-collapse) so the count reflects the FULL
+  // comments, no classifier-collapse) so the count reflects the FULL
   // diff regardless of which files are currently collapsed in the UI or
   // classifier-flagged for collapse. Cursor moves, layout toggles,
-  // expansion changes, and annotation navigation do NOT re-walk.
+  // expansion changes, and comment navigation do NOT re-walk.
   const filesByName =
     view.kind === "ok" ? view.bundle.filesByName : null;
   const tourStats = useMemo(() => {
@@ -869,7 +869,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (c) return c;
     if (view.kind !== "ok") return null;
     const seeded = initialCursor({
-      topLevelAnnotations: view.nav.topLevel,
+      topLevelComments: view.nav.topLevel,
       flatRows: view.rows.flatRowsList,
     });
     if (seeded) store.dispatch({ type: "cursor.materialize", anchor: seeded });
@@ -881,9 +881,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // the composer / dispatching the agent. The pure logic lives in
   // `./auto-recall.ts` so it can be unit-tested without mounting <App />.
   const recallCardThen = useCallback(
-    (annotationId: string, then: () => void): void => {
+    (commentId: string, then: () => void): void => {
       recallCardIntoView({
-        cardElement: annotationRefs.current.get(annotationId) ?? null,
+        cardElement: commentRefs.current.get(commentId) ?? null,
         viewportHeight:
           window.innerHeight || document.documentElement.clientHeight || 0,
         then,
@@ -1023,7 +1023,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
-  // side selection, annotate-at-cursor (c), annotation nav (n/p, with
+  // side selection, comment-at-cursor (c), comment nav (n/p, with
   // β-coupling to the line cursor), layout toggle (Shift-L, rebound
   // from the previous lowercase l), and picker open (Shift-T) all flow
   // through the pure dispatchCursorKey classifier so the keymap
@@ -1155,7 +1155,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         }
       }
       const cardAuthorKind =
-        view.kind === "ok" ? view.cursor.cardAnnotation?.author_kind ?? null : null;
+        view.kind === "ok" ? view.cursor.cardComment?.author_kind ?? null : null;
       const action = dispatchCursorKey(
         {
           key: e.key,
@@ -1208,10 +1208,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           setLayoutChoice(store.getState().layout === "split" ? "unified" : "split");
           return;
         }
-        case "nav-next-annotation":
+        case "nav-next-comment":
           navigateBy(1);
           return;
-        case "nav-prev-annotation":
+        case "nav-prev-comment":
           navigateBy(-1);
           return;
         case "move-down": {
@@ -1251,7 +1251,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
         }
-        case "annotate-at-cursor": {
+        case "comment-at-cursor": {
           const c = cursor ?? materializeCursor();
           if (!c) return;
           // The keymap routes `a` to a noop when cursorOnCard is true,
@@ -1275,15 +1275,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         }
         case "open-reply-on-card": {
           // PRD #192 / ADR 0022. `r` on a card opens the Reply composer
-          // for the latest Annotation in that thread (matches the in-card
+          // for the latest Comment in that thread (matches the in-card
           // Reply button's #191 semantics). When the cursor's card is off-
           // screen the renderer auto-recalls it before the composer mounts
           // (US 14 — the action reveals its target).
           if (view.kind !== "ok") return;
-          const cardAnn = view.cursor.cardAnnotation;
+          const cardAnn = view.cursor.cardComment;
           const cardId = view.cursor.cardId;
           if (!cardAnn || !cardId) return;
-          const latestId = latestAnnotationId(
+          const latestId = latestCommentId(
             cardAnn,
             [...(view.nav.repliesByRoot.get(cardId) ?? [])],
           );
@@ -1321,7 +1321,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           store.dispatch({
             type: "send-to-agent",
             tourId,
-            annotationId: target.leafId,
+            commentId: target.leafId,
           });
           return;
         }
@@ -1417,18 +1417,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     };
   }, [composer.kind]);
 
-  // Click anywhere on an Annotation card → lands the cursor on that card
+  // Click anywhere on a Comment card → lands the cursor on that card
   // (PRD #192 / ADR 0022 slice 2). Mouse-driven path matches keyboard
   // n/p: both write a CardAnchor for the clicked / nav'd top-level
-  // annotation.
+  // comment.
   const setCursorFromCardClick = useCallback(
-    (annotationId: string) => {
+    (commentId: string) => {
       if (view.kind !== "ok") return;
-      const a = view.bundle.annotations.find((x) => x.id === annotationId);
+      const a = view.bundle.comments.find((x) => x.id === commentId);
       if (!a) return;
       store.dispatch({
         type: "cursor.set",
-        anchor: cursorFromAnnotation(a, preferredSideOf(store.getState().cursor)),
+        anchor: cursorFromComment(a, preferredSideOf(store.getState().cursor)),
       });
       setSelectedFile(a.file);
     },
@@ -1446,17 +1446,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   // Explicit reply-agent dispatch (issue #184, ADR 0021). Fired by the
-  // `Send to {agent}` button below each human Annotation card. Dispatches
+  // `Send to {agent}` button below each human Comment card. Dispatches
   // the `send-to-agent` reducer action; the Tour-session runtime + web
   // adapter chain emits the auto-recall `scrollCursorTarget` intent and
   // POSTs `/api/tours/:id/request-reply` (PRD #278 slice 7). Fire-and-
   // forget — the watcher's `reply-in-flight` SSE event surfaces the in-
-  // flight pill; on completion, `annotation-changed` brings in the
+  // flight pill; on completion, `comment-changed` brings in the
   // landed Reply.
   const sendToAgent = useCallback(
-    (annotationId: string) => {
+    (commentId: string) => {
       if (!tourId) return;
-      store.dispatch({ type: "send-to-agent", tourId, annotationId });
+      store.dispatch({ type: "send-to-agent", tourId, commentId });
     },
     [tourId, store],
   );
@@ -1464,7 +1464,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // Submit-or-retry dispatcher (PRD #234 slice 3, issue #238). Reads the
   // current composer kind and routes to `composer.submit` (open) or
   // `composer.retry` (errored); both transitions land on `submitting` and
-  // emit the `submitAnnotation` intent which the intent listener realises
+  // emit the `submitComment` intent which the intent listener realises
   // as an HTTP POST. The body-trimming gate stays in the UI so we don't
   // round-trip whitespace-only drafts; the reducer doesn't validate body
   // shape.
@@ -1596,12 +1596,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             </aside>
             <main className="app-main">
               <div className="banner">
-                Snapshot lost — annotations preserved but diff cannot be displayed
+                Snapshot lost — comments preserved but diff cannot be displayed
               </div>
-              <AnnotationListSnapshotLost
+              <CommentListSnapshotLost
                 nav={view.nav}
                 cursor={cursor}
-                registerAnnotationRef={registerAnnotationRef}
+                registerCommentRef={registerCommentRef}
                 composerTarget={composerTarget}
                 composerBody={composerBody}
                 composerError={composerError}
@@ -1699,8 +1699,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                     }
                     onAnnotate={openComposerOnRow}
                     onCardClick={setCursorFromCardClick}
-                    annotationProps={{
-                      registerRef: registerAnnotationRef,
+                    commentProps={{
+                      registerRef: registerCommentRef,
                       composerBody,
                       composerError,
                       onComposerBodyChange,
@@ -1737,7 +1737,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           showSendHint:
             view.kind === "ok" &&
             view.cursor.onCard &&
-            view.cursor.cardAnnotation?.author_kind === "human" &&
+            view.cursor.cardComment?.author_kind === "human" &&
             replyLock === null,
         })}
       />
@@ -1815,9 +1815,9 @@ interface FolderRowProps {
   onToggle: (path: string) => void;
 }
 
-// React.memo so cursor / annotation-nav state changes in App don't re-render
+// React.memo so cursor / comment-nav state changes in App don't re-render
 // every sidebar row. Without this, the plain function rendered ~800 times per
-// annotation click despite none of its props meaningfully changing.
+// comment click despite none of its props meaningfully changing.
 // Exported so unit tests can mount the row in isolation.
 export const FolderRow = React.memo(function FolderRow({
   row,
@@ -1873,18 +1873,18 @@ export const FileRow = React.memo(function FileRow({
     >
       <Icon className={`status-icon ${statusClass}`} />
       <span className="file-name">{row.displayName}</span>
-      {row.annotationCount > 0 ? <span className="badge">{row.annotationCount}</span> : null}
+      {row.commentCount > 0 ? <span className="badge">{row.commentCount}</span> : null}
     </button>
   );
 });
 
-interface AnnotationCardProps {
-  annotation: Annotation;
-  replies?: Annotation[];
+interface CommentCardProps {
+  comment: Comment;
+  replies?: Comment[];
   isCurrent: boolean;
-  // 1-based position in the top-level nav order. null when the annotation
-  // isn't in topLevel (defensive — shouldn't happen since AnnotationCard
-  // only ever renders top-level annotations). Header omits the counter
+  // 1-based position in the top-level nav order. null when the comment
+  // isn't in topLevel (defensive — shouldn't happen since CommentCard
+  // only ever renders top-level comments). Header omits the counter
   // when null or when navTotal is 0.
   navIndex: number | null;
   navTotal: number;
@@ -1892,34 +1892,34 @@ interface AnnotationCardProps {
   composerBody?: string;
   composerError?: string | null;
   onComposerBodyChange?: (body: string) => void;
-  // The annotation id (top-level or inline Reply) currently targeted by
+  // The comment id (top-level or inline Reply) currently targeted by
   // the reply composer; null/undefined → composer not open in this card.
-  // When set, the composer renders below the matching annotation's
+  // When set, the composer renders below the matching comment's
   // action row — top-level beneath the replies list, inline Reply
   // beneath the Reply itself.
   replyTargetId?: string | null;
-  // Callbacks now take the annotation id so inline-Reply rows can address
+  // Callbacks now take the comment id so inline-Reply rows can address
   // themselves (issue #189, PRD #181 story 11). Top-level callers pass
   // the function directly; the action row computes the right id at
   // click time.
-  onOpenReply?: (annotationId: string) => void;
+  onOpenReply?: (commentId: string) => void;
   onSubmitReply?: () => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181).
   // Null/undefined → the "Send to {agent}" affordance is hidden.
   replyAgent?: string | null;
-  onSendToAgent?: (annotationId: string) => void;
+  onSendToAgent?: (commentId: string) => void;
   // Cursor-landing callback (PRD #192 / ADR 0022 slice 2). Fires when the
   // user clicks anywhere on the card so the cursor follows the click — a
   // subsequent keyboard `r` / `s` then targets the same card. Receives the
-  // top-level annotation id (the cursor stop), not any clicked Reply id.
-  onCardClick?: (annotationId: string) => void;
+  // top-level comment id (the cursor stop), not any clicked Reply id.
+  onCardClick?: (commentId: string) => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
 // design lifted `now` to App and threaded it through every FileBlock /
-// AnnotationCard, which meant the whole tree re-rendered each second whenever
+// CommentCard, which meant the whole tree re-rendered each second whenever
 // a reply was in-flight. With the tick local, only the pill itself re-renders.
 function ReplyPill({ lock }: { lock: ReplyLock }): React.JSX.Element {
   const [now, setNow] = useState<number>(() => Date.now());
@@ -1949,17 +1949,17 @@ function ReplyPill({ lock }: { lock: ReplyLock }): React.JSX.Element {
 }
 
 function pillTargetsThisCard(
-  annotationId: string,
-  replies: Annotation[] | undefined,
+  commentId: string,
+  replies: Comment[] | undefined,
   lock: ReplyLock,
 ): boolean {
-  if (lock.responding_to === annotationId) return true;
+  if (lock.responding_to === commentId) return true;
   if (!replies) return false;
   return replies.some((r) => r.id === lock.responding_to);
 }
 
-export function AnnotationCard({
-  annotation,
+export function CommentCard({
+  comment,
   replies,
   isCurrent,
   navIndex,
@@ -1976,28 +1976,28 @@ export function AnnotationCard({
   replyAgent,
   onSendToAgent,
   onCardClick,
-}: AnnotationCardProps): React.JSX.Element {
+}: CommentCardProps): React.JSX.Element {
   const range =
-    annotation.line_start === annotation.line_end
-      ? `${annotation.line_start}`
-      : `${annotation.line_start}-${annotation.line_end}`;
+    comment.line_start === comment.line_end
+      ? `${comment.line_start}`
+      : `${comment.line_start}-${comment.line_end}`;
   const showPill =
-    !!replyLock && pillTargetsThisCard(annotation.id, replies, replyLock);
+    !!replyLock && pillTargetsThisCard(comment.id, replies, replyLock);
   const lockHeld = replyLock != null;
   const lockedTooltip = replyLock
     ? `${replyLock.agent} is replying — wait`
     : undefined;
   // A Thread carries exactly one action row at the bottom (issue #191).
-  // The Reply button targets the latest Annotation in the Thread so a
+  // The Reply button targets the latest Comment in the Thread so a
   // new Reply continues from where the conversation is, not from where
   // it started. The Send button targets the latest human leaf per the
   // unchanged rule from #190 — null when the latest turn is agent
   // (the user must write a human Reply first).
   const descendants = replies ?? [];
-  const replyTargetForOpen = latestAnnotationId(annotation, descendants);
-  const sendLeafId = latestHumanLeafId(annotation, descendants);
+  const replyTargetForOpen = latestCommentId(comment, descendants);
+  const sendLeafId = latestHumanLeafId(comment, descendants);
   // The latest leaf is by construction a leaf (hasReply: false); when
-  // sendLeafId is non-null it's also human. So the per-Annotation
+  // sendLeafId is non-null it's also human. So the per-Comment
   // predicate inputs collapse to a fixed shape that depends only on
   // the agent-configured + lock-held axes.
   const sendVerdict: CanSendToAgentResult =
@@ -2016,10 +2016,10 @@ export function AnnotationCard({
   const showSendButton = sendVerdict.visible && !!onSendToAgent && !!sendLeafId;
   return (
     <div
-      className={isCurrent ? "annotation-block current" : "annotation-block"}
-      ref={(el) => registerRef?.(annotation.id, el)}
-      data-annotation-id={annotation.id}
-      onClick={() => onCardClick?.(annotation.id)}
+      className={isCurrent ? "comment-block current" : "comment-block"}
+      ref={(el) => registerRef?.(comment.id, el)}
+      data-comment-id={comment.id}
+      onClick={() => onCardClick?.(comment.id)}
     >
       <div className="ann-header">
         {isCurrent ? (
@@ -2028,16 +2028,16 @@ export function AnnotationCard({
         {navIndex !== null && navTotal > 0 ? (
           <span className="nav-index">{navIndex} / {navTotal}{" "}</span>
         ) : null}
-        <span className={`author-kind ${annotation.author_kind}`}>
-          [{annotation.author_kind}]
+        <span className={`author-kind ${comment.author_kind}`}>
+          [{comment.author_kind}]
         </span>{" "}
-        {annotation.author !== annotation.author_kind ? (
-          <>{annotation.author} · </>
+        {comment.author !== comment.author_kind ? (
+          <>{comment.author} · </>
         ) : null}
-        {annotation.file}:{range}
+        {comment.file}:{range}
       </div>
       <div className="ann-body">
-        <AnnotationMarkdown body={annotation.body} />
+        <CommentMarkdown body={comment.body} />
       </div>
       {replies && replies.length > 0 ? (
         <div className="ann-replies">
@@ -2046,7 +2046,7 @@ export function AnnotationCard({
               className="ann-reply"
               key={r.id}
               ref={(el) => registerRef?.(r.id, el)}
-              id={`annotation-${r.id}`}
+              id={`comment-${r.id}`}
             >
               <div className="ann-header">
                 <span className={`author-kind ${r.author_kind}`}>
@@ -2055,7 +2055,7 @@ export function AnnotationCard({
                 {r.author !== r.author_kind ? <> {r.author}</> : null}
               </div>
               <div className="ann-body">
-                <AnnotationMarkdown body={r.body} />
+                <CommentMarkdown body={r.body} />
               </div>
               {replyTargetId === r.id ? (
                 <div className="ann-reply-composer">
@@ -2075,7 +2075,7 @@ export function AnnotationCard({
         </div>
       ) : null}
       {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
-      {replyTargetId === annotation.id ? (
+      {replyTargetId === comment.id ? (
         <div className="ann-reply-composer">
           <Composer
             placeholder="Reply…"
@@ -2097,7 +2097,7 @@ export function AnnotationCard({
                 e.stopPropagation();
                 // Land the cursor on this card so a follow-up keyboard `r`
                 // / `s` targets it (PRD #192 / ADR 0022 slice 2).
-                onCardClick?.(annotation.id);
+                onCardClick?.(comment.id);
                 onOpenReply(replyTargetForOpen);
               }}
             >
@@ -2112,7 +2112,7 @@ export function AnnotationCard({
               title={sendTooltip}
               onClick={(e) => {
                 e.stopPropagation();
-                onCardClick?.(annotation.id);
+                onCardClick?.(comment.id);
                 if (sendVerdict.enabled) onSendToAgent(sendLeafId);
               }}
             >
@@ -2213,10 +2213,10 @@ function Composer({
   );
 }
 
-interface AnnotationListSnapshotLostProps {
+interface CommentListSnapshotLostProps {
   nav: NavBase;
   cursor: Cursor | null;
-  registerAnnotationRef: (id: string, el: HTMLDivElement | null) => void;
+  registerCommentRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
   composerBody: string;
   composerError: string | null;
@@ -2226,17 +2226,17 @@ interface AnnotationListSnapshotLostProps {
   onCancel: () => void;
   replyLock: ReplyLock | null;
   replyAgent?: string | null;
-  onSendToAgent: (annotationId: string) => void;
-  onCardClick: (annotationId: string) => void;
+  onSendToAgent: (commentId: string) => void;
+  onCardClick: (commentId: string) => void;
 }
 
-// Renders annotations when the bundle is `snapshot-lost`. Reads `view.nav`
+// Renders comments when the bundle is `snapshot-lost`. Reads `view.nav`
 // directly (issue #246 lifts NavBase to both branches), so the inline
-// `topLevelAnnotations` / `buildThreads` re-derivation is gone.
-function AnnotationListSnapshotLost({
+// `topLevelComments` / `buildThreads` re-derivation is gone.
+function CommentListSnapshotLost({
   nav,
   cursor,
-  registerAnnotationRef,
+  registerCommentRef,
   composerTarget,
   composerBody,
   composerError,
@@ -2248,11 +2248,11 @@ function AnnotationListSnapshotLost({
   replyAgent,
   onSendToAgent,
   onCardClick,
-}: AnnotationListSnapshotLostProps): React.JSX.Element {
+}: CommentListSnapshotLostProps): React.JSX.Element {
   const { topLevel, repliesByRoot, navIndexById, navTotal } = nav;
-  if (topLevel.length === 0) return <div className="empty">No annotations</div>;
+  if (topLevel.length === 0) return <div className="empty">No comments</div>;
   const cursorCardId =
-    cursor && cursor.kind === "card" ? cursor.annotationId : null;
+    cursor && cursor.kind === "card" ? cursor.commentId : null;
   return (
     <>
       {topLevel.map((a) => {
@@ -2264,14 +2264,14 @@ function AnnotationListSnapshotLost({
             ? composerTarget.replies_to
             : null;
         return (
-          <AnnotationCard
+          <CommentCard
             key={a.id}
-            annotation={a}
+            comment={a}
             replies={replies}
             isCurrent={a.id === cursorCardId}
             navIndex={navIndexById.get(a.id) ?? null}
             navTotal={navTotal}
-            registerRef={registerAnnotationRef}
+            registerRef={registerCommentRef}
             replyTargetId={replyTargetId}
             composerBody={replyTargetId !== null ? composerBody : ""}
             composerError={replyTargetId !== null ? composerError : null}
@@ -2306,13 +2306,13 @@ function SequencePill({ idx, total, onPrev, onNext }: SequencePillProps): React.
   const prevDisabled = !offCard && idx <= 0;
   const nextDisabled = !offCard && idx >= total - 1;
   return (
-    <div className="sequence-pill" role="navigation" aria-label="Annotation navigation">
+    <div className="sequence-pill" role="navigation" aria-label="Comment navigation">
       <button
         type="button"
         className="pill-chevron"
         onClick={onPrev}
         disabled={prevDisabled}
-        aria-label="Previous annotation"
+        aria-label="Previous comment"
       >
         ‹
       </button>
@@ -2324,7 +2324,7 @@ function SequencePill({ idx, total, onPrev, onNext }: SequencePillProps): React.
         className="pill-chevron"
         onClick={onNext}
         disabled={nextDisabled}
-        aria-label="Next annotation"
+        aria-label="Next comment"
       >
         ›
       </button>

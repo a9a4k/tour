@@ -1,5 +1,5 @@
 import { getTour, resolveIdPrefix } from "../core/tour-store.js";
-import { readAnnotations } from "../core/annotations-store.js";
+import { readComments } from "../core/comments-store.js";
 import { printOutput } from "./output.js";
 
 interface ShowArgs {
@@ -11,10 +11,10 @@ interface ShowArgs {
 export async function show(args: ShowArgs): Promise<void> {
   const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
   const tour = await getTour(args.cwd, resolvedId);
-  const annotations = await readAnnotations(args.cwd, resolvedId);
+  const comments = await readComments(args.cwd, resolvedId);
 
   if (args.json) {
-    printOutput({ ...tour, annotations }, true);
+    printOutput({ ...tour, comments }, true);
     return;
   }
 
@@ -26,8 +26,8 @@ export async function show(args: ShowArgs): Promise<void> {
   console.log(`Created: ${tour.created_at}`);
   if (tour.closed_at) console.log(`Closed:  ${tour.closed_at}`);
   console.log(`WIP snapshot: ${tour.wip_snapshot}`);
-  console.log(`\nComments (${annotations.length}):`);
-  for (const a of annotations) {
+  console.log(`\nComments (${comments.length}):`);
+  for (const a of comments) {
     const range =
       a.line_start === a.line_end
         ? `${a.line_start}`

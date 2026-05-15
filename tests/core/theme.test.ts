@@ -50,7 +50,7 @@ describe("theme tokens", () => {
     // Currently-shown row (alpha .13)
     expect(theme.bg.accentCurrent.web).toBe("rgba(31, 111, 235, 0.13)");
     expect(theme.bg.accentCurrent.tui).toBe("#0f1e33");
-    // Annotation row tint (alpha .15 of blue.4)
+    // Comment row tint (alpha .15 of blue.4)
     expect(theme.bg.accentRange.web).toBe("rgba(56, 139, 253, 0.15)");
     expect(theme.bg.accentRange.tui).toBe("#132339");
     // Line cursor row tint (alpha .30 of blue.5 — strong enough to read

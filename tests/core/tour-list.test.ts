@@ -31,7 +31,7 @@ describe("buildPickerRows", () => {
         tour({ id: "b", created_at: ago(30 * 60) }), // 30m ago
         tour({ id: "c", created_at: ago(5 * 60) }), // 5m ago
       ],
-      annotationCounts: {},
+      commentCounts: {},
       now: NOW,
     });
     expect(rows.map((r) => r.id)).toEqual(["c", "b", "a"]);
@@ -43,7 +43,7 @@ describe("buildPickerRows", () => {
         tour({ id: "a", created_at: ago(60), status: "open" }),
         tour({ id: "b", created_at: ago(120), status: "closed" }),
       ],
-      annotationCounts: {},
+      commentCounts: {},
       now: NOW,
     });
     const byId = new Map(rows.map((r) => [r.id, r]));
@@ -73,7 +73,7 @@ describe("buildPickerRows", () => {
     for (const [secs, expected] of cases) {
       const rows = buildPickerRows({
         tours: [tour({ id: "x", created_at: ago(secs) })],
-        annotationCounts: {},
+        commentCounts: {},
         now: NOW,
       });
       expect(rows[0].age, `${secs}s ago`).toBe(expected);
@@ -86,7 +86,7 @@ describe("buildPickerRows", () => {
         tour({ id: "a", title: "", created_at: ago(60) }),
         tour({ id: "b", title: "Hello", created_at: ago(120) }),
       ],
-      annotationCounts: {},
+      commentCounts: {},
       now: NOW,
     });
     const byId = new Map(rows.map((r) => [r.id, r]));
@@ -94,18 +94,18 @@ describe("buildPickerRows", () => {
     expect(byId.get("b")?.title).toBe("Hello");
   });
 
-  it("reflects annotationCounts and defaults missing entries to 0", () => {
+  it("reflects commentCounts and defaults missing entries to 0", () => {
     const rows = buildPickerRows({
       tours: [
         tour({ id: "a", created_at: ago(60) }),
         tour({ id: "b", created_at: ago(120) }),
       ],
-      annotationCounts: { a: 7 },
+      commentCounts: { a: 7 },
       now: NOW,
     });
     const byId = new Map(rows.map((r) => [r.id, r]));
-    expect(byId.get("a")?.annotationCount).toBe(7);
-    expect(byId.get("b")?.annotationCount).toBe(0);
+    expect(byId.get("a")?.commentCount).toBe(7);
+    expect(byId.get("b")?.commentCount).toBe(0);
   });
 
   it("breaks ties on identical created_at deterministically by id", () => {
@@ -116,7 +116,7 @@ describe("buildPickerRows", () => {
         tour({ id: "aaa", created_at: same }),
         tour({ id: "mmm", created_at: same }),
       ],
-      annotationCounts: {},
+      commentCounts: {},
       now: NOW,
     });
     const b = buildPickerRows({
@@ -125,7 +125,7 @@ describe("buildPickerRows", () => {
         tour({ id: "aaa", created_at: same }),
         tour({ id: "zzz", created_at: same }),
       ],
-      annotationCounts: {},
+      commentCounts: {},
       now: NOW,
     });
     expect(a.map((r) => r.id)).toEqual(b.map((r) => r.id));

@@ -1,19 +1,19 @@
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 import type { FlatRow, DiffFlatRow, InteractiveFlatRow, CardFlatRow } from "./flat-rows.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 
 /**
  * Unified Cursor (ADR 0022 → ADR 0023 / PRD #192, issue #200): one anchor
- * that walks diff rows, interactive rows, AND Annotation cards. Tagged-
+ * that walks diff rows, interactive rows, AND Comment cards. Tagged-
  * union: a `RowAnchor` addresses a diff or interactive row by
  * `(file, side, lineNumber)` (with an optional `interactive` discriminator
- * for gap-row family rows); a `CardAnchor` addresses an Annotation card by
- * `annotationId`.
+ * for gap-row family rows); a `CardAnchor` addresses a Comment card by
+ * `commentId`.
  *
  * Two motion gestures, not two lanes (ADR 0023, issue #200): `j`/`k` is
  * the **step** gesture — one row per press, no destination filter, so a
  * card row is a valid stop. `n`/`p` is the **jump** gesture — one top-
- * level Annotation per press, regardless of intervening rows. Cards are
+ * level Comment per press, regardless of intervening rows. Cards are
  * cursor-eligible stops for both; the two differ in distance per press,
  * not in destination kind.
  *
@@ -42,7 +42,7 @@ export interface RowAnchor {
 
 export interface CardAnchor {
   kind: "card";
-  annotationId: string;
+  commentId: string;
   /** Carried so an `h`/`l` choice survives step-across-card and jump-
    *  between-cards (issue #200 AC). The next diff-row landing applies it. */
   preferredSide: "additions" | "deletions";
@@ -67,24 +67,24 @@ export function preferredSideOf(c: Cursor | null): "additions" | "deletions" {
 }
 
 /**
- * Initial cursor: first top-level Annotation's card if any, else first
+ * Initial cursor: first top-level Comment's card if any, else first
  * DIFF row of the first non-folded file. Returns null when no row is
  * addressable (empty Tour, all files folded, snapshot lost). Per PRD
- * #192 the seeded cursor is now a `CardAnchor` when annotations exist —
+ * #192 the seeded cursor is now a `CardAnchor` when comments exist —
  * the previous `line_end` row-synthesis (issue #170) is dropped in favour
  * of the card being a first-class cursor stop.
  */
 export function initialCursor(args: {
-  topLevelAnnotations: ReadonlyArray<Annotation>;
+  topLevelComments: ReadonlyArray<Comment>;
   flatRows: ReadonlyArray<FlatRow>;
 }): Cursor | null {
   if (args.flatRows.length === 0) return null;
-  const a = args.topLevelAnnotations[0];
+  const a = args.topLevelComments[0];
   if (a) {
     const cardRow = args.flatRows.find(
-      (r): r is CardFlatRow => r.kind === "card" && r.annotationId === a.id,
+      (r): r is CardFlatRow => r.kind === "card" && r.commentId === a.id,
     );
-    if (cardRow) return { kind: "card", annotationId: a.id, preferredSide: "additions" };
+    if (cardRow) return { kind: "card", commentId: a.id, preferredSide: "additions" };
   }
   const firstDiff = args.flatRows.find(
     (r): r is DiffFlatRow => r.kind === "diff",
@@ -96,8 +96,8 @@ export function initialCursor(args: {
 /**
  * Step gesture (`j`/`k`, ADR 0023 / issue #200). Moves the cursor one
  * row in the flat stream in the given direction — no destination filter.
- * Diff rows, interactive rows, and Annotation cards are all valid stops.
- * Stacked cards (multiple top-level annotations at the same anchor) count
+ * Diff rows, interactive rows, and Comment cards are all valid stops.
+ * Stacked cards (multiple top-level comments at the same anchor) count
  * as one step each. preferredSide is preserved across motion (across
  * cards too); the row's natural side wins on single-side destinations.
  * The card-lane jump gesture is `n`/`p` (`nextCard` / `prevCard`), which
@@ -119,46 +119,46 @@ export function moveCursor(
 
 /**
  * Card-lane walker (`n`/`p`). Moves the cursor to the next/previous
- * top-level Annotation — same order the `[N/M]` pill counter reads
+ * top-level Comment — same order the `[N/M]` pill counter reads
  * (issue #197). Walks the canonical top-level list directly, not the
  * flat-row display stream, so `n` from `K/M` always lands on `K+1/M`
  * even when JSONL `created_at` order disagrees with file display order.
  * Returns null at the bounds (no wrap). When the cursor is null, on a
- * row, or pointing at a stale annotation, the walk picks the first
- * (`nextCard`) or last (`prevCard`) top-level annotation — `n`/`p` is
+ * row, or pointing at a stale comment, the walk picks the first
+ * (`nextCard`) or last (`prevCard`) top-level comment — `n`/`p` is
  * a pure topLevel-order gesture, independent of the cursor's stream
  * position (issue #206 revert of #203).
  */
 export function nextCard(
   cursor: Cursor | null,
-  topLevel: ReadonlyArray<Annotation>,
+  topLevel: ReadonlyArray<Comment>,
 ): CardAnchor | null {
   return walkCards(cursor, topLevel, 1);
 }
 
 export function prevCard(
   cursor: Cursor | null,
-  topLevel: ReadonlyArray<Annotation>,
+  topLevel: ReadonlyArray<Comment>,
 ): CardAnchor | null {
   return walkCards(cursor, topLevel, -1);
 }
 
 function walkCards(
   cursor: Cursor | null,
-  topLevel: ReadonlyArray<Annotation>,
+  topLevel: ReadonlyArray<Comment>,
   step: 1 | -1,
 ): CardAnchor | null {
   if (topLevel.length === 0) return null;
   const startIdx =
     cursor && cursor.kind === "card"
-      ? topLevel.findIndex((a) => a.id === cursor.annotationId)
+      ? topLevel.findIndex((a) => a.id === cursor.commentId)
       : -1;
   // When the cursor isn't on a resolvable card, start one step beyond the
   // boundary so the first move lands on the first/last entry.
   const from = startIdx === -1 ? (step === 1 ? -1 : topLevel.length) : startIdx;
   const next = from + step;
   if (next < 0 || next >= topLevel.length) return null;
-  return { kind: "card", annotationId: topLevel[next].id, preferredSide: preferredSideOf(cursor) };
+  return { kind: "card", commentId: topLevel[next].id, preferredSide: preferredSideOf(cursor) };
 }
 
 export function setCursorSide(
@@ -187,7 +187,7 @@ export function setCursorSide(
  * preserved when `files` is provided and the cursor's file is in `files`
  * but has no rows in flatRows (the file is folded — uncollapsing restores
  * the anchor); returns null otherwise. For a CardAnchor: preserved when
- * its annotationId is still in the flat-row stream; returns null otherwise
+ * its commentId is still in the flat-row stream; returns null otherwise
  * — cards have no "snap to file's first row" fallback (PRD #192).
  *
  * Reconciled with the webapp's prior `validateWebappCursor` (issue #232):
@@ -268,7 +268,7 @@ export function resolveCursorRowIdx(
   if (cursor.kind === "card") {
     for (let i = 0; i < flatRows.length; i++) {
       const r = flatRows[i];
-      if (r.kind === "card" && r.annotationId === cursor.annotationId) return i;
+      if (r.kind === "card" && r.commentId === cursor.commentId) return i;
     }
     return -1;
   }
@@ -295,17 +295,17 @@ export function resolveCursorRowIdx(
 }
 
 /**
- * Card cursor for an Annotation. Used by `n`/`p` annotation-nav and by
+ * Card cursor for a Comment. Used by `n`/`p` comment-nav and by
  * mouse-click on a card. The card itself is the cursor stop — no row
  * synthesis (PRD #192 supersedes the ADR 0011 β-coupling rule).
  * `preferredSide` is threaded so an `h`/`l` choice survives the
  * card stop (ADR 0023 / issue #200).
  */
-export function cursorFromAnnotation(
-  a: Annotation,
+export function cursorFromComment(
+  a: Comment,
   preferredSide: "additions" | "deletions" = "additions",
 ): CardAnchor {
-  return { kind: "card", annotationId: a.id, preferredSide };
+  return { kind: "card", commentId: a.id, preferredSide };
 }
 
 function rowMatchesAnchor(
@@ -419,7 +419,7 @@ export function cursorFromRow(
     // the Reply composer and the pill counter shows the card's
     // top-level index. preferredSide is threaded so the next diff-row
     // landing honours the user's last h/l choice.
-    return { kind: "card", annotationId: row.annotationId, preferredSide };
+    return { kind: "card", commentId: row.commentId, preferredSide };
   }
   if (row.kind === "interactive") {
     return cursorOnInteractive({

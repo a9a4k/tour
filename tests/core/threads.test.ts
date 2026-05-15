@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   buildThreads,
   isTopLevel,
-  latestAnnotationId,
+  latestCommentId,
   latestHumanLeafId,
-  topLevelAnnotations,
+  topLevelComments,
 } from "../../src/core/threads.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 
-function ann(over: Partial<Annotation> & { id: string }): Annotation {
+function ann(over: Partial<Comment> & { id: string }): Comment {
   return {
     id: over.id,
     file: "src/main.ts",
@@ -28,7 +28,7 @@ describe("buildThreads", () => {
     expect(buildThreads([])).toEqual([]);
   });
 
-  it("returns each top-level annotation as its own thread with no replies", () => {
+  it("returns each top-level comment as its own thread with no replies", () => {
     const a = ann({ id: "a1", created_at: "2026-05-08T00:00:01Z" });
     const b = ann({ id: "a2", created_at: "2026-05-08T00:00:02Z" });
     expect(buildThreads([a, b])).toEqual([
@@ -65,7 +65,7 @@ describe("buildThreads", () => {
     expect(out.map((t) => t.root.id)).toEqual(["a2", "a3", "a1"]);
   });
 
-  it("interleaves replies for multiple top-level annotations correctly", () => {
+  it("interleaves replies for multiple top-level comments correctly", () => {
     const a = ann({ id: "a", created_at: "2026-05-08T00:00:00Z" });
     const b = ann({ id: "b", created_at: "2026-05-08T00:00:01Z" });
     const ar = ann({ id: "ar", replies_to: "a", created_at: "2026-05-08T00:00:02Z" });
@@ -117,10 +117,10 @@ describe("buildThreads", () => {
 
 describe("latestHumanLeafId", () => {
   // Latest-human-leaf rule for the webapp "Send to {agent}" affordance
-  // (issue #190, PRD #181). The rule picks the human Annotation that
+  // (issue #190, PRD #181). The rule picks the human Comment that
   // should carry the Send button in a Thread — at most one per Thread.
   //
-  // The simplification used: the latest annotation in the Thread by
+  // The simplification used: the latest comment in the Thread by
   // `created_at` (id ascending tiebreak, matching buildThreads) is
   // always a leaf in a well-formed tree (its parent must have an
   // earlier or equal `created_at`). So the rule collapses to "the
@@ -128,7 +128,7 @@ describe("latestHumanLeafId", () => {
   // agent-authored, no Send button anywhere — the user is expected to
   // write a human Reply first.
 
-  it("returns the top-level id when it's a human Annotation with no replies", () => {
+  it("returns the top-level id when it's a human Comment with no replies", () => {
     const a = ann({ id: "a", author_kind: "human" });
     expect(latestHumanLeafId(a, [])).toBe("a");
   });
@@ -183,20 +183,20 @@ describe("latestHumanLeafId", () => {
   });
 });
 
-describe("latestAnnotationId", () => {
-  // The id of the latest Annotation in the Thread by `created_at` (id
+describe("latestCommentId", () => {
+  // The id of the latest Comment in the Thread by `created_at` (id
   // ascending tiebreak). Used by the webapp's single bottom action row
   // (issue #191) as the Reply target — a new Reply continues from
   // where the conversation is, not from where it started.
 
   it("returns the top-level id when there are no replies", () => {
     const a = ann({ id: "a", author_kind: "human" });
-    expect(latestAnnotationId(a, [])).toBe("a");
+    expect(latestCommentId(a, [])).toBe("a");
   });
 
   it("returns the top-level id when there are no replies (agent top-level)", () => {
     const a = ann({ id: "a", author_kind: "agent" });
-    expect(latestAnnotationId(a, [])).toBe("a");
+    expect(latestCommentId(a, [])).toBe("a");
   });
 
   it("returns the latest descendant id when descendants are newer than the top-level", () => {
@@ -213,7 +213,7 @@ describe("latestAnnotationId", () => {
       author_kind: "agent",
       created_at: "2026-05-08T00:00:02Z",
     });
-    expect(latestAnnotationId(top, [r1, r2])).toBe("r2");
+    expect(latestCommentId(top, [r1, r2])).toBe("r2");
   });
 
   it("returns an agent-authored latest descendant id (unlike latestHumanLeafId)", () => {
@@ -224,7 +224,7 @@ describe("latestAnnotationId", () => {
       author_kind: "agent",
       created_at: "2026-05-08T00:00:01Z",
     });
-    expect(latestAnnotationId(top, [r1])).toBe("r1");
+    expect(latestCommentId(top, [r1])).toBe("r1");
     expect(latestHumanLeafId(top, [r1])).toBe(null);
   });
 
@@ -232,20 +232,20 @@ describe("latestAnnotationId", () => {
     const top = ann({ id: "top", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({ id: "a", replies_to: "top", created_at: "2026-05-08T00:00:01Z" });
     const r2 = ann({ id: "b", replies_to: "top", created_at: "2026-05-08T00:00:01Z" });
-    expect(latestAnnotationId(top, [r1, r2])).toBe("b");
+    expect(latestCommentId(top, [r1, r2])).toBe("b");
   });
 });
 
-describe("isTopLevel / topLevelAnnotations", () => {
+describe("isTopLevel / topLevelComments", () => {
   it("isTopLevel: true when replies_to is undefined", () => {
     expect(isTopLevel(ann({ id: "a" }))).toBe(true);
     expect(isTopLevel(ann({ id: "a", replies_to: "x" }))).toBe(false);
   });
 
-  it("topLevelAnnotations filters out replies", () => {
+  it("topLevelComments filters out replies", () => {
     const a = ann({ id: "a" });
     const b = ann({ id: "b", replies_to: "a" });
     const c = ann({ id: "c" });
-    expect(topLevelAnnotations([a, b, c])).toEqual([a, c]);
+    expect(topLevelComments([a, b, c])).toEqual([a, c]);
   });
 });

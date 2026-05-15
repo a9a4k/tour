@@ -1,11 +1,11 @@
 import { getTour } from "./tour-store.js";
-import { readAnnotations } from "./annotations-store.js";
+import { readComments } from "./comments-store.js";
 import { getDiff, gitShow, isShaResolvable } from "./git.js";
 import { parseDiff, type DiffHunk } from "./diff-model.js";
 import { fetchFileContents } from "./file-content-provider.js";
 import { computeOrphanWindows, hunkIndexToBoundaryRef } from "./orphan-window.js";
 import { classifyFile, type FileClassification } from "./file-classifier.js";
-import type { Tour, Annotation } from "./types.js";
+import type { Tour, Comment } from "./types.js";
 import type { BoundaryRef } from "./expansion-state.js";
 
 export interface BundleFile {
@@ -22,7 +22,7 @@ export interface BundleFile {
 /**
  * Everything required to render a pinned Tour at open time, computed fresh
  * on every open. Discriminated by `kind`: `ok` carries the full payload;
- * `snapshot-lost` carries just Tour + Annotations so the surface can render
+ * `snapshot-lost` carries just Tour + Comments so the surface can render
  * the snapshot-lost banner without per-file machinery.
  *
  * Reply lock is intentionally OUT of the bundle — lock changes are
@@ -33,11 +33,11 @@ export type TourBundle =
   | {
       kind: "ok";
       tour: Tour;
-      annotations: Annotation[];
+      comments: Comment[];
       diff: string;
       files: BundleFile[];
     }
-  | { kind: "snapshot-lost"; tour: Tour; annotations: Annotation[] };
+  | { kind: "snapshot-lost"; tour: Tour; comments: Comment[] };
 
 function lineCount(content: string): number {
   if (content.length === 0) return 0;
@@ -48,12 +48,12 @@ function lineCount(content: string): number {
 
 export async function loadTourBundle(cwd: string, tourId: string): Promise<TourBundle> {
   const tour = await getTour(cwd, tourId);
-  const annotations = await readAnnotations(cwd, tourId);
+  const comments = await readComments(cwd, tourId);
 
   const headOk = await isShaResolvable(tour.head_sha, cwd);
   const baseOk = await isShaResolvable(tour.base_sha, cwd);
   if (!headOk || !baseOk) {
-    return { kind: "snapshot-lost", tour, annotations };
+    return { kind: "snapshot-lost", tour, comments };
   }
 
   const diff = await getDiff(tour.base_sha, tour.head_sha, cwd);
@@ -81,7 +81,7 @@ export async function loadTourBundle(cwd: string, tourId: string): Promise<TourB
       const contents = fileContents.get(f.name);
       const orphanWindows: { ref: BoundaryRef; fromStart: number; fromEnd: number }[] = [];
       if (contents) {
-        const map = computeOrphanWindows(f, annotations, {
+        const map = computeOrphanWindows(f, comments, {
           oldLineCount: lineCount(contents.oldContent),
           newLineCount: lineCount(contents.newContent),
         });
@@ -107,5 +107,5 @@ export async function loadTourBundle(cwd: string, tourId: string): Promise<TourB
     }),
   );
 
-  return { kind: "ok", tour, annotations, diff, files };
+  return { kind: "ok", tour, comments, diff, files };
 }

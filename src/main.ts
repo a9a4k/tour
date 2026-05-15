@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { create } from "./cli/create.js";
-import { annotate } from "./cli/annotate.js";
+import { comment } from "./cli/comment.js";
 import { list } from "./cli/list.js";
 import { show } from "./cli/show.js";
 import { close } from "./cli/close.js";
@@ -68,7 +68,7 @@ function defaultPreferredPort(): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 8687;
 }
 
-const USAGE = `tour — local code walkthrough tool with AI annotations
+const USAGE = `tour — local code walkthrough tool with AI comments
 
 Usage:
   tour                                  (open the best surface for your env: webapp on a desktop with a browser, TUI otherwise)
@@ -90,7 +90,7 @@ Usage:
 `;
 
 function firstRunBanner(): string {
-  return `tour ${VERSION} — local code review with AI annotations.
+  return `tour ${VERSION} — local code review with AI comments.
 
   No tours found in this repo.
 
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
       case "annotate": {
         const tourId = positional[0];
         if (!tourId) throw new Error("Usage: tour comment <id> ...");
-        await annotate({
+        await comment({
           tourId,
           file: flag(flags, "file"),
           side: flag(flags, "side"),

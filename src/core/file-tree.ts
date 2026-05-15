@@ -25,7 +25,7 @@ export type VisibleRow<F extends FileEntry> =
       displayName: string;
       depth: number;
       hasChildren: boolean;
-      annotationCount: number;
+      commentCount: number;
       collapsed: boolean;
     }
   | {
@@ -34,7 +34,7 @@ export type VisibleRow<F extends FileEntry> =
       displayName: string;
       depth: number;
       file: F;
-      annotationCount: number;
+      commentCount: number;
     };
 
 function joinPath(parent: string, child: string): string {
@@ -116,7 +116,7 @@ export function sortFilesForStream<F extends FileEntry>(files: ReadonlyArray<F>)
   return out;
 }
 
-function rollupAnnotations<F extends FileEntry>(
+function rollupComments<F extends FileEntry>(
   node: TreeNode<F>,
   counts: Readonly<Record<string, number>>,
   cache: Map<string, number>,
@@ -128,7 +128,7 @@ function rollupAnnotations<F extends FileEntry>(
   if (cached !== undefined) return cached;
   let total = 0;
   for (const child of node.children) {
-    total += rollupAnnotations(child, counts, cache);
+    total += rollupComments(child, counts, cache);
   }
   cache.set(node.path, total);
   return total;
@@ -137,7 +137,7 @@ function rollupAnnotations<F extends FileEntry>(
 export function flatten<F extends FileEntry>(
   root: FolderNode<F>,
   collapsed: ReadonlySet<string>,
-  annotationCounts: Readonly<Record<string, number>>,
+  commentCounts: Readonly<Record<string, number>>,
 ): VisibleRow<F>[] {
   const out: VisibleRow<F>[] = [];
   const cache = new Map<string, number>();
@@ -150,7 +150,7 @@ export function flatten<F extends FileEntry>(
         displayName: node.displayName,
         depth,
         file: node.file,
-        annotationCount: annotationCounts[node.path] ?? 0,
+        commentCount: commentCounts[node.path] ?? 0,
       });
       return;
     }
@@ -161,7 +161,7 @@ export function flatten<F extends FileEntry>(
       displayName: node.displayName,
       depth,
       hasChildren: node.children.length > 0,
-      annotationCount: rollupAnnotations(node, annotationCounts, cache),
+      commentCount: rollupComments(node, commentCounts, cache),
       collapsed: isCollapsed,
     });
     if (isCollapsed) return;
@@ -192,7 +192,7 @@ export interface RevealResult<F extends FileEntry> {
 export function revealAndLocate<F extends FileEntry>(
   root: FolderNode<F>,
   collapsedFolders: ReadonlySet<string>,
-  annotationCounts: Readonly<Record<string, number>>,
+  commentCounts: Readonly<Record<string, number>>,
   filePath: string,
 ): RevealResult<F> | null {
   const ancestors = revealAncestors(root, filePath);
@@ -203,7 +203,7 @@ export function revealAndLocate<F extends FileEntry>(
     for (const a of ancestors) mutable.delete(a);
     next = mutable;
   }
-  const rows = flatten(root, next, annotationCounts);
+  const rows = flatten(root, next, commentCounts);
   const rowIdx = rows.findIndex((r) => r.kind === "file" && r.path === filePath);
   if (rowIdx === -1) return null;
   return { collapsedFolders: next, rows, rowIdx };

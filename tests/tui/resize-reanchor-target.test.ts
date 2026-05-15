@@ -23,7 +23,7 @@ const CARD_FLAT: FlatRow = {
   file: "src/a.ts",
   side: "additions",
   lineEnd: 12,
-  annotationId: "ann-1",
+  commentId: "ann-1",
 };
 
 describe("resizeReanchorTargetId", () => {
@@ -43,10 +43,10 @@ describe("resizeReanchorTargetId", () => {
     expect(id).toBe("diff-row-src/a.ts-additions-12");
   });
 
-  it("returns the cursor's annotation id when the cursor is a CardAnchor", () => {
+  it("returns the cursor's comment id when the cursor is a CardAnchor", () => {
     const cursor: Cursor = {
       kind: "card",
-      annotationId: "ann-1",
+      commentId: "ann-1",
       preferredSide: "additions",
     };
     const id = resizeReanchorTargetId({
@@ -54,7 +54,7 @@ describe("resizeReanchorTargetId", () => {
       flatRows: [ROW_A, CARD_FLAT],
       activeFile: "src/a.ts",
     });
-    expect(id).toBe("annotation-ann-1");
+    expect(id).toBe("comment-ann-1");
   });
 
   it("falls back to the active file's card when there is no cursor", () => {

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { requestReply } from "../../src/core/reply-runner.js";
 import { readReplyLock } from "../../src/core/reply-lock.js";
-import { readAnnotations } from "../../src/core/annotations-store.js";
+import { readComments } from "../../src/core/comments-store.js";
 import type {
   ShippedAdapter,
   SpawnOpts,
@@ -113,7 +113,7 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
   });
 
   it("an explicit requestReply call drives the fixture adapter, which writes an agent Reply via stdout-as-reply", async () => {
-    // Write the human Annotation via the CLI, then explicitly invoke
+    // Write the human Comment via the CLI, then explicitly invoke
     // requestReply — the same path the TUI's `s` keymap and the webapp's
     // POST /api/tours/:id/request-reply endpoint converge on (issue #184,
     // ADR 0021). The watcher no longer auto-dispatches.
@@ -137,7 +137,7 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
     const result = await requestReply({
       cwd: repo,
       tourId,
-      annotationId: created.id,
+      commentId: created.id,
       agent: "fixture",
       adapter: fixtureAdapter,
     });
@@ -147,8 +147,8 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
     // lock is gone and the reply is on disk.
     expect(await readReplyLock(repo, tourId)).toBeNull();
 
-    const annotations = await readAnnotations(repo, tourId);
-    const reply = annotations.find(
+    const comments = await readComments(repo, tourId);
+    const reply = comments.find(
       (a) => a.replies_to !== undefined && a.author_kind === "agent",
     );
     expect(reply).toBeDefined();

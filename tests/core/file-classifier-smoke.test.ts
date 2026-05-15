@@ -29,25 +29,25 @@ describe("file-classifier smoke: lockfile + source file fixture", () => {
     expect(cls).toEqual({ collapsed: false });
   });
 
-  it("renderer should expand lockfile when it has annotations", () => {
+  it("renderer should expand lockfile when it has comments", () => {
     const lockfile = fixtureFiles[0];
     const cls = classifyFile(lockfile.name, {});
-    const hasAnnotations = true;
-    const shouldCollapse = cls.collapsed && cls.reason !== "binary" && !hasAnnotations;
+    const hasComments = true;
+    const shouldCollapse = cls.collapsed && cls.reason !== "binary" && !hasComments;
     expect(shouldCollapse).toBe(false);
   });
 
-  it("renderer should collapse lockfile when it has no annotations", () => {
+  it("renderer should collapse lockfile when it has no comments", () => {
     const lockfile = fixtureFiles[0];
     const cls = classifyFile(lockfile.name, {});
-    const hasAnnotations = false;
-    const shouldCollapse = cls.collapsed && cls.reason !== "binary" && !hasAnnotations;
+    const hasComments = false;
+    const shouldCollapse = cls.collapsed && cls.reason !== "binary" && !hasComments;
     expect(shouldCollapse).toBe(true);
   });
 
-  it("binary file stays collapsed even with annotations", () => {
+  it("binary file stays collapsed even with comments", () => {
     const cls = classifyFile("image.png", { isBinary: true });
-    const hasAnnotations = true;
+    const hasComments = true;
     const shouldCollapse = cls.collapsed && cls.reason === "binary";
     expect(shouldCollapse).toBe(true);
   });

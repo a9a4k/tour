@@ -53,11 +53,11 @@ describe("Footer (PRD #330)", () => {
 
   it("with a status, prepends `<status>  ·  ` onto the legend on the same line", () => {
     const container = mount({
-      status: "Send only works on annotation cards.",
+      status: "Send only works on comment cards.",
       legend: LEGEND,
     });
     expect(container.textContent).toBe(
-      `Send only works on annotation cards.  ·  ${LEGEND}`,
+      `Send only works on comment cards.  ·  ${LEGEND}`,
     );
   });
 

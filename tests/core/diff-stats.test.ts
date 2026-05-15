@@ -47,13 +47,13 @@ describe("countDiffStats (#228)", () => {
     expect(countDiffStats(rows)).toEqual({ additions: 1, deletions: 0 });
   });
 
-  it("excludes non-diff-row kinds (hunk-header, interactive, annotation)", () => {
+  it("excludes non-diff-row kinds (hunk-header, interactive, comment)", () => {
     const rows: PlannedRow[] = [
       { kind: "hunk-header", header: "@@ -1 +1 @@", hunkIndex: 0, gapAbove: 0 },
       { kind: "interactive", subKind: "expand-down", boundaryRef: "bottom" },
       {
-        kind: "annotation",
-        annotation: {
+        kind: "comment",
+        comment: {
           id: "a",
           file: "f",
           side: "additions",
@@ -249,7 +249,7 @@ describe("tourDiffStats (#233)", () => {
     expect(tourDiffStats(files)).toEqual({ additions: 4, deletions: 2 });
   });
 
-  it("excludes non-diff-row kinds (hunk-header, interactive, annotation) from both totals", () => {
+  it("excludes non-diff-row kinds (hunk-header, interactive, comment) from both totals", () => {
     const files = [
       {
         rows: [

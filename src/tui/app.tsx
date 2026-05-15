@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import type { Tour, Annotation } from "../core/types.js";
+import type { Tour, Comment } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
 import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
@@ -51,8 +51,8 @@ import {
 } from "../core/tour-session.js";
 import {
   type StartTuiProps,
-  type WriteAnnotationInput,
-} from "../core/write-annotation-input.js";
+  type WriteCommentInput,
+} from "../core/write-comment-input.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
 import { dispatchPickerKey } from "./picker-keymap.js";
@@ -97,7 +97,7 @@ import {
   prevCard,
   preferredSideOf,
   setCursorSide,
-  cursorFromAnnotation,
+  cursorFromComment,
   cursorAtFirstFileRow,
   cursorOnInteractive,
   type Cursor,
@@ -142,11 +142,11 @@ const EMPTY_ANNOTATION_COUNTS: Readonly<Record<string, number>> = {};
 const EMPTY_CLASSIFICATIONS: Readonly<Record<string, FileClassification>> = {};
 const EMPTY_TREE = compress(buildTree<BundleFile>([]));
 
-// `WriteAnnotationInput` lives in `core/write-annotation-input.ts` — single
+// `WriteCommentInput` lives in `core/write-comment-input.ts` — single
 // source of truth shared with `src/cli/tui.ts` (the writer side). Pre-fix it
 // was declared twice; the App's copy was missing `bundle` and the CLI's
 // writer crashed when `input.bundle === undefined`. Issue #254.
-export type { WriteAnnotationInput };
+export type { WriteCommentInput };
 
 // AppProps is a permissive view onto `StartTuiProps`: the CLI hands every
 // field, but tests / degraded callers may omit the optional ones. The
@@ -184,7 +184,7 @@ function fileCardBody(
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
   ) => void,
-  onCardClick: (annotationId: string) => void,
+  onCardClick: (commentId: string) => void,
   repliesCollapsed: boolean,
   replyLock: ReplyLock | null,
   now: number,
@@ -312,7 +312,7 @@ function App(props: AppProps) {
   const treeSlice = view.kind === "ok" ? view.tree : null;
   const cursorSlice = view.kind === "ok" ? view.cursor : null;
   const cursorCardId = cursorSlice?.cardId ?? null;
-  const cursorCardAnnotation = cursorSlice?.cardAnnotation ?? null;
+  const cursorCardComment = cursorSlice?.cardComment ?? null;
   const sendTargetVal = "sendTarget" in nav ? nav.sendTarget : null;
   // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
   // shape — the action union has no combined "set-or-clear" variant.
@@ -361,9 +361,9 @@ function App(props: AppProps) {
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const pickerScrollRef = useRef<ScrollBoxRenderable | null>(null);
   // First-paint-per-tour guard for the tour-open side effects: reveal the
-  // first annotation's file in the sidebar tree, drop sidebar focus so
+  // first comment's file in the sidebar tree, drop sidebar focus so
   // j/k routes to the diff pane (issue #132 revision), and materialise
-  // the cursor on the first top-level annotation (issue #256 — reverts
+  // the cursor on the first top-level comment (issue #256 — reverts
   // ADR 0011's lazy-materialization rule for non-empty tours, restoring
   // surface parity with the webapp's ADR 0022 URL-anchored mount). The
   // ref is keyed on `bundle.tour.id` so `bundle.refreshed` does NOT
@@ -401,9 +401,9 @@ function App(props: AppProps) {
     snap: ScreenYSnapshot;
   } | null>(null);
 
-  // `bundle.tour` / `bundle.annotations` are present in both bundle
+  // `bundle.tour` / `bundle.comments` are present in both bundle
   // kinds; the view's ok-branch namespaces gate the rest.
-  const annotations: ReadonlyArray<Annotation> = bundle.annotations;
+  const comments: ReadonlyArray<Comment> = bundle.comments;
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
   // second only when a lock is present so we don't burn renders on the idle
@@ -418,11 +418,11 @@ function App(props: AppProps) {
   // Tour-session runtime (PRD #278 slices 2-6). Subscribes to the watcher
   // via the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
   // on tour events; realises every intent the reducer emits (loadTour,
-  // submitAnnotation, scroll / mirror / reveal). The runtime re-subscribes
+  // submitComment, scroll / mirror / reveal). The runtime re-subscribes
   // itself when `currentTourId` changes (tour-switch), so this effect
   // runs once at mount and tears down at unmount.
   useEffect(() => {
-    if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeAnnotation) {
+    if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeComment) {
       return;
     }
     const adapter = createTuiTourSessionAdapter({
@@ -430,7 +430,7 @@ function App(props: AppProps) {
       store,
       loadTour: props.loadTour,
       loadReplyLock: props.loadReplyLock,
-      writeAnnotation: props.writeAnnotation,
+      writeComment: props.writeComment,
       diffScrollBoxRef: diffScrollRef,
       pickerScrollBoxRef: pickerScrollRef,
       setSelectedRowIdx,
@@ -444,7 +444,7 @@ function App(props: AppProps) {
       hunkHeaderCursorStop: false,
     });
     return runtime.start();
-  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeAnnotation, props.replyAgent]);
+  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeComment, props.replyAgent]);
 
   // Sorted file list for diff-pane render order. `view.rows.plannedRowsByFile`
   // is keyed by name; we still need the ordered file list for the JSX.
@@ -487,7 +487,7 @@ function App(props: AppProps) {
   }, [fileNames]);
 
   const tree = treeSlice?.root ?? EMPTY_TREE;
-  const annotationCounts = treeSlice?.annotationCounts ?? EMPTY_ANNOTATION_COUNTS;
+  const commentCounts = treeSlice?.commentCounts ?? EMPTY_ANNOTATION_COUNTS;
   const visibleRows = treeSlice?.visibleRows ?? EMPTY_VISIBLE_ROWS;
   const safeRowIdx = visibleRows.length === 0
     ? 0
@@ -505,14 +505,14 @@ function App(props: AppProps) {
   }, [bundle]);
 
   // Tour-level diff stats (issue #266 / webapp parity #233). Walk every
-  // file in the bundle through `planRows` with empty annotations / empty
+  // file in the bundle through `planRows` with empty comments / empty
   // expansion / classifierCollapsed=false so the count reflects the FULL
   // diff regardless of the current layout, expansion, classifier-collapse
-  // state, or annotation set. Layout pinned to "split" so paired changes
+  // state, or comment set. Layout pinned to "split" so paired changes
   // count as one `change` row each (countDiffStats yields the same totals
   // either way, but the canonical pin matches the webapp).
   // Memoized on `bundle` — cursor moves, layout toggles, expansion changes,
-  // and annotation navigation do NOT re-walk.
+  // and comment navigation do NOT re-walk.
   const tourStats = useMemo<DiffStats>(() => {
     if (bundle.kind !== "ok") return { additions: 0, deletions: 0 };
     const bfByName = new Map<string, BundleFile>();
@@ -537,7 +537,7 @@ function App(props: AppProps) {
   const classifications = bundleSlice?.classifications ?? EMPTY_CLASSIFICATIONS;
 
   // Body-level visibility. Binary files are collapsed by default; the
-  // per-file override slot lets the annotation-jump path force a file
+  // per-file override slot lets the comment-jump path force a file
   // open. The view's planner uses the same rule internally for its
   // classifierCollapsed flag; this surface-side mirror gates body
   // render of binary files and honours per-file overrides.
@@ -550,14 +550,14 @@ function App(props: AppProps) {
 
   // Tour-open per-tour side effects (PRD #192 / ADR 0022; cursor seed
   // restored by issue #256): on a non-empty tour drop sidebar focus
-  // (issue #132 revision), reveal the first annotation's file in the
+  // (issue #132 revision), reveal the first comment's file in the
   // tree, and materialise the cursor on `topLevel[0]` as a CardAnchor so
-  // the user lands on the first annotation card with the same surface
+  // the user lands on the first comment card with the same surface
   // contract the webapp gets from ADR 0022's URL-anchored mount. The
   // cursor-follow useEffect handles the viewport scroll once the cursor
   // slice changes — no parallel scroll plumbing.
   //
-  // Empty tours keep the lazy-materialization rule (no annotation to
+  // Empty tours keep the lazy-materialization rule (no comment to
   // seed on; cursor stays null and the sidebar tree is the home anchor).
   // Snapshot-lost bundles fall through `initialCursor`'s null branch
   // (empty flatRowsList), so the cursor also stays null on the no-rows
@@ -573,11 +573,11 @@ function App(props: AppProps) {
       const first = topLevel[0];
       setSidebarFocused(false);
       const seed = initialCursor({
-        topLevelAnnotations: topLevel,
+        topLevelComments: topLevel,
         flatRows: flatRowsList,
       });
       if (seed) store.dispatch({ type: "cursor.materialize", anchor: seed });
-      const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, annotationCounts);
+      const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, commentCounts);
       if (rowIdx === null) return;
       setSelectedRowIdx(rowIdx);
     }
@@ -585,7 +585,7 @@ function App(props: AppProps) {
   }, [topLevel, bundle.tour.id]);
 
   // Reconcile the raw cursor with the view's validated anchor. The view
-  // prunes a CardAnchor whose annotation was deleted and snaps a RowAnchor
+  // prunes a CardAnchor whose comment was deleted and snaps a RowAnchor
   // whose specific row vanished (issue #231 / PRD #229 + #232 rules).
   useEffect(() => {
     if (cursor === null) return;
@@ -610,7 +610,7 @@ function App(props: AppProps) {
   // tick. Reading positions inside this effect synchronously sees a
   // stale layout (most visible when Shift-L flips layout while the
   // cursor is on a card: position math against the previous layout's
-  // content frame parks the viewport on a strip where only annotation
+  // content frame parks the viewport on a strip where only comment
   // cards live, hiding every diff row). `setTimeout(0)` is what
   // reliably lands the callback after OpenTUI's render tick — verified
   // empirically. `requestAnimationFrame` does NOT work here: in
@@ -641,7 +641,7 @@ function App(props: AppProps) {
       // cross-file scroll lands on the right file instead of a stale one.
       const targetId =
         cursor.kind === "card"
-          ? `annotation-${cursor.annotationId}`
+          ? `comment-${cursor.commentId}`
           : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
       animatedScrollChildIntoView(sb, targetId);
     }, 0);
@@ -650,7 +650,7 @@ function App(props: AppProps) {
   }, [layout]);
 
   // Issue #318 (upgraded): after `[`/`]` resize, OpenTUI re-flows
-  // annotation cards to the new pane width. The keypress handler
+  // comment cards to the new pane width. The keypress handler
   // captured the target row's on-screen y before triggering the
   // re-render; this effect applies it via `preserveScreenY` once Yoga
   // has measured the new card heights. `setTimeout(0)` defers past the
@@ -674,15 +674,15 @@ function App(props: AppProps) {
   }, [sidebarWidth]);
 
   // Sidebar follows the cursor's file. RowAnchor → cursor.file directly;
-  // CardAnchor → view.cursor.cardAnnotation.file. Deps key off the
+  // CardAnchor → view.cursor.cardComment.file. Deps key off the
   // resolved file so in-file j/k motion leaves the sidebar untouched.
   const cursorFile: string | null =
     cursor === null ? null
     : cursor.kind === "row" ? cursor.file
-    : cursorCardAnnotation?.file ?? null;
+    : cursorCardComment?.file ?? null;
   useEffect(() => {
     if (!cursorFile) return;
-    const rowIdx = revealAndLocateFile(cursorFile, tree, collapsedFolders, annotationCounts);
+    const rowIdx = revealAndLocateFile(cursorFile, tree, collapsedFolders, commentCounts);
     if (rowIdx !== null && rowIdx !== safeRowIdx) {
       setSelectedRowIdx(rowIdx);
     }
@@ -754,12 +754,12 @@ function App(props: AppProps) {
     if (scrollPending) return undefined;
     const sb = diffScrollRef.current;
     if (!sb) return undefined;
-    const probed = computeCardViewportPosition(sb, `annotation-${cursor.annotationId}`);
+    const probed = computeCardViewportPosition(sb, `comment-${cursor.commentId}`);
     return probed ?? undefined;
   })();
   const footerPreview = composeFooterPreview({
     cursor,
-    annotations,
+    comments,
     cardViewportPosition,
   });
   const baseFooter = `${footerPreview}  ·  ${footerHints}`;
@@ -783,7 +783,7 @@ function App(props: AppProps) {
     }
     store.dispatch({ type: "tourList.loading" });
     try {
-      const { tours, annotationCounts: counts } = await props.loadTours();
+      const { tours, commentCounts: counts } = await props.loadTours();
       const summaries: TourSummary[] = tours.map((t) => ({
         id: t.id,
         title: t.title,
@@ -791,7 +791,7 @@ function App(props: AppProps) {
         created_at: t.created_at,
       }));
       store.dispatch({ type: "tourList.loaded", tours: summaries });
-      const rows = buildPickerRows({ tours, annotationCounts: counts, now: Date.now() });
+      const rows = buildPickerRows({ tours, commentCounts: counts, now: Date.now() });
       store.dispatch({ type: "picker.open", rows });
       const initialIdx = initialPickerCursor(rows, bundle.tour.id);
       for (let i = 0; i < initialIdx; i++) {
@@ -817,43 +817,43 @@ function App(props: AppProps) {
     setSelectedRowIdx(0);
   }, [currentTourId]);
 
-  const jumpToAnnotation = (ann: Annotation) => {
-    // Issue #132: explicit annotation jumps (n/p) drop sidebar focus so
+  const jumpToComment = (ann: Comment) => {
+    // Issue #132: explicit comment jumps (n/p) drop sidebar focus so
     // subsequent j/k move the diff cursor, not the file row.
     setSidebarFocused(false);
-    const rowIdx = revealAndLocateFile(ann.file, tree, collapsedFolders, annotationCounts);
+    const rowIdx = revealAndLocateFile(ann.file, tree, collapsedFolders, commentCounts);
     if (rowIdx !== null && rowIdx !== safeRowIdx) {
       setSelectedRowIdx(rowIdx);
     }
     store.dispatch({ type: "folds.setOverride", file: ann.file, value: false });
     // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
-    // annotation's card directly — no synthesized row anchor. Thread
+    // comment's card directly — no synthesized row anchor. Thread
     // preferredSide so an `h`/`l` choice survives the jump (issue #200).
     store.dispatch({
       type: "cursor.set",
-      anchor: cursorFromAnnotation(ann, preferredSideOf(cursor)),
+      anchor: cursorFromComment(ann, preferredSideOf(cursor)),
     });
   };
 
-  // gotoPrev/NextAnnotation walk via `nextCard` / `prevCard` (PRD #192).
-  // n/p is the jump gesture: walks top-level Annotation order — the
+  // gotoPrev/NextComment walk via `nextCard` / `prevCard` (PRD #192).
+  // n/p is the jump gesture: walks top-level Comment order — the
   // same order the `[N/M]` pill counter reads — so `n` from `K/M` lands
   // on `K+1/M` (issue #197). From a RowAnchor or null cursor the walk
   // enters the track at the topLevel edge (cursor position not
   // consulted; issue #206 revert of #203).
-  const gotoPrevAnnotation = () => {
+  const gotoPrevComment = () => {
     const target = prevCard(cursor, topLevel);
     if (target) {
-      const ann = annotations.find((a) => a.id === target.annotationId);
-      if (ann) jumpToAnnotation(ann);
+      const ann = comments.find((a) => a.id === target.commentId);
+      if (ann) jumpToComment(ann);
     }
   };
 
-  const gotoNextAnnotation = () => {
+  const gotoNextComment = () => {
     const target = nextCard(cursor, topLevel);
     if (target) {
-      const ann = annotations.find((a) => a.id === target.annotationId);
-      if (ann) jumpToAnnotation(ann);
+      const ann = comments.find((a) => a.id === target.commentId);
+      if (ann) jumpToComment(ann);
     }
   };
 
@@ -908,19 +908,19 @@ function App(props: AppProps) {
     // doesn't accidentally toggle other folds.
   };
 
-  // Mouse click on an annotation card (issue #261). ADR 0022 unified the
+  // Mouse click on a comment card (issue #261). ADR 0022 unified the
   // cursor — CardAnchor is first-class — so the click writes a card
-  // anchor for the clicked top-level annotation, mirroring the keyboard
-  // n/p path (`jumpToAnnotation`) and the webapp's
+  // anchor for the clicked top-level comment, mirroring the keyboard
+  // n/p path (`jumpToComment`) and the webapp's
   // `setCursorFromCardClick`. preferredSide is threaded from the
   // existing cursor so a subsequent h/l honours the user's choice.
-  const onCardClick = (annotationId: string) => {
-    const ann = annotations.find((a) => a.id === annotationId);
+  const onCardClick = (commentId: string) => {
+    const ann = comments.find((a) => a.id === commentId);
     if (!ann) return;
     setSidebarFocused(false);
     store.dispatch({
       type: "cursor.set",
-      anchor: cursorFromAnnotation(ann, preferredSideOf(cursor)),
+      anchor: cursorFromComment(ann, preferredSideOf(cursor)),
     });
     // Cursor-follow useEffect handles the scroll-into-view via the
     // reducer's `scrollCursorTarget` intent — no parallel scroll call
@@ -1148,7 +1148,7 @@ function App(props: AppProps) {
     // issue #313. The cursor lands on the file's first walkable row
     // (synthetic `collapsed-file` banner when classifier-collapsed; first
     // diff row otherwise); Enter on the banner is the explicit-reveal
-    // escape hatch. Annotation jumps (`jumpToAnnotation`) still force-
+    // escape hatch. Comment jumps (`jumpToComment`) still force-
     // unfold — they remain the only "explicit reveal" callsites here.
     dispatchCursor(cursorAtFirstFileRow(filePath, flatRowsList));
   };
@@ -1161,7 +1161,7 @@ function App(props: AppProps) {
   const materializeCursor = (): Cursor | null => {
     if (cursor) return cursor;
     const seeded = initialCursor({
-      topLevelAnnotations: topLevel,
+      topLevelComments: topLevel,
       flatRows: flatRowsList,
     });
     if (seeded) store.dispatch({ type: "cursor.materialize", anchor: seeded });
@@ -1177,7 +1177,7 @@ function App(props: AppProps) {
     if (activeCursor && activeCursor.kind === "card") return;
     const target = buildTopLevelComposer({
       cursor: activeCursor,
-      currentAnnotation: cursorCardAnnotation,
+      currentComment: cursorCardComment,
     });
     if (!target) return;
     store.dispatch({ type: "composer.open", target });
@@ -1188,10 +1188,10 @@ function App(props: AppProps) {
     // off-screen (wheel-scrolled away), pull it into view BEFORE the
     // composer mounts — the user sees the card on-screen when the next
     // render lands (auto-recall, PRD #192 user story 14).
-    if (!cursorCardAnnotation) return;
+    if (!cursorCardComment) return;
     const sb = diffScrollRef.current;
-    if (sb) scrollChildIntoView(sb, `annotation-${cursorCardAnnotation.id}`);
-    const target = buildReplyComposer({ currentAnnotation: cursorCardAnnotation });
+    if (sb) scrollChildIntoView(sb, `comment-${cursorCardComment.id}`);
+    const target = buildReplyComposer({ currentComment: cursorCardComment });
     if (!target) return;
     store.dispatch({ type: "composer.open", target });
   };
@@ -1200,12 +1200,12 @@ function App(props: AppProps) {
   // reply-agent (issue #196, PRD #181). The cursor walks top-levels
   // only — once the conversation has started, the cursor-focused
   // top-level is `already-replied` and would dead-end the keystroke
-  // under the per-Annotation rule. Targeting the leaf mirrors the
+  // under the per-Comment rule. Targeting the leaf mirrors the
   // webapp's #190/#191 collapse so `s` keeps working as soon as there
   // are Replies in the Thread.
   //
   // `s` is a no-op with a footer hint when:
-  //  - no annotation is focused (null cursor / row cursor),
+  //  - no comment is focused (null cursor / row cursor),
   //  - the latest turn in the focused Thread is agent-authored,
   //  - `--reply-agent` is unset,
   //  - the lock is held by another in-flight dispatch on this tour.
@@ -1216,7 +1216,7 @@ function App(props: AppProps) {
     if (!props.replyAgent) return;
     // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
     // row case to a footer-hint no-op; this defends in depth.
-    if (!cursorCardAnnotation) {
+    if (!cursorCardComment) {
       setFooterStatus("no comment under cursor — n/p to navigate");
       return;
     }
@@ -1234,7 +1234,7 @@ function App(props: AppProps) {
     store.dispatch({
       type: "send-to-agent",
       tourId: bundle.tour.id,
-      annotationId: sendTargetVal.leafId,
+      commentId: sendTargetVal.leafId,
     });
   };
 
@@ -1264,7 +1264,7 @@ function App(props: AppProps) {
     }
     if (composer.kind === "errored") {
       // Enter retries the write (reducer transitions errored → submitting
-      // and re-emits `submitAnnotation`). Esc drops back to `open` so the
+      // and re-emits `submitComment`). Esc drops back to `open` so the
       // user can edit the draft and re-submit. Issue #254.
       if (key.name === "escape") {
         store.dispatch({ type: "composer.dismissError" });
@@ -1313,7 +1313,7 @@ function App(props: AppProps) {
     // switch re-runs auto-fit and the override doesn't carry over.
     //
     // Issue #318 (upgraded to preserveScreenY per follow-up review):
-    // a width change reflows annotation cards, drifting the diff
+    // a width change reflows comment cards, drifting the diff
     // viewport's visual position. `scrollChildIntoView(block:nearest)`
     // alone wasn't enough — it no-ops when the row is still in viewport
     // (so card-height deltas above the cursor walked it within the
@@ -1361,7 +1361,7 @@ function App(props: AppProps) {
     // interaction with a null cursor SHOWS the cursor at the default
     // target without moving past it. `a` materializes AND opens the
     // composer in one step; n/p materialize via β-coupling inside
-    // jumpToAnnotation. Degraded states (no rows) yield null and the
+    // jumpToComment. Degraded states (no rows) yield null and the
     // motion is a silent no-op.
     const isMotion =
       action.type === "cursor-down" ||
@@ -1393,8 +1393,8 @@ function App(props: AppProps) {
         if (selectedRow?.kind !== "file") return;
         // PRD US 20: explicit sidebar-driven file selection moves the
         // cursor to that file's first annotatable row. Folded files
-        // contribute no rows so cursor clears. currentAnnotationId is
-        // unchanged — annotation focus is independent of code-reading
+        // contribute no rows so cursor clears. currentCommentId is
+        // unchanged — comment focus is independent of code-reading
         // position. Shared with the mouse path via `selectSidebarFile`.
         // Issue #294 Slice 1: the keyboard path animates; mouse-click
         // stays instant (passed through the default at the mouse site).
@@ -1428,16 +1428,16 @@ function App(props: AppProps) {
         // doesn't strand inside the now-hidden subtree.
         const nextCollapsed = new Set(collapsedFolders);
         nextCollapsed.add(parentPath);
-        const nextRows = flatten(tree, nextCollapsed, annotationCounts);
+        const nextRows = flatten(tree, nextCollapsed, commentCounts);
         const newIdx = nextRows.findIndex((r) => r.path === parentPath);
         if (newIdx >= 0) setSelectedRowIdx(newIdx);
         return;
       }
-      case "next-annotation":
-        gotoNextAnnotation();
+      case "next-comment":
+        gotoNextComment();
         return;
-      case "prev-annotation":
-        gotoPrevAnnotation();
+      case "prev-comment":
+        gotoPrevComment();
         return;
       case "toggle-replies-collapse":
         setRepliesCollapsed((v) => !v);
@@ -1589,14 +1589,14 @@ function App(props: AppProps) {
       case "expand-file-all": {
         // Issue #297: per-file Expand-all via keyboard. Pick the file
         // from the cursor (diff-pane RowAnchor / CardAnchor both carry
-        // `file` directly or via the cursored annotation), falling back
+        // `file` directly or via the cursored comment), falling back
         // to the sidebar's currently-selected file row. No-op when no
         // file is in scope (null cursor + sidebar parked on a folder).
         let targetFile: string | null = null;
         if (cursor) {
           if (cursor.kind === "row") targetFile = cursor.file;
           else {
-            const ann = annotations.find((a) => a.id === cursor.annotationId);
+            const ann = comments.find((a) => a.id === cursor.commentId);
             targetFile = ann?.file ?? null;
           }
         }
@@ -1622,7 +1622,7 @@ function App(props: AppProps) {
         if (cursor) {
           if (cursor.kind === "row") targetFile = cursor.file;
           else {
-            const ann = annotations.find((a) => a.id === cursor.annotationId);
+            const ann = comments.find((a) => a.id === cursor.commentId);
             targetFile = ann?.file ?? null;
           }
         }
@@ -1665,12 +1665,12 @@ function App(props: AppProps) {
         // SequencePill expects 0-based / -1 sentinel; `nav.currentIdx` is
         // 1-based / 0 sentinel (ok-only). Property check narrows on
         // snapshot-lost to the -1 sentinel.
-        currentAnnotationIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
+        currentCommentIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         tourStats={tourStats}
         onOpenPicker={() => void openPicker()}
-        onPrevAnnotation={gotoPrevAnnotation}
-        onNextAnnotation={gotoNextAnnotation}
+        onPrevComment={gotoPrevComment}
+        onNextComment={gotoNextComment}
         onSplit={() => store.dispatch({ type: "layout.set", layout: "split" })}
         onUnified={() => store.dispatch({ type: "layout.set", layout: "unified" })}
       />
@@ -1678,7 +1678,7 @@ function App(props: AppProps) {
       {view.kind === "snapshot-lost" && (
         <box height={2} width="100%" paddingX={1}>
           <text fg={theme.fg.attention} bold>
-            ⚠ Snapshot lost — annotations preserved but diff cannot be displayed
+            ⚠ Snapshot lost — comments preserved but diff cannot be displayed
           </text>
         </box>
       )}
@@ -1754,7 +1754,7 @@ function App(props: AppProps) {
                 );
               }
               // Per-file diff stats (#265): `+N` in fg.success and `-M`
-              // in fg.danger between filename and annotation badge. The
+              // in fg.danger between filename and comment badge. The
               // stats need their own foreground colors, so the row is a
               // flex-row box of sibling <text>s instead of one <text>.
               // countDiffStats handles the change-row shape: new files
@@ -1869,7 +1869,7 @@ function App(props: AppProps) {
                 {activeFileObj && (
                   <FileHeader
                     fileName={activeFileObj.name}
-                    label={fileEntryLabel(activeFileObj, classifications, annotations)}
+                    label={fileEntryLabel(activeFileObj, classifications, comments)}
                     hasMultipleHiddenGaps={activeHasMultipleHiddenGaps}
                     onExpandAll={expandAllInFile}
                   />
@@ -1899,7 +1899,7 @@ function App(props: AppProps) {
                         id={`file-card-${file.name}`}
                         borderStyle="single"
                         borderColor={theme.border.default}
-                        title={fileEntryLabel(file, classifications, annotations)}
+                        title={fileEntryLabel(file, classifications, comments)}
                         flexDirection="column"
                         marginBottom={1}
                       >
@@ -1971,7 +1971,7 @@ function App(props: AppProps) {
           state={composer}
           parent={
             composer.target.kind === "reply"
-              ? annotations.find((a) => a.id === composer.target.replies_to) ?? null
+              ? comments.find((a) => a.id === composer.target.replies_to) ?? null
               : null
           }
           onInput={(body) => store.dispatch({ type: "composer.setBody", body })}

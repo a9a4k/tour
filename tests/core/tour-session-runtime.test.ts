@@ -17,8 +17,8 @@ import {
 import type { ScrollPlacement } from "../../src/core/tour-session.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import type { ReplyLock } from "../../src/core/reply-lock.js";
-import type { Tour, Annotation } from "../../src/core/types.js";
-import type { WriteAnnotationInput } from "../../src/core/write-annotation-input.js";
+import type { Tour, Comment } from "../../src/core/types.js";
+import type { WriteCommentInput } from "../../src/core/write-comment-input.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
 function tour(id: string): Tour {
@@ -37,14 +37,14 @@ function tour(id: string): Tour {
 }
 
 function snapshotLostBundle(id: string): TourBundle {
-  return { kind: "snapshot-lost", tour: tour(id), annotations: [] as Annotation[] };
+  return { kind: "snapshot-lost", tour: tour(id), comments: [] as Comment[] };
 }
 
-function okBundle(id: string, annotations: Annotation[] = []): TourBundle {
+function okBundle(id: string, comments: Comment[] = []): TourBundle {
   return {
     kind: "ok",
     tour: tour(id),
-    annotations,
+    comments,
     diff: "",
     files: [],
   };
@@ -82,12 +82,12 @@ function fileA(): BundleFile {
 
 function bundleWithFileA(
   id: string,
-  annotations: Annotation[] = [],
+  comments: Comment[] = [],
 ): TourBundle {
   return {
     kind: "ok",
     tour: tour(id),
-    annotations,
+    comments,
     diff: DIFF_A,
     files: [fileA()],
   };
@@ -96,8 +96,8 @@ function bundleWithFileA(
 interface FakeAdapter extends TourSessionAdapter {
   bundleCalls: string[];
   lockCalls: string[];
-  writeCalls: Array<{ tourId: string; input: WriteAnnotationInput }>;
-  requestReplyCalls: Array<{ tourId: string; annotationId: string }>;
+  writeCalls: Array<{ tourId: string; input: WriteCommentInput }>;
+  requestReplyCalls: Array<{ tourId: string; commentId: string }>;
   scrollCardCalls: Array<{ id: string; mode: ScrollPlacement }>;
   scrollRowCalls: Array<{ anchor: ScrollRowAnchor; mode: ScrollPlacement }>;
   scrollComposerCalls: Array<ComposerTarget>;
@@ -114,8 +114,8 @@ interface FakeAdapterOptions {
   lockByTour?: Record<string, ReplyLock | null>;
   fetchBundleError?: boolean;
   fetchReplyLockError?: boolean;
-  writeAnnotationError?: string;
-  writeAnnotationResult?: Annotation;
+  writeCommentError?: string;
+  writeCommentResult?: Comment;
   requestReplyError?: string;
 }
 
@@ -156,10 +156,10 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
       if (opts.fetchReplyLockError) throw new Error("transport");
       return opts.lockByTour?.[id] ?? null;
     },
-    writeAnnotation: async (tourId, input) => {
+    writeComment: async (tourId, input) => {
       writeCalls.push({ tourId, input });
-      if (opts.writeAnnotationError) throw new Error(opts.writeAnnotationError);
-      return opts.writeAnnotationResult ?? {
+      if (opts.writeCommentError) throw new Error(opts.writeCommentError);
+      return opts.writeCommentResult ?? {
         id: "a-new",
         file: input.kind === "top-level" ? input.file : input.parent.file,
         side: input.kind === "top-level" ? input.side : input.parent.side,
@@ -172,8 +172,8 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         ...(input.kind === "reply" ? { replies_to: input.parent.id } : {}),
       };
     },
-    requestReply: async ({ tourId, annotationId }) => {
-      requestReplyCalls.push({ tourId, annotationId });
+    requestReply: async ({ tourId, commentId }) => {
+      requestReplyCalls.push({ tourId, commentId });
       if (opts.requestReplyError) throw new Error(opts.requestReplyError);
     },
     subscribeTourEvents: (tourId, handler) => {
@@ -262,7 +262,7 @@ describe("TourSessionRuntime", () => {
     });
   });
 
-  describe("annotation-changed event", () => {
+  describe("comment-changed event", () => {
     it("calls adapter.fetchBundle and dispatches bundle.refreshed with the fresh bundle", async () => {
       const store = storeWithTour("tour-a");
       const fresh = okBundle("tour-a");
@@ -270,7 +270,7 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      adapter.emit("tour-a", { type: "annotation-changed" });
+      adapter.emit("tour-a", { type: "comment-changed" });
       await flush();
 
       expect(adapter.bundleCalls).toEqual(["tour-a"]);
@@ -284,7 +284,7 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      adapter.emit("tour-a", { type: "annotation-changed" });
+      adapter.emit("tour-a", { type: "comment-changed" });
       await flush();
 
       expect(adapter.lockCalls).toEqual([]);
@@ -303,7 +303,7 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      adapter.emit("tour-a", { type: "annotation-changed" });
+      adapter.emit("tour-a", { type: "comment-changed" });
       await flush();
 
       expect(adapter.bundleCalls).toEqual(["tour-a"]);
@@ -329,7 +329,7 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      adapter.emit("tour-a", { type: "annotation-changed" });
+      adapter.emit("tour-a", { type: "comment-changed" });
       // Switch to tour-b before tour-a's fetch resolves.
       store.dispatch({
         type: "tour.switched",
@@ -648,8 +648,8 @@ describe("TourSessionRuntime", () => {
     });
   });
 
-  describe("submitAnnotation intent (PRD #278 slice 4)", () => {
-    function annotationFixture(id: string, overrides: Partial<Annotation> = {}): Annotation {
+  describe("submitComment intent (PRD #278 slice 4)", () => {
+    function commentFixture(id: string, overrides: Partial<Comment> = {}): Comment {
       return {
         id,
         file: "src/a.ts",
@@ -672,7 +672,7 @@ describe("TourSessionRuntime", () => {
       });
     }
 
-    it("calls adapter.writeAnnotation with the built input and dispatches composer.submitted on success", async () => {
+    it("calls adapter.writeComment with the built input and dispatches composer.submitted on success", async () => {
       const store = storeWithTour(null);
       const bundle = okBundle("tour-a");
       const adapter = createFakeAdapter();
@@ -708,9 +708,9 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("resolves the reply parent from the live bundle and passes it through writeAnnotation", async () => {
+    it("resolves the reply parent from the live bundle and passes it through writeComment", async () => {
       const store = storeWithTour(null);
-      const parent = annotationFixture("p1");
+      const parent = commentFixture("p1");
       const bundle = okBundle("tour-a", [parent]);
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -736,10 +736,10 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("dispatches composer.failed with the error message on writeAnnotation rejection", async () => {
+    it("dispatches composer.failed with the error message on writeComment rejection", async () => {
       const store = storeWithTour(null);
       const bundle = okBundle("tour-a");
-      const adapter = createFakeAdapter({ writeAnnotationError: "disk full" });
+      const adapter = createFakeAdapter({ writeCommentError: "disk full" });
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
       seedTour(store, bundle);
@@ -767,7 +767,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("treats whitespace-only body as composer.close — does NOT call writeAnnotation", async () => {
+    it("treats whitespace-only body as composer.close — does NOT call writeComment", async () => {
       const store = storeWithTour(null);
       const bundle = okBundle("tour-a");
       const adapter = createFakeAdapter();
@@ -829,7 +829,7 @@ describe("TourSessionRuntime", () => {
 
     it("dispatches composer.failed when the reply parent no longer exists in the live bundle", async () => {
       const store = storeWithTour(null);
-      // Bundle has no annotations, so the reply parent lookup will miss.
+      // Bundle has no comments, so the reply parent lookup will miss.
       const bundle = okBundle("tour-a");
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -848,14 +848,14 @@ describe("TourSessionRuntime", () => {
       const composer = store.getState().composer;
       expect(composer.kind).toBe("errored");
       if (composer.kind === "errored") {
-        expect(composer.error).toBe("Parent annotation no longer exists");
+        expect(composer.error).toBe("Parent comment no longer exists");
       }
       stop();
     });
   });
 
   describe("revalidateCursor intent (PRD #278 slice 5)", () => {
-    function annotationOnA(id: string): Annotation {
+    function commentOnA(id: string): Comment {
       return {
         id,
         file: "a.ts",
@@ -869,8 +869,8 @@ describe("TourSessionRuntime", () => {
       };
     }
 
-    function cardCursor(annotationId: string): Cursor {
-      return { kind: "card", annotationId, preferredSide: "additions" };
+    function cardCursor(commentId: string): Cursor {
+      return { kind: "card", commentId, preferredSide: "additions" };
     }
 
     function rowCursor(file: string, lineNumber: number): Cursor {
@@ -883,9 +883,9 @@ describe("TourSessionRuntime", () => {
       };
     }
 
-    it("dispatches cursor.clear when a stale CardAnchor's annotation has been deleted", () => {
+    it("dispatches cursor.clear when a stale CardAnchor's comment has been deleted", () => {
       const store = storeWithTour("tour-a");
-      const initialBundle = bundleWithFileA("tour-a", [annotationOnA("t1")]);
+      const initialBundle = bundleWithFileA("tour-a", [commentOnA("t1")]);
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
@@ -1002,7 +1002,7 @@ describe("TourSessionRuntime", () => {
       return {
         kind: "ok",
         tour: tour(id),
-        annotations: [],
+        comments: [],
         diff: COLLAPSED_DIFF,
         files: [file],
       };
@@ -1166,8 +1166,8 @@ describe("TourSessionRuntime", () => {
       store.dispatch({
         type: "picker.open",
         rows: [
-          { id: "tour-a", title: "A", status: "open", glyph: "●", age: "now", annotationCount: 0 },
-          { id: "tour-b", title: "B", status: "open", glyph: "●", age: "now", annotationCount: 0 },
+          { id: "tour-a", title: "A", status: "open", glyph: "●", age: "now", commentCount: 0 },
+          { id: "tour-b", title: "B", status: "open", glyph: "●", age: "now", commentCount: 0 },
         ],
       });
       store.dispatch({ type: "picker.move", delta: 1 });
@@ -1178,7 +1178,7 @@ describe("TourSessionRuntime", () => {
 
     it("scrollCursorTarget intent (kind=card) → adapter.scrollToCard with placement", () => {
       const store = storeWithTour(null);
-      const ann: Annotation = {
+      const ann: Comment = {
         id: "ann1",
         file: "src/a.ts",
         side: "additions",
@@ -1200,7 +1200,7 @@ describe("TourSessionRuntime", () => {
 
       store.dispatch({
         type: "cursor.set",
-        anchor: { kind: "card", annotationId: "ann1", preferredSide: "additions" },
+        anchor: { kind: "card", commentId: "ann1", preferredSide: "additions" },
         placement: "center",
       });
 
@@ -1236,9 +1236,9 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("scrollToAnnotation intent → adapter.scrollToCard(id, 'center')", () => {
+    it("scrollToComment intent → adapter.scrollToCard(id, 'center')", () => {
       const store = storeWithTour(null);
-      const ann: Annotation = {
+      const ann: Comment = {
         id: "a-new",
         file: "src/a.ts",
         side: "additions",
@@ -1250,12 +1250,12 @@ describe("TourSessionRuntime", () => {
         created_at: "2026-05-14T00:00:00Z",
       };
       const bundle = okBundle("tour-a", [ann]);
-      const adapter = createFakeAdapter({ writeAnnotationResult: ann });
+      const adapter = createFakeAdapter({ writeCommentResult: ann });
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
       store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle });
 
-      // composer.submitted dispatch emits scrollToAnnotation (the reducer
+      // composer.submitted dispatch emits scrollToComment (the reducer
       // requires composer to be in `submitting` for the transition).
       store.dispatch({
         type: "composer.open",
@@ -1269,7 +1269,7 @@ describe("TourSessionRuntime", () => {
       });
       store.dispatch({ type: "composer.setBody", body: "x" });
       store.dispatch({ type: "composer.submit" });
-      store.dispatch({ type: "composer.submitted", annotation: ann });
+      store.dispatch({ type: "composer.submitted", comment: ann });
 
       expect(
         adapter.scrollCardCalls.filter((c) => c.id === "a-new" && c.mode === "center"),
@@ -1328,7 +1328,7 @@ describe("TourSessionRuntime", () => {
       store.dispatch({
         type: "picker.open",
         rows: [
-          { id: "tour-a", title: "A", status: "open", glyph: "●", age: "now", annotationCount: 0 },
+          { id: "tour-a", title: "A", status: "open", glyph: "●", age: "now", commentCount: 0 },
         ],
       });
       store.dispatch({ type: "picker.commit" });
@@ -1337,9 +1337,9 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("mirrorAnnUrl intent → adapter.mirrorAnnUrl(annotationId)", () => {
+    it("mirrorAnnUrl intent → adapter.mirrorAnnUrl(commentId)", () => {
       const store = storeWithTour(null);
-      const ann: Annotation = {
+      const ann: Comment = {
         id: "ann1",
         file: "src/a.ts",
         side: "additions",
@@ -1361,7 +1361,7 @@ describe("TourSessionRuntime", () => {
 
       store.dispatch({
         type: "cursor.set",
-        anchor: { kind: "card", annotationId: "ann1", preferredSide: "additions" },
+        anchor: { kind: "card", commentId: "ann1", preferredSide: "additions" },
       });
       // Clearing the cursor with a card anchor present emits mirrorAnnUrl(null).
       store.dispatch({ type: "cursor.clear" });
@@ -1370,7 +1370,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("requestReply intent → adapter.requestReply with { tourId, annotationId }", () => {
+    it("requestReply intent → adapter.requestReply with { tourId, commentId }", () => {
       // send-to-agent (PRD #278 slice 7) is the reducer's entry point;
       // the runtime listens for the emitted requestReply intent and routes
       // it to the adapter. The auto-recall scrollCursorTarget intent fires
@@ -1381,17 +1381,17 @@ describe("TourSessionRuntime", () => {
       const stop = runtime.start();
       store.dispatch({
         type: "cursor.set",
-        anchor: { kind: "card", annotationId: "root", preferredSide: "additions" },
+        anchor: { kind: "card", commentId: "root", preferredSide: "additions" },
       });
 
       store.dispatch({
         type: "send-to-agent",
         tourId: "tour-a",
-        annotationId: "leaf",
+        commentId: "leaf",
       });
 
       expect(adapter.requestReplyCalls).toEqual([
-        { tourId: "tour-a", annotationId: "leaf" },
+        { tourId: "tour-a", commentId: "leaf" },
       ]);
       // Auto-recall: the runtime also scrolled the focused card to centre
       // before dispatching. Filter to send-to-agent's recall (cursor.set
@@ -1410,21 +1410,21 @@ describe("TourSessionRuntime", () => {
       const stop = runtime.start();
       store.dispatch({
         type: "cursor.set",
-        anchor: { kind: "card", annotationId: "root", preferredSide: "additions" },
+        anchor: { kind: "card", commentId: "root", preferredSide: "additions" },
       });
 
       expect(() =>
         store.dispatch({
           type: "send-to-agent",
           tourId: "tour-a",
-          annotationId: "leaf",
+          commentId: "leaf",
         }),
       ).not.toThrow();
       // Drain the rejected promise so vitest's unhandled-rejection guard
       // doesn't fail the run.
       await flush();
       expect(adapter.requestReplyCalls).toEqual([
-        { tourId: "tour-a", annotationId: "leaf" },
+        { tourId: "tour-a", commentId: "leaf" },
       ]);
       stop();
     });
@@ -1438,7 +1438,7 @@ describe("TourSessionRuntime", () => {
       store.dispatch({
         type: "send-to-agent",
         tourId: "tour-a",
-        annotationId: "leaf",
+        commentId: "leaf",
       });
 
       expect(adapter.requestReplyCalls).toEqual([]);

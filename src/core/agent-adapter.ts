@@ -1,4 +1,4 @@
-import type { Annotation, Tour } from "./types.js";
+import type { Comment, Tour } from "./types.js";
 import { buildThreads } from "./threads.js";
 import { SHIPPED_ADAPTERS, availableShippedAgents } from "../agents/index.js";
 
@@ -7,22 +7,22 @@ import { SHIPPED_ADAPTERS, availableShippedAgents } from "../agents/index.js";
 // tour's filesystem state.
 export interface ReplyEnvelope {
   tour: Tour;
-  triggering_annotation: Annotation;
-  thread: Annotation[];
+  triggering_comment: Comment;
+  thread: Comment[];
 }
 
 export function buildEnvelope(
   tour: Tour,
-  annotations: Annotation[],
-  triggering: Annotation,
+  comments: Comment[],
+  triggering: Comment,
 ): ReplyEnvelope {
-  const thread = buildThreads(annotations).find(
+  const thread = buildThreads(comments).find(
     (t) =>
       t.root.id === triggering.id ||
       t.replies.some((r) => r.id === triggering.id),
   );
   const chain = thread ? [thread.root, ...thread.replies] : [triggering];
-  return { tour, triggering_annotation: triggering, thread: chain };
+  return { tour, triggering_comment: triggering, thread: chain };
 }
 
 export interface SpawnOpts {

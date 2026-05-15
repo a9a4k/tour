@@ -4,12 +4,12 @@ import { flatRows } from "../../src/core/flat-rows.js";
 import { planRows, type PlannedRow } from "../../src/core/diff-rows.js";
 import {
   initialCursor,
-  cursorFromAnnotation,
+  cursorFromComment,
 } from "../../src/core/cursor-state.js";
 import { buildTopLevelComposer } from "../../src/tui/composer-state.js";
 import { dispatchKey, type KeyInput, type KeymapContext } from "../../src/tui/keymap.js";
 import type { DiffFile } from "../../src/core/diff-model.js";
-import type { Annotation } from "../../src/core/types.js";
+import type { Comment } from "../../src/core/types.js";
 
 const SIMPLE_DIFF = `diff --git a/REPLACE b/REPLACE
 index 1..2 100644
@@ -29,13 +29,13 @@ function fileFromName(name: string): DiffFile {
 function plannedFor(
   name: string,
   layout: "split" | "unified",
-  annotations: Annotation[] = [],
+  comments: Comment[] = [],
 ): PlannedRow[] {
   const meta = parsePatchFiles(SIMPLE_DIFF.replace(/REPLACE/g, name))[0].files[0];
-  return planRows(meta, annotations, layout);
+  return planRows(meta, comments, layout);
 }
 
-function ann(o: Pick<Annotation, "id" | "file" | "side" | "line_start" | "line_end">): Annotation {
+function ann(o: Pick<Comment, "id" | "file" | "side" | "line_start" | "line_end">): Comment {
   return {
     id: o.id,
     file: o.file,
@@ -100,7 +100,7 @@ describe("diff-pane cursor motion fires regardless of cursor state", () => {
 });
 
 describe("first j/k/h/l materializes at the default target", () => {
-  it("non-empty Tour with no annotations: seeds at first annotatable row of first file", () => {
+  it("non-empty Tour with no comments: seeds at first annotatable row of first file", () => {
     const fa = fileFromName("a.txt");
     const fb = fileFromName("b.txt");
     const planned = new Map<string, PlannedRow[]>([
@@ -108,7 +108,7 @@ describe("first j/k/h/l materializes at the default target", () => {
       ["b.txt", plannedFor("b.txt", "split")],
     ]);
     const flat = flatRows([fa, fb], planned, () => false);
-    const seeded = initialCursor({ topLevelAnnotations: [], flatRows: flat });
+    const seeded = initialCursor({ topLevelComments: [], flatRows: flat });
     if (seeded?.kind !== "row") throw new Error("expected row anchor");
     expect(seeded.file).toBe("a.txt");
     // Initial cursor lands on the first DIFF row, skipping interactive
@@ -118,37 +118,37 @@ describe("first j/k/h/l materializes at the default target", () => {
     expect(seeded.lineNumber).toBe(firstDiff.lineNumber);
   });
 
-  it("Tour with annotations: seeds at the first top-level annotation's CardAnchor (PRD #192)", () => {
+  it("Tour with comments: seeds at the first top-level comment's CardAnchor (PRD #192)", () => {
     const f = fileFromName("a.txt");
     const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split", [a])]]);
     const flat = flatRows([f], planned, () => false);
-    const seeded = initialCursor({ topLevelAnnotations: [a], flatRows: flat });
-    expect(seeded).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    const seeded = initialCursor({ topLevelComments: [a], flatRows: flat });
+    expect(seeded).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
   });
 
   it("degraded Tour (no rows): materialization yields null and motion is a no-op", () => {
     const f = fileFromName("a.txt");
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
     const allFolded = flatRows([f], planned, () => true);
-    expect(initialCursor({ topLevelAnnotations: [], flatRows: allFolded })).toBeNull();
+    expect(initialCursor({ topLevelComments: [], flatRows: allFolded })).toBeNull();
   });
 });
 
 describe("a from null cursor materializes at the default target AND opens the composer", () => {
-  it("with annotations: seeded card cursor falls back to currentAnnotation anchor for `a` composer (PRD #192 — `a` is row-only)", () => {
+  it("with comments: seeded card cursor falls back to currentComment anchor for `a` composer (PRD #192 — `a` is row-only)", () => {
     // Under the unified-cursor model the seeded cursor at tour-open is a
     // CardAnchor (PRD #192). `a` is row-only — when the cursor is on a
     // card, buildTopLevelComposer falls back to the supplied
-    // currentAnnotation. The App-shell keymap surfaces a footer hint
+    // currentComment. The App-shell keymap surfaces a footer hint
     // before reaching this path; the helper's fallback covers the
     // degraded direct-call path.
     const f = fileFromName("a.txt");
     const a = ann({ id: "a1", file: "a.txt", side: "additions", line_start: 2, line_end: 2 });
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split", [a])]]);
     const flat = flatRows([f], planned, () => false);
-    const seeded = initialCursor({ topLevelAnnotations: [a], flatRows: flat });
-    const composer = buildTopLevelComposer({ cursor: seeded, currentAnnotation: a });
+    const seeded = initialCursor({ topLevelComments: [a], flatRows: flat });
+    const composer = buildTopLevelComposer({ cursor: seeded, currentComment: a });
     expect(composer).toEqual({
       kind: "top-level",
       file: "a.txt",
@@ -158,12 +158,12 @@ describe("a from null cursor materializes at the default target AND opens the co
     });
   });
 
-  it("without annotations: composer opens at the first annotatable row of the first file", () => {
+  it("without comments: composer opens at the first annotatable row of the first file", () => {
     const f = fileFromName("a.txt");
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
     const flat = flatRows([f], planned, () => false);
-    const seeded = initialCursor({ topLevelAnnotations: [], flatRows: flat });
-    const composer = buildTopLevelComposer({ cursor: seeded, currentAnnotation: null });
+    const seeded = initialCursor({ topLevelComments: [], flatRows: flat });
+    const composer = buildTopLevelComposer({ cursor: seeded, currentComment: null });
     expect(composer?.kind).toBe("top-level");
     if (composer?.kind !== "top-level") return;
     expect(composer.file).toBe("a.txt");
@@ -176,20 +176,20 @@ describe("a from null cursor materializes at the default target AND opens the co
     const f = fileFromName("a.txt");
     const planned = new Map<string, PlannedRow[]>([["a.txt", plannedFor("a.txt", "split")]]);
     const allFolded = flatRows([f], planned, () => true);
-    const seeded = initialCursor({ topLevelAnnotations: [], flatRows: allFolded });
-    const composer = buildTopLevelComposer({ cursor: seeded, currentAnnotation: null });
+    const seeded = initialCursor({ topLevelComments: [], flatRows: allFolded });
+    const composer = buildTopLevelComposer({ cursor: seeded, currentComment: null });
     expect(composer).toBeNull();
   });
 });
 
 describe("n/p from null cursor materializes a CardAnchor (PRD #192)", () => {
-  // n/p call cursorFromAnnotation(target) inside jumpToAnnotation — a
+  // n/p call cursorFromComment(target) inside jumpToComment — a
   // null cursor at the moment of n/p press lands on the target
-  // annotation's CardAnchor in one step.
-  it("cursorFromAnnotation seeds a CardAnchor on the target's id", () => {
+  // comment's CardAnchor in one step.
+  it("cursorFromComment seeds a CardAnchor on the target's id", () => {
     const a = ann({ id: "a1", file: "src/foo.ts", side: "deletions", line_start: 7, line_end: 7 });
-    const c = cursorFromAnnotation(a);
-    expect(c).toEqual({ kind: "card", annotationId: "a1", preferredSide: "additions" });
+    const c = cursorFromComment(a);
+    expect(c).toEqual({ kind: "card", commentId: "a1", preferredSide: "additions" });
   });
 });
 

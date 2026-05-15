@@ -1,5 +1,5 @@
 import type { DiffFile, DiffHunk } from "./diff-model.js";
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 import type { BoundaryRef, OrphanWindow } from "./expansion-state.js";
 
 export interface HunkExpansionRegion {
@@ -25,12 +25,12 @@ const WINDOW_RADIUS = 10;
  */
 export function computeOrphanWindows(
   file: DiffFile,
-  annotations: Annotation[],
+  comments: Comment[],
   opts: OrphanWindowOptions,
 ): Map<number, HunkExpansionRegion> {
   const result = new Map<number, HunkExpansionRegion>();
 
-  for (const a of annotations) {
+  for (const a of comments) {
     if (a.file !== file.name) continue;
     const region = orphanRegionFor(file, a, opts);
     if (!region) continue;
@@ -48,7 +48,7 @@ export function computeOrphanWindows(
  * Bridges `computeOrphanWindows`' numeric-gap-keyed map onto the
  * `BoundaryRef`-keyed `OrphanWindow[]` shape that
  * `core/expansion-state.ts`' `seedFromOrphans` consumes. The TUI feeds
- * the result into expansion state at planner-init so orphan annotations
+ * the result into expansion state at planner-init so orphan comments
  * render inline with `±10` lines of surrounding context (PRD #108).
  *
  * Mapping rule: hunkIndex `0` → `'top'`, hunkIndex === `file.hunks.length`
@@ -57,11 +57,11 @@ export function computeOrphanWindows(
  */
 export function orphanSeedWindows(
   file: DiffFile,
-  annotations: Annotation[],
+  comments: Comment[],
   opts: OrphanWindowOptions,
 ): OrphanWindow[] {
   const out: OrphanWindow[] = [];
-  for (const [hunkIndex, region] of computeOrphanWindows(file, annotations, opts)) {
+  for (const [hunkIndex, region] of computeOrphanWindows(file, comments, opts)) {
     out.push({
       file: file.name,
       ref: hunkIndexToBoundaryRef(hunkIndex, file.hunks.length),
@@ -90,7 +90,7 @@ function hunkRangeOn(h: DiffHunk, isAdditions: boolean): { start: number; count:
 
 function orphanRegionFor(
   file: DiffFile,
-  a: Annotation,
+  a: Comment,
   opts: OrphanWindowOptions,
 ): OrphanRegion | null {
   const isAdditions = a.side === "additions";

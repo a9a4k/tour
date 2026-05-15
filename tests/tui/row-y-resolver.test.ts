@@ -171,11 +171,11 @@ describe("buildRowYResolver", () => {
       file: "x.ts",
       side: "additions",
       lineEnd: 8,
-      annotationId: "ann-7",
+      commentId: "ann-7",
     };
     expect(flatRowId(diff)).toBe("diff-row-x.ts-additions-8");
     expect(flatRowId(interactive)).toBe("interactive-row-x.ts-hunk-separator-1");
-    expect(flatRowId(card)).toBe("annotation-ann-7");
+    expect(flatRowId(card)).toBe("comment-ann-7");
   });
 
   describe("cursorRowDomId (layout-invariant resolution for preserve-screen-y)", () => {
@@ -190,13 +190,13 @@ describe("buildRowYResolver", () => {
     };
     const flatRows = [pairedContext] as ReadonlyArray<FlatRow>;
 
-    it("maps a card cursor to `annotation-${id}` without consulting flatRows", () => {
+    it("maps a card cursor to `comment-${id}` without consulting flatRows", () => {
       const cursor: Cursor = {
         kind: "card",
-        annotationId: "ann-3",
+        commentId: "ann-3",
         preferredSide: "additions",
       };
-      expect(cursorRowDomId(cursor, [])).toBe("annotation-ann-3");
+      expect(cursorRowDomId(cursor, [])).toBe("comment-ann-3");
     });
 
     it("returns the FlatRow's id (additions side) for a paired-row cursor on the ADDITIONS side", () => {

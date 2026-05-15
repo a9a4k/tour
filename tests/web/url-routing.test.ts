@@ -74,7 +74,7 @@ describe("composeUrl", () => {
     expect(composeUrl(null, "ignored")).toBe("/");
   });
 
-  it("emits `/<tour-id>` when an annotation is not selected", () => {
+  it("emits `/<tour-id>` when a comment is not selected", () => {
     expect(composeUrl("abc", null)).toBe("/abc");
   });
 

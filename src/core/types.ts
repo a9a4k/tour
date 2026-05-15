@@ -13,7 +13,7 @@ export interface Tour {
 
 export type AuthorKind = "agent" | "human";
 
-export interface Annotation {
+export interface Comment {
   id: string;
   file: string;
   side: "additions" | "deletions";

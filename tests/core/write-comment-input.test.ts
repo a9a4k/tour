@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildWriteAnnotationInput,
-  type WriteAnnotationInput,
-} from "../../src/core/write-annotation-input.js";
+  buildWriteCommentInput,
+  type WriteCommentInput,
+} from "../../src/core/write-comment-input.js";
 import type { ComposerTarget } from "../../src/core/tour-session.js";
 import type { TourBundle } from "../../src/core/tour-bundle.js";
-import type { Annotation, Tour } from "../../src/core/types.js";
+import type { Comment, Tour } from "../../src/core/types.js";
 
 const fixtureTour: Tour = {
   id: "tour-x",
@@ -20,17 +20,17 @@ const fixtureTour: Tour = {
   wip_snapshot: false,
 };
 
-function bundle(overrides: { annotations?: Annotation[] } = {}): TourBundle {
+function bundle(overrides: { comments?: Comment[] } = {}): TourBundle {
   return {
     kind: "ok",
     tour: fixtureTour,
-    annotations: overrides.annotations ?? [],
+    comments: overrides.comments ?? [],
     diff: "",
     files: [],
   };
 }
 
-function mkAnnotation(over: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
+function mkComment(over: Partial<Comment> & Pick<Comment, "id">): Comment {
   return {
     id: over.id,
     file: over.file ?? "src/x.ts",
@@ -45,11 +45,11 @@ function mkAnnotation(over: Partial<Annotation> & Pick<Annotation, "id">): Annot
   };
 }
 
-describe("buildWriteAnnotationInput", () => {
-  // The bug: when constructing a top-level WriteAnnotationInput, the
+describe("buildWriteCommentInput", () => {
+  // The bug: when constructing a top-level WriteCommentInput, the
   // surface was dropping the live bundle from the payload. The CLI's
   // writer callback then passed `input.bundle === undefined` into
-  // `createAnnotation`'s anchor validator, which dereferenced
+  // `createComment`'s anchor validator, which dereferenced
   // `undefined.kind` and threw. The builder ALWAYS attaches the live
   // bundle to a top-level input so the validator sees a real value.
   it("top-level target carries the live bundle through to the input", () => {
@@ -61,14 +61,14 @@ describe("buildWriteAnnotationInput", () => {
       line_end: 12,
     };
     const b = bundle();
-    const result = buildWriteAnnotationInput({
+    const result = buildWriteCommentInput({
       target: tgt,
       body: "the draft",
       bundle: b,
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.input).toEqual<WriteAnnotationInput>({
+    expect(result.input).toEqual<WriteCommentInput>({
       kind: "top-level",
       file: "src/foo.ts",
       side: "additions",
@@ -79,8 +79,8 @@ describe("buildWriteAnnotationInput", () => {
     });
   });
 
-  it("reply target resolves the parent annotation from the live bundle's annotations", () => {
-    const parent = mkAnnotation({
+  it("reply target resolves the parent comment from the live bundle's comments", () => {
+    const parent = mkComment({
       id: "ann-parent",
       file: "src/x.ts",
       side: "deletions",
@@ -88,14 +88,14 @@ describe("buildWriteAnnotationInput", () => {
       line_end: 3,
     });
     const tgt: ComposerTarget = { kind: "reply", replies_to: "ann-parent" };
-    const result = buildWriteAnnotationInput({
+    const result = buildWriteCommentInput({
       target: tgt,
       body: "reply body",
-      bundle: bundle({ annotations: [parent] }),
+      bundle: bundle({ comments: [parent] }),
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.input).toEqual<WriteAnnotationInput>({
+    expect(result.input).toEqual<WriteCommentInput>({
       kind: "reply",
       parent,
       body: "reply body",
@@ -104,7 +104,7 @@ describe("buildWriteAnnotationInput", () => {
 
   it("reply target with a vanished parent returns parent-missing (no input emitted)", () => {
     const tgt: ComposerTarget = { kind: "reply", replies_to: "ghost" };
-    const result = buildWriteAnnotationInput({
+    const result = buildWriteCommentInput({
       target: tgt,
       body: "x",
       bundle: bundle(),

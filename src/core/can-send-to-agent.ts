@@ -2,7 +2,7 @@ import type { AuthorKind } from "./types.js";
 
 // Pure predicate consumed by both surfaces (TUI footer hint + webapp card
 // action) to decide visibility and enabled state of the "Send to {agent}"
-// affordance on an Annotation card.
+// affordance on a Comment card.
 //
 // Visibility hides the affordance entirely (no muted button, no footer
 // hint). Disabled keeps it visible but unclickable / dimmed.

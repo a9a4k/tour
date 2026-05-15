@@ -7,13 +7,13 @@ import type {
 } from "../core/tour-session-runtime.js";
 import type { TourBundle } from "../core/tour-bundle.js";
 import type { ReplyLock } from "../core/reply-lock.js";
-import type { Annotation } from "../core/types.js";
+import type { Comment } from "../core/types.js";
 import {
   isBundleResolved,
   type ScrollPlacement,
   type TourSessionStore,
 } from "../core/tour-session.js";
-import type { WriteAnnotationInput } from "../core/write-annotation-input.js";
+import type { WriteCommentInput } from "../core/write-comment-input.js";
 import { isTopLevel } from "../core/threads.js";
 import {
   buildTree,
@@ -39,7 +39,7 @@ export interface TuiTourSessionAdapterDeps {
   store: TourSessionStore;
   loadTour: (id: string) => Promise<TourBundle>;
   loadReplyLock: (id: string) => Promise<ReplyLock | null>;
-  writeAnnotation: (tourId: string, input: WriteAnnotationInput) => Promise<Annotation>;
+  writeComment: (tourId: string, input: WriteCommentInput) => Promise<Comment>;
   diffScrollBoxRef: { current: ScrollBoxRenderable | null };
   pickerScrollBoxRef: { current: ScrollBoxRenderable | null };
   setSelectedRowIdx: (idx: number) => void;
@@ -106,7 +106,7 @@ export function createTuiTourSessionAdapter(
   ): boolean {
     const sb = deps.diffScrollBoxRef.current;
     if (!sb) return false;
-    const targetId = `annotation-${id}`;
+    const targetId = `comment-${id}`;
     if (!sb.content.findDescendantById(targetId)) return false;
     scrollByPlacement(sb, targetId, mode, opts);
     return true;
@@ -115,8 +115,8 @@ export function createTuiTourSessionAdapter(
   return {
     fetchBundle: (id) => deps.loadTour(id),
     fetchReplyLock: (id) => deps.loadReplyLock(id),
-    writeAnnotation: (tourId, input) => deps.writeAnnotation(tourId, input),
-    requestReply: async ({ tourId, annotationId }) => {
+    writeComment: (tourId, input) => deps.writeComment(tourId, input),
+    requestReply: async ({ tourId, commentId }) => {
       // No-op when `--reply-agent` wasn't passed, mirroring `core/reply-
       // runner`'s `no-reply-agent` seam. Rejections propagate; the runtime's
       // intent listener owns the fire-and-forget catch. PRD #278 slice 7.
@@ -124,15 +124,15 @@ export function createTuiTourSessionAdapter(
       await runRequestReply({
         cwd: deps.cwd,
         tourId,
-        annotationId,
+        commentId,
         agent: deps.replyAgent,
       });
     },
     subscribeTourEvents: (tourId, handler: TourEventHandler) => {
       const watcher = new TourWatcher(deps.cwd, tourId);
       watcher.on((event) => {
-        if (event.type === "annotation-changed") {
-          handler({ type: "annotation-changed" });
+        if (event.type === "comment-changed") {
+          handler({ type: "comment-changed" });
         } else if (event.type === "reply-in-flight") {
           handler({ type: "reply-in-flight" });
         } else if (event.type === "reply-cleared") {
@@ -170,7 +170,7 @@ export function createTuiTourSessionAdapter(
             settle();
             return;
           }
-          // Target not in DOM yet (post-submit `scrollToAnnotation` fires
+          // Target not in DOM yet (post-submit `scrollToComment` fires
           // synchronously inside `composer.submitted`, before the watcher
           // delivers the freshly-written card). Retry until the bundle
           // refreshes or the budget runs out.
@@ -203,7 +203,7 @@ export function createTuiTourSessionAdapter(
         scheduleScroll(() => {
           const sb = deps.diffScrollBoxRef.current;
           if (!sb) return;
-          const targetId = `annotation-${target.replies_to}`;
+          const targetId = `comment-${target.replies_to}`;
           if (sb.content.findDescendantById(targetId)) {
             centerChildInView(sb, targetId);
           }
@@ -227,10 +227,10 @@ export function createTuiTourSessionAdapter(
       const bundle = isBundleResolved(state);
       if (!bundle || bundle.kind !== "ok") return;
       const tree = compress(buildTree([...bundle.files]));
-      const annotationCounts: Record<string, number> = {};
-      for (const a of bundle.annotations) {
+      const commentCounts: Record<string, number> = {};
+      for (const a of bundle.comments) {
         if (isTopLevel(a)) {
-          annotationCounts[a.file] = (annotationCounts[a.file] ?? 0) + 1;
+          commentCounts[a.file] = (commentCounts[a.file] ?? 0) + 1;
         }
       }
       const collapsedFolders = state.collapsedFolders;
@@ -240,7 +240,7 @@ export function createTuiTourSessionAdapter(
           deps.store.dispatch({ type: "folds.toggleFolder", path });
         }
       }
-      const located = revealAndLocate(tree, collapsedFolders, annotationCounts, file);
+      const located = revealAndLocate(tree, collapsedFolders, commentCounts, file);
       if (located) deps.setSelectedRowIdx(located.rowIdx);
     },
     mirrorTourUrl: () => {

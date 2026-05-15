@@ -11,7 +11,7 @@ import {
   EXPANSION_STEP,
   parseHunkHeader,
 } from "../../src/web/client/row-components.js";
-import type { Annotation } from "../../src/web/client/types.js";
+import type { Comment } from "../../src/web/client/types.js";
 
 // `<DiffRow>`, `<CardRow>`, `<InteractiveRow>` are the row primitives the
 // new web row renderer (PRD #212 slice 4) mounts. Each is `React.memo`'d
@@ -386,7 +386,7 @@ describe("<DiffRow>", () => {
   });
 
   it("paints the per-cell range cue in unified layout when leftInRange is the only flag set (#226)", () => {
-    // Pre-#226, the planner emitted `rightTinted` for all unified annotations,
+    // Pre-#226, the planner emitted `rightTinted` for all unified comments,
     // but the renderer should still light up when only `leftInRange` is set.
     const c = mount(
       createElement(DiffRow, {
@@ -481,7 +481,7 @@ describe("<DiffRow>", () => {
   });
 
   it("tints both sides but anchors the stripe to deletions gutter only in the both-sides fallback (#226)", () => {
-    // Rare multi-line annotation with anchors on both sides: both
+    // Rare multi-line comment with anchors on both sides: both
     // `leftInRange` and `rightInRange` are true. Both sides get the tint;
     // only one stripe — at the row's leftmost edge (the deletions gutter).
     const c = mount(
@@ -980,7 +980,7 @@ describe("<DiffRow>", () => {
 // CardRow
 // ---------------------------------------------------------------------------
 
-const baseAnnotation: Annotation = {
+const baseComment: Comment = {
   id: "ann-1",
   file: "x.txt",
   side: "additions",
@@ -993,10 +993,10 @@ const baseAnnotation: Annotation = {
 };
 
 describe("<CardRow>", () => {
-  it("mounts the AnnotationCard and exposes the annotation body", () => {
+  it("mounts the CommentCard and exposes the comment body", () => {
     const c = mount(
       createElement(CardRow, {
-        annotation: baseAnnotation,
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -1004,16 +1004,16 @@ describe("<CardRow>", () => {
         layout: "unified",
       }),
     );
-    const card = c.querySelector(".tour-card .annotation-block");
+    const card = c.querySelector(".tour-card .comment-block");
     expect(card).not.toBeNull();
     expect(card!.textContent).toContain("hello");
-    expect(card!.getAttribute("data-annotation-id")).toBe("ann-1");
+    expect(card!.getAttribute("data-comment-id")).toBe("ann-1");
   });
 
   it("places the card row as full-width in unified layout", () => {
     const c = mount(
       createElement(CardRow, {
-        annotation: baseAnnotation,
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -1029,7 +1029,7 @@ describe("<CardRow>", () => {
   it("anchors deletion cards to the left columns (cols 1-3) in split layout (#221)", () => {
     const c = mount(
       createElement(CardRow, {
-        annotation: { ...baseAnnotation, side: "deletions" },
+        comment: { ...baseComment, side: "deletions" },
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -1045,7 +1045,7 @@ describe("<CardRow>", () => {
   it("anchors addition cards to the right columns (cols 4 / -1) in split layout (#221)", () => {
     const c = mount(
       createElement(CardRow, {
-        annotation: baseAnnotation,
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -1062,7 +1062,7 @@ describe("<CardRow>", () => {
     const calls: Array<{ id: string; el: HTMLDivElement | null }> = [];
     mount(
       createElement(CardRow, {
-        annotation: baseAnnotation,
+        comment: baseComment,
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,

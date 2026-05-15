@@ -1,8 +1,8 @@
 import { buildThreads } from "./threads.js";
-import type { Annotation, Tour } from "./types.js";
+import type { Comment, Tour } from "./types.js";
 
-export interface PickupAnnotation extends Annotation {
-  replies: Annotation[];
+export interface PickupComment extends Comment {
+  replies: Comment[];
 }
 
 export interface ConversationTree {
@@ -13,14 +13,14 @@ export interface ConversationTree {
   head_source: string;
   base_source: string;
   status: "open" | "closed";
-  annotations: PickupAnnotation[];
+  comments: PickupComment[];
 }
 
 export function buildConversationTree(
   tour: Tour,
-  annotations: Annotation[],
+  comments: Comment[],
 ): ConversationTree {
-  const threads = buildThreads(annotations);
+  const threads = buildThreads(comments);
   return {
     id: tour.id,
     ...(tour.title ? { title: tour.title } : {}),
@@ -29,6 +29,6 @@ export function buildConversationTree(
     head_source: tour.head_source,
     base_source: tour.base_source,
     status: tour.status,
-    annotations: threads.map((t) => ({ ...t.root, replies: t.replies })),
+    comments: threads.map((t) => ({ ...t.root, replies: t.replies })),
   };
 }

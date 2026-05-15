@@ -19,8 +19,8 @@ export type { InteractiveSubKind, BoundaryRef };
  *   walks alongside diff rows: hunk-separators, synthetic file-top /
  *   file-bottom boundaries, and classifier-collapsed-file indicators.
  *   Pressing Enter routes to a row-kind-specific handler.
- * - `card` rows (PRD #192) are Annotation cards — addressed by
- *   `annotationId`. `r` / `s` dispatch only when the cursor sits on a
+ * - `card` rows (PRD #192) are Comment cards — addressed by
+ *   `commentId`. `r` / `s` dispatch only when the cursor sits on a
  *   card; `a` is suppressed on a card.
  *
  * For paired diff rows (both line numbers populated) the cursor's
@@ -51,20 +51,20 @@ export interface InteractiveFlatRow {
 }
 
 /**
- * Annotation-card cursor stop (PRD #192 / ADR 0022). Emitted directly
- * after the diff row the card's annotation anchors to (`line_end` on
+ * Comment-card cursor stop (PRD #192 / ADR 0022). Emitted directly
+ * after the diff row the card's comment anchors to (`line_end` on
  * `side`). Multiple cards at the same anchor stack in `created_at` order
  * (the planner's interleave step already enforces that — see
- * `interleaveAnnotations` in `diff-rows.ts`).
+ * `interleaveComments` in `diff-rows.ts`).
  */
 export interface CardFlatRow {
   kind: "card";
   file: string;
   side: "additions" | "deletions";
-  /** Anchor line (`annotation.line_end` on `annotation.side`) — lets the
+  /** Anchor line (`comment.line_end` on `comment.side`) — lets the
    *  renderer find the card's anchor row when the cursor is on the card. */
   lineEnd: number;
-  annotationId: string;
+  commentId: string;
 }
 
 export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
@@ -157,18 +157,18 @@ export function flatRows(
         });
         continue;
       }
-      if (row.kind === "annotation") {
-        // Annotation cards are first-class cursor stops in the unified
+      if (row.kind === "comment") {
+        // Comment cards are first-class cursor stops in the unified
         // cursor model (PRD #192). The planner's interleave step has
-        // already placed the annotation row directly after its anchor
+        // already placed the comment row directly after its anchor
         // diff row; we mirror that placement into the flat stream so
         // the row-index lookup unifies for rows and cards.
         out.push({
           kind: "card",
           file: file.name,
-          side: row.annotation.side,
-          lineEnd: row.annotation.line_end,
-          annotationId: row.annotation.id,
+          side: row.comment.side,
+          lineEnd: row.comment.line_end,
+          commentId: row.comment.id,
         });
         continue;
       }

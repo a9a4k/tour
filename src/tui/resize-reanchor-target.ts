@@ -3,7 +3,7 @@ import type { FlatRow } from "../core/flat-rows.js";
 import { cursorRowDomId } from "./row-y-resolver.js";
 
 /**
- * Issue #318: after `[`/`]` resize, annotation cards (markdown blocks)
+ * Issue #318: after `[`/`]` resize, comment cards (markdown blocks)
  * reflow to the new diff-pane width, so any card above the viewport
  * shifts everything below it by its delta. The scrollbox keeps its
  * `scrollTop` (row offset) across the resize but the user's visual

@@ -136,7 +136,7 @@ describe("DiffLine layout", () => {
 // it into two tones: brighter rail on the gutter, softer wash on the code
 // cell. Addition paints successRange (gutter) + successCell (content);
 // deletion paints dangerRange (gutter) + dangerCell (content). The
-// annotation tint composes on top per ADR 0008 (gutter tint wins on +/-
+// comment tint composes on top per ADR 0008 (gutter tint wins on +/-
 // rows, content tint wins on context rows).
 
 function contentBgOf(root: AnyElement): unknown {
@@ -175,14 +175,14 @@ describe("DiffLine diff backgrounds (issue #74 + #262 two-tone)", () => {
     expect(gutterBgOf(del)).not.toBe(contentBgOf(del));
   });
 
-  it("paints no bg when diffBg is undefined and no annotation flags", () => {
+  it("paints no bg when diffBg is undefined and no comment flags", () => {
     const root = render();
     expect(gutterBgOf(root)).toBeFalsy();
     expect(contentBgOf(root)).toBeFalsy();
   });
 
-  it("on a +/- row inside an annotation range, gutter shows annotation tint and content keeps the soft diff cell bg (ADR 0008 + #262)", () => {
-    // gutterTinted=true (annotation falls on this row), contentTinted=false
+  it("on a +/- row inside a comment range, gutter shows comment tint and content keeps the soft diff cell bg (ADR 0008 + #262)", () => {
+    // gutterTinted=true (comment falls on this row), contentTinted=false
     // (planner restricts content tint to paired/context rows so the +/-
     // signal survives on the content column). Content carries the softer
     // cell tint per #262.
@@ -195,7 +195,7 @@ describe("DiffLine diff backgrounds (issue #74 + #262 two-tone)", () => {
     expect(contentBgOf(root)).toBe(theme.bg.successCell.tui);
   });
 
-  it("on a context row inside an annotation range, both gutter and content show annotation tint", () => {
+  it("on a context row inside a comment range, both gutter and content show comment tint", () => {
     const root = render({
       diffBg: undefined,
       gutterTinted: true,
@@ -222,13 +222,13 @@ describe("DiffLine diff backgrounds (issue #74 + #262 two-tone)", () => {
 });
 
 // ADR 0011 line cursor: when cursorActive is true, both the gutter and
-// content cells paint theme.bg.cursorRow (winning over annotation tint
+// content cells paint theme.bg.cursorRow (winning over comment tint
 // and diff bg per the composition rule), and a leading ❯ glyph in
 // theme.fg.cursor renders in the line-number column. The full-row fill is
 // the TUI-native analogue of the web's outlined focus row.
 
 describe("DiffLine cursorActive (ADR 0011)", () => {
-  it("paints cursorRow bg when cursorActive=true (overrides annotation tint)", () => {
+  it("paints cursorRow bg when cursorActive=true (overrides comment tint)", () => {
     const root = render({ cursorActive: true, gutterTinted: true } as never);
     expect(gutterBgOf(root)).toBe(CURSOR_ROW_BG);
   });
@@ -284,7 +284,7 @@ describe("DiffLine cursorActive (ADR 0011)", () => {
     expect(contentBgOf(additionBg)).toBe(CURSOR_ROW_BG);
   });
 
-  it("paints cursorRow bg on the content cell when cursorActive=true (overrides annotation content tint)", () => {
+  it("paints cursorRow bg on the content cell when cursorActive=true (overrides comment content tint)", () => {
     const root = render({ cursorActive: true, gutterTinted: true, contentTinted: true } as never);
     expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
   });
@@ -336,7 +336,7 @@ describe("DiffLine paneFocused (issue #305)", () => {
     expect(number!.props.children).toBe("   42 ");
   });
 
-  it("dim bg still wins over annotation tint and diff +/- bg when paneFocused=false", () => {
+  it("dim bg still wins over comment tint and diff +/- bg when paneFocused=false", () => {
     const root = render({
       cursorActive: true,
       paneFocused: false,
@@ -377,7 +377,7 @@ describe("DiffLine emptySide (issue #260)", () => {
     expect(contentBgOf(root)).toBe(CURSOR_ROW_BG);
   });
 
-  it("annotation tint wins over emptySide (range tint paints the tinted cell)", () => {
+  it("comment tint wins over emptySide (range tint paints the tinted cell)", () => {
     const root = render({
       emptySide: true,
       gutterTinted: true,
@@ -507,9 +507,9 @@ describe("DiffLine gutter fg by row kind (issue #268)", () => {
     expect(number!.props["fg"]).toBe(theme.fg.default);
   });
 
-  it("annotation tint on a context row does not change the gutter-text colour (stays muted)", () => {
+  it("comment tint on a context row does not change the gutter-text colour (stays muted)", () => {
     // gutterTinted=true with no diffBg = a context row inside an
-    // annotation range. The bg layer composes; the fg rule still keys
+    // comment range. The bg layer composes; the fg rule still keys
     // off diffBg, so the number stays muted.
     const root = render({
       gutterTinted: true,
@@ -519,7 +519,7 @@ describe("DiffLine gutter fg by row kind (issue #268)", () => {
     expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.muted);
   });
 
-  it("annotation tint on a +/- row does not change the gutter-text colour (stays bright)", () => {
+  it("comment tint on a +/- row does not change the gutter-text colour (stays bright)", () => {
     const root = render({
       gutterTinted: true,
       contentTinted: false,

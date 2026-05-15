@@ -8,7 +8,7 @@ import type { Tour } from "../../src/core/types.js";
 // React element tree. We walk the tree to assert the structural contract
 // from issue #93 (and parent #91): single-line layout with flexWrap so the
 // right cluster drops to its own row in narrow terminals; no Tour short-id
-// in the header; pill hidden when there are no top-level annotations.
+// in the header; pill hidden when there are no top-level comments.
 //
 // After issue #311 retired the cursor-file path row, `render()` returns the
 // row directly (no outer column container). The tree is the row's two
@@ -83,12 +83,12 @@ function render(
   const props = {
     tour,
     layout: "split" as const,
-    currentAnnotationIdx: 0,
+    currentCommentIdx: 0,
     topLevelTotal: 3,
     tourStats: { additions: 0, deletions: 0 },
     onOpenPicker: () => {},
-    onPrevAnnotation: () => {},
-    onNextAnnotation: () => {},
+    onPrevComment: () => {},
+    onNextComment: () => {},
     onSplit: () => {},
     onUnified: () => {},
     ...overrides,
@@ -243,7 +243,7 @@ describe("TopHeaderTui (issue #93)", () => {
   });
 
   it("renders the navigation pill with N/M when topLevelTotal > 0", () => {
-    const root = render({ topLevelTotal: 3, currentAnnotationIdx: 1 });
+    const root = render({ topLevelTotal: 3, currentCommentIdx: 1 });
     const headerText = walk(root)
       .filter((e) => e.type === "text")
       .map(textChildOf)
@@ -387,7 +387,7 @@ describe("TopHeaderTui (issue #93)", () => {
       const root = render({
         tourStats: { additions: 12, deletions: 7 },
         topLevelTotal: 3,
-        currentAnnotationIdx: 0,
+        currentCommentIdx: 0,
       });
       const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
@@ -407,7 +407,7 @@ describe("TopHeaderTui (issue #93)", () => {
       const root = render({
         tourStats: { additions: 9, deletions: 0 },
         topLevelTotal: 2,
-        currentAnnotationIdx: 0,
+        currentCommentIdx: 0,
       });
       const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
@@ -423,7 +423,7 @@ describe("TopHeaderTui (issue #93)", () => {
       const root = render({
         tourStats: { additions: 0, deletions: 6 },
         topLevelTotal: 2,
-        currentAnnotationIdx: 0,
+        currentCommentIdx: 0,
       });
       const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)
@@ -439,7 +439,7 @@ describe("TopHeaderTui (issue #93)", () => {
       const root = render({
         tourStats: { additions: 0, deletions: 0 },
         topLevelTotal: 2,
-        currentAnnotationIdx: 0,
+        currentCommentIdx: 0,
       });
       const [, right] = childrenOf(root).filter(isElement);
       const texts = walk(right)

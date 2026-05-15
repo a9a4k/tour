@@ -3,7 +3,7 @@ import {
   parseDiff,
   splitRawDiffByFile,
   splitFileDiffByHunk,
-  resolveAnnotationToHunkIndex,
+  resolveCommentToHunkIndex,
   type DiffFile,
 } from "../../src/core/diff-model.js";
 
@@ -210,7 +210,7 @@ index 0000000..e69de29`;
   });
 });
 
-describe("resolveAnnotationToHunkIndex", () => {
+describe("resolveCommentToHunkIndex", () => {
   const file: DiffFile = {
     name: "x.txt",
     type: "change",
@@ -241,14 +241,14 @@ describe("resolveAnnotationToHunkIndex", () => {
 
   it("finds the hunk on the additions side", () => {
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "additions",
         line_start: 2,
         line_end: 2,
       }),
     ).toBe(0);
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "additions",
         line_start: 22,
         line_end: 22,
@@ -258,14 +258,14 @@ describe("resolveAnnotationToHunkIndex", () => {
 
   it("finds the hunk on the deletions side", () => {
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "deletions",
         line_start: 1,
         line_end: 2,
       }),
     ).toBe(0);
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "deletions",
         line_start: 39,
         line_end: 40,
@@ -273,9 +273,9 @@ describe("resolveAnnotationToHunkIndex", () => {
     ).toBe(2);
   });
 
-  it("matches a multi-line annotation that overlaps a hunk's range", () => {
+  it("matches a multi-line comment that overlaps a hunk's range", () => {
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "additions",
         line_start: 2,
         line_end: 4,
@@ -283,9 +283,9 @@ describe("resolveAnnotationToHunkIndex", () => {
     ).toBe(0);
   });
 
-  it("returns null when no hunk contains the annotation's lines", () => {
+  it("returns null when no hunk contains the comment's lines", () => {
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "additions",
         line_start: 100,
         line_end: 100,
@@ -293,9 +293,9 @@ describe("resolveAnnotationToHunkIndex", () => {
     ).toBeNull();
   });
 
-  it("skips hunks with zero count on the annotation's side", () => {
+  it("skips hunks with zero count on the comment's side", () => {
     expect(
-      resolveAnnotationToHunkIndex(file, {
+      resolveCommentToHunkIndex(file, {
         side: "additions",
         line_start: 40,
         line_end: 40,

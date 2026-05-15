@@ -86,10 +86,10 @@ describe("dispatchCursorKey: layout rebind", () => {
   });
 });
 
-describe("dispatchCursorKey: annotate-at-cursor", () => {
-  it("c on a row cursor → annotate-at-cursor (App-side handler materializes the cursor on null)", () => {
+describe("dispatchCursorKey: comment-at-cursor", () => {
+  it("c on a row cursor → comment-at-cursor (App-side handler materializes the cursor on null)", () => {
     expect(dispatchCursorKey(key({ key: "c" }), baseCtx)).toEqual({
-      type: "annotate-at-cursor",
+      type: "comment-at-cursor",
     });
   });
 
@@ -152,7 +152,7 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
   // ADR 0028 / PRD #330: cross-axis misses on the webapp footer flash a
   // reason via the transient status slot. The keymap emits the message; the
   // App-side handler routes it into setFooterStatus with a ~2s auto-dismiss.
-  // PRD #335 / ADR 0029 flipped "annotation" → "comment" in these strings.
+  // PRD #335 / ADR 0029 flipped "comment" → "comment" in these strings.
 
   it("r on a diff-row cursor → status `No comment under cursor.`", () => {
     expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({
@@ -196,24 +196,24 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
   });
 });
 
-describe("dispatchCursorKey: annotation navigation (β-coupling)", () => {
+describe("dispatchCursorKey: comment navigation (β-coupling)", () => {
   // β-coupling per ADR 0012 (mirrors ADR 0011): the keymap classifies
-  // n/p as nav-next/prev-annotation; the App-side handler routes the
-  // dispatch to navigateBy, which calls setCursor(cursorFromAnnotation
+  // n/p as nav-next/prev-comment; the App-side handler routes the
+  // dispatch to navigateBy, which calls setCursor(cursorFromComment
   // (target)) so the line cursor materializes at the navigated-to
   // anchor on the same keystroke. The asymmetric rule is enforced
   // here at the dispatcher: motion keys (j/k/h/l/arrows) classify as
   // move-*/set-side-* — never as nav-* — so j/k/h/l never touch
-  // currentAnnotationId (App handler reads action.type).
-  it("n → nav-next-annotation", () => {
+  // currentCommentId (App handler reads action.type).
+  it("n → nav-next-comment", () => {
     expect(dispatchCursorKey(key({ key: "n" }), baseCtx)).toEqual({
-      type: "nav-next-annotation",
+      type: "nav-next-comment",
     });
   });
 
-  it("p → nav-prev-annotation", () => {
+  it("p → nav-prev-comment", () => {
     expect(dispatchCursorKey(key({ key: "p" }), baseCtx)).toEqual({
-      type: "nav-prev-annotation",
+      type: "nav-prev-comment",
     });
   });
 
@@ -234,13 +234,13 @@ describe("dispatchCursorKey: annotation navigation (β-coupling)", () => {
 
   it("j / k / h / l / arrows never classify as nav-* (the asymmetric β-rule)", () => {
     // The reverse direction stays decoupled — line motion does NOT
-    // change currentAnnotationId. Dispatcher-level guard: a motion key
+    // change currentCommentId. Dispatcher-level guard: a motion key
     // never routes through the nav-next/prev path.
     const motionKeys = ["j", "k", "h", "l", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"];
     for (const k of motionKeys) {
       const a = dispatchCursorKey(key({ key: k }), baseCtx);
-      expect(a.type).not.toBe("nav-next-annotation");
-      expect(a.type).not.toBe("nav-prev-annotation");
+      expect(a.type).not.toBe("nav-next-comment");
+      expect(a.type).not.toBe("nav-prev-comment");
     }
   });
 });
@@ -280,10 +280,10 @@ describe("dispatchCursorKey: suppression rules", () => {
     expect(dispatchCursorKey(key({ key: "h" }), ctx)).toEqual({ type: "noop" });
     expect(dispatchCursorKey(key({ key: "l" }), ctx)).toEqual({ type: "noop" });
     expect(dispatchCursorKey(key({ key: "ArrowDown" }), ctx)).toEqual({ type: "noop" });
-    // Annotation nav and layout still work (matches focusInEditable being
+    // Comment nav and layout still work (matches focusInEditable being
     // false — the textarea handles its own focus suppression separately).
     expect(dispatchCursorKey(key({ key: "n" }), ctx)).toEqual({
-      type: "nav-next-annotation",
+      type: "nav-next-comment",
     });
   });
 

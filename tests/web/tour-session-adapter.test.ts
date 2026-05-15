@@ -8,7 +8,7 @@ import {
   type TourSessionState,
 } from "../../src/core/tour-session.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
-import type { Annotation, Tour } from "../../src/core/types.js";
+import type { Comment, Tour } from "../../src/core/types.js";
 
 // Issue #291. The TUI adapter's `requestReply` throws on transport-level
 // failure (via core/reply-runner.ts); the web adapter previously resolved
@@ -34,7 +34,7 @@ const noopCallbacks: AdapterCallbacks = {
 function makeAdapter(
   opts: {
     store?: TourSessionStore;
-    annotationRefs?: Map<string, HTMLDivElement>;
+    commentRefs?: Map<string, HTMLDivElement>;
     callbacks?: AdapterCallbacks | null;
   } = {},
 ) {
@@ -43,7 +43,7 @@ function makeAdapter(
     ({ getState: () => ({ currentTourId: null }) } as unknown as TourSessionStore);
   return createWebTourSessionAdapter({
     store,
-    annotationRefs: { current: opts.annotationRefs ?? new Map() },
+    commentRefs: { current: opts.commentRefs ?? new Map() },
     callbacksRef: { current: opts.callbacks ?? null },
   });
 }
@@ -83,7 +83,7 @@ describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior
     const card = document.createElement("div");
     const scrollSpy = vi.fn();
     card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
-    const adapter = makeAdapter({ annotationRefs: new Map([["ann1", card]]) });
+    const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
 
     adapter.scrollToCard("ann1", "nearest");
     await flushRaf();
@@ -96,7 +96,7 @@ describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior
     const card = document.createElement("div");
     const scrollSpy = vi.fn();
     card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
-    const adapter = makeAdapter({ annotationRefs: new Map([["ann1", card]]) });
+    const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
 
     adapter.scrollToCard("ann1", "center");
     await flushRaf();
@@ -161,7 +161,7 @@ describe("createWebTourSessionAdapter.requestReply — non-2xx rejection (Issue 
 
     const adapter = makeAdapter();
     await expect(
-      adapter.requestReply({ tourId: "tour-a", annotationId: "ann-1" }),
+      adapter.requestReply({ tourId: "tour-a", commentId: "ann-1" }),
     ).rejects.toThrow("reply lock held");
   });
 
@@ -177,7 +177,7 @@ describe("createWebTourSessionAdapter.requestReply — non-2xx rejection (Issue 
 
     const adapter = makeAdapter();
     await expect(
-      adapter.requestReply({ tourId: "tour-a", annotationId: "ann-1" }),
+      adapter.requestReply({ tourId: "tour-a", commentId: "ann-1" }),
     ).rejects.toThrow("HTTP 500");
   });
 
@@ -193,7 +193,7 @@ describe("createWebTourSessionAdapter.requestReply — non-2xx rejection (Issue 
 
     const adapter = makeAdapter();
     await expect(
-      adapter.requestReply({ tourId: "tour-a", annotationId: "ann-1" }),
+      adapter.requestReply({ tourId: "tour-a", commentId: "ann-1" }),
     ).resolves.toBeUndefined();
   });
 });
@@ -233,19 +233,19 @@ function bundleFile(
 }
 
 function okBundle(
-  opts: { files?: BundleFile[]; annotations?: Annotation[] } = {},
+  opts: { files?: BundleFile[]; comments?: Comment[] } = {},
 ): TourBundle {
   return {
     kind: "ok",
     tour: tour("tour-a"),
-    annotations: opts.annotations ?? [],
+    comments: opts.comments ?? [],
     diff: "",
     files: opts.files ?? [],
   };
 }
 
-function ann(opts: { id: string; file: string; replies_to?: string }): Annotation {
-  const out: Annotation = {
+function ann(opts: { id: string; file: string; replies_to?: string }): Comment {
+  const out: Comment = {
     id: opts.id,
     file: opts.file,
     side: "additions",
@@ -368,14 +368,14 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
     await flushRaf();
   });
 
-  it("reply target: dispatches folds.setOverride{false} on the parent annotation's file when that file is folded", async () => {
+  it("reply target: dispatches folds.setOverride{false} on the parent comment's file when that file is folded", async () => {
     const parentFile = "src/parent.ts";
     const parent = ann({ id: "ann-parent", file: parentFile });
     const store = storeWithState({
       currentTourId: "tour-a",
       bundle: {
         kind: "ok",
-        value: okBundle({ files: [bundleFile(parentFile)], annotations: [parent] }),
+        value: okBundle({ files: [bundleFile(parentFile)], comments: [parent] }),
       },
       collapsedOverrides: { [parentFile]: true },
     });
@@ -398,7 +398,7 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
       currentTourId: "tour-a",
       bundle: {
         kind: "ok",
-        value: okBundle({ files: [bundleFile(parentFile)], annotations: [parent] }),
+        value: okBundle({ files: [bundleFile(parentFile)], comments: [parent] }),
       },
     });
     const dispatchSpy = vi.spyOn(store, "dispatch");
@@ -444,7 +444,7 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
     expect(focusSpy).toHaveBeenCalled();
   });
 
-  it("does not throw and does not loop when the parent annotation is missing from the bundle (honest unreachable)", async () => {
+  it("does not throw and does not loop when the parent comment is missing from the bundle (honest unreachable)", async () => {
     const store = storeWithState({
       currentTourId: "tour-a",
       bundle: { kind: "ok", value: okBundle() },

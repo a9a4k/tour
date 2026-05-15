@@ -1,7 +1,7 @@
 import type { SyntaxStyle } from "@opentui/core";
 import { theme } from "../core/theme.js";
 
-// Annotation accent stripe — 128 repeats of ▌ (U+258C LEFT HALF BLOCK)
+// Comment accent stripe — 128 repeats of ▌ (U+258C LEFT HALF BLOCK)
 // separated by newlines. The accent column's wrapper is `alignSelf="stretch"`
 // (height = row's wrapped height) and `overflow="hidden"` (clips painted
 // overflow). The glyph `<text>` is `position="absolute"` so its 128-row
@@ -40,8 +40,8 @@ interface DiffLineProps {
   // Empty string when this side has no content (e.g. left side of a pure
   // addition row in split view). Code highlighting is skipped in that case.
   text: string;
-  // Annotation tint cues (ADR 0008). Gutter tints whenever the row falls
-  // inside an annotation range; content only tints on context-paired rows
+  // Comment tint cues (ADR 0008). Gutter tints whenever the row falls
+  // inside a comment range; content only tints on context-paired rows
   // so the diff +/- signal survives on change rows.
   gutterTinted: boolean;
   contentTinted: boolean;
@@ -51,14 +51,14 @@ interface DiffLineProps {
   // softer `*Cell.tui` wash on the content cell. The bright rail anchors
   // the vertical scan; the softer wash keeps syntax-highlighted tokens
   // readable. Mirrors webapp #221 (introduced two-tone) + #247 (flipped
-  // direction to bright-rail / soft-code). Annotation tint composes on
+  // direction to bright-rail / soft-code). Comment tint composes on
   // top per ADR 0008: on +/- rows the gutter tint wins (caller passes
   // contentTinted=false so the soft diff cell bg shows on content); on
-  // context rows diffBg is undefined so the annotation tint paints both
+  // context rows diffBg is undefined so the comment tint paints both
   // cells.
   diffBg?: "addition" | "deletion";
   // Line cursor (ADR 0011). When true, both the gutter cell and the
-  // content cell paint theme.bg.cursorRow (winning over annotation tint
+  // content cell paint theme.bg.cursorRow (winning over comment tint
   // and diff bg per the composition rule), and a leading `❯` glyph in
   // theme.fg.cursor renders in the line-number column. The full-row fill
   // is the TUI-native analogue of the web's outlined-row focus — terminals
@@ -84,7 +84,7 @@ interface DiffLineProps {
   // Empty side of a single-side split-layout row (issue #260). When
   // true, paint both gutter and content cells in theme.canvas.inset so
   // the empty side recedes below canvas — parity with webapp #227. The
-  // active side renders untouched; cursor + annotation range tint still
+  // active side renders untouched; cursor + comment range tint still
   // win when they apply (the empty side never carries either on
   // single-side rows, so they are mutually exclusive in practice).
   emptySide?: boolean;
@@ -129,7 +129,7 @@ export function DiffLine({
   // width does not shift on focus change.
   const cursorBg = paneFocused ? CURSOR_ROW_BG : CURSOR_ROW_PARKED_BG;
   const showCursorGlyph = cursorActive && paneFocused;
-  // Composition rule (ADR 0011 + #260 + #262): cursor bg > annotation
+  // Composition rule (ADR 0011 + #260 + #262): cursor bg > comment
   // tint > +/- bg (two-tone: bright rail on gutter, soft wash on content)
   // > empty-side neutral fill. Cursor bg fills both gutter and content so
   // the active row reads as a single solid plate — the terminal-native
@@ -202,10 +202,10 @@ export function DiffLine({
         // alignSelf="stretch" escapes the parent's `alignItems="flex-start"`
         // so the content cell extends to the row's full wrapped height when
         // the SIBLING half drives the wrap — without it, the empty-side
-        // / context-paired / annotation-tinted content cell stayed 1 row
+        // / context-paired / comment-tinted content cell stayed 1 row
         // tall, leaving the wrap-continuation rows unpainted and showing
         // the terminal canvas as visible stripes through the empty-side
-        // inset fill, the annotation tint, and the diff +/- bg. Sibling
+        // inset fill, the comment tint, and the diff +/- bg. Sibling
         // fix to #267 (which stretched the wrapper one level up).
         <box flexGrow={1} minHeight={1} alignSelf="stretch" backgroundColor={contentBg}>
           <code

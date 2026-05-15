@@ -830,7 +830,7 @@ describe("jump (end)", () => {
 
   it("applies the 3-row bottom margin when there is room (rowY(last) is below the natural scroll-to-end target)", () => {
     // Synthesize: 30 rows, but contentHeight=100 (lots of trailing
-    // file/annotation cards below the last cursor-eligible row).
+    // file/comment cards below the last cursor-eligible row).
     // viewport=10. rowY(idx)=idx. End: cursor → idx 29.
     // Desired scrollTop = rowY(29) - (10 - 3 - 1) = 29 - 6 = 23.
     // maxScrollTop = 100-10 = 90. Not clamped.

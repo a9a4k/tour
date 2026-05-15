@@ -1,11 +1,11 @@
-import type { Annotation } from "./types.js";
+import type { Comment } from "./types.js";
 
 export interface Thread {
-  root: Annotation;
-  replies: Annotation[];
+  root: Comment;
+  replies: Comment[];
 }
 
-function compareAnnotations(a: Annotation, b: Annotation): number {
+function compareComments(a: Comment, b: Comment): number {
   if (a.created_at < b.created_at) return -1;
   if (a.created_at > b.created_at) return 1;
   if (a.id < b.id) return -1;
@@ -13,9 +13,9 @@ function compareAnnotations(a: Annotation, b: Annotation): number {
   return 0;
 }
 
-// Walk the replies_to chain up to the top-level annotation. Returns null if
+// Walk the replies_to chain up to the top-level comment. Returns null if
 // the chain hits an unknown id (orphan) or a cycle (malformed input).
-function findRoot(start: Annotation, byId: Map<string, Annotation>): Annotation | null {
+function findRoot(start: Comment, byId: Map<string, Comment>): Comment | null {
   let cur = start;
   const seen = new Set<string>([cur.id]);
   while (cur.replies_to !== undefined) {
@@ -28,18 +28,18 @@ function findRoot(start: Annotation, byId: Map<string, Annotation>): Annotation 
   return cur;
 }
 
-export function buildThreads(annotations: Annotation[]): Thread[] {
-  const byId = new Map<string, Annotation>();
-  for (const a of annotations) byId.set(a.id, a);
+export function buildThreads(comments: Comment[]): Thread[] {
+  const byId = new Map<string, Comment>();
+  for (const a of comments) byId.set(a.id, a);
 
   const threadsByRootId = new Map<string, Thread>();
-  for (const a of annotations) {
+  for (const a of comments) {
     if (a.replies_to === undefined) {
       threadsByRootId.set(a.id, { root: a, replies: [] });
     }
   }
 
-  for (const a of annotations) {
+  for (const a of comments) {
     if (a.replies_to === undefined) continue;
     const root = findRoot(a, byId);
     if (!root) continue;
@@ -49,34 +49,34 @@ export function buildThreads(annotations: Annotation[]): Thread[] {
   }
 
   for (const t of threadsByRootId.values()) {
-    t.replies.sort(compareAnnotations);
+    t.replies.sort(compareComments);
   }
 
   return [...threadsByRootId.values()].sort((a, b) =>
-    compareAnnotations(a.root, b.root),
+    compareComments(a.root, b.root),
   );
 }
 
-export function isTopLevel(a: Annotation): boolean {
+export function isTopLevel(a: Comment): boolean {
   return a.replies_to === undefined;
 }
 
 function findLatest(
-  topLevel: Annotation,
-  descendants: Annotation[],
-): Annotation {
-  let latest: Annotation = topLevel;
+  topLevel: Comment,
+  descendants: Comment[],
+): Comment {
+  let latest: Comment = topLevel;
   for (const a of descendants) {
-    if (compareAnnotations(a, latest) > 0) latest = a;
+    if (compareComments(a, latest) > 0) latest = a;
   }
   return latest;
 }
 
-// The human Annotation that should carry the webapp "Send to {agent}"
+// The human Comment that should carry the webapp "Send to {agent}"
 // button in a Thread, or null when no Send button should appear anywhere
 // (issue #190, PRD #181). At most one Send per Thread.
 //
-// Rule: the latest Annotation in the Thread (by `created_at`, id
+// Rule: the latest Comment in the Thread (by `created_at`, id
 // ascending tiebreak — matching `buildThreads`) is always a leaf in a
 // well-formed tree (its parent must have an earlier or equal
 // `created_at`). So "latest human leaf" collapses to "latest overall,
@@ -85,27 +85,27 @@ function findLatest(
 // the new latest leaf and surfaces the Send button.
 //
 // Pure thread-level computation; `canSendToAgent` stays a pure
-// per-Annotation predicate, and the gating lives at the render site.
+// per-Comment predicate, and the gating lives at the render site.
 export function latestHumanLeafId(
-  topLevel: Annotation,
-  descendants: Annotation[],
+  topLevel: Comment,
+  descendants: Comment[],
 ): string | null {
   const latest = findLatest(topLevel, descendants);
   return latest.author_kind === "human" ? latest.id : null;
 }
 
-// The id of the latest Annotation in the Thread (by `created_at`, id
+// The id of the latest Comment in the Thread (by `created_at`, id
 // ascending tiebreak). Used by the webapp's single bottom action row
 // (issue #191): the Reply button's onOpenReply fires with this id so
 // a new Reply continues from where the conversation is, not from
 // where it started.
-export function latestAnnotationId(
-  topLevel: Annotation,
-  descendants: Annotation[],
+export function latestCommentId(
+  topLevel: Comment,
+  descendants: Comment[],
 ): string {
   return findLatest(topLevel, descendants).id;
 }
 
-export function topLevelAnnotations(annotations: Annotation[]): Annotation[] {
-  return annotations.filter(isTopLevel);
+export function topLevelComments(comments: Comment[]): Comment[] {
+  return comments.filter(isTopLevel);
 }

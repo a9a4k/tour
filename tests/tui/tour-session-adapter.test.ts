@@ -89,7 +89,7 @@ function makeAdapter(sb: FakeScrollBox | null, opts: { setScrollPending?: (pendi
       throw new Error("unused");
     },
     loadReplyLock: async () => null,
-    writeAnnotation: async () => {
+    writeComment: async () => {
       throw new Error("unused");
     },
     diffScrollBoxRef: { current: sb as unknown as ScrollBoxRenderable | null },
@@ -130,7 +130,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
       viewportHeight: 20,
       scrollTop: 0,
       scrollHeight: 500,
-      child: { id: "annotation-ann1", y: 100, height: 4 },
+      child: { id: "comment-ann1", y: 100, height: 4 },
     });
     const adapter = makeAdapter(sb);
     adapter.scrollToCard("ann1", "center");
@@ -145,7 +145,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
       viewportHeight: 20,
       scrollTop: 0,
       scrollHeight: 500,
-      child: { id: "annotation-ann1", y: 100, height: 4 },
+      child: { id: "comment-ann1", y: 100, height: 4 },
     });
     const adapter = makeAdapter(sb);
     adapter.scrollToCard("ann1", "nearest");
@@ -206,7 +206,7 @@ describe("createTuiTourSessionAdapter — null scrollbox ref", () => {
   });
 });
 
-// Issue #301: the post-submit `scrollToAnnotation` retry-budget loop fires
+// Issue #301: the post-submit `scrollToComment` retry-budget loop fires
 // inside `composer.submitted`, before the watcher's `bundle.refreshed`
 // delivers the freshly-written card to the DOM. Each retry waits one
 // macrotask for the DOM to catch up. Without `animate: false`, every
@@ -219,7 +219,7 @@ describe("createTuiTourSessionAdapter — null scrollbox ref", () => {
 describe("createTuiTourSessionAdapter.scrollToCard — post-submit retry path (issue #301)", () => {
   it("retries write instantly (animate: false) — no Timeline spawned when the target appears on a later attempt", async () => {
     const child: FakeNode = {
-      id: "annotation-ann1",
+      id: "comment-ann1",
       y: 100,
       x: 0,
       height: 4,
@@ -286,7 +286,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (is
       viewportHeight: 20,
       scrollTop: 0,
       scrollHeight: 500,
-      child: { id: "annotation-ann1", y: 100, height: 4 },
+      child: { id: "comment-ann1", y: 100, height: 4 },
     });
     const events: boolean[] = [];
     const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
@@ -304,7 +304,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (is
         viewportHeight: 20,
         scrollTop: 0,
         scrollHeight: 500,
-        child: { id: "annotation-ann1", y: 100, height: 4 },
+        child: { id: "comment-ann1", y: 100, height: 4 },
       });
       const events: boolean[] = [];
       const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
@@ -330,7 +330,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (is
         viewportHeight: 20,
         scrollTop: 0,
         scrollHeight: 500,
-        child: { id: "annotation-other", y: 100, height: 4 },
+        child: { id: "comment-other", y: 100, height: 4 },
       });
       const events: boolean[] = [];
       const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });

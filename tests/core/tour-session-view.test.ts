@@ -4,13 +4,13 @@ import {
   type TourSessionView,
 } from "../../src/core/tour-session-view.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
-import type { Tour, Annotation } from "../../src/core/types.js";
+import type { Tour, Comment } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 import {
   initialTourSessionState,
   type TourSessionState,
 } from "../../src/core/tour-session.js";
-import { topLevelAnnotations } from "../../src/core/threads.js";
+import { topLevelComments } from "../../src/core/threads.js";
 import {
   buildTree,
   compress,
@@ -36,7 +36,7 @@ function tour(over: Partial<Tour> & { id: string }): Tour {
   };
 }
 
-function ann(o: Partial<Annotation> & Pick<Annotation, "id">): Annotation {
+function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
   return {
     id: o.id,
     file: o.file ?? "a.ts",
@@ -119,7 +119,7 @@ function okBundle(
   return {
     kind: "ok",
     tour: tour({ id: "t1" }),
-    annotations: [],
+    comments: [],
     diff: DIFF_A,
     files: [fileA()],
     ...over,
@@ -130,13 +130,13 @@ function snapshotLostBundle(): TourBundle {
   return {
     kind: "snapshot-lost",
     tour: tour({ id: "t1" }),
-    annotations: [ann({ id: "a1" })],
+    comments: [ann({ id: "a1" })],
   };
 }
 
-const cardCursor = (annotationId: string): Cursor => ({
+const cardCursor = (commentId: string): Cursor => ({
   kind: "card",
-  annotationId,
+  commentId,
   preferredSide: "additions",
 });
 
@@ -148,7 +148,7 @@ function expectOk(
 }
 
 describe("deriveTourSessionView — snapshot-lost", () => {
-  it("short-circuits to snapshot-lost view carrying tour + annotations only", () => {
+  it("short-circuits to snapshot-lost view carrying tour + comments only", () => {
     const view = deriveTourSessionView(
       snapshotLostBundle(),
       initialTourSessionState(),
@@ -156,8 +156,8 @@ describe("deriveTourSessionView — snapshot-lost", () => {
     expect(view.kind).toBe("snapshot-lost");
     if (view.kind !== "snapshot-lost") throw new Error("unreachable");
     expect(view.tour.id).toBe("t1");
-    expect(view.annotations).toHaveLength(1);
-    expect(view.annotations[0].id).toBe("a1");
+    expect(view.comments).toHaveLength(1);
+    expect(view.comments[0].id).toBe("a1");
   });
 
   it("exposes nav.topLevel / navIndexById / navTotal / repliesByRoot on the snapshot-lost branch (issue #246)", () => {
@@ -176,7 +176,7 @@ describe("deriveTourSessionView — snapshot-lost", () => {
       {
         kind: "snapshot-lost",
         tour: tour({ id: "t1" }),
-        annotations: [top, reply, orphan],
+        comments: [top, reply, orphan],
       },
       initialTourSessionState(),
     );
@@ -235,7 +235,7 @@ describe("deriveTourSessionView — bundle slice", () => {
 });
 
 describe("deriveTourSessionView — nav slice", () => {
-  it("topLevel matches topLevelAnnotations (replies excluded, order preserved)", () => {
+  it("topLevel matches topLevelComments (replies excluded, order preserved)", () => {
     const top = ann({ id: "a1", created_at: "2026-05-12T00:00:00Z" });
     const reply = ann({
       id: "r1",
@@ -244,11 +244,11 @@ describe("deriveTourSessionView — nav slice", () => {
     });
     const view = expectOk(
       deriveTourSessionView(
-        okBundle({ annotations: [top, reply] }),
+        okBundle({ comments: [top, reply] }),
         initialTourSessionState(),
       ),
     );
-    expect(view.nav.topLevel).toEqual(topLevelAnnotations([top, reply]));
+    expect(view.nav.topLevel).toEqual(topLevelComments([top, reply]));
     expect(view.nav.topLevel.map((a) => a.id)).toEqual(["a1"]);
   });
 
@@ -258,7 +258,7 @@ describe("deriveTourSessionView — nav slice", () => {
     const reply = ann({ id: "r1", replies_to: "t1" });
     const view = expectOk(
       deriveTourSessionView(
-        okBundle({ annotations: [t1, t2, reply] }),
+        okBundle({ comments: [t1, t2, reply] }),
         initialTourSessionState(),
       ),
     );
@@ -274,7 +274,7 @@ describe("deriveTourSessionView — nav slice", () => {
     const orphan = ann({ id: "o1", replies_to: "missing-id" });
     const view = expectOk(
       deriveTourSessionView(
-        okBundle({ annotations: [top, reply, orphan] }),
+        okBundle({ comments: [top, reply, orphan] }),
         initialTourSessionState(),
       ),
     );
@@ -289,7 +289,7 @@ describe("deriveTourSessionView — nav slice", () => {
   it("currentIdx is 1-based when the cursor is on a card, 0 otherwise", () => {
     const t1 = ann({ id: "t1" });
     const t2 = ann({ id: "t2", created_at: "2026-05-12T00:00:01Z" });
-    const bundle = okBundle({ annotations: [t1, t2] });
+    const bundle = okBundle({ comments: [t1, t2] });
 
     const onT2 = expectOk(
       deriveTourSessionView(bundle, {
@@ -325,7 +325,7 @@ describe("deriveTourSessionView — nav slice", () => {
     });
     const view = expectOk(
       deriveTourSessionView(
-        okBundle({ annotations: [top, agentReply, humanFollowUp] }),
+        okBundle({ comments: [top, agentReply, humanFollowUp] }),
         { ...initialTourSessionState(), cursor: cardCursor("t1") },
       ),
     );
@@ -348,7 +348,7 @@ describe("deriveTourSessionView — nav slice", () => {
     });
     const view = expectOk(
       deriveTourSessionView(
-        okBundle({ annotations: [top, agentReply] }),
+        okBundle({ comments: [top, agentReply] }),
         { ...initialTourSessionState(), cursor: cardCursor("t1") },
       ),
     );
@@ -365,7 +365,7 @@ describe("deriveTourSessionView — tree slice", () => {
     expect(view.tree.root).toEqual(compress(buildTree([fileA(), fileB()])));
   });
 
-  it("visibleRows agrees with flatten(root, collapsedFolders, annotationCounts)", () => {
+  it("visibleRows agrees with flatten(root, collapsedFolders, commentCounts)", () => {
     const bundle = okBundle({ files: [fileA(), fileB()], diff: DIFF_A_AND_B });
     const view = expectOk(
       deriveTourSessionView(bundle, initialTourSessionState()),
@@ -373,34 +373,34 @@ describe("deriveTourSessionView — tree slice", () => {
     const expected = flatten(
       compress(buildTree([fileA(), fileB()])),
       new Set<string>(),
-      view.tree.annotationCounts,
+      view.tree.commentCounts,
     );
     expect(view.tree.visibleRows).toEqual(expected);
   });
 
-  it("annotationCounts counts top-level annotations per file", () => {
+  it("commentCounts counts top-level comments per file", () => {
     const t1 = ann({ id: "t1", file: "a.ts" });
     const r1 = ann({ id: "r1", file: "a.ts", replies_to: "t1" });
     const t2 = ann({ id: "t2", file: "sub/b.ts" });
     const view = expectOk(
       deriveTourSessionView(
         okBundle({
-          annotations: [t1, r1, t2],
+          comments: [t1, r1, t2],
           files: [fileA(), fileB()],
           diff: DIFF_A_AND_B,
         }),
         initialTourSessionState(),
       ),
     );
-    expect(view.tree.annotationCounts["a.ts"]).toBe(1);
-    expect(view.tree.annotationCounts["sub/b.ts"]).toBe(1);
+    expect(view.tree.commentCounts["a.ts"]).toBe(1);
+    expect(view.tree.commentCounts["sub/b.ts"]).toBe(1);
   });
 });
 
 describe("deriveTourSessionView — rows slice", () => {
-  it("plannedRowsByFile agrees with planRows(meta, fileAnnotations, layout, opts) per file", () => {
+  it("plannedRowsByFile agrees with planRows(meta, fileComments, layout, opts) per file", () => {
     const t1 = ann({ id: "t1", file: "a.ts" });
-    const bundle = okBundle({ annotations: [t1] });
+    const bundle = okBundle({ comments: [t1] });
     const state = initialTourSessionState();
     const view = expectOk(deriveTourSessionView(bundle, state));
 
@@ -502,11 +502,11 @@ describe("deriveTourSessionView — rows slice", () => {
 
 describe("deriveTourSessionView — cursor slice", () => {
   // The killer fixture (PRD #242, issue #243): a CardAnchor pointing at an
-  // annotation that's been deleted resolves to null, currentIdx folds to 0,
+  // comment that's been deleted resolves to null, currentIdx folds to 0,
   // and every cursor predicate reads as "not on a card".
-  it("CardAnchor → deleted annotation: anchor null, predicates off, currentIdx 0", () => {
+  it("CardAnchor → deleted comment: anchor null, predicates off, currentIdx 0", () => {
     const view = expectOk(
-      deriveTourSessionView(okBundle({ annotations: [] }), {
+      deriveTourSessionView(okBundle({ comments: [] }), {
         ...initialTourSessionState(),
         cursor: cardCursor("deleted-id"),
       }),
@@ -515,15 +515,15 @@ describe("deriveTourSessionView — cursor slice", () => {
     expect(view.cursor.onCard).toBe(false);
     expect(view.cursor.onInteractive).toBe(false);
     expect(view.cursor.cardId).toBeNull();
-    expect(view.cursor.cardAnnotation).toBeNull();
+    expect(view.cursor.cardComment).toBeNull();
     expect(view.cursor.rowIdx).toBe(-1);
     expect(view.nav.currentIdx).toBe(0);
   });
 
-  it("CardAnchor on a live annotation: onCard true, cardId set, cardAnnotation resolved", () => {
+  it("CardAnchor on a live comment: onCard true, cardId set, cardComment resolved", () => {
     const t1 = ann({ id: "t1", file: "a.ts", line_end: 1 });
     const view = expectOk(
-      deriveTourSessionView(okBundle({ annotations: [t1] }), {
+      deriveTourSessionView(okBundle({ comments: [t1] }), {
         ...initialTourSessionState(),
         cursor: cardCursor("t1"),
       }),
@@ -532,7 +532,7 @@ describe("deriveTourSessionView — cursor slice", () => {
     expect(view.cursor.onCard).toBe(true);
     expect(view.cursor.onInteractive).toBe(false);
     expect(view.cursor.cardId).toBe("t1");
-    expect(view.cursor.cardAnnotation?.id).toBe("t1");
+    expect(view.cursor.cardComment?.id).toBe("t1");
     expect(view.cursor.rowIdx).toBeGreaterThanOrEqual(0);
   });
 
@@ -575,14 +575,14 @@ describe("deriveTourSessionView — cursor slice", () => {
     expect(view.cursor.onCard).toBe(false);
     expect(view.cursor.onInteractive).toBe(false);
     expect(view.cursor.cardId).toBeNull();
-    expect(view.cursor.cardAnnotation).toBeNull();
+    expect(view.cursor.cardComment).toBeNull();
     expect(view.cursor.rowIdx).toBe(-1);
     expect(view.nav.currentIdx).toBe(0);
   });
 });
 
 describe("deriveTourSessionView — watcher-reload preservation", () => {
-  it("cursor anchor on a card survives a bundle refresh that retains the annotation", () => {
+  it("cursor anchor on a card survives a bundle refresh that retains the comment", () => {
     const t1 = ann({ id: "t1", file: "a.ts", line_end: 1 });
     const state: TourSessionState = {
       ...initialTourSessionState(),
@@ -590,34 +590,34 @@ describe("deriveTourSessionView — watcher-reload preservation", () => {
     };
 
     const before = expectOk(
-      deriveTourSessionView(okBundle({ annotations: [t1] }), state),
+      deriveTourSessionView(okBundle({ comments: [t1] }), state),
     );
     expect(before.cursor.anchor).toEqual(cardCursor("t1"));
 
-    // Simulate a watcher refresh: annotation list keeps t1 but adds a reply.
+    // Simulate a watcher refresh: comment list keeps t1 but adds a reply.
     const reply = ann({
       id: "r1",
       replies_to: "t1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const after = expectOk(
-      deriveTourSessionView(okBundle({ annotations: [t1, reply] }), state),
+      deriveTourSessionView(okBundle({ comments: [t1, reply] }), state),
     );
     expect(after.cursor.anchor).toEqual(cardCursor("t1"));
     expect(after.cursor.cardId).toBe("t1");
-    expect(after.cursor.cardAnnotation?.id).toBe("t1");
+    expect(after.cursor.cardComment?.id).toBe("t1");
   });
 
-  it("cursor on a card whose annotation disappears from the refreshed bundle resolves to null", () => {
+  it("cursor on a card whose comment disappears from the refreshed bundle resolves to null", () => {
     const state: TourSessionState = {
       ...initialTourSessionState(),
       cursor: cardCursor("t1"),
     };
     const view = expectOk(
-      deriveTourSessionView(okBundle({ annotations: [] }), state),
+      deriveTourSessionView(okBundle({ comments: [] }), state),
     );
     expect(view.cursor.anchor).toBeNull();
-    expect(view.cursor.cardAnnotation).toBeNull();
+    expect(view.cursor.cardComment).toBeNull();
     expect(state.cursor).toEqual(cardCursor("t1")); // raw state unchanged
   });
 });

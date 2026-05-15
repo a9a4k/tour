@@ -28,7 +28,7 @@ function folder(
     displayName: "src",
     depth: 0,
     hasChildren: true,
-    annotationCount: 0,
+    commentCount: 0,
     collapsed: false,
     ...overrides,
   };
@@ -44,7 +44,7 @@ function file(
     displayName: "a.ts",
     depth: 0,
     file: f,
-    annotationCount: 0,
+    commentCount: 0,
     ...overrides,
   };
 }
@@ -105,8 +105,8 @@ describe("fileRowSegments (issue #265)", () => {
     expect(out.leading).toBe("   M a.ts");
   });
 
-  it("appends [N] badge segment when annotationCount > 0", () => {
-    const out = fileRowSegments(file({ displayName: "a.ts", annotationCount: 3 }), NO_STATS, 100);
+  it("appends [N] badge segment when commentCount > 0", () => {
+    const out = fileRowSegments(file({ displayName: "a.ts", commentCount: 3 }), NO_STATS, 100);
     expect(out.badge).toBe(" [3]");
     expect(fullLabel(out)).toBe(" M a.ts [3] ");
   });
@@ -158,9 +158,9 @@ describe("fileRowSegments (issue #265)", () => {
     expect(out.deletions).toBe("");
   });
 
-  it("places stats after the filename and before the annotation badge", () => {
+  it("places stats after the filename and before the comment badge", () => {
     const out = fileRowSegments(
-      file({ displayName: "a.ts", annotationCount: 3 }),
+      file({ displayName: "a.ts", commentCount: 3 }),
       { additions: 43, deletions: 27 },
       100,
     );
@@ -170,7 +170,7 @@ describe("fileRowSegments (issue #265)", () => {
   it("truncates the name slot when over budget, leaving stats + badge intact after the truncated name", () => {
     const row = file({
       displayName: "evses-utilization.controller.spec.ts",
-      annotationCount: 3,
+      commentCount: 3,
     });
     const stats = { additions: 43, deletions: 27 };
     const out = fileRowSegments(row, stats, 28 - fileRowFixedCost(row, stats));
@@ -185,7 +185,7 @@ describe("fileRowSegments (issue #265)", () => {
     const row = file({
       displayName: "a".repeat(100),
       depth: 4,
-      annotationCount: 12,
+      commentCount: 12,
     });
     const stats = { additions: 999, deletions: 999 };
     const out = fileRowSegments(row, stats, 28 - fileRowFixedCost(row, stats));
@@ -211,18 +211,18 @@ describe("folderRowFixedCost", () => {
 
 describe("fileRowFixedCost", () => {
   it("at depth 0 with no badge and no stats: leading(1) + icon(1) + space(1) + trailing(1) = 4", () => {
-    expect(fileRowFixedCost(file({ depth: 0, annotationCount: 0 }), NO_STATS)).toBe(4);
+    expect(fileRowFixedCost(file({ depth: 0, commentCount: 0 }), NO_STATS)).toBe(4);
   });
 
   it("adds 1 column per depth level (issue #312)", () => {
-    expect(fileRowFixedCost(file({ depth: 2, annotationCount: 0 }), NO_STATS)).toBe(4 + 2);
+    expect(fileRowFixedCost(file({ depth: 2, commentCount: 0 }), NO_STATS)).toBe(4 + 2);
   });
 
-  it("adds the badge width ' [N]' when annotationCount > 0", () => {
+  it("adds the badge width ' [N]' when commentCount > 0", () => {
     // base 4 + " [3]" = 4 chars added.
-    expect(fileRowFixedCost(file({ depth: 0, annotationCount: 3 }), NO_STATS)).toBe(4 + 4);
+    expect(fileRowFixedCost(file({ depth: 0, commentCount: 3 }), NO_STATS)).toBe(4 + 4);
     // base 4 + " [12]" = 5 chars added.
-    expect(fileRowFixedCost(file({ depth: 0, annotationCount: 12 }), NO_STATS)).toBe(4 + 5);
+    expect(fileRowFixedCost(file({ depth: 0, commentCount: 12 }), NO_STATS)).toBe(4 + 5);
   });
 
   it("adds ' +N' width when additions > 0 (issue #265)", () => {

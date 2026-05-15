@@ -11,7 +11,7 @@ import type { FlatRow } from "../../core/flat-rows.js";
  * Priority:
  *   1. Cursor — when the cursor exists AND (for row cursors) resolves
  *      in `flatRows`. Card cursors return the descriptor unconditionally
- *      since the runtime `annotationRefs` lookup is the cheaper check;
+ *      since the runtime `commentRefs` lookup is the cheaper check;
  *      the capture path no-ops when the ref is missing.
  *   2. Active file — `selectedFile` (the value the sidebar's row-
  *      highlight tracks). No cursor, or a stale row cursor pointing at

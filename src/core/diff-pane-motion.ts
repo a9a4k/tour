@@ -81,7 +81,7 @@ export function step(
  *
  * The cursor lands on the cursor-eligible row in `flatRows` whose `rowY` is
  * nearest to the screen-y-preserving target — not every screen position
- * has an eligible row (file cards / annotation cards consume vertical
+ * has an eligible row (file cards / comment cards consume vertical
  * space without contributing flatRows entries), so the snap may differ
  * from the precise target by ±1 row.
  */

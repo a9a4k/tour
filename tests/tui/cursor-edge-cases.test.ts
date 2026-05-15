@@ -205,10 +205,10 @@ describe("sidebar file click moves cursor to clicked file's first row", () => {
 // Bundle reload (watcher fired) preserves cursor position.
 // validateCursor only mutates the cursor when the anchor is genuinely
 // lost (e.g. the agent removed the file from the bundle); in the typical
-// "agent appended an annotation" case the anchor still resolves and the
+// "agent appended a comment" case the anchor still resolves and the
 // cursor stays put.
 describe("bundle reload preserves cursor", () => {
-  it("preserves cursor when the agent appends an annotation (anchor still resolves)", () => {
+  it("preserves cursor when the agent appends a comment (anchor still resolves)", () => {
     const f = fileFromName("x.txt");
     const planned = new Map<string, PlannedRow[]>([["x.txt", plannedFor("split")]]);
     const before = flatRows([f], planned, () => false);
@@ -222,7 +222,7 @@ describe("bundle reload preserves cursor", () => {
     };
 
     // Reload yields the same flat sequence (the diff content didn't change;
-    // only annotations did, which doesn't alter flatRows since annotation
+    // only comments did, which doesn't alter flatRows since comment
     // rows are skipped). Cursor must be returned unchanged.
     const after = flatRows([f], planned, () => false);
     expect(validateCursor(cursor, after, [f])).toEqual(cursor);
@@ -259,7 +259,7 @@ describe("bundle reload preserves cursor", () => {
 
 // Cursor must be null in degraded states so `a` is a silent no-op
 // (composer-state already returns null for cursor-null + no current
-// annotation, but the seeding effect in app.tsx must not materialize a
+// comment, but the seeding effect in app.tsx must not materialize a
 // cursor when there are no rows).
 describe("cursor null in degraded states", () => {
   it("empty tour (no files) → cursor stays null", () => {

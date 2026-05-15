@@ -243,7 +243,7 @@ describe("scrollChildIntoView", () => {
 
 // Issue #302: the footer-hint "is the card in view" probe was driven by
 // a uniform-row-height index approximation (`avg = scrollHeight / rows`)
-// that mis-reports tall annotation cards as off-screen whenever the
+// that mis-reports tall comment cards as off-screen whenever the
 // prefix is enriched with already-passed cards. The fix is a true
 // pixel-position probe: ask the scrollbox for the rendered card's
 // layout box and intersect it with the viewport rect. The helper

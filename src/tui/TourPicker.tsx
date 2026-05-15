@@ -19,7 +19,7 @@ interface TourPickerProps {
 
 function rowLabel(r: PickerRow): string {
   const age = r.age.padEnd(10);
-  const badge = r.annotationCount > 0 ? `  [${r.annotationCount}]` : "";
+  const badge = r.commentCount > 0 ? `  [${r.commentCount}]` : "";
   return ` ${r.glyph} ${age}  ${r.title}${badge} `;
 }
 

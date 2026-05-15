@@ -6,14 +6,14 @@ export interface PickerRow {
   status: "open" | "closed";
   glyph: "●" | "○";
   age: string;
-  annotationCount: number;
+  commentCount: number;
 }
 
 export type PickerTour = Pick<Tour, "id" | "title" | "status" | "created_at">;
 
 export interface BuildPickerRowsArgs {
   tours: PickerTour[];
-  annotationCounts: Record<string, number>;
+  commentCounts: Record<string, number>;
   now: number;
 }
 
@@ -61,14 +61,14 @@ export function pickAutoTour(tours: AutoPickTour[]): AutoPickTour | null {
 }
 
 export function buildPickerRows(args: BuildPickerRowsArgs): PickerRow[] {
-  const { tours, annotationCounts, now } = args;
+  const { tours, commentCounts, now } = args;
   const rows = tours.map<PickerRow>((t) => ({
     id: t.id,
     title: t.title || "(untitled)",
     status: t.status,
     glyph: t.status === "open" ? "●" : "○",
     age: formatAge(now - Date.parse(t.created_at)),
-    annotationCount: annotationCounts[t.id] ?? 0,
+    commentCount: commentCounts[t.id] ?? 0,
   }));
   const created = new Map(tours.map((t) => [t.id, Date.parse(t.created_at)]));
   rows.sort((a, b) => {

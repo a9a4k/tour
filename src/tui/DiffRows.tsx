@@ -5,8 +5,8 @@ import type {
   BoundaryRef,
 } from "../core/diff-rows.js";
 import { theme } from "../core/theme.js";
-import { AnnotationCard } from "./AnnotationCard.js";
-import { annotationCardSlot } from "./annotation-placement.js";
+import { CommentCard } from "./CommentCard.js";
+import { commentCardSlot } from "./comment-placement.js";
 import { DiffLine } from "./DiffLine.js";
 import { getSyntaxStyle, inferFiletype } from "./syntax.js";
 import type { ReplyLock } from "../core/reply-lock.js";
@@ -16,10 +16,10 @@ interface DiffRowsProps {
   fileName: string;
   rows: ReadonlyArray<PlannedRow>;
   layout: "split" | "unified";
-  /** Annotation id the unified cursor sits on, or null when the cursor is
+  /** Comment id the unified cursor sits on, or null when the cursor is
    *  on a row / interactive / null. Drives the three-cue active treatment
-   *  on the matching AnnotationCard (PRD #192 / ADR 0022 — same pixels as
-   *  the prior `currentAnnotationId`, new meaning "cursor is here"). */
+   *  on the matching CommentCard (PRD #192 / ADR 0022 — same pixels as
+   *  the prior `currentCommentId`, new meaning "cursor is here"). */
   cursorCardId: string | null;
   cursor?: Cursor | null;
   /** Mouse-click handler for cursor placement (issue #104). Side derivation
@@ -28,7 +28,7 @@ interface DiffRowsProps {
    *    single-side rows force the populated side regardless of column.
    *  - unified: row type → side (deletion → deletions; addition / context
    *    → additions per CONTEXT.md convention).
-   *  Hunk-header and annotation rows do not invoke the handler. */
+   *  Hunk-header and comment rows do not invoke the handler. */
   onCursorClick?: (
     file: string,
     side: "additions" | "deletions",
@@ -42,19 +42,19 @@ interface DiffRowsProps {
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
   ) => void;
-  /** Mouse-click handler for an annotation card (issue #261). ADR 0022
+  /** Mouse-click handler for a comment card (issue #261). ADR 0022
    *  unified the cursor — CardAnchor is first-class — so clicking a card
    *  must place the cursor on it, mirroring the webapp's
    *  `setCursorFromCardClick`. In split layout, only the half hosting
    *  the card carries the handler; the empty sibling stays a no-op.
    *  Clicks on replies nested inside the card flow up to the same
-   *  wrapper handler — the cursor walks top-level annotations only. */
-  onCardClick?: (annotationId: string) => void;
+   *  wrapper handler — the cursor walks top-level comments only. */
+  onCardClick?: (commentId: string) => void;
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
-  /** 1-based nav-order index per top-level annotation id, for the `i / n`
-   *  counter in each AnnotationCard header. */
+  /** 1-based nav-order index per top-level comment id, for the `i / n`
+   *  counter in each CommentCard header. */
   navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
   /** Issue #305: focus-aware cursor. `true` when the diff pane holds focus
@@ -190,7 +190,7 @@ export function DiffRows({
 }: DiffRowsProps) {
   // Narrow once: row-shaped cursor is the only kind that drives the per-
   // row outline. A CardAnchor's per-card outline is handled by
-  // `cursorCardId` on the AnnotationCard side.
+  // `cursorCardId` on the CommentCard side.
   const rowCursor = cursor && cursor.kind === "row" ? cursor : null;
   const filetype = inferFiletype(fileName);
   const syntaxStyle = getSyntaxStyle();
@@ -352,28 +352,28 @@ export function DiffRows({
             </box>
           );
         }
-        if (row.kind === "annotation") {
-          const slot = annotationCardSlot(layout, row.annotation.side);
+        if (row.kind === "comment") {
+          const slot = commentCardSlot(layout, row.comment.side);
           const card = (
-            <AnnotationCard
+            <CommentCard
               key={`ann-${row.id}`}
-              annotation={row.annotation}
+              comment={row.comment}
               isCurrent={row.id === cursorCardId}
               replies={row.replies}
               repliesCollapsed={repliesCollapsed}
               replyLock={replyLock}
               now={now}
-              navIndex={navIndexById?.get(row.annotation.id) ?? null}
+              navIndex={navIndexById?.get(row.comment.id) ?? null}
               navTotal={navTotal ?? 0}
             />
           );
           // Issue #261: click anywhere on the card (or a nested reply)
           // bubbles to this wrapper's onMouseDown, dispatching the
-          // top-level annotation id to onCardClick. ADR 0022's cursor
-          // walks top-level annotations only, so the row's `id` (the
-          // top-level annotation id, not a reply id) is the right value.
+          // top-level comment id to onCardClick. ADR 0022's cursor
+          // walks top-level comments only, so the row's `id` (the
+          // top-level comment id, not a reply id) is the right value.
           const onCardMouseDown =
-            onCardClick ? () => onCardClick(row.annotation.id) : undefined;
+            onCardClick ? () => onCardClick(row.comment.id) : undefined;
           if (slot === "full") {
             // Unified layout: wrap the card so the wrapper can carry the
             // click handler. Function-component cards can't host
@@ -486,7 +486,7 @@ export function DiffRows({
                   additions halves. A 1-cell-wide `alignSelf="stretch"`
                   box painted in `theme.border.muted` via
                   `backgroundColor`. Same paint mechanism as the
-                  annotation accent stripe inside `DiffLine` — bg on
+                  comment accent stripe inside `DiffLine` — bg on
                   a stretched box (no glyph child) so the column
                   fills the row's full visual height through wraps.
                   Pre-#269 this was a single `│` text glyph, which

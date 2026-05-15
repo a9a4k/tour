@@ -1,7 +1,7 @@
 /**
  * Pure scroll-target math for the missing `block:*` modes that OpenTUI's
  * `ScrollBox.scrollChildIntoView` doesn't ship — its built-in is hardcoded
- * to `block:nearest`. The TUI's annotation-jump effect (`n`/`p`) needs
+ * to `block:nearest`. The TUI's comment-jump effect (`n`/`p`) needs
  * `block:center` so it matches the webapp's existing
  * `scrollIntoView({ block: 'center' })` behaviour (PRDs #126 / #128,
  * ADR 0011).

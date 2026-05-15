@@ -63,7 +63,7 @@ index 1..2 100644
 +added line
 `;
 
-const annotation = {
+const comment = {
   id: "ann-1",
   file: "src/foo.ts",
   side: "additions" as const,
@@ -78,7 +78,7 @@ const annotation = {
 const bundle = {
   kind: "ok" as const,
   tour: tourSummary,
-  annotations: [annotation],
+  comments: [comment],
   diff,
   files: [
     {
@@ -231,7 +231,7 @@ describe("App integration smoke (Issue #235)", () => {
   });
 
   // Issue #277: tour-level diff-stats indicator leads the right cluster,
-  // annotation nav and layout toggle follow. The reorder aligns with
+  // comment nav and layout toggle follow. The reorder aligns with
   // GitHub's PR header strip mental model — stats at the leading edge as a
   // navigational landmark, interactive controls grouped together after it.
   it("right cluster renders left-to-right: stats, nav pill, layout toggle (issue #277)", async () => {
@@ -360,7 +360,7 @@ const gapOldContent =
 const gapBundle = {
   kind: "ok" as const,
   tour: gapTourSummary,
-  annotations: [],
+  comments: [],
   diff: gapDiff,
   files: [
     {
@@ -501,7 +501,7 @@ const wipTourSummary = {
 const wipBundle = {
   kind: "ok" as const,
   tour: wipTourSummary,
-  annotations: [],
+  comments: [],
   diff: "",
   files: [],
 };
@@ -601,7 +601,7 @@ index 1..2 100644
 const lockBundle = {
   kind: "ok" as const,
   tour: lockTourSummary,
-  annotations: [],
+  comments: [],
   diff: lockDiff,
   files: [
     {
@@ -821,7 +821,7 @@ describe("App fold-unfold restores classifier-default (issue #316)", () => {
 });
 
 // Issue #332: dynamic send-hint matrix at the App's footer call site.
-// The fixture's first top-level annotation is human-authored, so the
+// The fixture's first top-level comment is human-authored, so the
 // bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on a
 // human card by default — the lock/agent/cursor permutations below
 // then exercise each leg of the predicate without manual `j` walking.
@@ -852,7 +852,7 @@ index 1..2 100644
 +added line
 `;
 
-const humanAnnotation = {
+const humanComment = {
   id: "ann-human",
   file: "src/foo.ts",
   side: "additions" as const,
@@ -864,7 +864,7 @@ const humanAnnotation = {
   created_at: "2026-05-15T00:00:00Z",
 };
 
-const agentAnnotation = {
+const agentComment = {
   id: "ann-agent",
   file: "src/foo.ts",
   side: "additions" as const,
@@ -879,7 +879,7 @@ const agentAnnotation = {
 const sendHintBundle = {
   kind: "ok" as const,
   tour: sendHintTourSummary,
-  annotations: [humanAnnotation, agentAnnotation],
+  comments: [humanComment, agentComment],
   diff: sendHintDiff,
   files: [
     {
@@ -970,7 +970,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
     globalThis.fetch = stubFetch({
       agent: "claude",
       tour_id: sendHintTourId,
-      annotation_id: "ann-human",
+      comment_id: "ann-human",
       acquired_at: "2026-05-15T00:00:02Z",
     });
     const container = document.getElementById("root")!;
@@ -1008,7 +1008,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
     const footer = container.querySelector("footer.app-footer");
     expect(footer!.textContent).toContain("s: send to claude");
 
-    // `n` walks top-level forward — lands on the agent annotation. Segment must drop.
+    // `n` walks top-level forward — lands on the agent comment. Segment must drop.
     await act(async () => {
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "n", bubbles: true }),
@@ -1061,7 +1061,7 @@ const failHumanAnn = {
 const failBundleWithAnn = {
   kind: "ok" as const,
   tour: failTourSummary,
-  annotations: [failHumanAnn],
+  comments: [failHumanAnn],
   diff: failDiff,
   files: [
     {
@@ -1078,7 +1078,7 @@ const failBundleWithAnn = {
 
 const failBundleEmpty = {
   ...failBundleWithAnn,
-  annotations: [],
+  comments: [],
 };
 
 interface FailFetchOpts {
@@ -1115,7 +1115,7 @@ function stubFailFetch(opts: FailFetchOpts): typeof fetch {
       );
     }
     if (
-      u.endsWith(`/api/tours/${failTourId}/annotations`) &&
+      u.endsWith(`/api/tours/${failTourId}/comments`) &&
       method === "POST"
     ) {
       return opts.postResponder();
@@ -1145,7 +1145,7 @@ function setTextareaValue(ta: HTMLTextAreaElement, value: string): void {
   ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-describe("App annotation-create failure status (Issue #334)", () => {
+describe("App comment-create failure status (Issue #334)", () => {
   it("non-2xx response on reply submit flashes `Reply failed: <reason>` in the footer status slot", async () => {
     globalThis.fetch = stubFailFetch({
       bundle: failBundleWithAnn,
@@ -1197,7 +1197,7 @@ describe("App annotation-create failure status (Issue #334)", () => {
     expect(status!.textContent).toContain("Reply failed: validation failed");
   });
 
-  it("non-2xx response on top-level annotation submit flashes `Comment failed: <reason>` in the footer status slot", async () => {
+  it("non-2xx response on top-level comment submit flashes `Comment failed: <reason>` in the footer status slot", async () => {
     globalThis.fetch = stubFailFetch({
       bundle: failBundleEmpty,
       postResponder: () =>
@@ -1215,7 +1215,7 @@ describe("App annotation-create failure status (Issue #334)", () => {
     });
     await flush();
 
-    // Empty annotations → cursor null at mount. `c` materializes the
+    // Empty comments → cursor null at mount. `c` materializes the
     // cursor to the first annotatable row and opens the top-level
     // composer.
     await act(async () => {

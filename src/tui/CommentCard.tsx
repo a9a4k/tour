@@ -1,11 +1,11 @@
-import type { Annotation, AuthorKind } from "../core/types.js";
+import type { Comment, AuthorKind } from "../core/types.js";
 import { theme } from "../core/theme.js";
 import { ageMs, isStale, type ReplyLock } from "../core/reply-lock.js";
 
-interface AnnotationCardProps {
-  annotation: Annotation;
+interface CommentCardProps {
+  comment: Comment;
   isCurrent: boolean;
-  replies?: Annotation[];
+  replies?: Comment[];
   repliesCollapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
@@ -15,7 +15,7 @@ interface AnnotationCardProps {
   navTotal?: number;
 }
 
-function rangeLabel(ann: Annotation): string {
+function rangeLabel(ann: Comment): string {
   return ann.line_start === ann.line_end
     ? String(ann.line_start)
     : `${ann.line_start}-${ann.line_end}`;
@@ -55,17 +55,17 @@ function ReplyPill({ lock, now }: PillProps) {
 }
 
 function pillTargetsThisCard(
-  annotation: Annotation,
-  replies: Annotation[] | undefined,
+  comment: Comment,
+  replies: Comment[] | undefined,
   lock: ReplyLock,
 ): boolean {
-  if (lock.responding_to === annotation.id) return true;
+  if (lock.responding_to === comment.id) return true;
   if (!replies) return false;
   return replies.some((r) => r.id === lock.responding_to);
 }
 
-export function AnnotationCard({
-  annotation,
+export function CommentCard({
+  comment,
   isCurrent,
   replies,
   repliesCollapsed,
@@ -73,17 +73,17 @@ export function AnnotationCard({
   now,
   navIndex,
   navTotal,
-}: AnnotationCardProps) {
+}: CommentCardProps) {
   const visibleReplies = repliesCollapsed ? [] : replies ?? [];
   const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
   const showPill =
-    replyLock && pillTargetsThisCard(annotation, replies, replyLock);
+    replyLock && pillTargetsThisCard(comment, replies, replyLock);
   // Selection is signalled redundantly along three axes (borderStyle,
   // backgroundColor, header `●` glyph) so the cue survives palette drift,
   // colour blindness, and low-contrast displays — a single delta isn't enough.
   return (
     <box
-      id={`annotation-${annotation.id}`}
+      id={`comment-${comment.id}`}
       borderStyle={isCurrent ? "heavy" : "single"}
       borderColor={theme.fg.accent}
       backgroundColor={isCurrent ? theme.bg.accentCurrent.tui : theme.bg.accentSubtle.tui}
@@ -101,25 +101,25 @@ export function AnnotationCard({
             {`${navIndex} / ${navTotal} `}
           </text>
         ) : null}
-        <text fg={authorKindColor(annotation.author_kind)} bold>
-          {`[${annotation.author_kind}]`}
+        <text fg={authorKindColor(comment.author_kind)} bold>
+          {`[${comment.author_kind}]`}
         </text>
         <text fg={theme.fg.accent} bold>
-          {` ${annotation.file}:${rangeLabel(annotation)}`}
+          {` ${comment.file}:${rangeLabel(comment)}`}
         </text>
-        {annotation.author !== annotation.author_kind ? (
+        {comment.author !== comment.author_kind ? (
           <text fg={theme.fg.accent} bold>
-            {` (${annotation.author})`}
+            {` (${comment.author})`}
           </text>
         ) : null}
       </box>
       <box flexGrow={1}>
-        <text fg={theme.fg.default} wrapMode="word">{annotation.body}</text>
+        <text fg={theme.fg.default} wrapMode="word">{comment.body}</text>
       </box>
       {visibleReplies.map((r) => (
         <box
           key={r.id}
-          id={`annotation-${r.id}`}
+          id={`comment-${r.id}`}
           flexDirection="column"
           marginTop={1}
           paddingLeft={2}

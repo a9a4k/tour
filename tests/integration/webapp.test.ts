@@ -38,7 +38,7 @@ async function createTempRepoWithTour(): Promise<{
     "--file", "hello.txt",
     "--side", "additions",
     "--line", "1",
-    "--body", "Test annotation",
+    "--body", "Test comment",
     "--author", "test-agent",
   ], { cwd: dir });
 
@@ -90,7 +90,7 @@ describe("Webapp integration", () => {
     expect(tours[0].status).toBe("open");
   });
 
-  it("GET /api/tours/:id returns tour with diff and annotations", async () => {
+  it("GET /api/tours/:id returns tour with diff and comments", async () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
     const data = await res.json() as Record<string, unknown>;
@@ -98,8 +98,8 @@ describe("Webapp integration", () => {
     expect((data.tour as { id: string }).id).toBe(tourId);
     expect(typeof data.diff).toBe("string");
     expect((data.diff as string).length).toBeGreaterThan(0);
-    expect(Array.isArray(data.annotations)).toBe(true);
-    expect((data.annotations as unknown[]).length).toBe(1);
+    expect(Array.isArray(data.comments)).toBe(true);
+    expect((data.comments as unknown[]).length).toBe(1);
     expect(Array.isArray(data.files)).toBe(true);
   });
 
@@ -115,7 +115,7 @@ describe("Webapp integration", () => {
     expect(hello!.newContent).toBe("hello world\n");
   });
 
-  it("GET /api/tours/:id ships per-file orphanWindows for orphan annotation auto-expansion", async () => {
+  it("GET /api/tours/:id ships per-file orphanWindows for orphan comment auto-expansion", async () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
@@ -156,7 +156,7 @@ describe("Webapp integration", () => {
     expect(res.status).toBe(200);
   });
 
-  it("preserves a markdown annotation body verbatim through GET /api/tours/:id", async () => {
+  it("preserves a markdown comment body verbatim through GET /api/tours/:id", async () => {
     const body = [
       "## Heading",
       "",
@@ -187,8 +187,8 @@ describe("Webapp integration", () => {
 
     const res = await fetch(`${baseUrl}/api/tours/${tourId}`);
     expect(res.status).toBe(200);
-    const data = await res.json() as { annotations: { body: string }[] };
-    const found = data.annotations.find((a) => a.body === body);
+    const data = await res.json() as { comments: { body: string }[] };
+    const found = data.comments.find((a) => a.body === body);
     expect(found).toBeDefined();
     expect(found!.body).toBe(body);
   });
@@ -201,8 +201,8 @@ describe("Webapp integration", () => {
     expect(res.headers.get("content-type")).toContain("application/javascript");
   });
 
-  it("POST /api/tours/:id/annotations creates a human-authored top-level annotation (Issue #77)", async () => {
-    const res = await fetch(`${baseUrl}/api/tours/${tourId}/annotations`, {
+  it("POST /api/tours/:id/comments creates a human-authored top-level comment (Issue #77)", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -222,12 +222,12 @@ describe("Webapp integration", () => {
     expect(typeof ann.id).toBe("string");
   });
 
-  it("POST /api/tours/:id/annotations with replies_to creates a Reply that inherits the parent anchor (Issue #77)", async () => {
+  it("POST /api/tours/:id/comments with replies_to creates a Reply that inherits the parent anchor (Issue #77)", async () => {
     const tourRes = await fetch(`${baseUrl}/api/tours/${tourId}`);
-    const data = await tourRes.json() as { annotations: Array<{ id: string }> };
-    const parentId = data.annotations[0].id;
+    const data = await tourRes.json() as { comments: Array<{ id: string }> };
+    const parentId = data.comments[0].id;
 
-    const res = await fetch(`${baseUrl}/api/tours/${tourId}/annotations`, {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -242,8 +242,8 @@ describe("Webapp integration", () => {
     expect(reply.body).toBe("Webapp reply body");
   });
 
-  it("POST /api/tours/:id/annotations rejects an empty body with 400 (Issue #77)", async () => {
-    const res = await fetch(`${baseUrl}/api/tours/${tourId}/annotations`, {
+  it("POST /api/tours/:id/comments rejects an empty body with 400 (Issue #77)", async () => {
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -259,7 +259,7 @@ describe("Webapp integration", () => {
     expect(data.error).toBeDefined();
   });
 
-  it("SSE endpoint connects and receives events on annotation change", async () => {
+  it("SSE endpoint connects and receives events on comment change", async () => {
     const controller = new AbortController();
     const res = await fetch(`${baseUrl}/api/tours/${tourId}/events`, {
       signal: controller.signal,
@@ -280,7 +280,7 @@ describe("Webapp integration", () => {
       "--file", "hello.txt",
       "--side", "additions",
       "--line", "1",
-      "--body", "SSE test annotation",
+      "--body", "SSE test comment",
       "--author", "test",
     ], { cwd: dir });
 
@@ -299,7 +299,7 @@ describe("Webapp integration", () => {
     };
 
     const eventData = await readWithTimeout();
-    expect(eventData).toContain("annotation-changed");
+    expect(eventData).toContain("comment-changed");
     controller.abort();
   });
 });

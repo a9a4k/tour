@@ -10,7 +10,7 @@ import type { BundleFile } from "./types.js";
 // `src/core/sidebar-width-clamp.ts` in #328 so both surfaces share the
 // formula; this module keeps the px-unit constants and the row-cost-
 // coupled fit computation (chevron / icon / displayName-in-chars /
-// annotation badge).
+// comment badge).
 //
 //   * `clampSidebarWidthPx` / `clampSidebarWidthManualPx` thin-wrap the
 //     core helpers with the web's px constants. Auto-fit reserves
@@ -51,7 +51,7 @@ export const SIDEBAR_CHAR_PX = 7.2;
 // File rows render `<status-icon> · <name> · ?badge`; folders render
 // `<chevron> · <folder-icon> · <name>`. The folder fixed cost is two
 // icons + two gaps; the file fixed cost is one icon + one gap, plus a
-// badge tail when the row carries annotations.
+// badge tail when the row carries comments.
 export const SIDEBAR_INDENT_BASE_PX = 16;
 export const SIDEBAR_INDENT_PER_DEPTH_PX = 16;
 export const SIDEBAR_ICON_PX = 16;
@@ -80,10 +80,10 @@ export function clampSidebarWidthManualPx(
 // displayName text). File rows: indent + status icon + gap + (optional
 // badge + gap) + right padding. Folder rows: indent + chevron + gap +
 // folder icon + gap + right padding.
-export function fileRowFixedPx(depth: number, annotationCount: number): number {
+export function fileRowFixedPx(depth: number, commentCount: number): number {
   const indent = SIDEBAR_INDENT_BASE_PX + depth * SIDEBAR_INDENT_PER_DEPTH_PX;
   const badgeTail =
-    annotationCount > 0 ? SIDEBAR_BADGE_PX + SIDEBAR_GAP_PX : 0;
+    commentCount > 0 ? SIDEBAR_BADGE_PX + SIDEBAR_GAP_PX : 0;
   return (
     indent +
     SIDEBAR_ICON_PX +
@@ -120,7 +120,7 @@ export function computeAutoFitWidthPx(
     const fixed =
       row.kind === "folder"
         ? folderRowFixedPx(row.depth)
-        : fileRowFixedPx(row.depth, row.annotationCount);
+        : fileRowFixedPx(row.depth, row.commentCount);
     const nameWidth = Math.ceil(row.displayName.length * SIDEBAR_CHAR_PX);
     const cost = fixed + nameWidth;
     if (cost > maxContent) maxContent = cost;

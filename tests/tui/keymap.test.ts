@@ -299,14 +299,14 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("left"), diffPane).type).toBe("cursor-side-left");
   });
 
-  it("n returns next-annotation regardless of pane focus", () => {
-    expect(dispatchKey(k("n"), sidebar).type).toBe("next-annotation");
-    expect(dispatchKey(k("n"), diffPane).type).toBe("next-annotation");
+  it("n returns next-comment regardless of pane focus", () => {
+    expect(dispatchKey(k("n"), sidebar).type).toBe("next-comment");
+    expect(dispatchKey(k("n"), diffPane).type).toBe("next-comment");
   });
 
-  it("p returns prev-annotation regardless of pane focus", () => {
-    expect(dispatchKey(k("p"), sidebar).type).toBe("prev-annotation");
-    expect(dispatchKey(k("p"), diffPane).type).toBe("prev-annotation");
+  it("p returns prev-comment regardless of pane focus", () => {
+    expect(dispatchKey(k("p"), sidebar).type).toBe("prev-comment");
+    expect(dispatchKey(k("p"), diffPane).type).toBe("prev-comment");
   });
 
   it("Shift-L toggles layout regardless of pane focus (l → L rebind, ADR 0011)", () => {
@@ -331,12 +331,12 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("l", { ctrl: true, shift: true }), diffPane).type).toBe("noop");
   });
 
-  it("Ctrl+N is not consumed as next-annotation", () => {
+  it("Ctrl+N is not consumed as next-comment", () => {
     expect(dispatchKey(k("n", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("n", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  it("Ctrl+P is not consumed as prev-annotation", () => {
+  it("Ctrl+P is not consumed as prev-comment", () => {
     expect(dispatchKey(k("p", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("p", { ctrl: true }), diffPane).type).toBe("noop");
   });

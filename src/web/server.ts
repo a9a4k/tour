@@ -1,9 +1,9 @@
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import { pickAutoTour } from "../core/tour-list.js";
 import {
-  createAnnotation,
+  createComment,
   createReply,
-} from "../core/annotations-store.js";
+} from "../core/comments-store.js";
 import { TourWatcher } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import {
@@ -279,15 +279,15 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
         }
 
-        const annotateMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/annotations$/);
-        if (annotateMatch && req.method === "POST") {
-          const idOrPrefix = annotateMatch[1];
+        const commentMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/comments$/);
+        if (commentMatch && req.method === "POST") {
+          const idOrPrefix = commentMatch[1];
           try {
             const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
             const body = (await req.json()) as Record<string, unknown>;
             const text = asString(body.body);
             // HTTP-shape concern only — whitespace-only rejection lives in
-            // the Annotation creation seam (PRD #140 rule 1/5).
+            // the Comment creation seam (PRD #140 rule 1/5).
             if (text === undefined) throw new Error("body is required");
             const author = asString(body.author);
             const repliesTo = asString(body.replies_to);
@@ -313,7 +313,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
             // against. Cost is one extra read per POST; SPA already pays this
             // on its own `GET /api/tours/:id` calls.
             const bundle = await loadTourBundle(cwd, resolvedId);
-            const ann = await createAnnotation(
+            const ann = await createComment(
               cwd,
               resolvedId,
               {
@@ -347,17 +347,17 @@ export async function startServer(args: ServeArgs): Promise<void> {
             return Response.json({ error: message }, { status: 404 });
           }
           const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-          const annotationId = asString(body.annotation_id);
-          if (!annotationId) {
+          const commentId = asString(body.comment_id);
+          if (!commentId) {
             return Response.json(
-              { error: "annotation_id is required" },
+              { error: "comment_id is required" },
               { status: 400 },
             );
           }
           const result = await requestReply({
             cwd,
             tourId: resolvedId,
-            annotationId,
+            commentId,
             agent: replyAgent,
           });
           return Response.json(result, {

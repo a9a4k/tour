@@ -8,7 +8,7 @@
 // anchored in `classification.reason === "binary"`; clearing the override
 // would leave them folded. State C (full body on a classifier-collapsed file)
 // is now reachable only via explicit-reveal gestures (Enter on the synthetic
-// row, annotation nav). Mirrors the #310 / #313 factoring — gestures match
+// row, comment nav). Mirrors the #310 / #313 factoring — gestures match
 // the state mutation their name implies.
 import type { FileClassification } from "./file-classifier.js";
 

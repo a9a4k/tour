@@ -1,8 +1,8 @@
 import React, { memo } from "react";
 import type { BoundaryRef, InteractiveSubKind } from "../../core/diff-rows.js";
 import type { ReplyLock } from "../../core/reply-lock.js";
-import { AnnotationCard } from "./App.js";
-import type { Annotation } from "./types.js";
+import { CommentCard } from "./App.js";
+import type { Comment } from "./types.js";
 import type { TokenLines } from "./syntax-highlight.js";
 
 /**
@@ -49,12 +49,12 @@ export interface DiffRowProps {
    *  candidate). Falls back to the kind-implied side, then `preferredSide`,
    *  then the side with content. */
   cursorSide?: Side;
-  /** Whether the deletions side is in an annotation's range. Drives the
+  /** Whether the deletions side is in a comment's range. Drives the
    *  range tint on `.tour-row-gutter` / `.tour-row-symbol` /
    *  `.tour-row-cell` of the deletions column, and the 3px inset stripe
    *  on the deletions gutter when this is the leftmost tinted side. */
   leftInRange?: boolean;
-  /** Whether the additions side is in an annotation's range. Mirror of
+  /** Whether the additions side is in a comment's range. Mirror of
    *  `leftInRange` for the additions column. */
   rightInRange?: boolean;
   /** Informs which column reads the cursor outline in split layout when
@@ -62,13 +62,13 @@ export interface DiffRowProps {
    *  to `kind` when this is omitted. */
   preferredSide?: Side;
   /** Receives the column-side of the click so the App layer can seed the
-   *  Line cursor for annotation creation. */
+   *  Line cursor for comment creation. */
   onClick?: (side: Side) => void;
   onMouseEnter?: () => void;
   /** Issue #320: GitHub-style `+` annotate button. When wired, each gutter
    *  with a line number renders a `+`; clicking calls onAnnotate(side,
    *  lineNumber). Visibility is CSS-driven; omit the prop to hide the
-   *  button on every gutter (used by rows that can't anchor annotations). */
+   *  button on every gutter (used by rows that can't anchor comments). */
   onAnnotate?: (side: Side, lineNumber: number) => void;
 }
 
@@ -146,8 +146,8 @@ function resolveCursorSide(args: {
 }
 
 // Resolves which sides carry the range tint in split layout. The planner
-// sets at most one of `leftInRange` / `rightInRange` per annotation, but
-// rows can land in both ranges (rare multi-line annotation case). When a
+// sets at most one of `leftInRange` / `rightInRange` per comment, but
+// rows can land in both ranges (rare multi-line comment case). When a
 // flag points at a side with no content (defensive fallback), reroute to
 // the side that actually carries a line number.
 function resolveRangeSides(args: {
@@ -397,26 +397,26 @@ export const DiffRow = memo(DiffRowImpl);
 // ---------------------------------------------------------------------------
 
 export interface CardRowProps {
-  annotation: Annotation;
-  replies?: Annotation[];
+  comment: Comment;
+  replies?: Comment[];
   isCurrent: boolean;
   navIndex: number | null;
   navTotal: number;
   side: Side;
   layout: Layout;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
-  // AnnotationCard pass-through.
+  // CommentCard pass-through.
   composerBody?: string;
   composerError?: string | null;
   onComposerBodyChange?: (body: string) => void;
   replyTargetId?: string | null;
-  onOpenReply?: (annotationId: string) => void;
+  onOpenReply?: (commentId: string) => void;
   onSubmitReply?: (body: string) => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
-  onSendToAgent?: (annotationId: string) => void;
-  onCardClick?: (annotationId: string) => void;
+  onSendToAgent?: (commentId: string) => void;
+  onCardClick?: (commentId: string) => void;
 }
 
 // `grid-column` is set inline so a card's positioning is visible on the
@@ -432,7 +432,7 @@ function cardGridColumn(layout: Layout, side: Side): string {
 
 function CardRowImpl(props: CardRowProps): React.JSX.Element {
   const {
-    annotation,
+    comment,
     replies,
     isCurrent,
     navIndex,
@@ -458,8 +458,8 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
       data-side={side}
       style={{ gridColumn: cardGridColumn(layout, side) }}
     >
-      <AnnotationCard
-        annotation={annotation}
+      <CommentCard
+        comment={comment}
         replies={replies}
         isCurrent={isCurrent}
         navIndex={navIndex}

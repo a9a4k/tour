@@ -64,7 +64,7 @@ function callDiffRows(args: {
     side: "additions" | "deletions",
     lineNumber: number,
   ) => void;
-  onCardClick?: (annotationId: string) => void;
+  onCardClick?: (commentId: string) => void;
 }): unknown {
   return DiffRows({
     fileName: args.fileName ?? "x.txt",
@@ -316,7 +316,7 @@ index 1..2 100644
   // gap below). The fix replaces the glyph with a `backgroundColor`
   // paint on the same stretched box — no child glyph, so the bg fills
   // the box's full height for free. Same approach as DiffLine's
-  // annotation accent stripe.
+  // comment accent stripe.
   describe("split-layout vertical divider between halves (#258 / #269)", () => {
     const isDivider = (el: AnyElement): boolean =>
       el.props["width"] === 1 &&
@@ -449,7 +449,7 @@ index 1..2 100644
   // route — its content is a leaf glyph. The fix: replace the glyph
   // with a `backgroundColor={theme.border.muted}` paint on the same
   // stretched box. The bg fills the box's full height regardless of
-  // wrap depth — same pattern as DiffLine's annotation accent
+  // wrap depth — same pattern as DiffLine's comment accent
   // stripe (a 1-cell-wide alignSelf="stretch" box with bg, no glyph
   // child).
   describe("split-layout vertical divider extends through wrapped rows (issue #269)", () => {
@@ -748,15 +748,15 @@ index 1..2 100644
       expect(wrapper!.props["flexDirection"]).toBeUndefined();
     });
 
-    it("annotation rows in split layout are not changed by the diff-row fix (50%-width wrappers remain default-direction)", () => {
-      // The annotation row's empty sibling already inherits the card's
+    it("comment rows in split layout are not changed by the diff-row fix (50%-width wrappers remain default-direction)", () => {
+      // The comment row's empty sibling already inherits the card's
       // intrinsic height via the outer row container's
       // alignItems=stretch — no bug there. The brief explicitly says
-      // not to double-apply the fix to annotation rows.
-      const annotationRow: PlannedRow = {
-        kind: "annotation",
+      // not to double-apply the fix to comment rows.
+      const commentRow: PlannedRow = {
+        kind: "comment",
         id: "ann-1",
-        annotation: {
+        comment: {
           id: "ann-1",
           file: "x.txt",
           side: "additions",
@@ -769,7 +769,7 @@ index 1..2 100644
         },
         replies: [],
       };
-      const tree = callDiffRows({ rows: [annotationRow], layout: "split" });
+      const tree = callDiffRows({ rows: [commentRow], layout: "split" });
       const outerRowBox = flatten(tree).find(
         (el) => el.props["flexDirection"] === "row" && el.props["width"] === "100%",
       );
@@ -778,7 +778,7 @@ index 1..2 100644
         (c) => isElement(c) && c.props["width"] === "50%",
       );
       expect(halves.length).toBe(2);
-      // Annotation 50%-width wrappers stay column-default — the brief
+      // Comment 50%-width wrappers stay column-default — the brief
       // forbids double-applying the fix here.
       expect(halves[0].props["flexDirection"]).toBeUndefined();
       expect(halves[1].props["flexDirection"]).toBeUndefined();
@@ -1172,7 +1172,7 @@ index 1..2 100644
 
       const composer = buildTopLevelComposer({
         cursor: clickedCursor,
-        currentAnnotation: null,
+        currentComment: null,
       });
       expect(composer).not.toBeNull();
       expect(composer!.kind).toBe("top-level");
@@ -1186,11 +1186,11 @@ index 1..2 100644
 
   // Issue #261: ADR 0022 unified the cursor; CardAnchor is first-class and
   // mouse-click on a card must place the cursor on it, mirroring the
-  // webapp's `setCursorFromCardClick`. The annotation branch in DiffRows
+  // webapp's `setCursorFromCardClick`. The comment branch in DiffRows
   // wires `onMouseDown` on the card's wrapper, calling `onCardClick` with
-  // the row's annotation id. In split layout, only the card half carries
+  // the row's comment id. In split layout, only the card half carries
   // the handler — the empty sibling stays a no-op.
-  describe("mouse click on annotation card → cursor (issue #261)", () => {
+  describe("mouse click on comment card → cursor (issue #261)", () => {
     const ANN_DIFF = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1201,7 +1201,7 @@ index 1..2 100644
 +new
 `;
 
-    function makeAnn(side: "additions" | "deletions"): import("../../src/core/types.js").Annotation {
+    function makeAnn(side: "additions" | "deletions"): import("../../src/core/types.js").Comment {
       return {
         id: `ann-${side}`,
         tour_id: "t",
@@ -1215,11 +1215,11 @@ index 1..2 100644
       };
     }
 
-    it("unified: clicking the card wrapper dispatches onCardClick with the annotation id", () => {
+    it("unified: clicking the card wrapper dispatches onCardClick with the comment id", () => {
       const file = parseFile(ANN_DIFF);
       const ann = makeAnn("additions");
       const rows = planRows(file, [ann], "unified");
-      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
       expect(annIdx).toBeGreaterThanOrEqual(0);
       const onCardClick = vi.fn();
       const tree = callDiffRows({
@@ -1240,16 +1240,16 @@ index 1..2 100644
       const file = parseFile(ANN_DIFF);
       const ann = makeAnn("additions");
       const rows = planRows(file, [ann], "split");
-      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
       const onCardClick = vi.fn();
       const tree = callDiffRows({
         rows: rows.slice(annIdx, annIdx + 1),
         layout: "split",
         onCardClick,
       });
-      // The annotation row in split layout is a flexDirection="row" box
+      // The comment row in split layout is a flexDirection="row" box
       // holding two 50%-width halves. The card sits in the side that
-      // matches the annotation's side; the opposite half is empty.
+      // matches the comment's side; the opposite half is empty.
       const splitWrapper = flatten(tree).find(
         (el) => el.props["flexDirection"] === "row" && el.props["width"] === "100%",
       );
@@ -1270,7 +1270,7 @@ index 1..2 100644
       const file = parseFile(ANN_DIFF);
       const ann = makeAnn("deletions");
       const rows = planRows(file, [ann], "split");
-      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
       const onCardClick = vi.fn();
       const tree = callDiffRows({
         rows: rows.slice(annIdx, annIdx + 1),
@@ -1291,11 +1291,11 @@ index 1..2 100644
       expect(onCardClick).toHaveBeenCalledWith(ann.id);
     });
 
-    it("does not invoke onCursorClick on the annotation card wrapper", () => {
+    it("does not invoke onCursorClick on the comment card wrapper", () => {
       const file = parseFile(ANN_DIFF);
       const ann = makeAnn("additions");
       const rows = planRows(file, [ann], "split");
-      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
       const onCursorClick = vi.fn();
       const onCardClick = vi.fn();
       const tree = callDiffRows({
@@ -1312,11 +1312,11 @@ index 1..2 100644
       expect(onCardClick).toHaveBeenCalled();
     });
 
-    it("annotation branch does not wire onMouseDown when onCardClick is omitted", () => {
+    it("comment branch does not wire onMouseDown when onCardClick is omitted", () => {
       const file = parseFile(ANN_DIFF);
       const ann = makeAnn("additions");
       const rows = planRows(file, [ann], "split");
-      const annIdx = rows.findIndex((r) => r.kind === "annotation");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
       const tree = callDiffRows({
         rows: rows.slice(annIdx, annIdx + 1),
         layout: "split",
@@ -1494,7 +1494,7 @@ index 1..2 100644
       expect(wrapper).toBeDefined();
     });
 
-    it("interactive row does not pass diffBg / annotation tint props (it has no source content)", () => {
+    it("interactive row does not pass diffBg / comment tint props (it has no source content)", () => {
       const rows: PlannedRow[] = [
         { kind: "interactive", subKind: "hunk-separator", boundaryRef: 0 },
       ];
