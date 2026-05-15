@@ -19,7 +19,7 @@ JSONL
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Four annotations as narrative beats: setup → what moved → what was left → what replaced it. No "as discussed in #142"; no "obviously".
+Four comments as narrative beats: setup → what moved → what was left → what replaced it. No "as discussed in #142"; no "obviously".
 
 ## Example 2 — Findings batch from an external reviewer
 
@@ -38,11 +38,11 @@ JSONL
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Findings style — no narrative arc. Each annotation stands alone. Severity labels in the body help the human triage.
+Findings style — no narrative arc. Each comment stands alone. Severity labels in the body help the human triage.
 
 ## Example 3 — Pickup → reply
 
-Context: the human replied on an annotation. User asks "what did Almas say on the tour, and respond".
+Context: the human replied on a comment. User asks "what did Almas say on the tour, and respond".
 
 ```sh
 tour pickup "$TOUR_ID" --json
@@ -53,7 +53,7 @@ Abridged output:
 ```json
 {
   "id": "ann_a7c4",
-  "annotations": [
+  "comments": [
     {
       "id": "ann_root_01",
       "file": "src/validate.ts",
@@ -114,7 +114,7 @@ JSONL
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-One annotation, four GFM elements (heading, table, bold, inline code). The webapp renders all four; the TUI shows the same as raw markdown source.
+One comment, four GFM elements (heading, table, bold, inline code). The webapp renders all four; the TUI shows the same as raw markdown source.
 
 ## Example 6 — Mermaid body (sequence diagram)
 

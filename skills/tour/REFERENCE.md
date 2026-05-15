@@ -11,19 +11,19 @@ Each line of input to `tour comment <id> --batch -` is a JSON object:
 | `line_start` | int | yes | File-line number on that side at the pinned SHA |
 | `line_end` | int | no | Inclusive end; defaults to `line_start` |
 | `body` | string | yes | GitHub-Flavored Markdown; no raw HTML; ` ```mermaid ` fences render as diagrams in the webapp |
-| `replies_to` | string | no | If set, this annotation is a Reply on the given parent annotation id; inherits parent's anchor |
+| `replies_to` | string | no | If set, this comment is a Reply on the given parent comment id; inherits parent's anchor |
 | `author` | string | no | Display string; defaults to the `author_kind` literal (`"agent"`) |
 | `author_kind` | `"agent"` \| `"human"` | no | Defaults to `"agent"` for CLI invocations |
 
 ### Side decision rule
 
-- Annotation is about a **new** line (the `+` side in unified view) → `"additions"`
-- Annotation is about a **deleted** line (the `-` side) → `"deletions"`
+- Comment is about a **new** line (the `+` side in unified view) → `"additions"`
+- Comment is about a **deleted** line (the `-` side) → `"deletions"`
 - For unchanged context rows visible in both columns, follow the column the comment is *about*
 
 ### Anchor validation
 
-Anchors are validated at write time. A typo in `file` or an out-of-range line is rejected with a clear error. Always run `tour show <id> --json` after a batch to confirm all annotations landed.
+Anchors are validated at write time. A typo in `file` or an out-of-range line is rejected with a clear error. Always run `tour show <id> --json` after a batch to confirm all comments landed.
 
 ## CLI surface
 
@@ -90,12 +90,12 @@ The user reads the tip and reruns with the right name. Zero or multiple shipped 
   head_source: string,            // human-readable: "HEAD", "WIP", "abc123"
   base_source: string,
   status: "open" | "closed",
-  annotations: PickupAnnotation[]
+  comments: PickupComment[]
 }
 
-PickupAnnotation = Annotation & { replies: Annotation[] }
+PickupComment = Comment & { replies: Comment[] }
 
-Annotation = {
+Comment = {
   id: string,
   file: string,
   side: "additions" | "deletions",
@@ -113,7 +113,7 @@ Annotation = {
 
 ### Author-name collision
 
-If you set `--author claude` (custom override matching an adapter name), your annotations become indistinguishable from the `claude` reply-agent's responses in pickup output. Don't override `--author` to match a registry name. Leave it default (`"agent"`) or use a name outside the registry.
+If you set `--author claude` (custom override matching an adapter name), your comments become indistinguishable from the `claude` reply-agent's responses in pickup output. Don't override `--author` to match a registry name. Leave it default (`"agent"`) or use a name outside the registry.
 
 ### Snapshot lost
 
@@ -129,7 +129,7 @@ The canonical flow is `tour serve <id> --reply-agent <name> &` — no `--open`. 
 
 ### Reply schema validation
 
-Reply annotations (with `replies_to` set) still require `file`, `side`, and `line_start` for write-time validation — the planner uses them as a sanity check against the parent's anchor. Pass the parent's anchor verbatim.
+Reply comments (with `replies_to` set) still require `file`, `side`, and `line_start` for write-time validation — the planner uses them as a sanity check against the parent's anchor. Pass the parent's anchor verbatim.
 
 ## See also
 

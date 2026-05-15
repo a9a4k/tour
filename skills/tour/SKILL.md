@@ -2,19 +2,19 @@
 name: tour
 description: >
   Tour is a local code-walkthrough CLI for AI agents. After finishing a
-  task, the agent leaves line-anchored annotations on a pinned git diff
+  task, the agent leaves line-anchored comments on a pinned git diff
   (a guided traversal) that a human steps through in a TUI or webapp.
 
   Activates when the user asks to "review this branch", "review this PR",
-  "walk me through this diff", "leave feedback on these changes", "annotate
-  the diff", "create a tour", or whenever the agent has produced
+  "walk me through this diff", "leave feedback on these changes", "comment
+  on the diff", "create a tour", or whenever the agent has produced
   line-anchored findings (security scan, lint output, external review) the
   human will read asynchronously. Also activates on responding to a human
   reply on an existing Tour, via `tour pickup`.
 
   Does NOT apply to inline chat feedback consumed this turn, opening GitHub
   PRs, filing issues, or repo-wide notes with no line
-  anchor. For annotation style and authoring guidance, see the body of
+  anchor. For comment style and authoring guidance, see the body of
   this skill.
 allowed-tools: Bash(tour:*),
   Bash(bunx tourdiff:*),
@@ -49,15 +49,15 @@ For uncommitted work, use `--head WIP` — Tour snapshots the working tree as a 
 
 Don't pass `--base` unless reviewing against a non-default-branch target. The default probes `origin/HEAD` → `origin/main` → `origin/master` → `@{upstream}` and picks the first that produces a non-empty merge-base — matching the GitHub PR diff for the common feature-branch-off-main flow.
 
-## Annotation rules
+## Comment rules
 
-1. **Architectural scope.** Tour is the senior-engineer walkthrough. Every annotation is real cost; if a beat doesn't earn its place, cut it.
-2. **Order by reading flow, motivation first.** Open with one annotation answering _why does this PR exist?_ (the problem, not the diff) — anchored to a representative line or the first changed file. Then move through the changes in reading order, not file order.
-3. **What to annotate**: new dependency shapes, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff doesn't explain, the bug's root cause.
-4. **What to skip**: variable renames, micro-formatting, "five lines instead of seven", linter-catchable nits. If the diff is the explanation, don't annotate.
-5. **Leverage every word.** Cut anything that doesn't carry the _why_. Inline any context the reader needs (linked issue, codebase convention, Slack thread) or drop the annotation.
+1. **Architectural scope.** Tour is the senior-engineer walkthrough. Every comment is real cost; if a beat doesn't earn its place, cut it.
+2. **Order by reading flow, motivation first.** Open with one comment answering _why does this PR exist?_ (the problem, not the diff) — anchored to a representative line or the first changed file. Then move through the changes in reading order, not file order.
+3. **What to comment on**: new dependency shapes, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff doesn't explain, the bug's root cause.
+4. **What to skip**: variable renames, micro-formatting, "five lines instead of seven", linter-catchable nits. If the diff is the explanation, don't comment.
+5. **Leverage every word.** Cut anything that doesn't carry the _why_. Inline any context the reader needs (linked issue, codebase convention, Slack thread) or drop the comment.
 6. **Match medium to message.** Diagrams for flow, snippets for code changes, tables for comparisons, prose for the *why* and the narrative. Markdown renders rich in the webapp.
-7. **Findings batch**: external findings (security scan, lint, thorough-review) get one annotation per finding — drop the narrative arc.
+7. **Findings batch**: external findings (security scan, lint, thorough-review) get one comment per finding — drop the narrative arc.
 
 ## Continue (pickup)
 
