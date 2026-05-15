@@ -406,7 +406,9 @@ export interface CardRowProps {
   layout: Layout;
   registerRef?: (id: string, el: HTMLDivElement | null) => void;
   // AnnotationCard pass-through.
+  composerBody?: string;
   composerError?: string | null;
+  onComposerBodyChange?: (body: string) => void;
   replyTargetId?: string | null;
   onOpenReply?: (annotationId: string) => void;
   onSubmitReply?: (body: string) => void;
@@ -438,7 +440,9 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     side,
     layout,
     registerRef,
+    composerBody,
     composerError,
+    onComposerBodyChange,
     replyTargetId,
     onOpenReply,
     onSubmitReply,
@@ -461,7 +465,9 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         navIndex={navIndex}
         navTotal={navTotal}
         registerRef={registerRef}
+        composerBody={composerBody}
         composerError={composerError}
+        onComposerBodyChange={onComposerBodyChange}
         replyTargetId={replyTargetId}
         onOpenReply={onOpenReply}
         onSubmitReply={onSubmitReply}

@@ -188,6 +188,25 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       }
     };
   }, []);
+  // Issue #334: when the composer transitions into `errored` (the
+  // runtime dispatches `composer.failed` on adapter rejection — see
+  // core/tour-session-runtime.ts:238), flash the failure reason in
+  // the footer status slot. Successful creates do NOT flash — the
+  // watcher-driven repaint is the confirmation, per PRD #330's Out of
+  // Scope. The ref gates on the *transition* so retry → submitting →
+  // errored re-flashes even when the new error string matches the
+  // previous (the slice-deps re-render alone would not pick that up).
+  const wasComposerErroredRef = useRef(false);
+  const composerSlice = sessionState.composer;
+  useEffect(() => {
+    const isErrored = composerSlice.kind === "errored";
+    if (isErrored && !wasComposerErroredRef.current) {
+      const verb =
+        composerSlice.target.kind === "reply" ? "Reply" : "Comment";
+      flashFooterStatus(`${verb} failed: ${composerSlice.error}`);
+    }
+    wasComposerErroredRef.current = isErrored;
+  }, [composerSlice, flashFooterStatus]);
   // Folds (collapsedFolders + collapsedOverrides), layout, and composer
   // (target / body / error as one tagged-union slice) all live in the Tour-
   // session store (PRD #234 slice 3, issue #238). The webapp's three local

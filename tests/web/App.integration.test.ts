@@ -1019,3 +1019,339 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
     expect(footer!.textContent).not.toContain("s: send to");
   });
 });
+
+const failTourId = "2026-05-15-000000-footer-fail-status";
+
+const failTourSummary = {
+  id: failTourId,
+  title: "Failure status fixture",
+  status: "open" as const,
+  created_at: "2026-05-15T00:00:00Z",
+  closed_at: "",
+  head_sha: "deadbeef",
+  base_sha: "cafebabe",
+  head_source: "feature/x",
+  base_source: "main",
+  wip_snapshot: false,
+};
+
+const failDiff = `diff --git a/src/foo.ts b/src/foo.ts
+index 1..2 100644
+--- a/src/foo.ts
++++ b/src/foo.ts
+@@ -1,2 +1,3 @@
+ first line
+-old line
++new line
++added line
+`;
+
+const failHumanAnn = {
+  id: "ann-human-fail",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 2,
+  line_end: 2,
+  body: "human comment",
+  author: "alice",
+  author_kind: "human" as const,
+  created_at: "2026-05-15T00:00:00Z",
+};
+
+const failBundleWithAnn = {
+  kind: "ok" as const,
+  tour: failTourSummary,
+  annotations: [failHumanAnn],
+  diff: failDiff,
+  files: [
+    {
+      name: "src/foo.ts",
+      type: "modified",
+      hunks: [],
+      oldContent: "first line\nold line\n",
+      newContent: "first line\nnew line\nadded line\n",
+      classification: { collapsed: false },
+      orphanWindows: [],
+    },
+  ],
+};
+
+const failBundleEmpty = {
+  ...failBundleWithAnn,
+  annotations: [],
+};
+
+interface FailFetchOpts {
+  bundle: typeof failBundleWithAnn | typeof failBundleEmpty;
+  postResponder: () => Promise<Response>;
+}
+
+function stubFailFetch(opts: FailFetchOpts): typeof fetch {
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const u = typeof input === "string" ? input : input.toString();
+    const method = init?.method ?? "GET";
+    if (u.includes("/api/tours?")) {
+      return Promise.resolve(
+        new Response(JSON.stringify([failTourSummary]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${failTourId}`) && method === "GET") {
+      return Promise.resolve(
+        new Response(JSON.stringify(opts.bundle), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${failTourId}/reply-lock`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (
+      u.endsWith(`/api/tours/${failTourId}/annotations`) &&
+      method === "POST"
+    ) {
+      return opts.postResponder();
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as unknown as typeof fetch;
+}
+
+// Set the textarea value through React's controlled-input contract.
+// React monkey-patches the element-level value setter to track the
+// "last seen" value; calling the prototype setter bypasses the track
+// so the input-event listener treats the change as new and fires
+// `onChange`.
+function setTextareaValue(ta: HTMLTextAreaElement, value: string): void {
+  const proto = Object.getPrototypeOf(ta) as HTMLTextAreaElement;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  if (setter) {
+    setter.call(ta, value);
+  } else {
+    ta.value = value;
+  }
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("App annotation-create failure status (Issue #334)", () => {
+  it("non-2xx response on reply submit flashes `Reply failed: <reason>` in the footer status slot", async () => {
+    globalThis.fetch = stubFailFetch({
+      bundle: failBundleWithAnn,
+      postResponder: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: "validation failed" }), {
+            status: 422,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    // Bundle-load re-anchor seats the cursor on the human card. `r` opens
+    // the reply composer for that card's thread.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    await act(async () => {
+      setTextareaValue(ta!, "reply body");
+    });
+
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    expect(submitBtn).not.toBeNull();
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+
+    const status = container.querySelector(
+      "footer.app-footer .app-footer-status",
+    );
+    expect(status).not.toBeNull();
+    expect(status!.textContent).toContain("Reply failed: validation failed");
+  });
+
+  it("non-2xx response on top-level annotation submit flashes `Comment failed: <reason>` in the footer status slot", async () => {
+    globalThis.fetch = stubFailFetch({
+      bundle: failBundleEmpty,
+      postResponder: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: "server is busy" }), {
+            status: 503,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    // Empty annotations → cursor null at mount. `a` materializes the
+    // cursor to the first annotatable row and opens the top-level
+    // composer.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "a", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    await act(async () => {
+      setTextareaValue(ta!, "first comment");
+    });
+
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    expect(submitBtn).not.toBeNull();
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+
+    const status = container.querySelector(
+      "footer.app-footer .app-footer-status",
+    );
+    expect(status).not.toBeNull();
+    expect(status!.textContent).toContain("Comment failed: server is busy");
+  });
+
+  it("network error on reply submit flashes `Reply failed: <fallback>` in the footer status slot", async () => {
+    globalThis.fetch = stubFailFetch({
+      bundle: failBundleWithAnn,
+      postResponder: () => Promise.reject(new TypeError("network failure")),
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    await act(async () => {
+      setTextareaValue(ta!, "reply body");
+    });
+
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+
+    const status = container.querySelector(
+      "footer.app-footer .app-footer-status",
+    );
+    expect(status).not.toBeNull();
+    expect(status!.textContent).toContain("Reply failed: network failure");
+  });
+
+  it("successful reply submit does NOT flash any footer status", async () => {
+    globalThis.fetch = stubFailFetch({
+      bundle: failBundleWithAnn,
+      postResponder: () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "ann-reply-success",
+              file: "src/foo.ts",
+              side: "additions",
+              line_start: 2,
+              line_end: 2,
+              body: "reply body",
+              author: "human",
+              author_kind: "human",
+              replies_to: "ann-human-fail",
+              created_at: "2026-05-15T00:00:01Z",
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        ),
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    await act(async () => {
+      setTextareaValue(ta!, "reply body");
+    });
+
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+
+    const status = container.querySelector(
+      "footer.app-footer .app-footer-status",
+    );
+    expect(status).not.toBeNull();
+    // The live region always renders an empty prefix when status is
+    // null (the legend follows in a sibling span). No failure prefix.
+    expect(status!.textContent ?? "").not.toContain("failed:");
+  });
+});
