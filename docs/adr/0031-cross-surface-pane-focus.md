@@ -126,3 +126,24 @@ Re-entering sidebar mode lands on the last-known sidebar selection. This matches
 - Tour-session adapter on the webapp grows `focusSidebarRow(rowId)` and `blurSidebar()` methods. The TUI adapter doesn't need analogous methods — border-color flips are pure render driven by the slice.
 - Cross-surface tests gain a `paneFocus` dimension; the slice's reducer rules are tested once in `tests/core/tour-session.test.ts` and the surface adapters realise them.
 - Action-preview content (ADR 0022's `r: reply to "<title>"` footer line) stays TUI-only; the webapp continues to use auto-recall scroll-into-view for off-screen cards. No change to ADR 0022.
+
+## PRD #356 addendum
+
+Recorded after PRD #356 / issues #357 and #358 landed the context-aware `y` yank.
+
+### Sidebar-mode action gating is a *state-change* rule, not a *lowercase* rule
+
+The original ADR gated lowercase-cursor actions `c` / `r` / `s` silently in sidebar mode and justified the gating with "auto-flipping and firing would lose track of where the Comment / reply / send lands." The phrasing read like a blanket rule for all lowercase-cursor bindings — but the rationale is actually narrower: an action gets gated when auto-firing in the wrong pane risks losing user context. Actions that don't risk losing context (because they don't create, mutate, or land anything) face no such concern.
+
+PRD #356 introduced `y` as the first read-only lowercase-cursor binding: pressing `y` in sidebar mode yanks the selected file row's path; pressing `y` in diff mode yanks the cursored line or — fallback — the cursored file's path. Neither pane mutates Tour state, creates an artifact, or fires an effect whose landing place matters; the only output is a transient footer flash plus the system clipboard. There is nothing to "lose track of." Gating `y` in sidebar mode would be a usability tax with no underlying invariant to protect.
+
+The dispatchers consequently place `y`'s dispatch *above* the paneFocus branching on both surfaces, while `c` / `r` / `s` stay inside the diff-mode branch. The auto-flip table's "pane-agnostic" row (which already listed `y`) governs only the flip side of the contract; this addendum makes the *gating* side explicit too.
+
+### Rule for future lowercase-cursor bindings
+
+When introducing a new lowercase-cursor binding, ask: *would auto-firing this action in the non-cursor pane risk losing user context?*
+
+- **Yes** — the action mutates Tour state, creates an artifact, fires an effect whose landing place matters, or otherwise has lasting consequences whose target the user must explicitly choose. Gate it silently in the opposite pane mode, following the `c` / `r` / `s` pattern. The user Esc's to the right pane before the action fires.
+- **No** — the action only reads or flashes (no Tour-state mutation; clipboard writes count as read-only because the user explicitly invoked the yank and the clipboard isn't Tour state). Let it fire in both pane modes, following the `y` pattern. Place its dispatch above the paneFocus branching in the keymap.
+
+The test is sharper than "is the action lowercase?" and sharper than "is the action cursor-targeted?" Both `c` and `y` are lowercase cursor-targeted bindings; the difference is whether their effect has a landing place the user might lose.
