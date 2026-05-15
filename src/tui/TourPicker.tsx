@@ -12,6 +12,10 @@ interface TourPickerProps {
   // listener can realize `scrollPickerRow` by scrolling
   // `picker-row-${idx}` into view.
   scrollRef?: Ref<ScrollBoxRenderable | null>;
+  // Issue #321: row clicks. The host owns the close-vs-commit decision
+  // (mirrors the Enter branch in app.tsx) so the picker stays a
+  // controlled view that doesn't read currentTourId equality itself.
+  onSelect: (idx: number) => void;
 }
 
 function rowLabel(r: PickerRow): string {
@@ -20,7 +24,7 @@ function rowLabel(r: PickerRow): string {
   return ` ${r.glyph} ${age}  ${r.title}${badge} `;
 }
 
-export function TourPicker({ rows, currentTourId, cursor, scrollRef }: TourPickerProps) {
+export function TourPicker({ rows, currentTourId, cursor, scrollRef, onSelect }: TourPickerProps) {
   return (
     <box
       position="absolute"
@@ -51,7 +55,12 @@ export function TourPicker({ rows, currentTourId, cursor, scrollRef }: TourPicke
             else if (isCurrent) bg = theme.bg.accentCurrent.tui;
             const glyph = isCursor ? CURSOR_GLYPH : " ";
             return (
-              <box key={r.id} id={`picker-row-${i}`} flexDirection="row">
+              <box
+                key={r.id}
+                id={`picker-row-${i}`}
+                flexDirection="row"
+                onMouseDown={() => onSelect(i)}
+              >
                 <text fg={theme.fg.accent} bg={bg}>{glyph}</text>
                 <text fg={theme.fg.default} bg={bg}>{rowLabel(r)}</text>
               </box>
