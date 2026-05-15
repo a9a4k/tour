@@ -9,7 +9,15 @@ export type WatchEvent =
 export type WatchCallback = (event: WatchEvent) => void;
 
 const REPLY_LOCK_FILENAME = ".reply-lock.json";
-const ANNOTATIONS_FILENAME = "annotations.jsonl";
+// Stage B on-disk filename (issue #342 / PRD #335 / ADR 0029 addendum).
+// `comments.jsonl` is the canonical name; `annotations.jsonl` is the
+// permanent legacy fallback. The watcher fires on writes to whichever
+// name the Tour folder uses — pre-Stage-B `.tour/` dirs keep working
+// without an explicit migration step. The .jsonl extension match in
+// `start()` covers both filenames; the fingerprint check below tracks
+// whichever file the reader would currently read from.
+const COMMENTS_FILENAME = "comments.jsonl";
+const LEGACY_ANNOTATIONS_FILENAME = "annotations.jsonl";
 
 interface FileFingerprint {
   mtimeMs: number;
@@ -23,6 +31,16 @@ function fingerprint(path: string): FileFingerprint | null {
   } catch {
     return null;
   }
+}
+
+// Effective fingerprint mirrors the reader's fallback: prefer
+// `comments.jsonl`, fall back to `annotations.jsonl`. A folder that gets
+// migrated mid-watch transitions from the legacy fingerprint to the new
+// one — the values won't match, so the watcher emits.
+function effectiveAnnotationsFingerprint(dir: string): FileFingerprint | null {
+  const newFp = fingerprint(join(dir, COMMENTS_FILENAME));
+  if (newFp) return newFp;
+  return fingerprint(join(dir, LEGACY_ANNOTATIONS_FILENAME));
 }
 
 function sameFingerprint(a: FileFingerprint | null, b: FileFingerprint | null): boolean {
@@ -47,7 +65,7 @@ export class TourWatcher {
     this.tourDir = join(repoRoot, ".tour", tourId);
     this.debounceMs = debounceMs;
     this.lastLockExists = existsSync(join(this.tourDir, REPLY_LOCK_FILENAME));
-    this.lastAnnotationsFp = fingerprint(join(this.tourDir, ANNOTATIONS_FILENAME));
+    this.lastAnnotationsFp = effectiveAnnotationsFingerprint(this.tourDir);
   }
 
   on(callback: WatchCallback): void {
@@ -94,12 +112,14 @@ export class TourWatcher {
   // macOS fs.watch fires spurious `rename` events for sibling files when an
   // unrelated file in the same directory is created or deleted. Without a
   // fingerprint check, writing `.reply-lock.json` would emit a phantom
-  // `annotation-changed` because `annotations.jsonl` shows up in the watch
-  // callback. Stat at fire time and only emit if mtime+size actually changed.
+  // `annotation-changed` because the Comment-log file shows up in the
+  // watch callback. Stat at fire time and only emit if mtime+size actually
+  // changed. The effective fingerprint prefers `comments.jsonl` and falls
+  // back to `annotations.jsonl`, mirroring the reader (ADR 0029 addendum).
   private scheduleAnnotationEmit(): void {
     if (this.annotationDebounce) clearTimeout(this.annotationDebounce);
     this.annotationDebounce = setTimeout(() => {
-      const fp = fingerprint(join(this.tourDir, ANNOTATIONS_FILENAME));
+      const fp = effectiveAnnotationsFingerprint(this.tourDir);
       if (sameFingerprint(fp, this.lastAnnotationsFp)) return;
       this.lastAnnotationsFp = fp;
       this.emit({ type: "annotation-changed", tourId: this.tourId });

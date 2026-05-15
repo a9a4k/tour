@@ -1,11 +1,71 @@
-import { readFile, appendFile } from "node:fs/promises";
+import { readFile, appendFile, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Annotation, AuthorKind } from "./types.js";
 import type { TourBundle, BundleFile } from "./tour-bundle.js";
 import { generateId } from "./ids.js";
 
-function annotationsPath(repoRoot: string, tourId: string): string {
-  return join(repoRoot, ".tour", tourId, "annotations.jsonl");
+// Stage B on-disk filename (issue #342 / PRD #335 / ADR 0029 addendum).
+// The canonical on-disk filename for the per-Tour Comment log is
+// `comments.jsonl`. The pre-Stage-B name `annotations.jsonl` is the
+// fallback: the reader uses it when `comments.jsonl` is absent; the writer
+// one-shot-renames it to `comments.jsonl` on first write. The fallback
+// path stays in the codebase indefinitely per ADR 0029 addendum — no
+// release ever drops it, so pre-Stage-B `.tour/` dirs in the wild keep
+// working without an explicit migration step.
+const COMMENTS_FILENAME = "comments.jsonl";
+const LEGACY_ANNOTATIONS_FILENAME = "annotations.jsonl";
+
+function tourDir(repoRoot: string, tourId: string): string {
+  return join(repoRoot, ".tour", tourId);
+}
+
+function commentsPath(repoRoot: string, tourId: string): string {
+  return join(tourDir(repoRoot, tourId), COMMENTS_FILENAME);
+}
+
+function legacyAnnotationsPath(repoRoot: string, tourId: string): string {
+  return join(tourDir(repoRoot, tourId), LEGACY_ANNOTATIONS_FILENAME);
+}
+
+// Returns the path to read records from: `comments.jsonl` if it exists,
+// otherwise `annotations.jsonl`. Returns `null` when neither file exists
+// (a freshly-created Tour with no Comments yet). Reads must never write;
+// the rename happens in the write path only. ADR 0029 addendum: this
+// fallback stays forever.
+function readPath(repoRoot: string, tourId: string): string | null {
+  const newPath = commentsPath(repoRoot, tourId);
+  if (existsSync(newPath)) return newPath;
+  const oldPath = legacyAnnotationsPath(repoRoot, tourId);
+  if (existsSync(oldPath)) return oldPath;
+  return null;
+}
+
+// Resolves the path the next append should write to. On a Tour folder
+// that has only `annotations.jsonl`, performs an atomic rename to
+// `comments.jsonl` and returns the new path. The rename uses
+// `fs.promises.rename`, which is atomic on POSIX for same-volume renames
+// (Tour is single-machine, single-volume per ADR 0020). If both files
+// exist (impossible in practice — would mean a partial migration), the
+// writer treats `comments.jsonl` as authoritative, logs a stderr warning,
+// and leaves the legacy file alone. The append runs inside the same
+// serialised section the writer already holds (per-Tour reply lock,
+// ADR 0015), so no additional locking is needed across the rename.
+async function ensureWritePath(repoRoot: string, tourId: string): Promise<string> {
+  const newPath = commentsPath(repoRoot, tourId);
+  const oldPath = legacyAnnotationsPath(repoRoot, tourId);
+  const hasNew = existsSync(newPath);
+  const hasOld = existsSync(oldPath);
+  if (hasOld && !hasNew) {
+    await rename(oldPath, newPath);
+    return newPath;
+  }
+  if (hasOld && hasNew) {
+    process.stderr.write(
+      `tour: warning: both annotations.jsonl and comments.jsonl exist in .tour/${tourId}/; treating comments.jsonl as authoritative (ADR 0029 addendum)\n`,
+    );
+  }
+  return newPath;
 }
 
 function isValidAuthorKind(v: unknown): v is "agent" | "human" {
@@ -125,7 +185,7 @@ async function appendAnnotation(
   tourId: string,
   annotation: Annotation,
 ): Promise<void> {
-  const path = annotationsPath(repoRoot, tourId);
+  const path = await ensureWritePath(repoRoot, tourId);
   await appendFile(path, JSON.stringify(annotation) + "\n");
 }
 
@@ -134,7 +194,7 @@ async function appendAnnotations(
   tourId: string,
   annotations: Annotation[],
 ): Promise<void> {
-  const path = annotationsPath(repoRoot, tourId);
+  const path = await ensureWritePath(repoRoot, tourId);
   const lines = annotations.map((a) => JSON.stringify(a)).join("\n") + "\n";
   await appendFile(path, lines);
 }
@@ -179,9 +239,9 @@ export async function createAnnotation(
   return ann;
 }
 
-// `createReply` always re-reads `annotations.jsonl` to prove the parent
-// exists at write time — callers must not pass a pre-loaded parent (PRD
-// #140). The Reply inherits the parent's anchor.
+// `createReply` always re-reads the on-disk Comment log to prove the
+// parent exists at write time — callers must not pass a pre-loaded parent
+// (PRD #140). The Reply inherits the parent's anchor.
 export async function createReply(
   repoRoot: string,
   tourId: string,
@@ -194,8 +254,8 @@ export async function createReply(
   return reply;
 }
 
-// Atomic batch: build every record first (replies resolve against
-// `annotations.jsonl` read once), then a single `appendFile` for the
+// Atomic batch: build every record first (replies resolve against the
+// on-disk Comment log read once), then a single `appendFile` for the
 // whole batch. A bad reply parent rejects before any write happens.
 export async function createAnnotations(
   repoRoot: string,
@@ -222,7 +282,8 @@ export async function readAnnotations(
   repoRoot: string,
   tourId: string,
 ): Promise<Annotation[]> {
-  const path = annotationsPath(repoRoot, tourId);
+  const path = readPath(repoRoot, tourId);
+  if (path === null) return [];
   let content: string;
   try {
     content = await readFile(path, "utf-8");

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   createAnnotation,
   createReply,
@@ -10,7 +10,7 @@ import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import { mkdtemp, mkdir, appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 
 function makeAnnotation(overrides?: Partial<Annotation>): Annotation {
   return {
@@ -515,7 +515,8 @@ describe("annotations-store", () => {
   describe("createAnnotations (atomic batch)", () => {
     it("writes every record in a single appendFile call", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }, { name: "c.ts" }]);
-      const path = join(dir, ".tour", tourId, "annotations.jsonl");
+      // Issue #342: the writer writes to `comments.jsonl` after Stage B.
+      const path = join(dir, ".tour", tourId, "comments.jsonl");
       const before = await readFile(path, "utf-8").catch(() => "");
       expect(before).toBe("");
 
@@ -720,6 +721,182 @@ describe("annotations-store", () => {
       const loaded = await readAnnotations(dir, tourId);
       expect(loaded[0].line_start).toBe(5);
       expect(loaded[0].line_end).toBe(15);
+    });
+  });
+
+  // Issue #342 / PRD #335 / ADR 0029 addendum — Stage B on-disk slice. The
+  // on-disk filename `annotations.jsonl` becomes `comments.jsonl`; the reader
+  // falls back to the legacy name forever, the writer one-shot-renames on
+  // first write. Three cases pinned: empty Tour folder, legacy-only folder,
+  // post-migration folder.
+  describe("on-disk filename migration: annotations.jsonl → comments.jsonl", () => {
+    function commentsPath(): string {
+      return join(dir, ".tour", tourId, "comments.jsonl");
+    }
+    function legacyPath(): string {
+      return join(dir, ".tour", tourId, "annotations.jsonl");
+    }
+
+    it("readAnnotations prefers comments.jsonl when both exist (post-migration shape)", async () => {
+      appendFileSync(commentsPath(), JSON.stringify(makeAnnotation({ id: "primary" })) + "\n");
+      // Stranded legacy file (shouldn't happen in practice, but the reader
+      // must be deterministic if it does).
+      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "stranded" })) + "\n");
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["primary"]);
+    });
+
+    it("readAnnotations falls back to annotations.jsonl when comments.jsonl is absent", async () => {
+      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "legacy" })) + "\n");
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["legacy"]);
+    });
+
+    it("readAnnotations is a no-op on the legacy file: never writes, never renames", async () => {
+      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "legacy" })) + "\n");
+      await readAnnotations(dir, tourId);
+      await readAnnotations(dir, tourId);
+      expect(existsSync(legacyPath())).toBe(true);
+      expect(existsSync(commentsPath())).toBe(false);
+    });
+
+    it("createAnnotation on an empty folder writes comments.jsonl (annotations.jsonl never appears)", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "fresh",
+          author_kind: "agent",
+        },
+        bundle,
+      );
+      expect(existsSync(commentsPath())).toBe(true);
+      expect(existsSync(legacyPath())).toBe(false);
+    });
+
+    it("createAnnotation on a legacy-only folder renames annotations.jsonl → comments.jsonl then appends", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      const legacy = makeAnnotation({ id: "legacy-1" });
+      appendFileSync(legacyPath(), JSON.stringify(legacy) + "\n");
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "post-migration",
+          author_kind: "agent",
+        },
+        bundle,
+      );
+      // After: only comments.jsonl exists, contains both records in order.
+      expect(existsSync(legacyPath())).toBe(false);
+      expect(existsSync(commentsPath())).toBe(true);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["legacy-1", ann.id]);
+    });
+
+    it("createAnnotation on a comments-only folder appends without touching annotations.jsonl", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      const existing = makeAnnotation({ id: "already-migrated" });
+      appendFileSync(commentsPath(), JSON.stringify(existing) + "\n");
+      const ann = await createAnnotation(
+        dir,
+        tourId,
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "another",
+          author_kind: "agent",
+        },
+        bundle,
+      );
+      expect(existsSync(legacyPath())).toBe(false);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["already-migrated", ann.id]);
+    });
+
+    it("createAnnotation when both files exist logs a stderr warning, skips the rename, appends to comments.jsonl", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "stranded" })) + "\n");
+      appendFileSync(commentsPath(), JSON.stringify(makeAnnotation({ id: "primary" })) + "\n");
+      const stderrSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+      try {
+        const ann = await createAnnotation(
+          dir,
+          tourId,
+          {
+            file: "x.ts",
+            side: "additions",
+            line_start: 1,
+            line_end: 1,
+            body: "appended",
+            author_kind: "agent",
+          },
+          bundle,
+        );
+        expect(stderrSpy).toHaveBeenCalled();
+        const calls = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+        expect(calls).toMatch(/annotations\.jsonl/);
+        expect(calls).toMatch(/comments\.jsonl/);
+        // Legacy file left alone; comments.jsonl is authoritative and gains
+        // the new record.
+        expect(existsSync(legacyPath())).toBe(true);
+        const loaded = await readAnnotations(dir, tourId);
+        expect(loaded.map((a) => a.id)).toEqual(["primary", ann.id]);
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it("createReply on a legacy-only folder renames and appends", async () => {
+      const parent = makeAnnotation({ id: "p-legacy", author_kind: "human" });
+      appendFileSync(legacyPath(), JSON.stringify(parent) + "\n");
+      const reply = await createReply(dir, tourId, {
+        replies_to: "p-legacy",
+        body: "after migration",
+        author_kind: "agent",
+      });
+      expect(existsSync(legacyPath())).toBe(false);
+      expect(existsSync(commentsPath())).toBe(true);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["p-legacy", reply.id]);
+    });
+
+    it("createAnnotations (batch) on a legacy-only folder renames once and appends the whole batch", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
+      appendFileSync(legacyPath(), JSON.stringify(makeAnnotation({ id: "legacy-batch" })) + "\n");
+      const results = await createAnnotations(
+        dir,
+        tourId,
+        [
+          {
+            kind: "top-level",
+            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
+            body: "one", author_kind: "agent",
+          },
+          {
+            kind: "top-level",
+            file: "b.ts", side: "additions", line_start: 2, line_end: 2,
+            body: "two", author_kind: "agent",
+          },
+        ],
+        bundle,
+      );
+      expect(existsSync(legacyPath())).toBe(false);
+      const loaded = await readAnnotations(dir, tourId);
+      expect(loaded.map((a) => a.id)).toEqual(["legacy-batch", results[0].id, results[1].id]);
     });
   });
 });

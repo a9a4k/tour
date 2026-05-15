@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **On-disk: `annotations.jsonl` → `comments.jsonl` with permanent
+  read-fallback (issue #342, PRD #335, ADR 0029 addendum).** Stage B
+  on-disk slice. The per-Tour Comment log filename is now
+  `comments.jsonl`. New Tours write only `comments.jsonl`; the first
+  write to a pre-Stage-B Tour folder that has only `annotations.jsonl`
+  atomically renames the file (`fs.promises.rename`, atomic on POSIX
+  for same-volume renames; Tour is single-machine, single-volume per
+  ADR 0020) and then appends the new record. The reader checks
+  `comments.jsonl` first and falls back to `annotations.jsonl` when
+  the new name is absent — this fallback path stays in the codebase
+  indefinitely per the ADR 0029 addendum so existing `.tour/` dirs in
+  the wild keep working without an explicit migration step. The FS
+  watcher fires on either filename (the `.jsonl` extension match
+  already covered both; the dedup fingerprint now prefers
+  `comments.jsonl` and falls back to `annotations.jsonl`). If both
+  files exist (impossible in practice — would mean a partial
+  migration), the writer logs a stderr warning, leaves the legacy
+  file alone, and treats `comments.jsonl` as authoritative. JSONL
+  record schema is unchanged; the `--json` wire-format is unchanged.
+
+  Issue: #342
+
 ### Added
 
 - **CLI: `tour comment` is the primary annotation verb; `tour annotate`

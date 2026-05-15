@@ -602,7 +602,7 @@ describe("CLI integration", () => {
       // Top-level (no `replies_to`) — the on-disk shape never carried a
       // `kind` field; the discriminator is presence/absence of `replies_to`.
       expect(ann.replies_to).toBeUndefined();
-      // The on-disk file is still `annotations.jsonl` (Stage B renames it).
+      // On-disk file is `comments.jsonl` after Stage B (issue #342).
       const showR = await run(["show", tour.id, "--json"], repo);
       const data = JSON.parse(showR.stdout);
       expect(data.annotations).toHaveLength(1);

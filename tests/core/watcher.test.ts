@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { TourWatcher, type WatchEvent } from "../../src/core/watcher.js";
-import { mkdtemp, mkdir, writeFile, appendFile, unlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, appendFile, unlink, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -137,6 +137,49 @@ describe("TourWatcher", () => {
     const cleared = await waitForEvent(events, "reply-cleared");
     expect(cleared).toBeDefined();
     expect(cleared?.tourId).toBe(tourId);
+  });
+
+  // Issue #342 — Stage B on-disk slice. The on-disk filename `annotations.jsonl`
+  // is being replaced by `comments.jsonl` with a permanent read-fallback
+  // (ADR 0029 addendum). The watcher must fire annotation-changed for writes
+  // to whichever filename the Tour folder is using at the moment.
+  it("emits annotation-changed when comments.jsonl is modified (post-migration shape)", async () => {
+    // Folder is freshly migrated: no annotations.jsonl, only comments.jsonl.
+    await unlink(join(tourDir, "annotations.jsonl"));
+    await writeFile(join(tourDir, "comments.jsonl"), "");
+    watcher = new TourWatcher(dir, tourId, 50);
+    const events: WatchEvent[] = [];
+    watcher.on((event) => events.push(event));
+    watcher.start();
+    await armSettle();
+
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"c1"}\n');
+
+    const changed = await waitForEvent(events, "annotation-changed");
+    expect(changed).toBeDefined();
+    expect(changed?.tourId).toBe(tourId);
+  });
+
+  it("emits annotation-changed when annotations.jsonl is renamed to comments.jsonl and then appended", async () => {
+    // Legacy-only folder. After the watcher arms, the writer renames the
+    // legacy file to the new name and appends. The watcher must observe
+    // the resulting change.
+    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"legacy"}\n');
+
+    watcher = new TourWatcher(dir, tourId, 50);
+    const events: WatchEvent[] = [];
+    watcher.on((event) => events.push(event));
+    watcher.start();
+    await armSettle();
+
+    await rename(
+      join(tourDir, "annotations.jsonl"),
+      join(tourDir, "comments.jsonl"),
+    );
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"new"}\n');
+
+    const changed = await waitForEvent(events, "annotation-changed");
+    expect(changed).toBeDefined();
   });
 
   it("does not emit annotation-changed for .reply-lock.json events", async () => {
