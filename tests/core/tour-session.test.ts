@@ -1909,7 +1909,7 @@ describe("reduce — layout slice (slice 3 foundation)", () => {
     }).state;
     s = reduce(s, { type: "expansion.expandFile", file: "foo.ts" }).state;
     s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
-    const r = reduce(s, { type: "layout.set", layout: "unified" });
+    const r = reduce(s, { type: "layout.set", layout: "split" });
     expect(r.state.cursor).toBe(s.cursor);
     expect(r.state.expansion).toBe(s.expansion);
     expect(r.state.composer).toBe(s.composer);
