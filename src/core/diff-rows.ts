@@ -491,8 +491,11 @@ export const GAP_TWO_ROW_THRESHOLD = 40;
  *  cell; only mid-file large gaps additionally emit a standalone
  *  `expand-down` row above the banner. */
 export interface HunkHeaderExpandPlan {
-  /** Subkind to host on the hunk-header banner's left cell. `null` paints
-   *  an inert `…` placeholder and the row is not cursor-walkable. */
+  /** Subkind to host on the hunk-header banner's left cell. `null` signals
+   *  the planner to skip emission of the banner for this gap (issue #359):
+   *  fully-expanded mid-file gaps merge their flanking hunks into one
+   *  continuous stream, and a first hunk starting at line 1 has no
+   *  top-of-file banner. */
   primaryExpand: "up" | "all" | null;
   /** When true the planner emits a standalone `interactive-row[expand-down]`
    *  immediately before the hunk-header. Only set for mid-file large
@@ -507,7 +510,7 @@ export interface HunkHeaderExpandPlan {
  * mid-file). The file-bottom case is handled separately by the planner
  * — it emits a lone `expand-down` row with no hunk-header.
  *
- *   `gapAbove === 0`                          → null    (inert; cursor skips)
+ *   `gapAbove === 0`                          → null    (planner skips emission per issue #359)
  *   `gapAbove <  GAP_TWO_ROW_THRESHOLD` (=40) → "all"   (single Enter reveals the entire gap)
  *   `gapAbove >= 40` & `isFirst`              → "up"    (file-top: only one direction available)
  *   `gapAbove >= 40` & mid-file               → "up" + standalone Expand Down above the banner
