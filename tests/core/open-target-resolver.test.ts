@@ -3,10 +3,9 @@ import { resolveOpenTarget } from "../../src/core/open-target-resolver.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 import type { Comment } from "../../src/core/types.js";
 
-// PRD #349 / ADR 0032 / issue #354 — slice 3 extends the slice-1 resolver
-// with permissive resolution. Card cursor → annotation `line_end`;
-// sidebar file → (file, 1); folder selection / null → null. Both
-// surfaces inherit via the shared resolver.
+// PRD #349 / ADR 0032 contract: `resolveOpenTarget` collapses
+// (paneFocus × cursor × sidebar selection × comments) into an
+// OpenTarget or null. Tests pin the resolution table row-by-row.
 
 function rowCursor(file: string, line: number, side: "additions" | "deletions" = "additions"): Cursor {
   return {
@@ -78,7 +77,7 @@ describe("resolveOpenTarget — diff pane, row cursor", () => {
   });
 });
 
-describe("resolveOpenTarget — diff pane, card cursor (slice 3)", () => {
+describe("resolveOpenTarget — diff pane, card cursor", () => {
   it("card cursor on a valid annotation returns (file, line_end)", () => {
     const ann = mkComment({ id: "ann1", file: "pkg/x/Bar.ts", line_start: 10, line_end: 12 });
     expect(
@@ -129,7 +128,7 @@ describe("resolveOpenTarget — diff pane, card cursor (slice 3)", () => {
   });
 });
 
-describe("resolveOpenTarget — sidebar pane (slice 3)", () => {
+describe("resolveOpenTarget — sidebar pane", () => {
   it("sidebar + file selection → (file, 1)", () => {
     expect(
       resolveOpenTarget({

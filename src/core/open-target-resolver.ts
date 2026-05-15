@@ -1,9 +1,8 @@
-// Cursor → open-target resolver (PRD #349 / ADR 0032).
-// Issue #352 shipped the row-cursor case. Issue #354 fills in permissive
-// resolution: card cursor → annotation `line_end`, sidebar file row →
-// (file, 1), folder selection / null → null. Both surfaces share this
-// resolver; the surface handlers translate `null` into the "o: no file
-// under cursor" footer hint.
+// PRD #349 / ADR 0032: cross-surface open-target resolver. Pure
+// function — collapses (paneFocus, cursor, sidebarSelectedRow,
+// comments) into an OpenTarget or null. Both surfaces share this
+// resolver; the handlers translate `null` into an "o: no file under
+// cursor" footer hint.
 
 import type { Cursor } from "./cursor-state.js";
 import type { Comment } from "./types.js";
