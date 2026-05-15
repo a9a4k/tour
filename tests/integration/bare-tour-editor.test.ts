@@ -95,8 +95,10 @@ interface SpawnResult {
   proc: ChildProcess;
 }
 
-const SERVER_BANNER =
-  /Tour server running at http:\/\/127\.0\.0\.1:(\d+)\/([^\s/]+)/;
+// Match either banner: "running at http://..." or the port-busy fallback
+// "Tour server: port X busy, listening on http://..." (issue #163). Both
+// contain the bound URL; we extract port + tourId from there.
+const SERVER_BANNER = /http:\/\/127\.0\.0\.1:(\d+)\/([^\s/]+)/;
 
 function spawnBareTour(
   bunPath: string,
