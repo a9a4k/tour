@@ -116,6 +116,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp sidebar resize: active-file fallback when no cursor is set
+  (issue #327, #323 follow-up).** The preserveScreenY plumbing on web
+  fired only when a cursor was present — both writers (auto-fit
+  `useEffect` and the drag handler) wrapped their snapshot capture in
+  `if (cursor)`, so users who hadn't keyboard-navigated yet saw the
+  diff body shift visibly under their eyes during a drag. The
+  resize-apply `useLayoutEffect` early-returned on `if (!snap)`, no
+  `window.scrollBy` ran, and the natural reflow on width change was
+  exactly the failure mode #323's wire was supposed to suppress.
+
+  Fix: a new pure helper `resizeReanchorTarget(cursor, flatRows,
+  activeFile)` returns a discriminated descriptor — `{ kind: "cursor";
+  cursor }` when the cursor exists and (for row cursors) resolves in
+  `flatRows`, `{ kind: "file"; path }` when not but a sticky-header
+  active file is set, else null. Both writers route through a shared
+  `captureResizeSnapshot` callback that materialises the descriptor to
+  an `HTMLElement` (`findCursorRowEl` for cursor targets,
+  `findFileBlock` for file targets) and writes `{ top, target }`. The
+  resize-apply `useLayoutEffect` re-resolves the same descriptor
+  post-reflow and `window.scrollBy(delta)`s the difference. Mirrors
+  the TUI's `resizeReanchorTargetId` priority (#318); the two surfaces
+  duplicate with parallel documentation — DOM idioms differ
+  (HTMLElement vs OpenTUI id) so a shared helper would have to thread
+  a units-aware target spec through both, more invasive than the
+  duplication.
+
+  The layout-toggle preserveScreenY effect is unchanged — its input
+  (`Shift+L`) is cursor-conditioned, so the no-cursor case there is
+  different UX and out of scope.
+
+  Issue: #327
+
 - **Webapp annotate `+` button: per-side hover reveal in split layout
   (issue #325, #320 follow-up).** The hover-reveal rule was row-scoped
   (`.tour-row:hover .tour-row-annotate-btn`), so the descendant
