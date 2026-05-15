@@ -20,20 +20,19 @@
 // `C: collapse replies`. The pre-cutover form (`a: comment`,
 // `c: collapse`, `t: picker`) is fully retired.
 
-export type FooterSurface = "tui" | "web";
-
-// PRD #343 / ADR 0031 / issue #344: signature gains `paneFocus`, but the
-// slice-1 default of `"diff"` preserves today's byte-identical legend on
-// both surfaces. The pane-aware sidebar legend lands in a follow-up
-// slice; this slice puts the parameter in place so existing call sites
-// (TUI footer-hints delegate, webapp Footer.tsx) are forward-compatible
-// without a behavioural change.
 import type { PaneFocus } from "./pane-focus-state.js";
+
+export type FooterSurface = "tui" | "web";
 
 export interface ComposeFooterHintsOptions {
   surface: FooterSurface;
   replyAgent?: string;
   showSendHint?: boolean;
+  // PRD #343 / ADR 0031 / issue #344: signature gains `paneFocus` so
+  // call sites (TUI footer-hints delegate, webapp Footer.tsx) are
+  // forward-compatible. Slice 2/3 will branch on `paneFocus === "sidebar"`
+  // to emit the shorter sidebar legend; this slice keeps the output
+  // byte-identical regardless of the field's value.
   paneFocus?: PaneFocus;
 }
 
@@ -42,9 +41,6 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     opts.showSendHint && opts.replyAgent
       ? `  ·  s: send to ${opts.replyAgent}`
       : "";
-  // `paneFocus` defaults to "diff" so today's legend strings stay
-  // byte-identical for callers that don't pass it. Slice 2/3 will branch
-  // on `paneFocus === "sidebar"` to emit the shorter sidebar legend.
   void opts.paneFocus;
   if (opts.surface === "tui") {
     return (
