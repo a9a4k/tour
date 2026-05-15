@@ -48,6 +48,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #338
 
+- **Reply-agent system prompt: "Annotation" → "Comment" (issue #339,
+  PRD #335, ADR 0029).** The Tour-canonical reply-agent system prompt
+  in `src/core/system-prompt.ts` now says "responding to a Reply or
+  Comment" and "writes that as the Comment body — verbatim". Both
+  occurrences of "Annotation" flip to "Comment" so the LLM's output
+  vocabulary aligns with what the rest of the system (UI, CLI,
+  footer, glossary) now says. Output contract, capability boundary,
+  always-reply, and style sections are unchanged in shape. Slice 4/4
+  of Stage A; the highest-leverage single edit since the prompt
+  shapes what every reply-agent invocation writes from this release
+  forward. The snapshot test in `tests/core/system-prompt.test.ts`
+  is updated atomically and locks the new text against accidental
+  edits.
+
+  Issue: #339. PRD: #335. ADR: 0029.
+
 - **Default diff layout is now Unified on first open (issue #329).**
   The initial value of `TourSessionState.layout` flips from `"split"`
   to `"unified"`. Tour is annotation-driven, not diff-driven: users
