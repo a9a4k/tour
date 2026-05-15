@@ -1754,8 +1754,8 @@ function App(props: AppProps) {
         };
         if (target.kind === "none") {
           flash(
-            target.reason === "no-file-selected"
-              ? "y: no file selected"
+            target.reason === "no-selection"
+              ? "y: no selection"
               : "y: no cursor",
           );
           return;

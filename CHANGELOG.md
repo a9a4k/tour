@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Sidebar `y` on a folder row now copies the folder's repo-relative
+  path (issue #371, extends PRD #356).** Pressing `y` with the sidebar
+  focused and a folder selected used to flash `y: no file selected` and
+  no-op; it now writes the folder's repo-relative path to the clipboard
+  and flashes `Copied <path>` — symmetric to file-row yank. Same
+  transport (`pbcopy` / OSC 52 fallback on TUI, `navigator.clipboard.
+  writeText` on webapp); no trailing slash on the path. The resolver's
+  `none` reason union collapses from `"no-cursor" | "no-file-selected"`
+  to `"no-cursor" | "no-selection"`, and the footer flash on the
+  degenerate-none case (null selection, or the defensive empty-path
+  root sentinel) is now `y: no selection` on both surfaces. PRD #356
+  intentionally scoped folder yank out; this is the small follow-up
+  that extends the same design (path-not-filename, reversibility,
+  ADR 0031 read-only-fires-in-sidebar) to folder rows.
+
+  Issue: #371 · PRD: #356
+
 ### Fixed
 
 - **`tour` commands now resolve `.tour/` from the enclosing repo root,

@@ -1580,8 +1580,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           });
           if (target.kind === "none") {
             flashFooterStatus(
-              target.reason === "no-file-selected"
-                ? "y: no file selected"
+              target.reason === "no-selection"
+                ? "y: no selection"
                 : "y: no cursor",
             );
             return;

@@ -562,7 +562,7 @@ describe("dispatchCursorKey: context-aware yank (PRD #356 / issue #358)", () => 
       type: "yank-at-cursor",
     });
     // Folder / null selection also dispatch — the resolver is the
-    // arbiter of "no-file-selected" via `kind: "none"`.
+    // arbiter of "no-selection" via `kind: "none"`.
     expect(
       dispatchCursorKey(key({ key: "y" }), { ...sidebar, selectedRowKind: "folder" }),
     ).toEqual({ type: "yank-at-cursor" });

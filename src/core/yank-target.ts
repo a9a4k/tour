@@ -13,7 +13,7 @@ import type { PaneFocus } from "./pane-focus-state.js";
 export type YankTarget =
   | { kind: "line"; text: string; file: string }
   | { kind: "path"; path: string }
-  | { kind: "none"; reason: "no-file-selected" | "no-cursor" };
+  | { kind: "none"; reason: "no-selection" | "no-cursor" };
 
 export interface SidebarFileSelection {
   kind: "file";
@@ -22,6 +22,7 @@ export interface SidebarFileSelection {
 
 export interface SidebarFolderSelection {
   kind: "folder";
+  path: string;
 }
 
 export type SidebarSelectedRow = SidebarFileSelection | SidebarFolderSelection;
@@ -38,10 +39,10 @@ export function resolveYankTarget(args: ResolveYankTargetArgs): YankTarget {
   const { paneFocus, cursor, sidebarSelectedRow, comments, bundleFiles } = args;
 
   if (paneFocus === "sidebar") {
-    if (sidebarSelectedRow?.kind === "file") {
+    if (sidebarSelectedRow && sidebarSelectedRow.path !== "") {
       return { kind: "path", path: sidebarSelectedRow.path };
     }
-    return { kind: "none", reason: "no-file-selected" };
+    return { kind: "none", reason: "no-selection" };
   }
 
   if (cursor === null) return { kind: "none", reason: "no-cursor" };

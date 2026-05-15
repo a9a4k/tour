@@ -67,18 +67,29 @@ describe("resolveYankTarget — sidebar pane", () => {
     expect(out).toEqual<YankTarget>({ kind: "path", path: "pkg/a/Foo.tsx" });
   });
 
-  it("sidebar + folder selection → kind: none, reason: no-file-selected", () => {
+  it("sidebar + folder selection with non-empty path → kind: path with selection.path (issue #371)", () => {
     const out = resolveYankTarget({
       paneFocus: "sidebar",
       cursor: null,
-      sidebarSelectedRow: { kind: "folder" },
+      sidebarSelectedRow: { kind: "folder", path: "src/web/client" },
       comments: [],
       bundleFiles: bundleMap(),
     });
-    expect(out).toEqual<YankTarget>({ kind: "none", reason: "no-file-selected" });
+    expect(out).toEqual<YankTarget>({ kind: "path", path: "src/web/client" });
   });
 
-  it("sidebar + null selection → kind: none, reason: no-file-selected", () => {
+  it("sidebar + folder selection with empty path (root sentinel) → kind: none, reason: no-selection", () => {
+    const out = resolveYankTarget({
+      paneFocus: "sidebar",
+      cursor: null,
+      sidebarSelectedRow: { kind: "folder", path: "" },
+      comments: [],
+      bundleFiles: bundleMap(),
+    });
+    expect(out).toEqual<YankTarget>({ kind: "none", reason: "no-selection" });
+  });
+
+  it("sidebar + null selection → kind: none, reason: no-selection", () => {
     const out = resolveYankTarget({
       paneFocus: "sidebar",
       cursor: null,
@@ -86,7 +97,7 @@ describe("resolveYankTarget — sidebar pane", () => {
       comments: [],
       bundleFiles: bundleMap(),
     });
-    expect(out).toEqual<YankTarget>({ kind: "none", reason: "no-file-selected" });
+    expect(out).toEqual<YankTarget>({ kind: "none", reason: "no-selection" });
   });
 
   it("sidebar yank ignores cursor entirely (cursor on a card in diff doesn't leak)", () => {

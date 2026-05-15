@@ -145,7 +145,7 @@ describe("resolveOpenTarget — sidebar pane", () => {
       resolveOpenTarget({
         paneFocus: "sidebar",
         cursor: null,
-        sidebarSelectedRow: { kind: "folder" },
+        sidebarSelectedRow: { kind: "folder", path: "pkg/a" },
         comments: [],
       }),
     ).toBeNull();
