@@ -164,6 +164,30 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // shadowed the slice on the webapp is gone.
   const replyLock = resolvedReplyLock(sessionState);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  // PRD #330 / ADR 0028: transient footer status surface. The cursor-keymap's
+  // `r` / `s` miss branches flash a reason here; the timer auto-dismisses
+  // after ~2s. Last-write-wins — replacement clears the prior pending
+  // timer; unmount clears any pending timer.
+  const [footerStatus, setFooterStatus] = useState<string | null>(null);
+  const footerStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashFooterStatus = useCallback((message: string) => {
+    if (footerStatusTimerRef.current !== null) {
+      clearTimeout(footerStatusTimerRef.current);
+    }
+    setFooterStatus(message);
+    footerStatusTimerRef.current = setTimeout(() => {
+      setFooterStatus(null);
+      footerStatusTimerRef.current = null;
+    }, 2000);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (footerStatusTimerRef.current !== null) {
+        clearTimeout(footerStatusTimerRef.current);
+        footerStatusTimerRef.current = null;
+      }
+    };
+  }, []);
   // Folds (collapsedFolders + collapsedOverrides), layout, and composer
   // (target / body / error as one tagged-union slice) all live in the Tour-
   // session store (PRD #234 slice 3, issue #238). The webapp's three local
@@ -1111,6 +1135,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           return;
         }
       }
+      const cardAuthorKind =
+        view.kind === "ok" ? view.cursor.cardAnnotation?.author_kind ?? null : null;
       const action = dispatchCursorKey(
         {
           key: e.key,
@@ -1124,9 +1150,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           pickerOpen,
           focusInEditable,
           cursorOnCard: view.kind === "ok" ? view.cursor.onCard : false,
+          cursorOnHumanCard: cardAuthorKind === "human",
+          replyLockHeld: replyLock !== null,
+          replyAgent: replyAgent ?? undefined,
         },
       );
       if (action.type === "noop") return;
+      if (action.type === "status") {
+        e.preventDefault();
+        flashFooterStatus(action.message);
+        return;
+      }
       e.preventDefault();
       // Lazy materialization rule (ADR 0012): the first j/k/h/l just
       // SHOWS the cursor at the default target, no move past it. `a`
@@ -1293,6 +1327,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     boundaryBottomGapSize,
     hunkSeparatorGapSize,
     store,
+    flashFooterStatus,
   ]);
 
   const closeComposer = useCallback(() => {
@@ -1672,7 +1707,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           </>
         )}
       </div>
-      <Footer legend={composeFooterHints({ surface: "web" })} />
+      <Footer
+        status={footerStatus}
+        legend={composeFooterHints({
+          surface: "web",
+          replyAgent: replyAgent ?? undefined,
+          showSendHint:
+            !!replyAgent &&
+            view.kind === "ok" &&
+            view.cursor.cardAnnotation?.author_kind === "human" &&
+            replyLock === null,
+        })}
+      />
       {sessionState.picker.kind === "open" ? (
         <TourPicker
           rows={sessionState.picker.rows}

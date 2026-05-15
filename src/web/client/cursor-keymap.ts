@@ -25,6 +25,20 @@ export interface CursorKeymapContext {
   /** Cursor is on an Annotation card (CardAnchor). Routes `r`/`s` to the
    *  card-targeting actions and `a` to a no-op (PRD #192 stories 6-11). */
   cursorOnCard: boolean;
+  /** Cursor is on a *human*-authored Annotation card. `s` only sends a
+   *  reply to the configured agent on human cards; sending on an agent
+   *  card surfaces the wrong-target footer status (PRD #330). */
+  cursorOnHumanCard: boolean;
+  /** Tour-wide reply-lock is held — an agent reply is in flight. `s`
+   *  on a human card with the lock held flashes a status instead of
+   *  re-dispatching. */
+  replyLockHeld: boolean;
+  /** `--reply-agent` configured agent name, if any. `s` is a hidden
+   *  silent no-op when this is unset (the legend itself omits the
+   *  `s: send to {agent}` hint per PRD #330 stories 7-8). When status
+   *  is emitted for the lock-held branch, this is interpolated into
+   *  the message. */
+  replyAgent?: string;
 }
 
 export type CursorAction =
@@ -39,6 +53,7 @@ export type CursorAction =
   | { type: "nav-prev-annotation" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
+  | { type: "status"; message: string }
   | { type: "noop" };
 
 export interface KeyEvent {
@@ -75,14 +90,28 @@ export function dispatchCursorKey(
     if (e.key === "n") return { type: "nav-next-annotation" };
     if (e.key === "p") return { type: "nav-prev-annotation" };
     // `r` / `s` dispatch only on a CardAnchor; `a` only on a row (or null).
-    // The cross-axis cases (`r` on row, `a` on card) are silent no-ops —
-    // the webapp has no footer line so an offscreen-card miss is mitigated
-    // by auto-recall in the App-side handler, not a hint.
+    // Cross-axis misses (ADR 0028 / PRD #330): the webapp footer status
+    // surface flashes the miss reason; the off-screen-card case still goes
+    // through the App-side auto-recall handler, which scrolls the card in.
     if (e.key === "r") {
-      return ctx.cursorOnCard ? { type: "open-reply-on-card" } : { type: "noop" };
+      if (ctx.cursorOnCard) return { type: "open-reply-on-card" };
+      return { type: "status", message: "No annotation under cursor." };
     }
     if (e.key === "s") {
-      return ctx.cursorOnCard ? { type: "send-on-card" } : { type: "noop" };
+      // `s` is a hidden silent no-op when reply-agent isn't configured —
+      // the legend hides the `s: send to {agent}` hint in that case so a
+      // status flash would surprise the user.
+      if (!ctx.replyAgent) return { type: "noop" };
+      if (!ctx.cursorOnCard) {
+        return { type: "status", message: "Send only works on annotation cards." };
+      }
+      if (!ctx.cursorOnHumanCard) {
+        return { type: "status", message: "Send only works on human annotations." };
+      }
+      if (ctx.replyLockHeld) {
+        return { type: "status", message: `${ctx.replyAgent} is already replying.` };
+      }
+      return { type: "send-on-card" };
     }
     if (e.key === "a") {
       return ctx.cursorOnCard ? { type: "noop" } : { type: "annotate-at-cursor" };

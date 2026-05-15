@@ -44,6 +44,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp: transient footer status surface for cursor-keymap miss
+  reasons (issue #333).** The footer's status slot now flashes a
+  one-line reason when the cursor-keymap `r` / `s` cross-axis miss
+  branches fire — `r` on a diff row says "No annotation under
+  cursor.", `s` on a diff row says "Send only works on annotation
+  cards.", `s` on a non-human card says "Send only works on human
+  annotations.", `s` on a human card while the tour-wide reply-lock
+  is held says "`<agent>` is already replying." Status prepends onto
+  the legend on the same line (`${status}  ·  ${legend}`), auto-
+  dismisses after ~2s, and last-write-wins (a new status replaces the
+  current one and resets the timer). The status `<span>` carries
+  `aria-live="polite"` + `aria-atomic="true"` so screen readers
+  announce the reason without re-announcing the static legend on
+  every cursor move. Send-hint conditional on the legend (`s: send
+  to {agent}` appears only when `--reply-agent` is set AND the
+  cursor is on a human card AND the lock is free) lands in the same
+  slice — the underlying `composeFooterHints` predicate already
+  matched the TUI's. Slice 2 of PRD #330; the annotation-create
+  failure path is deferred to a future slice.
+
+  Issue: #333. PRD: #330.
+
 - **Webapp: footer hint strip on first paint (issue #331).** The webapp
   now mounts a one-line muted footer at the bottom of the column-flex
   root, rendering the static keybinding legend `j/k: move  ·  h/l:
