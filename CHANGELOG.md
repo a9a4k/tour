@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bare `tour --editor <cmd>` now threads the flag into the dispatched
+  surface (issue #364, PRD #349).** Previously, `tour --editor 'code -g'`
+  with no subcommand either errored as `Unknown command: --editor` (a
+  leading flag was treated as the subcommand) or, if it slipped through,
+  silently dropped the editor before launching the surface — pressing
+  `o` footered `o: editor not configured` even though `--editor` was on
+  the command line. The argument parser now recognizes a leading flag as
+  a bare invocation, and the smart-default branch resolves
+  `--editor` → `$TOUR_EDITOR` → `$VISUAL` → `$EDITOR` via the same
+  `resolveEditor()` call used by `tour tui` and `tour serve`, threading
+  the result into both surfaces. Behaviorally indistinguishable from the
+  explicit subcommand with the same flag. `--help` / `-h` / `--version`
+  / `-v` remain command-name aliases.
+
+  Issue: #364 · PRD: #349
+
 ### Added
 
 - **`o` is now permissive: card cursor opens the annotation's `line_end`;
