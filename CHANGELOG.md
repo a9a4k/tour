@@ -268,6 +268,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: picker close now uses Shift+T instead of bare `t` (issue #340,
+  ADR 0030).** The picker-open key handler in `src/tui/app.tsx` was
+  the last surviving bare-`t` binding after the #337 cutover —
+  pressing `t` while the picker was open closed it, bypassing the
+  dispatcher (which already returns noop for bare `t` everywhere
+  else). Picker open/close is now symmetric: `T` (Shift+t) toggles
+  the picker in both directions. `Escape` continues to close the
+  picker (no regression). Bare `t` is a plain noop in this state too,
+  consistent with the dispatcher. The close arm was extracted into a
+  small pure helper (`src/tui/picker-keymap.ts`) so the picker
+  overlay's keyboard contract is exercisable in isolation.
+
+  Issue: #340
+
 - **TUI: tour-picker rows now react to mouse clicks (issue #321).**
   When the picker was open, the keyboard branch (`j`/`k`/`Enter`/
   `Esc`/`t`) worked but row clicks were silently swallowed — mouse

@@ -55,6 +55,7 @@ import {
 } from "../core/write-annotation-input.js";
 import { theme } from "../core/theme.js";
 import { dispatchKey } from "./keymap.js";
+import { dispatchPickerKey } from "./picker-keymap.js";
 import { TourPicker } from "./TourPicker.js";
 import { TopHeaderTui } from "./TopHeader.js";
 import { Composer } from "./Composer.js";
@@ -1276,20 +1277,19 @@ function App(props: AppProps) {
       return;
     }
     if (sessionState.picker.kind === "open") {
-      if (key.ctrl || key.shift) return;
-      if (key.name === "escape" || key.name === "t") {
+      // Issue #340 / ADR 0030: close on Escape or Shift+T (mirrors the
+      // open binding); bare `t` is a plain noop here, same as in the
+      // main dispatcher after the #337 cutover.
+      const action = dispatchPickerKey(key);
+      if (action.type === "close") {
         store.dispatch({ type: "picker.close" });
         return;
       }
-      if (key.name === "j" || key.name === "down") {
-        store.dispatch({ type: "picker.move", delta: 1 });
+      if (action.type === "move") {
+        store.dispatch({ type: "picker.move", delta: action.delta });
         return;
       }
-      if (key.name === "k" || key.name === "up") {
-        store.dispatch({ type: "picker.move", delta: -1 });
-        return;
-      }
-      if (key.name === "return") {
+      if (action.type === "commit") {
         const highlighted = pickerHighlighted(sessionState);
         if (!highlighted) return;
         if (highlighted.id === bundle.tour.id) {
