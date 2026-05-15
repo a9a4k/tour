@@ -118,14 +118,12 @@ export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan 
       if (remaining <= 0) return { expansion: null, landing: null };
       const addition = Math.min(SYMMETRIC_STEP_TOTAL, remaining);
       const newRemaining = remaining - addition;
-      const orphanKind: ExpandOrphanKind | null =
-        boundaryRef === "bottom"
-          ? newRemaining <= 0
-            ? "expand-down-bottom"
-            : null
-          : newRemaining < GAP_TWO_ROW_THRESHOLD
-            ? "expand-down-mid"
-            : null;
+      let orphanKind: ExpandOrphanKind | null = null;
+      if (boundaryRef === "bottom") {
+        if (newRemaining <= 0) orphanKind = "expand-down-bottom";
+      } else if (newRemaining < GAP_TWO_ROW_THRESHOLD) {
+        orphanKind = "expand-down-mid";
+      }
       const landing =
         orphanKind === null
           ? null
@@ -179,24 +177,21 @@ export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan 
       const orphanKind: ExpandOrphanKind =
         subKind === "boundary-top" ? "boundary-top" : "hunk-separator";
       const landing = pickLanding(synthetic, flatRowsBefore, orphanKind);
-      const expansion: ExpansionAction =
-        boundaryRef === "top"
-          ? { type: "expansion.expandTop", file, mode: "all", gapSize }
-          : boundaryRef === "bottom"
-            ? {
-                type: "expansion.expandBottom",
-                file,
-                mode: "all",
-                gapSize,
-              }
-            : {
-                type: "expansion.expand",
-                file,
-                ref: boundaryRef as number,
-                direction: "both",
-                mode: "all",
-                gapSize,
-              };
+      let expansion: ExpansionAction;
+      if (boundaryRef === "top") {
+        expansion = { type: "expansion.expandTop", file, mode: "all", gapSize };
+      } else if (boundaryRef === "bottom") {
+        expansion = { type: "expansion.expandBottom", file, mode: "all", gapSize };
+      } else {
+        expansion = {
+          type: "expansion.expand",
+          file,
+          ref: boundaryRef,
+          direction: "both",
+          mode: "all",
+          gapSize,
+        };
+      }
       return { expansion, landing };
     }
     case "collapsed-file": {

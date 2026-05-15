@@ -17,7 +17,10 @@ import {
   planRows,
   fileExpandableGapCount,
 } from "../core/diff-rows.js";
-import { planPrimaryAction } from "../core/primary-action-plan.js";
+import {
+  planPrimaryAction,
+  type PrimaryActionTarget,
+} from "../core/primary-action-plan.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
@@ -1121,7 +1124,7 @@ function App(props: AppProps) {
   // pre-dispatch flatRows; we dispatch `cursor.set(landing)` alongside
   // the `expansion.*` action so state and view stay in lockstep.
   const dispatchPrimaryActionAt = (
-    target: { file: string; subKind: InteractiveSubKind; boundaryRef: BoundaryRef },
+    target: PrimaryActionTarget,
     preferredSide: "additions" | "deletions",
   ) => {
     const { file, subKind, boundaryRef } = target;
