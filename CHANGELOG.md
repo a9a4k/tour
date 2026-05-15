@@ -27,6 +27,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: clicking an expand button fires the expansion in one click
+  (issue #372).** Pre-fix the TUI's `onInteractiveClick` only moved
+  pane focus and the cursor — the row's primary action did not fire,
+  forcing a click-then-Enter to actually expand the gap. Affected
+  every interactive subKind: `boundary-top` / `hunk-separator` (`↑`
+  and `↕` on the hunk-header banner), `expand-down` (the standalone
+  `↓` row above mid-file large gaps and at file-bottom), and
+  `collapsed-file` (the classifier-collapsed file's indicator row).
+  Now the click steals pane focus, lands the cursor on the clicked
+  row, *and* dispatches the same `expansion.*` + orphan-landing
+  `cursor.set` the keyboard Enter path produces for the same target.
+  Implementation lifts the dispatch logic out of `dispatchPrimaryAction`
+  into a target-explicit `dispatchPrimaryActionAt` wrapper around a
+  new pure `core/primary-action-plan.ts` planner; both the Enter and
+  click paths delegate through the planner, so orphan-landing
+  prediction (issue #306) is computed relative to the action target,
+  not the pre-click cursor.
+
+  Issue: #372 · ADR: 0013 / 0023 · Related: #306 / #280 / #359
+
 - **Spawn integration tests no longer race the fake-editor argv-log
   flush (issue #370).** Six call sites across
   `tests/core/editor-spawn.test.ts`,

@@ -15,10 +15,9 @@ import { parseFileDiffMetadata } from "../core/diff-model.js";
 import type { PlannedRow } from "../core/diff-rows.js";
 import {
   planRows,
-  hunkHeaderExpandPlan,
   fileExpandableGapCount,
-  GAP_TWO_ROW_THRESHOLD,
 } from "../core/diff-rows.js";
+import { planPrimaryAction } from "../core/primary-action-plan.js";
 import { tourDiffStats, type DiffStats } from "../core/diff-stats.js";
 import {
   emptyExpansion,
@@ -91,7 +90,6 @@ import type { ReplyLock } from "../core/reply-lock.js";
 import { canSendToAgent } from "../core/can-send-to-agent.js";
 import type { FlatRow } from "../core/flat-rows.js";
 import {
-  cursorAfterExpand,
   initialCursor,
   moveCursor,
   nextCard,
@@ -102,7 +100,6 @@ import {
   cursorAtFirstFileRow,
   cursorOnInteractive,
   type Cursor,
-  type ExpandOrphanKind,
 } from "../core/cursor-state.js";
 import {
   step as stepDiffPane,
@@ -952,15 +949,20 @@ function App(props: AppProps) {
     // doesn't accidentally toggle other folds.
   };
 
-  // Mouse click on an interactive row (PRD #107 US 16): set cursor with
-  // `interactive` populated, no `side`. preferredSide carries forward
-  // from the existing cursor so a subsequent move back onto a paired diff
-  // row honours the user's last h/l preference.
+  // Mouse click on an interactive row (PRD #107 US 16, issue #372):
+  // (1) steal pane focus to the diff pane, (2) land the cursor on the
+  // clicked row, (3) fire the row's primary action — the same dispatch
+  // the keyboard Enter path produces for the same target. Pre-#372 the
+  // handler only did (1) and (2); the row's expansion did not fire, so
+  // users had to click then press Enter. `dispatchPrimaryActionAt`
+  // computes the orphan-landing prediction (issue #306) relative to the
+  // click target, not the pre-click cursor.
   const onInteractiveClick = (
     file: string,
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
   ) => {
+    const preferredSide = preferredSideOf(cursor);
     store.dispatch({ type: "paneFocus.setDiff" });
     store.dispatch({
       type: "cursor.set",
@@ -968,7 +970,7 @@ function App(props: AppProps) {
         file,
         subKind,
         boundaryRef,
-        preferredSide: preferredSideOf(cursor),
+        preferredSide,
       }),
     });
     // Sidebar selection flows through the reducer's `selectSidebarFile`
@@ -977,6 +979,7 @@ function App(props: AppProps) {
     // the implicit auto-unfold so a cursor click on a row in a
     // classifier-collapsed file's diff body (which is already expanded)
     // doesn't accidentally toggle other folds.
+    dispatchPrimaryActionAt({ file, subKind, boundaryRef }, preferredSide);
   };
 
   // Mouse click on a comment card (issue #261). ADR 0022 unified the
@@ -1096,96 +1099,64 @@ function App(props: AppProps) {
     store.dispatch({ type: "expansion.expandFileAll", file, boundaries });
   };
 
-  // Routes a primary-action keystroke to the row-kind-specific handler.
-  // Pure dispatch table — the actual expansion behaviour lives in the
-  // stubs above. The Shift modifier is no longer special (PRD #270
-  // Slice 5 / issue #275); the per-file Expand-all row is the whole-
-  // file escape hatch.
+  // Hidden-line count at a boundary, used by `dispatchPrimaryActionAt`.
+  // File-bottom needs newContent line count; file-top + mid-file read
+  // straight off the hunk metadata.
+  const gapSizeAt = (file: string, boundaryRef: BoundaryRef): number => {
+    if (boundaryRef === "top") return boundaryTopGapSize(file);
+    if (boundaryRef === "bottom") return boundaryBottomGapSize(file);
+    return hunkSeparatorGapSize(file, boundaryRef);
+  };
+
+  // Target-explicit primary-action dispatcher (issue #372). Both the
+  // keyboard Enter path and the mouse-click path delegate here so they
+  // produce the same `expansion.*` + `cursor.set` dispatches for a given
+  // `(file, subKind, boundaryRef)` target. Reads the target from the
+  // parameters rather than from the cursor — the click path may fire
+  // with the cursor on a sidebar selection / a comment card / null.
   //
   // Issue #306: when the dispatch consumes the row's gap entirely the
   // next render drops the row from flatRows and `j`/`k` no-ops on the
-  // stranded anchor. Predict the orphan, capture a landing target via
-  // `cursorAfterExpand` against the pre-dispatch flatRows, then dispatch
-  // `cursor.set` alongside the `expansion.*` action so state and view
-  // stay in lockstep. Mirrors the webapp's Enter handler.
+  // stranded anchor. `planPrimaryAction` predicts the orphan against the
+  // pre-dispatch flatRows; we dispatch `cursor.set(landing)` alongside
+  // the `expansion.*` action so state and view stay in lockstep.
+  const dispatchPrimaryActionAt = (
+    target: { file: string; subKind: InteractiveSubKind; boundaryRef: BoundaryRef },
+    preferredSide: "additions" | "deletions",
+  ) => {
+    const { file, subKind, boundaryRef } = target;
+    const boundaryExpansion =
+      subKind === "expand-down"
+        ? getBoundary(expansion, { file, ref: boundaryRef })
+        : { up: 0, down: 0 };
+    const plan = planPrimaryAction({
+      target,
+      preferredSide,
+      flatRowsBefore: flatRowsList,
+      gapSize: gapSizeAt(file, boundaryRef),
+      boundaryExpansion,
+    });
+    if (plan.expansion !== null) store.dispatch(plan.expansion);
+    if (plan.landing !== null) {
+      store.dispatch({ type: "cursor.set", anchor: plan.landing });
+    }
+  };
+
+  // Routes a primary-action keystroke to the row-kind-specific handler.
+  // Thin wrapper: guards `cursor.kind === "row" && cursor.interactive`,
+  // then delegates to `dispatchPrimaryActionAt` with the cursor's target.
+  // The Shift modifier is no longer special (PRD #270 Slice 5 / issue
+  // #275); the per-file Expand-all row is the whole-file escape hatch.
   const dispatchPrimaryAction = () => {
     if (!cursor || cursor.kind !== "row" || !cursor.interactive) return;
-    const { subKind, boundaryRef } = cursor.interactive;
-    const flatRowsBefore = flatRowsList;
-    let orphanKind: ExpandOrphanKind | null = null;
-    switch (subKind) {
-      case "expand-down": {
-        const gapSize =
-          boundaryRef === "bottom"
-            ? boundaryBottomGapSize(cursor.file)
-            : typeof boundaryRef === "number"
-              ? hunkSeparatorGapSize(cursor.file, boundaryRef)
-              : 0;
-        if (gapSize === 0) return;
-        // Mode is always symmetric-20 + direction "down" → addDown =
-        // min(SYMMETRIC_STEP*2, remaining) = min(20, remaining). Bottom
-        // row stops emitting at new gap == 0; mid-file row stops emitting
-        // at new gap < GAP_TWO_ROW_THRESHOLD (planner's
-        // `emitLeadingExpandDown` rule).
-        const ref = boundaryRef === "bottom" ? "bottom" : (boundaryRef as number);
-        const cur = getBoundary(expansion, { file: cursor.file, ref });
-        const remaining = gapSize - cur.up - cur.down;
-        const addition = Math.min(20, remaining);
-        const newRemaining = remaining - addition;
-        if (boundaryRef === "bottom") {
-          orphanKind = newRemaining <= 0 ? "expand-down-bottom" : null;
-        } else {
-          orphanKind = newRemaining < GAP_TWO_ROW_THRESHOLD ? "expand-down-mid" : null;
-        }
-        const landing =
-          orphanKind === null
-            ? null
-            : cursorAfterExpand(cursor, flatRowsBefore, orphanKind);
-        expandDirectional(cursor.file, boundaryRef, "down", "symmetric-20");
-        if (landing !== null && landing !== cursor) {
-          store.dispatch({ type: "cursor.set", anchor: landing });
-        }
-        return;
-      }
-      case "boundary-top":
-      case "hunk-separator": {
-        // Issue #280: hunk-header banner's left cell. Re-derive the
-        // primary expand subkind from gap size + edge position (same
-        // helper the planner uses for `primaryExpand`); route Up →
-        // EXPANSION_STEP, All → full-gap reveal.
-        const gapSize =
-          boundaryRef === "top"
-            ? boundaryTopGapSize(cursor.file)
-            : typeof boundaryRef === "number"
-              ? hunkSeparatorGapSize(cursor.file, boundaryRef)
-              : 0;
-        if (gapSize === 0) return;
-        const plan = hunkHeaderExpandPlan(gapSize, subKind === "boundary-top");
-        if (plan.primaryExpand === null) return;
-        if (plan.primaryExpand === "up") {
-          expandDirectional(cursor.file, boundaryRef, "up", "symmetric-20");
-        } else {
-          // "all" dispatch reveals the entire remaining gap → next render
-          // sets primaryExpand=null and the banner drops out of flatRows.
-          // Issue #306 orphan path.
-          orphanKind = subKind === "boundary-top" ? "boundary-top" : "hunk-separator";
-          const landing = cursorAfterExpand(cursor, flatRowsBefore, orphanKind);
-          expandDirectional(cursor.file, boundaryRef, "both", "all");
-          if (landing !== cursor) {
-            store.dispatch({ type: "cursor.set", anchor: landing });
-          }
-        }
-        return;
-      }
-      case "collapsed-file": {
-        const landing = cursorAfterExpand(cursor, flatRowsBefore, "collapsed-file");
-        expandCollapsedFile(cursor.file);
-        if (landing !== cursor) {
-          store.dispatch({ type: "cursor.set", anchor: landing });
-        }
-        return;
-      }
-    }
+    dispatchPrimaryActionAt(
+      {
+        file: cursor.file,
+        subKind: cursor.interactive.subKind,
+        boundaryRef: cursor.interactive.boundaryRef,
+      },
+      cursor.preferredSide,
+    );
   };
 
   // Bridge for surface-side cursor mutations: the pure motion helpers in
