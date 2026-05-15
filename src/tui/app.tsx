@@ -1770,22 +1770,24 @@ function App(props: AppProps) {
         return;
       }
       case "open-in-editor": {
-        // PRD #349 / ADR 0032. Issue #352 shipped row-cursor + GUI-editor.
-        // Issue #355 replaces the terminal-editor placeholder with the
-        // suspend/inherit/resume lifecycle (mirrors `git commit`'s editor
-        // dance). Card cursor, sidebar fallback, folder selection, and
-        // null cursor still surface placeholder footer-hints; permissive
-        // resolution lands in #354.
+        // PRD #349 / ADR 0032. Issue #354: permissive resolution — card
+        // cursor → annotation `line_end`, sidebar file row → (file, 1),
+        // folder / null → "o: no file under cursor". Interactive row
+        // (boundary / hunk-separator / collapsed-file) still surfaces a
+        // distinct hint since the cursor is on a non-line synthetic.
         const editor = props.editor ?? null;
         if (!editor) {
           setFooterStatus("o: editor not configured — set $TOUR_EDITOR or pass --editor");
           return;
         }
-        const target = resolveOpenTarget(cursor);
+        const target = resolveOpenTarget({
+          paneFocus,
+          cursor,
+          sidebarSelectedRow: selectedRow ?? null,
+          comments,
+        });
         if (!target) {
-          if (cursor && cursor.kind === "card") {
-            setFooterStatus("o: card cursor — j/k to land on a row first");
-          } else if (cursor && cursor.kind === "row" && cursor.interactive) {
+          if (cursor && cursor.kind === "row" && cursor.interactive) {
             setFooterStatus("o: not on a diff row — j/k to land on a line");
           } else {
             setFooterStatus("o: no file under cursor");

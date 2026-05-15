@@ -1600,19 +1600,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           return;
         }
         case "open-in-editor": {
-          // PRD #349 / ADR 0032 / issue #353: webapp parity for `o`.
-          // Resolve the target client-side via the shared
-          // open-target-resolver; null → footer hint, no roundtrip.
-          // Otherwise POST to /api/tours/<id>/open-in-editor and pipe
-          // the response's `message` field verbatim into the footer —
-          // no status-code branching, the server is the source of truth
-          // for user-facing strings (matches the wording the TUI
-          // surfaces from core/editor-spawn).
-          const target = resolveOpenTarget(cursor);
+          // PRD #349 / ADR 0032 / issue #353 (transport) + issue #354
+          // (permissive resolution). Resolver collapses (paneFocus, cursor,
+          // sidebar selection, comments) into an OpenTarget or null. Null
+          // → footer hint, no roundtrip. Otherwise POST to
+          // /api/tours/<id>/open-in-editor and pipe the response's
+          // `message` field verbatim into the footer — the server is
+          // the source of truth for user-facing strings (matches the
+          // wording the TUI surfaces from core/editor-spawn).
+          const target = resolveOpenTarget({
+            paneFocus,
+            cursor,
+            sidebarSelectedRow: selectedRow ?? null,
+            comments: view.kind === "ok" ? view.bundle.comments : [],
+          });
           if (!target) {
-            if (cursor && cursor.kind === "card") {
-              flashFooterStatus("o: card cursor — j/k to land on a row first");
-            } else if (cursor && cursor.kind === "row" && cursor.interactive) {
+            if (cursor && cursor.kind === "row" && cursor.interactive) {
               flashFooterStatus("o: not on a diff row — j/k to land on a line");
             } else {
               flashFooterStatus("o: no file under cursor");

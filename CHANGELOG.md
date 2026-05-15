@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`o` is now permissive: card cursor opens the annotation's `line_end`;
+  sidebar file row opens line 1 (issue #354, PRD #349, ADR 0032).**
+  Pressing `o` with the cursor on an annotation card opens the
+  annotation's anchored file at its `line_end` — the line the reader's
+  eye lands on before the card. Pressing `o` with the sidebar focused
+  on a file row (no diff cursor yet) opens that file at line 1, so the
+  shortcut works straight from the file tree without first pressing
+  `j` in the diff pane. Folder selection and fully null state still
+  surface `o: no file under cursor`. The slice-1 placeholder hints
+  ("card cursor — j/k to land on a row first") are removed. Both
+  surfaces inherit the new behavior via the shared
+  `core/open-target-resolver`.
+
+  Issue: #354 · PRD: #349 · ADR: 0032
+
 - **`o` on a webapp diff row opens the file at that line in your GUI
   editor (issue #353, PRD #349, ADR 0032).** Webapp parity for the
   cross-surface open-in-editor feature. `tour serve --editor 'code -g'`
