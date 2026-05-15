@@ -762,7 +762,11 @@ function App(props: AppProps) {
     cardViewportPosition,
   });
   const baseFooter = `${footerPreview}  ·  ${footerHints}`;
-  const footer = footerStatus ? `${baseFooter}  ·  ${footerStatus}` : baseFooter;
+  // When a transient status is set, lead with it so it's visible even
+  // on narrow terminals (TUICommander panes etc). Prior order appended
+  // the status after the long persistent hints, which pushed it past
+  // the visible width on anything narrower than ~200 cols.
+  const footer = footerStatus ? `${footerStatus}  ·  ${baseFooter}` : baseFooter;
 
   // Open the Tour picker (PRD #207 / issue #209). Routes through the
   // Tour-session store: `tourList.loading` → fetch → `tourList.loaded`
