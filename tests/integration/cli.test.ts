@@ -543,6 +543,163 @@ describe("CLI integration", () => {
       expect(r.exitCode).toBe(1);
       expect(r.stderr).toContain("mutually exclusive");
     });
+
+    // Issue #336: stdout prose flips from "annotation"/"annotations" to
+    // "comment"/"comments" per ADR 0029. Both verbs share the same handler,
+    // so both surfaces emit the new prose.
+    it("prints 'Added comment to <id>: <f>:<line>' on a single create", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "looks good",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toBe(`Added comment to ${tour.id}: hello.txt:1`);
+    });
+
+    it("prints 'Added N comments to <id>' on batch create", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const batch = JSON.stringify([
+        { file: "hello.txt", side: "additions", line: "1", body: "Note 1" },
+        { file: "hello.txt", side: "deletions", line: "1", body: "Note 2" },
+      ]);
+      const r = await run(
+        ["annotate", tour.id, "--batch", "-"],
+        repo,
+        { stdin: batch },
+      );
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toBe(`Added 2 comments to ${tour.id}`);
+    });
+  });
+
+  // Issue #336: `tour comment` is the primary verb; `tour annotate` is a
+  // permanent silent alias dispatching the same handler. Parity is the
+  // contract: same input → same on-disk effect → same `--json` shape →
+  // same exit code → no stderr nag on the alias.
+  describe("comment (alias of annotate)", () => {
+    it("`tour comment ...` creates the same record `tour annotate ...` would (single)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "comment", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "via comment verb",
+        "--author", "claude-code",
+        "--json",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      const ann = JSON.parse(r.stdout);
+      expect(ann.file).toBe("hello.txt");
+      expect(ann.body).toBe("via comment verb");
+      // Top-level (no `replies_to`) — the on-disk shape never carried a
+      // `kind` field; the discriminator is presence/absence of `replies_to`.
+      expect(ann.replies_to).toBeUndefined();
+      // The on-disk file is still `annotations.jsonl` (Stage B renames it).
+      const showR = await run(["show", tour.id, "--json"], repo);
+      const data = JSON.parse(showR.stdout);
+      expect(data.annotations).toHaveLength(1);
+      expect(data.annotations[0].id).toBe(ann.id);
+    });
+
+    it("`tour comment ...` and `tour annotate ...` produce byte-identical --json on the same input", async () => {
+      // Two parallel tours; identical input under each verb. The id and
+      // created_at fields will differ — strip them before comparing.
+      const ca = await run(["create", "--head", "HEAD", "--json"], repo);
+      const cb = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tourA = JSON.parse(ca.stdout);
+      const tourB = JSON.parse(cb.stdout);
+      const flagsA = [
+        "annotate", tourA.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "parity",
+        "--author", "agent",
+        "--json",
+      ];
+      const flagsB = [
+        "comment", tourB.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "parity",
+        "--author", "agent",
+        "--json",
+      ];
+      const ra = await run(flagsA, repo);
+      const rb = await run(flagsB, repo);
+      expect(ra.exitCode).toBe(0);
+      expect(rb.exitCode).toBe(0);
+      const a = JSON.parse(ra.stdout);
+      const b = JSON.parse(rb.stdout);
+      // Strip per-record fields; everything else must match byte-for-byte.
+      delete a.id; delete a.created_at;
+      delete b.id; delete b.created_at;
+      expect(a).toEqual(b);
+    });
+
+    it("`tour comment ...` prints the same 'Added comment to ...' stdout as the annotate verb", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "comment", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "prose check",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toBe(`Added comment to ${tour.id}: hello.txt:1`);
+    });
+
+    it("`tour comment ... --batch -` accepts JSONL on stdin like the annotate verb", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl =
+        `{"file":"hello.txt","side":"additions","line":"1","body":"b1"}\n` +
+        `{"file":"hello.txt","side":"deletions","line":"1","body":"b2"}\n`;
+      const r = await run(
+        ["comment", tour.id, "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(r.exitCode).toBe(0);
+      const anns = JSON.parse(r.stdout);
+      expect(anns).toHaveLength(2);
+    });
+
+    it("`tour annotate ...` is silent on stderr — no deprecation warning", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "silent",
+      ], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe("");
+    });
+
+    it("`tour --help` lists `tour comment` as primary with `(alias: annotate)`", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      // Primary verb appears as `tour comment <id> ...` in the synopsis.
+      expect(r.stdout).toMatch(/tour comment <id>/);
+      // Alias is documented in the same help text — no separate annotate
+      // synopsis line.
+      expect(r.stdout).toMatch(/alias: annotate/);
+      expect(r.stdout).not.toMatch(/tour annotate <id>/);
+    });
   });
 
   describe("pickup", () => {

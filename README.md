@@ -51,7 +51,7 @@ For direct CLI use without the skill — e.g., in foreign repos with no global i
 
 ```sh
 bunx tourdiff create --head HEAD --json
-bunx tourdiff annotate <id> --file src/foo.ts --side additions --line 12 --body "..."
+bunx tourdiff comment <id> --file src/foo.ts --side additions --line 12 --body "..."
 ```
 
 Or via npm:
@@ -64,8 +64,8 @@ npx -y tourdiff create --head HEAD --json
 
 ```
 tour create --head <ref> [--base <ref>] [--title <s>] [--json]
-tour annotate <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--json]
-tour annotate <id> --batch -                         # read JSONL annotations from stdin
+tour comment <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--json]
+tour comment <id> --batch -                          # read JSONL comments from stdin   (alias: annotate)
 tour list [--status open|closed|all] [--json]
 tour show <id> [--json]
 tour close <id>                                       # mark closed; keeps files

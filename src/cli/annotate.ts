@@ -105,7 +105,7 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
     if (args.json) {
       printOutput(annotations, true);
     } else {
-      console.log(`Added ${annotations.length} annotations to ${resolvedId}`);
+      console.log(`Added ${annotations.length} comments to ${resolvedId}`);
     }
     return;
   }
@@ -157,7 +157,7 @@ export async function annotate(args: AnnotateArgs): Promise<void> {
   if (args.json) {
     printOutput(annotation, true);
   } else {
-    console.log(`Added annotation to ${resolvedId}: ${args.file}:${start}`);
+    console.log(`Added comment to ${resolvedId}: ${args.file}:${start}`);
   }
 }
 

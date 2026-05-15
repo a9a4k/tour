@@ -76,9 +76,9 @@ Usage:
   tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
                                         (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^.)
-  tour annotate <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
-  tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
-  tour annotate <id> --batch - [--json]
+  tour comment <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+  tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+  tour comment <id> --batch - [--json]                            (alias: annotate)
   tour list [--status open|closed|all] [--json]
   tour show <id> [--json]
   tour close <id> [--json]
@@ -121,9 +121,13 @@ async function main(): Promise<void> {
         break;
       }
 
+      // `comment` is the primary verb per ADR 0029; `annotate` is a
+      // permanent silent alias dispatching the same handler. No deprecation
+      // warning — agent scripts pinned to the old verb keep working forever.
+      case "comment":
       case "annotate": {
         const tourId = positional[0];
-        if (!tourId) throw new Error("Usage: tour annotate <id> ...");
+        if (!tourId) throw new Error("Usage: tour comment <id> ...");
         await annotate({
           tourId,
           file: flag(flags, "file"),

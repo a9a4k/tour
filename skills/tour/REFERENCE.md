@@ -1,8 +1,8 @@
 # Tour Reference
 
-## JSONL annotation schema
+## JSONL comment schema
 
-Each line of input to `tour annotate <id> --batch -` is a JSON object:
+Each line of input to `tour comment <id> --batch -` is a JSON object:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -30,9 +30,9 @@ Anchors are validated at write time. A typo in `file` or an out-of-range line is
 ```
 tour                                                                                # opens best surface for env (v2.0.0+); when no id, pre-picks most-recent open tour and prints its deep URL
 tour create --head <ref> [--base <ref>] [--title <s>] [--json]
-tour annotate <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
-tour annotate <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
-tour annotate <id> --batch - [--json]                                               # JSONL on stdin
+tour comment <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+tour comment <id> --batch - [--json]                                                # JSONL on stdin   (alias: annotate)
 tour list [--status open|closed|all] [--json]
 tour show <id> [--json]
 tour pickup <id> [--json]

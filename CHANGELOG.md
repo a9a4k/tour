@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CLI: `tour comment` is the primary annotation verb; `tour annotate`
+  is a permanent silent alias (issue #336, PRD #335, ADR 0029).**
+  Stage A slice 1/4 of the "Comment replaces Annotation" rename. Both
+  verbs dispatch the same handler — identical flags, identical
+  `--json` byte-shape, identical exit codes, identical on-disk effect.
+  The alias produces no stderr deprecation warning. `tour --help` and
+  `tour comment --help` list `tour comment <id> ...` as primary with
+  `(alias: annotate)` noted. Human-readable stdout strings flip from
+  "annotation"/"annotations" to "comment"/"comments" — `Added comment
+  to <id>: <file>:<line>` (single) and `Added N comments to <id>`
+  (batch). The "Added reply to <id> in <tour>" line is unchanged
+  (Reply was never renamed). JSON wire-format is untouched: same
+  fields, same record shape, same discriminator (presence/absence of
+  `replies_to`). `README.md` and `skills/tour/*` examples flip to
+  `tour comment ...` as the primary form; legacy `annotate` references
+  in body prose stay (per Stage A scope — source-identifier rename
+  and on-disk `annotations.jsonl → comments.jsonl` migration land in
+  Stage B).
+
+  Issue: #336
+
 ### Changed
 
 - **Default diff layout is now Unified on first open (issue #329).**

@@ -32,7 +32,7 @@ When asked for a review / walkthrough on a branch or diff:
 
 ```sh
 TOUR_ID=$(tour create --head HEAD)
-cat <<'JSONL' | tour annotate "$TOUR_ID" --batch -
+cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
 {"file":"src/foo.ts","side":"additions","line_start":12,"line_end":14,"body":"..."}
 {"file":"src/foo.ts","side":"additions","line_start":40,"body":"..."}
 JSONL
@@ -80,7 +80,7 @@ Most human comments have no reply-agent child — they're directives for you. Co
 For each thread: code change | reply | close | defer. Reply with `replies_to`:
 
 ```sh
-echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_xxx","body":"..."}' | tour annotate "$TOUR_ID" --batch -
+echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_xxx","body":"..."}' | tour comment "$TOUR_ID" --batch -
 ```
 
 Replies inherit the parent's anchor; `file`/`side`/`line_start` are still required at write time.
