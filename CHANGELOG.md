@@ -6,6 +6,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.1.1] — 2026-05-15
+
+### Changed
+
+- **`n` / `p` smooth-scrolls the target Comment card to centre on both
+  surfaces (issue #348, ADR 0011 Revisions 2026-05-15).** Every
+  comment-jump frames the card mid-viewport with a perceptible tween
+  — TUI via `animatedCenterChildInView`, webapp via `scrollIntoView({
+  behavior: "smooth", block: "center" })`. Adjacent landings keep a
+  predictable focal point; the smooth motion conveys travel direction
+  between cards. Mashing `n n n n` converges on the last card without
+  queueing animations on either surface (TUI's `animatedScrollTo`
+  cancels any in-flight tween at the start of each call; webapps
+  inherit browser-native smooth-scroll interruption). The
+  `scrollCursorTarget` intent now carries `placement` *and* `behavior`
+  (`"instant" | "smooth"`) as independent axes; the adapters take
+  both and dispatch to the matching helper. Default for unspecified
+  `behavior` preserves today's mapping (`center → instant, nearest →
+  smooth`), so call sites that haven't migrated keep working.
+  Click and `j` / `k` are unchanged (spatial gestures stay on
+  `nearest + smooth`); fresh landings (materialize / URL `?ann=`
+  restore / `r` / `s` auto-recall / post-submit scroll) stay on
+  `center + instant`. Reverses the placement half of commit `4900d4c`;
+  the other half (sidebar file-click parity) stands. PRD #348.
+
+  Issue: #348
+
+## [3.1.0] — 2026-05-15
+
 ### Added
 
 - **Webapp keyboard sidebar navigation: `Esc` enters the sidebar tree;
@@ -35,29 +64,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **`n` / `p` smooth-scrolls the target Comment card to centre on both
-  surfaces (issue #348, ADR 0011 Revisions 2026-05-15).** Every
-  comment-jump frames the card mid-viewport with a perceptible tween
-  — TUI via `animatedCenterChildInView`, webapp via `scrollIntoView({
-  behavior: "smooth", block: "center" })`. Adjacent landings keep a
-  predictable focal point; the smooth motion conveys travel direction
-  between cards. Mashing `n n n n` converges on the last card without
-  queueing animations on either surface (TUI's `animatedScrollTo`
-  cancels any in-flight tween at the start of each call; webapps
-  inherit browser-native smooth-scroll interruption). The
-  `scrollCursorTarget` intent now carries `placement` *and* `behavior`
-  (`"instant" | "smooth"`) as independent axes; the adapters take
-  both and dispatch to the matching helper. Default for unspecified
-  `behavior` preserves today's mapping (`center → instant, nearest →
-  smooth`), so call sites that haven't migrated keep working.
-  Click and `j` / `k` are unchanged (spatial gestures stay on
-  `nearest + smooth`); fresh landings (materialize / URL `?ann=`
-  restore / `r` / `s` auto-recall / post-submit scroll) stay on
-  `center + instant`. Reverses the placement half of commit `4900d4c`;
-  the other half (sidebar file-click parity) stands. PRD #348.
-
-  Issue: #348
-
 - **TUI keybinding: `Tab` / `Shift-Tab` removed; `Esc` now toggles
   between sidebar and diff (modal-unwind takes precedence). Folder-row
   `Enter` toggles the folder (issue #345, PRD #343, ADR 0031).** The
@@ -79,76 +85,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #345
 
-- **Wire-format change (envelope only): `tour show --json` and `tour
-  pickup --json` envelope key renamed from `annotations` to `comments`
-  (PRD #335, ADR 0029).** Downstream agent scripts that parse the
-  top-level array on either command must update from
-  `data.annotations` to `data.comments`. The per-record schema is
-  unchanged (`id`, `file`, `side`, `line_start`, `line_end`, `body`,
-  `author`, `author_kind`, `created_at`, `replies_to?`, `kind`) — only
-  the envelope key shifted. Decision recorded in ADR 0029's Stage B
-  addendum; no back-compat alias is added (the CLI verb's permanent
-  `tour annotate` alias covers write paths but envelope-key
-  compatibility is not symmetric).
-
-- **Source-identifier rename: `Annotation` → `Comment` across source,
-  tests, intents, and CONTEXT.md prose (issue #341, PRD #335, ADR
-  0029).** Stage B mechanical slice. The `Annotation` type renames to
-  `Comment` in `src/core/types.ts`; every type annotation, import, and
-  structural use across `src/` and `tests/` updates in lockstep. Module
-  files `core/annotations-store.ts` → `core/comments-store.ts`,
-  `core/write-annotation-input.ts` → `core/write-comment-input.ts`,
-  `web/client/markdown/AnnotationMarkdown.tsx` →
-  `web/client/markdown/CommentMarkdown.tsx`, plus paired TUI/test
-  files (`tui/AnnotationCard.tsx`, `tui/annotation-jump.ts`,
-  `tui/annotation-placement.ts`, `cli/annotate.ts`, and their paired
-  test files) all rename to the `comment` vocabulary; every import
-  that pointed at the old paths now points at the new ones. Function
-  renames sweep through `createAnnotation` → `createComment`,
-  `createAnnotations` → `createComments`, `readAnnotations` →
-  `readComments`, `latestAnnotationId` → `latestCommentId`,
-  `cursorFromAnnotation` → `cursorFromComment`, plus every other
-  identifier carrying `Annotation` / `annotation`. The four keymap
-  intent strings flip atomically: `next-annotation` → `next-comment`
-  and `prev-annotation` → `prev-comment` (TUI),
-  `nav-next-annotation` → `nav-next-comment` and
-  `nav-prev-annotation` → `nav-prev-comment` (webapp); the verb
-  intent `annotate-at-cursor` becomes `comment-at-cursor`. The
-  `triggering_annotation` field on the agent-adapter envelope renames
-  to `triggering_comment`. `LEGACY_ANNOTATIONS_FILENAME` and the
-  string literal `"annotations.jsonl"` stay — they name the legacy
-  on-disk filename per ADR 0029 addendum. CLI verbs (`tour annotate`
-  alias, `case "annotate":` switch arm) stay — permanent alias per
-  PRD #335. The "Rename in flight" callout at the top of CONTEXT.md's
-  Language section is removed; the body prose flips. JSON wire-format
-  (`--json` output keys: `id`, `file`, `side`, `line_start`,
-  `line_end`, `body`, `author`, `author_kind`, `created_at`,
-  `replies_to`, `kind`) is unchanged. No behavioural change —
-  identifier-only rename. Test count: 2147 / 2147 pass.
-
-  Issue: #341
-
-- **On-disk: `annotations.jsonl` → `comments.jsonl` with permanent
-  read-fallback (issue #342, PRD #335, ADR 0029 addendum).** Stage B
-  on-disk slice. The per-Tour Comment log filename is now
-  `comments.jsonl`. New Tours write only `comments.jsonl`; the first
-  write to a pre-Stage-B Tour folder that has only `annotations.jsonl`
-  atomically renames the file (`fs.promises.rename`, atomic on POSIX
-  for same-volume renames; Tour is single-machine, single-volume per
-  ADR 0020) and then appends the new record. The reader checks
-  `comments.jsonl` first and falls back to `annotations.jsonl` when
-  the new name is absent — this fallback path stays in the codebase
-  indefinitely per the ADR 0029 addendum so existing `.tour/` dirs in
-  the wild keep working without an explicit migration step. The FS
-  watcher fires on either filename (the `.jsonl` extension match
-  already covered both; the dedup fingerprint now prefers
-  `comments.jsonl` and falls back to `annotations.jsonl`). If both
-  files exist (impossible in practice — would mean a partial
-  migration), the writer logs a stderr warning, leaves the legacy
-  file alone, and treats `comments.jsonl` as authoritative. JSONL
-  record schema is unchanged; the `--json` wire-format is unchanged.
-
-  Issue: #342
+## [3.0.0] — 2026-05-15
 
 ### Added
 
@@ -172,77 +109,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Stage B).
 
   Issue: #336
-
-### Changed
-
-- **Webapp keybindings: `a → c` and `t → T`; status messages flip
-  from "annotation" to "comment" (issue #338, PRD #335).** Stage A
-  slice 3/4 of ADR 0029 (Comment replaces Annotation) + ADR 0030
-  (lowercase = cursor-target, capital = global). Bare `c` on a row
-  dispatches `annotate-at-cursor` (was `a`); `T` (Shift+t)
-  dispatches `open-picker` (was `t`). Bare `a` and bare `t` are now
-  unbound noops — hard cutover, no alias. The three cross-axis-miss
-  status messages flip vocabulary: `No annotation under cursor.` →
-  `No comment under cursor.`, `Send only works on annotation
-  cards.` → `Send only works on comment cards.`, and `Send only
-  works on human annotations.` → `Send only works on human
-  comments.`. The footer legend reads `c: comment` and `T: picker`.
-  The TUI side of the rebind lands in slice #337; this slice only
-  touches the webapp branch in `core/footer-hints.ts`.
-
-  Issue: #338
-
-- **Reply-agent system prompt: "Annotation" → "Comment" (issue #339,
-  PRD #335, ADR 0029).** The Tour-canonical reply-agent system prompt
-  in `src/core/system-prompt.ts` now says "responding to a Reply or
-  Comment" and "writes that as the Comment body — verbatim". Both
-  occurrences of "Annotation" flip to "Comment" so the LLM's output
-  vocabulary aligns with what the rest of the system (UI, CLI,
-  footer, glossary) now says. Output contract, capability boundary,
-  always-reply, and style sections are unchanged in shape. Slice 4/4
-  of Stage A; the highest-leverage single edit since the prompt
-  shapes what every reply-agent invocation writes from this release
-  forward. The snapshot test in `tests/core/system-prompt.test.ts`
-  is updated atomically and locks the new text against accidental
-  edits.
-
-  Issue: #339. PRD: #335. ADR: 0029.
-
-- **Default diff layout is now Unified on first open (issue #329).**
-  The initial value of `TourSessionState.layout` flips from `"split"`
-  to `"unified"`. Tour is annotation-driven, not diff-driven: users
-  come to read a walkthrough, and unified's narrative top-to-bottom
-  flow lines up with `n`/`p` annotation traversal — split forces eye
-  zig-zag between columns while cards sit one side or span both.
-  Cards also render cleanly inline as a row between diff lines in
-  unified, where split clusters them one side or forces alignment
-  beneath. And Tour eats more horizontal width before the diff
-  starts (sidebar + annotation cards) than general code-review tools
-  do, so halving the remaining real estate hurts more here. Split
-  remains one click / keystroke away (`LayoutToggle` button on web,
-  `Shift+L` on TUI); only the never-touched default changes. Users
-  who explicitly chose Split see no change once per-tour persistence
-  is wired (the persistence shape itself is unchanged by this issue).
-
-  Issue: #329
-
-- **Internal: scalar sidebar-width clamps lifted to `src/core/`
-  (issue #328).** The TUI and webapp each inlined the same pair of
-  clamp formulas — auto-fit `[hardMin, max(hardMin, container -
-  softMin)]` and manual `[hardMin, max(hardMin, container - hardMin)]`
-  — in different units (cols vs. px). The math is byte-identical;
-  only the constants differ. Both `clampSidebarWidth*` exports now
-  thin-wrap `clampPaneWidth` / `clampPaneWidthManual` in
-  `src/core/sidebar-width-clamp.ts`, so any future change to the clamp
-  shape (e.g. a hysteresis band or a soft warning ceiling) is applied
-  once rather than twice. Per-surface call sites and existing tests
-  are unchanged. `computeAutoFitWidth*` stays per-surface — it couples
-  to row-cost helpers in different units, and threading a units-aware
-  indent spec would be more invasive than the lift solves.
-
-  Issue: #328
-
-### Added
 
 - **Webapp: annotation-create failures surface as transient footer
   status (issue #334).** The composer's `submitting → errored`
@@ -323,6 +189,132 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   slice.
 
   Issue: #332
+
+### Changed
+
+- **Wire-format change (envelope only): `tour show --json` and `tour
+  pickup --json` envelope key renamed from `annotations` to `comments`
+  (PRD #335, ADR 0029).** Downstream agent scripts that parse the
+  top-level array on either command must update from
+  `data.annotations` to `data.comments`. The per-record schema is
+  unchanged (`id`, `file`, `side`, `line_start`, `line_end`, `body`,
+  `author`, `author_kind`, `created_at`, `replies_to?`, `kind`) — only
+  the envelope key shifted. Decision recorded in ADR 0029's Stage B
+  addendum; no back-compat alias is added (the CLI verb's permanent
+  `tour annotate` alias covers write paths but envelope-key
+  compatibility is not symmetric).
+
+- **Source-identifier rename: `Annotation` → `Comment` across source,
+  tests, intents, and CONTEXT.md prose (issue #341, PRD #335, ADR
+  0029).** Stage B mechanical slice. The `Annotation` type renames to
+  `Comment` in `src/core/types.ts`; every type annotation, import, and
+  structural use across `src/` and `tests/` updates in lockstep. Module
+  files `core/annotations-store.ts` → `core/comments-store.ts`,
+  `core/write-annotation-input.ts` → `core/write-comment-input.ts`,
+  `web/client/markdown/AnnotationMarkdown.tsx` →
+  `web/client/markdown/CommentMarkdown.tsx`, plus paired TUI/test
+  files (`tui/AnnotationCard.tsx`, `tui/annotation-jump.ts`,
+  `tui/annotation-placement.ts`, `cli/annotate.ts`, and their paired
+  test files) all rename to the `comment` vocabulary; every import
+  that pointed at the old paths now points at the new ones. Function
+  renames sweep through `createAnnotation` → `createComment`,
+  `createAnnotations` → `createComments`, `readAnnotations` →
+  `readComments`, `latestAnnotationId` → `latestCommentId`,
+  `cursorFromAnnotation` → `cursorFromComment`, plus every other
+  identifier carrying `Annotation` / `annotation`. The four keymap
+  intent strings flip atomically: `next-annotation` → `next-comment`
+  and `prev-annotation` → `prev-comment` (TUI),
+  `nav-next-annotation` → `nav-next-comment` and
+  `nav-prev-annotation` → `nav-prev-comment` (webapp); the verb
+  intent `annotate-at-cursor` becomes `comment-at-cursor`. The
+  `triggering_annotation` field on the agent-adapter envelope renames
+  to `triggering_comment`. `LEGACY_ANNOTATIONS_FILENAME` and the
+  string literal `"annotations.jsonl"` stay — they name the legacy
+  on-disk filename per ADR 0029 addendum. CLI verbs (`tour annotate`
+  alias, `case "annotate":` switch arm) stay — permanent alias per
+  PRD #335. The "Rename in flight" callout at the top of CONTEXT.md's
+  Language section is removed; the body prose flips. JSON wire-format
+  (`--json` output keys: `id`, `file`, `side`, `line_start`,
+  `line_end`, `body`, `author`, `author_kind`, `created_at`,
+  `replies_to`, `kind`) is unchanged. No behavioural change —
+  identifier-only rename. Test count: 2147 / 2147 pass.
+
+  Issue: #341
+
+- **On-disk: `annotations.jsonl` → `comments.jsonl` with permanent
+  read-fallback (issue #342, PRD #335, ADR 0029 addendum).** Stage B
+  on-disk slice. The per-Tour Comment log filename is now
+  `comments.jsonl`. New Tours write only `comments.jsonl`; the first
+  write to a pre-Stage-B Tour folder that has only `annotations.jsonl`
+  atomically renames the file (`fs.promises.rename`, atomic on POSIX
+  for same-volume renames; Tour is single-machine, single-volume per
+  ADR 0020) and then appends the new record. The reader checks
+  `comments.jsonl` first and falls back to `annotations.jsonl` when
+  the new name is absent — this fallback path stays in the codebase
+  indefinitely per the ADR 0029 addendum so existing `.tour/` dirs in
+  the wild keep working without an explicit migration step. The FS
+  watcher fires on either filename (the `.jsonl` extension match
+  already covered both; the dedup fingerprint now prefers
+  `comments.jsonl` and falls back to `annotations.jsonl`). If both
+  files exist (impossible in practice — would mean a partial
+  migration), the writer logs a stderr warning, leaves the legacy
+  file alone, and treats `comments.jsonl` as authoritative. JSONL
+  record schema is unchanged; the `--json` wire-format is unchanged.
+
+  Issue: #342
+
+- **Webapp keybindings: `a → c` and `t → T`; status messages flip
+  from "annotation" to "comment" (issue #338, PRD #335).** Stage A
+  slice 3/4 of ADR 0029 (Comment replaces Annotation) + ADR 0030
+  (lowercase = cursor-target, capital = global). Bare `c` on a row
+  dispatches `annotate-at-cursor` (was `a`); `T` (Shift+t)
+  dispatches `open-picker` (was `t`). Bare `a` and bare `t` are now
+  unbound noops — hard cutover, no alias. The three cross-axis-miss
+  status messages flip vocabulary: `No annotation under cursor.` →
+  `No comment under cursor.`, `Send only works on annotation
+  cards.` → `Send only works on comment cards.`, and `Send only
+  works on human annotations.` → `Send only works on human
+  comments.`. The footer legend reads `c: comment` and `T: picker`.
+  The TUI side of the rebind lands in slice #337; this slice only
+  touches the webapp branch in `core/footer-hints.ts`.
+
+  Issue: #338
+
+- **Reply-agent system prompt: "Annotation" → "Comment" (issue #339,
+  PRD #335, ADR 0029).** The Tour-canonical reply-agent system prompt
+  in `src/core/system-prompt.ts` now says "responding to a Reply or
+  Comment" and "writes that as the Comment body — verbatim". Both
+  occurrences of "Annotation" flip to "Comment" so the LLM's output
+  vocabulary aligns with what the rest of the system (UI, CLI,
+  footer, glossary) now says. Output contract, capability boundary,
+  always-reply, and style sections are unchanged in shape. Slice 4/4
+  of Stage A; the highest-leverage single edit since the prompt
+  shapes what every reply-agent invocation writes from this release
+  forward. The snapshot test in `tests/core/system-prompt.test.ts`
+  is updated atomically and locks the new text against accidental
+  edits.
+
+  Issue: #339. PRD: #335. ADR: 0029.
+
+### Fixed
+
+- **TUI: picker close now uses Shift+T instead of bare `t` (issue #340,
+  ADR 0030).** The picker-open key handler in `src/tui/app.tsx` was
+  the last surviving bare-`t` binding after the #337 cutover —
+  pressing `t` while the picker was open closed it, bypassing the
+  dispatcher (which already returns noop for bare `t` everywhere
+  else). Picker open/close is now symmetric: `T` (Shift+t) toggles
+  the picker in both directions. `Escape` continues to close the
+  picker (no regression). Bare `t` is a plain noop in this state too,
+  consistent with the dispatcher. The close arm was extracted into a
+  small pure helper (`src/tui/picker-keymap.ts`) so the picker
+  overlay's keyboard contract is exercisable in isolation.
+
+  Issue: #340
+
+## [2.5.0] — 2026-05-15
+
+### Added
 
 - **TUI: `y` yanks the focused file's repo-relative path to the system
   clipboard (issue #326).** Webapp parity for the copy-path affordance
@@ -410,21 +402,58 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #320
 
+### Changed
+
+- **Default diff layout is now Unified on first open (issue #329).**
+  The initial value of `TourSessionState.layout` flips from `"split"`
+  to `"unified"`. Tour is annotation-driven, not diff-driven: users
+  come to read a walkthrough, and unified's narrative top-to-bottom
+  flow lines up with `n`/`p` annotation traversal — split forces eye
+  zig-zag between columns while cards sit one side or span both.
+  Cards also render cleanly inline as a row between diff lines in
+  unified, where split clusters them one side or forces alignment
+  beneath. And Tour eats more horizontal width before the diff
+  starts (sidebar + annotation cards) than general code-review tools
+  do, so halving the remaining real estate hurts more here. Split
+  remains one click / keystroke away (`LayoutToggle` button on web,
+  `Shift+L` on TUI); only the never-touched default changes. Users
+  who explicitly chose Split see no change once per-tour persistence
+  is wired (the persistence shape itself is unchanged by this issue).
+
+  Issue: #329
+
+- **Internal: scalar sidebar-width clamps lifted to `src/core/`
+  (issue #328).** The TUI and webapp each inlined the same pair of
+  clamp formulas — auto-fit `[hardMin, max(hardMin, container -
+  softMin)]` and manual `[hardMin, max(hardMin, container - hardMin)]`
+  — in different units (cols vs. px). The math is byte-identical;
+  only the constants differ. Both `clampSidebarWidth*` exports now
+  thin-wrap `clampPaneWidth` / `clampPaneWidthManual` in
+  `src/core/sidebar-width-clamp.ts`, so any future change to the clamp
+  shape (e.g. a hysteresis band or a soft warning ceiling) is applied
+  once rather than twice. Per-surface call sites and existing tests
+  are unchanged. `computeAutoFitWidth*` stays per-surface — it couples
+  to row-cost helpers in different units, and threading a units-aware
+  indent spec would be more invasive than the lift solves.
+
+  Issue: #328
+
+- **Webapp file header: copy-path button moved next to the filename
+  (GitHub parity, issue #317).** The per-file sticky header's left
+  region now renders `chevron · status-icon · rename-indicator? ·
+  filename · copy-path`; the right region keeps the reason tag, diff-
+  stats indicator, and the per-file Expand-all `↕` button (when ≥ 2
+  hidden gaps). The button's behaviour is unchanged from #225 (click
+  writes `file.name` to the clipboard, does NOT toggle collapse,
+  keeps `aria-label="Copy file path"` and its hover chrome). The
+  filename span gains `min-width: 0` + `overflow: hidden; text-
+  overflow: ellipsis; white-space: nowrap` so a very long path
+  truncates the filename instead of pushing the button or right
+  region off-row.
+
+  Issue: #317
+
 ### Fixed
-
-- **TUI: picker close now uses Shift+T instead of bare `t` (issue #340,
-  ADR 0030).** The picker-open key handler in `src/tui/app.tsx` was
-  the last surviving bare-`t` binding after the #337 cutover —
-  pressing `t` while the picker was open closed it, bypassing the
-  dispatcher (which already returns noop for bare `t` everywhere
-  else). Picker open/close is now symmetric: `T` (Shift+t) toggles
-  the picker in both directions. `Escape` continues to close the
-  picker (no regression). Bare `t` is a plain noop in this state too,
-  consistent with the dispatcher. The close arm was extracted into a
-  small pure helper (`src/tui/picker-keymap.ts`) so the picker
-  overlay's keyboard contract is exercisable in isolation.
-
-  Issue: #340
 
 - **TUI: tour-picker rows now react to mouse clicks (issue #321).**
   When the picker was open, the keyboard branch (`j`/`k`/`Enter`/
@@ -577,22 +606,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #318
 
+## [2.3.0] — 2026-05-14
+
 ### Changed
-
-- **Webapp file header: copy-path button moved next to the filename
-  (GitHub parity, issue #317).** The per-file sticky header's left
-  region now renders `chevron · status-icon · rename-indicator? ·
-  filename · copy-path`; the right region keeps the reason tag, diff-
-  stats indicator, and the per-file Expand-all `↕` button (when ≥ 2
-  hidden gaps). The button's behaviour is unchanged from #225 (click
-  writes `file.name` to the clipboard, does NOT toggle collapse,
-  keeps `aria-label="Copy file path"` and its hover chrome). The
-  filename span gains `min-width: 0` + `overflow: hidden; text-
-  overflow: ellipsis; white-space: nowrap` so a very long path
-  truncates the filename instead of pushing the button or right
-  region off-row.
-
-  Issue: #317
 
 - **Hunk-header banner is now a two-cell layout with the primary expand
   button on the leftmost cell (issue #280).** GitHub puts Expand Up /
@@ -614,6 +630,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `primaryExpand !== null`.
 
   Issue: #280
+
 
 ## [2.0.0] — 2026-05-12
 
