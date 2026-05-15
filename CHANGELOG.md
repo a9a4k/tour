@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal: scalar sidebar-width clamps lifted to `src/core/`
+  (issue #328).** The TUI and webapp each inlined the same pair of
+  clamp formulas — auto-fit `[hardMin, max(hardMin, container -
+  softMin)]` and manual `[hardMin, max(hardMin, container - hardMin)]`
+  — in different units (cols vs. px). The math is byte-identical;
+  only the constants differ. Both `clampSidebarWidth*` exports now
+  thin-wrap `clampPaneWidth` / `clampPaneWidthManual` in
+  `src/core/sidebar-width-clamp.ts`, so any future change to the clamp
+  shape (e.g. a hysteresis band or a soft warning ceiling) is applied
+  once rather than twice. Per-surface call sites and existing tests
+  are unchanged. `computeAutoFitWidth*` stays per-surface — it couples
+  to row-cost helpers in different units, and threading a units-aware
+  indent spec would be more invasive than the lift solves.
+
+  Issue: #328
+
 ### Added
 
 - **TUI: `y` yanks the focused file's repo-relative path to the system

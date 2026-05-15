@@ -1,25 +1,22 @@
 import type { VisibleRow } from "../../core/file-tree.js";
+import {
+  clampPaneWidth,
+  clampPaneWidthManual,
+} from "../../core/sidebar-width-clamp.js";
 import type { BundleFile } from "./types.js";
 
 // Web sidebar width math (issue #323). Pixel-based mirror of
-// `src/tui/sidebar-width.ts`. The TUI works in columns and uses
-// `FileRowStats` from `src/tui/sidebar-row-label.ts`; the web works in
-// pixels and computes per-row width from chevron / icon / displayName
-// (measured in chars at the sidebar's font-size) / annotation badge.
+// `src/tui/sidebar-width.ts`. The scalar clamps lifted to
+// `src/core/sidebar-width-clamp.ts` in #328 so both surfaces share the
+// formula; this module keeps the px-unit constants and the row-cost-
+// coupled fit computation (chevron / icon / displayName-in-chars /
+// annotation badge).
 //
-//   * `clampSidebarWidthPx(width, viewportWidth)` is the AUTO-FIT clamp.
-//     Range is `[SIDEBAR_MIN_PX, max(SIDEBAR_MIN_PX, viewportWidth -
-//     DIFF_PANE_MIN_PX)]` — the cap reserves a defensible diff-pane
-//     minimum (600 px: line numbers + gutter + indent + readable code
-//     width). Auto-fit cannot squeeze the diff below this floor.
-//
-//   * `clampSidebarWidthManualPx(width, viewportWidth)` is the wider
-//     clamp used by the user-explicit drag handle. Range is
-//     `[SIDEBAR_MIN_PX, max(SIDEBAR_MIN_PX, viewportWidth -
-//     SIDEBAR_MIN_PX)]` — an explicit user gesture honors only the
-//     hard floor on the diff side (symmetric with the sidebar's floor).
-//     Manual drag can squeeze the diff below `DIFF_PANE_MIN_PX`;
-//     auto-fit cannot. Same semantics as the TUI's `[`/`]` keys.
+//   * `clampSidebarWidthPx` / `clampSidebarWidthManualPx` thin-wrap the
+//     core helpers with the web's px constants. Auto-fit reserves
+//     `DIFF_PANE_MIN_PX` for the diff pane (600 px: line numbers +
+//     gutter + indent + readable code width); manual drag only the
+//     symmetric hard floor `SIDEBAR_MIN_PX`.
 //
 //   * `computeAutoFitWidthPx(rows, opts)` walks the visible rows, takes
 //     the widest row's total fixed cost + character-measured displayName
@@ -29,13 +26,11 @@ import type { BundleFile } from "./types.js";
 // next tour switch re-runs auto-fit and the manual override does not
 // carry over. Mirrors the TUI.
 //
-// Why pixel-based rather than a shared core helper? The TUI's
-// `fileRowFixedCost` couples to `sidebar-row-label`'s indent + caret +
-// badge constants (cols); the web's equivalent couples to padding-left
-// + icon-size + gap (px). Lifting both into a single parameterised
-// helper would require threading a units-aware indent spec through
-// either surface — more invasive than the duplication. The math is
-// documented in parallel.
+// The row-cost helpers (`fileRowFixedPx` / `folderRowFixedPx`) stay
+// per-surface: the TUI's equivalents couple to col-unit indent / caret /
+// badge constants, the web's to padding-left + icon-size + gap in px.
+// Threading a units-aware indent spec through both would be more
+// invasive than the row-cost duplication solves.
 
 export const SIDEBAR_MIN_PX = 240;
 export const SIDEBAR_DEFAULT_PX = 280;
@@ -71,16 +66,14 @@ export function clampSidebarWidthPx(
   width: number,
   viewportWidth: number,
 ): number {
-  const cap = Math.max(SIDEBAR_MIN_PX, viewportWidth - DIFF_PANE_MIN_PX);
-  return Math.max(SIDEBAR_MIN_PX, Math.min(cap, width));
+  return clampPaneWidth(width, viewportWidth, DIFF_PANE_MIN_PX, SIDEBAR_MIN_PX);
 }
 
 export function clampSidebarWidthManualPx(
   width: number,
   viewportWidth: number,
 ): number {
-  const cap = Math.max(SIDEBAR_MIN_PX, viewportWidth - SIDEBAR_MIN_PX);
-  return Math.max(SIDEBAR_MIN_PX, Math.min(cap, width));
+  return clampPaneWidthManual(width, viewportWidth, SIDEBAR_MIN_PX);
 }
 
 // Fixed pixel cost of a row's decorations (everything but the
