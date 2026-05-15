@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { waitForLog } from "../_helpers/wait-for-file.js";
 
 const execP = promisify(execFile);
 const BUN = "bun";
@@ -185,8 +186,8 @@ describe("POST /api/tours/:id/open-in-editor — happy path", () => {
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(true);
     expect(data.message).toBe("Opened hello.txt:1");
-    // Wait for the fake-editor's argv write to land on disk.
-    await new Promise((r) => setTimeout(r, 100));
+    // Poll until the fake-editor's argv write lands on disk (issue #370).
+    await waitForLog(handle.logPath);
     const argv = (await readFile(handle.logPath, "utf8")).trim().split("\n");
     // Unknown-binary default: `${file}:${line}` as a single arg.
     // realpath collapses macOS's /var → /private/var symlink so the
@@ -230,7 +231,9 @@ describe("POST /api/tours/:id/open-in-editor — file not in tour diff", () => {
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(false);
     expect(data.message).toBe("o: not-in-tour.txt not in tour diff");
-    await new Promise((r) => setTimeout(r, 50));
+    // Grace period for the (non-)spawn — issue #370 keeps this site's
+    // before/after shape but uses a longer wait than the old 50ms.
+    await new Promise((r) => setTimeout(r, 200));
     expect(await logSize(handle.logPath)).toBe(before);
   });
 
@@ -289,7 +292,9 @@ describe("POST /api/tours/:id/open-in-editor — terminal editor refused (409)",
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(false);
     expect(data.message).toBe("o: terminal editor — open from TUI instead");
-    await new Promise((r) => setTimeout(r, 50));
+    // Grace period for the (non-)spawn — issue #370 keeps this site's
+    // before/after shape but uses a longer wait than the old 50ms.
+    await new Promise((r) => setTimeout(r, 200));
     // No spawn happened; the fake-bin log is unchanged.
     expect(await logSize(handle.logPath)).toBe(before);
   });

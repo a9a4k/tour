@@ -8,6 +8,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Spawn integration tests no longer race the fake-editor argv-log
+  flush (issue #370).** Six call sites across
+  `tests/core/editor-spawn.test.ts`,
+  `tests/integration/serve-open-in-editor.test.ts`, and
+  `tests/integration/bare-tour-editor.test.ts` previously used a fixed
+  `setTimeout(50|100)` to wait for a detached fake-editor child to
+  flush its argv log to disk; under CI load the wait expired before the
+  shell `>>` redirection had flushed and closed the file, producing
+  intermittent ENOENT or empty-log false negatives. A shared
+  `tests/_helpers/wait-for-file.ts` helper now polls until the log
+  reaches a non-empty state (or a caller-supplied byte threshold)
+  before the assertion proceeds, with a generous overall timeout and a
+  path-bearing error on miss. Test-only change — no production code
+  under `src/` was touched.
+
+  Issue: #370
+
 - **`tour` commands now resolve `.tour/` from the enclosing repo root,
   not `process.cwd()` (issue #369).** Pre-fix, every subcommand
   (`create`, `serve`, `tui`, `list`, `show`, `close`, `delete`, `prune`,
