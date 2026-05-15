@@ -68,3 +68,19 @@ CONTEXT.md glossary entries flip (this commit). ADRs 0029 + 0030 land (this comm
 - **Footer legend update is atomic.** `core/footer-hints.ts` is the single edit point. TUI and webapp legends flip together; the shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `s`, `L`, `t`) cannot drift between surfaces (ADR 0028's lift-to-core contract).
 - **No JSON wire-format change.** Agents that parse `tour comment --json` output get the same record shape (`{ id, file, side, line_start, line_end, body, author, author_kind, created_at, replies_to? }`) as `tour annotate --json` does today. The `kind: "reply" | "top-level"` discriminator is unchanged.
 - **`a` becomes a no-op on the TUI**, not an alias. Pressing `a` after the cutover dispatches `noop` with no footer status. The mnemonic clears; no half-state.
+
+## Stage B addendum
+
+Recorded after Stage A landed and Stage B kickoff was approved.
+
+### Intent names flip in Stage B
+
+The keymap dispatchers emit string-typed intents that the App shell switches on. After Stage A, four of these still carry the old vocabulary: `next-annotation`, `prev-annotation` (TUI) and `nav-next-annotation`, `nav-prev-annotation` (webapp). They flip in Stage B to `next-comment`, `prev-comment`, `nav-next-comment`, `nav-prev-comment` respectively. The rename is atomic across the keymap union type, the dispatcher's return arm, the App shell's switch case, and any tests asserting on the intent string — all four points must move in one commit so the typechecker stays green. No behavioural change; identifier-only.
+
+### `AnnotationSide` is not a code identifier — only an ADR-prose artefact
+
+ADR 0001 documented Pierre's external contract under the name `AnnotationSide`. Tour's actual source code never adopted that name — the type is declared as `Side = "additions" | "deletions"` in the files that need it, and the persisted field is just `side`. So Stage B has no `AnnotationSide` rename work in code; the only occurrences are in ADR 0001's text and ADR 0029's own framing, both of which stay as historical record per this ADR's "ADRs stay as historical record" decision above.
+
+### `annotations.jsonl` migration: read-fallback stays forever
+
+The on-disk filename rename (Slice B-disk) writes new state to `comments.jsonl` and renames `annotations.jsonl → comments.jsonl` on first write to any Tour folder that still has the old file. The reader's fallback path — `read comments.jsonl, else read annotations.jsonl` — is approved to stay in the codebase indefinitely (≈3 LoC). No release ever drops the fallback. The cost of carrying it is trivial relative to the cost of a forced migration step or a hard cutover that breaks existing `.tour/` dirs in the wild.
