@@ -35,6 +35,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`n` / `p` smooth-scrolls the target Comment card to centre on both
+  surfaces (issue #348, ADR 0011 Revisions 2026-05-15).** Every
+  comment-jump frames the card mid-viewport with a perceptible tween
+  — TUI via `animatedCenterChildInView`, webapp via `scrollIntoView({
+  behavior: "smooth", block: "center" })`. Adjacent landings keep a
+  predictable focal point; the smooth motion conveys travel direction
+  between cards. Mashing `n n n n` converges on the last card without
+  queueing animations on either surface (TUI's `animatedScrollTo`
+  cancels any in-flight tween at the start of each call; webapps
+  inherit browser-native smooth-scroll interruption). The
+  `scrollCursorTarget` intent now carries `placement` *and* `behavior`
+  (`"instant" | "smooth"`) as independent axes; the adapters take
+  both and dispatch to the matching helper. Default for unspecified
+  `behavior` preserves today's mapping (`center → instant, nearest →
+  smooth`), so call sites that haven't migrated keep working.
+  Click and `j` / `k` are unchanged (spatial gestures stay on
+  `nearest + smooth`); fresh landings (materialize / URL `?ann=`
+  restore / `r` / `s` auto-recall / post-submit scroll) stay on
+  `center + instant`. Reverses the placement half of commit `4900d4c`;
+  the other half (sidebar file-click parity) stands. PRD #348.
+
+  Issue: #348
+
 - **TUI keybinding: `Tab` / `Shift-Tab` removed; `Esc` now toggles
   between sidebar and diff (modal-unwind takes precedence). Folder-row
   `Enter` toggles the folder (issue #345, PRD #343, ADR 0031).** The

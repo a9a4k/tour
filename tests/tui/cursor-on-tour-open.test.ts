@@ -205,6 +205,7 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
       type: "scrollCursorTarget",
       target: { kind: "card", commentId: "a1" },
       placement: "center",
+      behavior: "instant",
     });
   });
 });

@@ -5,6 +5,7 @@ import {
   isBundleResolved,
   type ComposerTarget,
   type ScrollCursorTarget,
+  type ScrollMotion,
   type ScrollPlacement,
   type TourSessionStore,
 } from "./tour-session.js";
@@ -41,8 +42,12 @@ export interface TourSessionAdapter {
   writeComment(tourId: string, input: WriteCommentInput): Promise<Comment>;
   requestReply(args: { tourId: string; commentId: string }): Promise<void>;
   subscribeTourEvents(tourId: string, handler: TourEventHandler): () => void;
-  scrollToCard(id: string, mode: ScrollPlacement): void;
-  scrollToRow(anchor: ScrollRowAnchor, mode: ScrollPlacement): void;
+  scrollToCard(id: string, placement: ScrollPlacement, behavior: ScrollMotion): void;
+  scrollToRow(
+    anchor: ScrollRowAnchor,
+    placement: ScrollPlacement,
+    behavior: ScrollMotion,
+  ): void;
   /** Issue #320: pulls an in-flight Composer back into view (scroll +
    *  textarea focus). Dispatched by `composer.recall`. */
   scrollToComposer(target: ComposerTarget): void;
@@ -95,13 +100,20 @@ export class TourSessionRuntime {
           return;
         case "scrollCursorTarget":
           if (intent.target.kind === "card") {
-            this.adapter.scrollToCard(intent.target.commentId, intent.placement);
+            this.adapter.scrollToCard(
+              intent.target.commentId,
+              intent.placement,
+              intent.behavior,
+            );
           } else {
-            this.adapter.scrollToRow(intent.target, intent.placement);
+            this.adapter.scrollToRow(intent.target, intent.placement, intent.behavior);
           }
           return;
         case "scrollToComment":
-          this.adapter.scrollToCard(intent.commentId, "center");
+          // Post-submit landing (composer.submitted → scrollToComment):
+          // fresh card materialises into view; always center + instant
+          // (PRD #348 — same shape as cursor.materialize).
+          this.adapter.scrollToCard(intent.commentId, "center", "instant");
           return;
         case "scrollToComposer":
           this.adapter.scrollToComposer(intent.target);

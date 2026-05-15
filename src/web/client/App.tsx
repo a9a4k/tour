@@ -470,6 +470,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // (issue #246), so this works in snapshot-lost mode too (though
       // selectSidebarFile is then a no-op since the tree slice isn't
       // available).
+      //
+      // Issue #348: n/p frames the card mid-viewport with a smooth tween
+      // — predictable focal point + perceptible travel distance for
+      // adjacent comments. The webapp adapter realises this via
+      // `scrollIntoView({ behavior: "smooth", block: "center" })`;
+      // browser-native smooth-scroll interrupts a prior tween on each
+      // new call, so rapid `n n n n` sequences converge on the last
+      // target without queueing.
       const topLevel = view.nav.topLevel;
       const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
       if (!target) return;
@@ -482,7 +490,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         value: false,
       });
       revealFileAncestors(ann.file);
-      store.dispatch({ type: "cursor.set", anchor: target });
+      store.dispatch({
+        type: "cursor.set",
+        anchor: target,
+        placement: "center",
+        behavior: "smooth",
+      });
     },
     [cursor, view, revealFileAncestors, store],
   );
@@ -514,9 +527,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (action.kind === "noop") return;
     // Fresh landing (URL `?ann=` restore or stale-fallback to first
     // comment): cursor.set carries `placement: "center"` so the
-    // scrollCursorTarget intent frames the card mid-viewport. In-flight
-    // moves (n/p, j/k, click) omit placement and fall back to the
-    // reducer's `nearest` default.
+    // scrollCursorTarget intent frames the card mid-viewport. Behavior
+    // defaults to `instant` (the reducer's `center → instant` mapping
+    // per issue #348) — there's no prior frame of reference to preserve.
+    // `j`/`k`/click sites omit placement and fall back to `nearest +
+    // smooth`; `n`/`p` sites pass `center + smooth` explicitly.
     store.dispatch({
       type: "cursor.set",
       anchor: cursorFromComment(action.target, preferredSideOf(cursor)),

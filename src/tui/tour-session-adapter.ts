@@ -10,6 +10,7 @@ import type { ReplyLock } from "../core/reply-lock.js";
 import type { Comment } from "../core/types.js";
 import {
   isBundleResolved,
+  type ScrollMotion,
   type ScrollPlacement,
   type TourSessionStore,
 } from "../core/tour-session.js";
@@ -23,6 +24,7 @@ import {
 } from "../core/file-tree.js";
 import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
 import {
+  animatedCenterChildInView,
   animatedScrollChildIntoView,
   SMOOTH_SCROLL_DEFAULT_DURATION_MS,
 } from "./smooth-scroll.js";
@@ -79,36 +81,50 @@ export function createTuiTourSessionAdapter(
     setTimeout(fn, 0);
   }
 
-  // Issue #296: placement-driven helper choice, anchor-kind-agnostic.
-  // `center` → instant frame (fresh landings: cursor materialize, URL
-  // restore, tour-switch, send-to-agent recall). `nearest` → in-flight
-  // navigation (`j`/`k`/`n`/`p`/click-to-position), always animated.
-  // `opts.animate === false` is the caller-level escape hatch (used by
-  // the post-submit retry-budget below — issue #301) that forces the
-  // nearest branch to write instantly without spawning a tween.
+  // Issue #348: placement and motion are independent axes. The adapter
+  // takes both and dispatches to the matching helper — `center + smooth`
+  // and `nearest + instant` are now first-class combinations.
+  //
+  //   placement \ motion │ instant                       │ smooth
+  //   ───────────────────┼───────────────────────────────┼────────────────────────────
+  //   center             │ centerChildInView             │ animatedCenterChildInView
+  //   nearest            │ animatedScrollChildIntoView   │ animatedScrollChildIntoView
+  //                      │ with `{ animate: false }`     │
+  //
+  // `nearest + instant` is exercised by the post-submit retry-budget
+  // loop (issue #301) — the caller threads `forceInstant = true` so the
+  // budgeted retry that lands a successful scroll doesn't spawn a tween
+  // every macrotask. All other sites pick motion from the intent.
   function scrollByPlacement(
     sb: ScrollBoxRenderable,
     targetId: string,
-    mode: ScrollPlacement,
-    opts: { animate?: boolean } = {},
+    placement: ScrollPlacement,
+    behavior: ScrollMotion,
+    opts: { forceInstant?: boolean } = {},
   ): void {
-    if (mode === "center") {
-      centerChildInView(sb, targetId);
+    const animate = opts.forceInstant ? false : behavior === "smooth";
+    if (placement === "center") {
+      if (animate) {
+        animatedCenterChildInView(sb, targetId);
+      } else {
+        centerChildInView(sb, targetId);
+      }
     } else {
-      animatedScrollChildIntoView(sb, targetId, opts);
+      animatedScrollChildIntoView(sb, targetId, { animate });
     }
   }
 
   function scrollCardOnce(
     id: string,
-    mode: ScrollPlacement,
-    opts: { animate?: boolean } = {},
+    placement: ScrollPlacement,
+    behavior: ScrollMotion,
+    opts: { forceInstant?: boolean } = {},
   ): boolean {
     const sb = deps.diffScrollBoxRef.current;
     if (!sb) return false;
     const targetId = `comment-${id}`;
     if (!sb.content.findDescendantById(targetId)) return false;
-    scrollByPlacement(sb, targetId, mode, opts);
+    scrollByPlacement(sb, targetId, placement, behavior, opts);
     return true;
   }
 
@@ -142,7 +158,7 @@ export function createTuiTourSessionAdapter(
       watcher.start();
       return () => watcher.stop();
     },
-    scrollToCard: (id, mode) => {
+    scrollToCard: (id, placement, behavior) => {
       // Issue #302: signal pending while the scroll-into-view animation
       // runs so the App can suppress the footer-hint off-screen suffix
       // (the probe reads `sb.scrollTop` and the imperative tween that
@@ -154,19 +170,18 @@ export function createTuiTourSessionAdapter(
       const settle = (): void => {
         setTimeout(() => deps.setScrollPending(false), SMOOTH_SCROLL_DEFAULT_DURATION_MS + 50);
       };
-      // Issue #301: only the first attempt honors the placement's
-      // animate default — once we're retrying (target absent on the
-      // first try), we're inside the post-submit "wait for DOM" loop,
-      // not an in-flight gesture. Pass `animate: false` on retries so
-      // the eventual successful write lands instantly instead of
-      // spawning a tween per attempt that gets cancelled by the next
-      // attempt's macrotask. `n`/`p` to an existing card hits the
-      // first-attempt path (target already in DOM) and keeps its
-      // animated motion.
+      // Issue #301: only the first attempt honors the intent's motion —
+      // once we're retrying (target absent on the first try), we're
+      // inside the post-submit "wait for DOM" loop, not an in-flight
+      // gesture. Force-instant on retries so the eventual successful
+      // write lands instantly instead of spawning a tween per attempt
+      // that gets cancelled by the next attempt's macrotask. `n`/`p` to
+      // an existing card hits the first-attempt path (target already in
+      // DOM) and keeps its animated motion.
       const attempt = (remaining: number, isRetry: boolean): void => {
         scheduleScroll(() => {
-          const opts = isRetry ? { animate: false } : {};
-          if (scrollCardOnce(id, mode, opts)) {
+          const opts = isRetry ? { forceInstant: true } : {};
+          if (scrollCardOnce(id, placement, behavior, opts)) {
             settle();
             return;
           }
@@ -185,12 +200,16 @@ export function createTuiTourSessionAdapter(
       };
       attempt(POST_SUBMIT_SCROLL_RETRY_BUDGET, false);
     },
-    scrollToRow: (anchor: ScrollRowAnchor, mode: ScrollPlacement) => {
+    scrollToRow: (
+      anchor: ScrollRowAnchor,
+      placement: ScrollPlacement,
+      behavior: ScrollMotion,
+    ) => {
       scheduleScroll(() => {
         const sb = deps.diffScrollBoxRef.current;
         if (!sb) return;
         const targetId = `diff-row-${anchor.file}-${anchor.side}-${anchor.lineNumber}`;
-        scrollByPlacement(sb, targetId, mode);
+        scrollByPlacement(sb, targetId, placement, behavior);
       });
     },
     scrollToComposer: (target) => {

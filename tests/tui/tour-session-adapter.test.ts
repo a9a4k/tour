@@ -115,17 +115,24 @@ beforeEach(() => {
 // (CardAnchor → center, RowAnchor → nearest). The reducer's
 // `scrollCursorTarget` intent already carries a `placement` discriminator
 // (`"nearest"` for in-flight `n`/`p`/`j`/`k`/click, `"center"` for fresh
-// landings — materialize / URL restore / send-to-agent recall). The migration
-// moves the choice from anchor kind to `placement`, anchor-kind-agnostic
-// across both surfaces.
+// landings — materialize / URL restore / send-to-agent recall).
 //
-// The `nearest` branch always animates via `animatedScrollChildIntoView`
-// (which instantiates a `createTimeline` via `@opentui/core`). These tests
-// pin the adapter's placement → scroll-helper mapping: `center` →
-// `sb.scrollTo` (instant); `nearest` → animated path (timeline created).
+// Issue #348: `placement` and `behavior` are now independent axes. The
+// adapter dispatches to the matching helper for each (placement,
+// behavior) combination:
+//   center  + instant → centerChildInView          (sb.scrollTo, no timeline)
+//   center  + smooth  → animatedCenterChildInView  (timeline)
+//   nearest + smooth  → animatedScrollChildIntoView (timeline)
+//   nearest + instant → animatedScrollChildIntoView with animate:false
+//                       (instant write via sb.scrollTop = …, no timeline)
+//
+// `nearest + instant` is the post-submit retry-budget escape hatch
+// (issue #301); other combinations are dispatched by the reducer
+// (center/instant = fresh landing; center/smooth = n/p; nearest/smooth
+// = j/k + click).
 
-describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper choice", () => {
-  it("placement: 'center' calls centerChildInView (sb.scrollTo) on the card", async () => {
+describe("createTuiTourSessionAdapter.scrollToCard — (placement, behavior) helper choice", () => {
+  it("center + instant calls centerChildInView (sb.scrollTo) — fresh landing path", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
       scrollTop: 0,
@@ -133,14 +140,14 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
       child: { id: "comment-ann1", y: 100, height: 4 },
     });
     const adapter = makeAdapter(sb);
-    adapter.scrollToCard("ann1", "center");
+    adapter.scrollToCard("ann1", "center", "instant");
     await flushMacrotask();
     expect(sb.scrollTo).toHaveBeenCalledTimes(1);
     expect(sb.scrollBy).not.toHaveBeenCalled();
     expect(createTimelineSpy).not.toHaveBeenCalled();
   });
 
-  it("placement: 'nearest' takes the animated path (timeline instantiated) on the off-viewport card", async () => {
+  it("center + smooth takes the animated path (timeline instantiated) — n/p comment-walking", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
       scrollTop: 0,
@@ -148,7 +155,22 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
       child: { id: "comment-ann1", y: 100, height: 4 },
     });
     const adapter = makeAdapter(sb);
-    adapter.scrollToCard("ann1", "nearest");
+    adapter.scrollToCard("ann1", "center", "smooth");
+    await flushMacrotask();
+    expect(createTimelineSpy).toHaveBeenCalledTimes(1);
+    expect(sb.scrollTo).not.toHaveBeenCalled();
+    expect(sb.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it("nearest + smooth takes the animated path (timeline instantiated) — j/k + click", async () => {
+    const sb = makeScrollBox({
+      viewportHeight: 20,
+      scrollTop: 0,
+      scrollHeight: 500,
+      child: { id: "comment-ann1", y: 100, height: 4 },
+    });
+    const adapter = makeAdapter(sb);
+    adapter.scrollToCard("ann1", "nearest", "smooth");
     await flushMacrotask();
     expect(createTimelineSpy).toHaveBeenCalledTimes(1);
     expect(sb.scrollTo).not.toHaveBeenCalled();
@@ -156,8 +178,8 @@ describe("createTuiTourSessionAdapter.scrollToCard — placement-driven helper c
   });
 });
 
-describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper choice", () => {
-  it("placement: 'center' centers the row (sb.scrollTo) — matches the webapp's center semantics", async () => {
+describe("createTuiTourSessionAdapter.scrollToRow — (placement, behavior) helper choice", () => {
+  it("center + instant centers the row instantly", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
       scrollTop: 0,
@@ -168,6 +190,7 @@ describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper ch
     adapter.scrollToRow(
       { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
       "center",
+      "instant",
     );
     await flushMacrotask();
     expect(sb.scrollTo).toHaveBeenCalledTimes(1);
@@ -175,7 +198,26 @@ describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper ch
     expect(createTimelineSpy).not.toHaveBeenCalled();
   });
 
-  it("placement: 'nearest' takes the animated path (timeline instantiated) on an off-viewport row", async () => {
+  it("center + smooth tweens the row to centre", async () => {
+    const sb = makeScrollBox({
+      viewportHeight: 20,
+      scrollTop: 0,
+      scrollHeight: 500,
+      child: { id: "diff-row-src/a.ts-additions-7", y: 100, height: 1 },
+    });
+    const adapter = makeAdapter(sb);
+    adapter.scrollToRow(
+      { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
+      "center",
+      "smooth",
+    );
+    await flushMacrotask();
+    expect(createTimelineSpy).toHaveBeenCalledTimes(1);
+    expect(sb.scrollTo).not.toHaveBeenCalled();
+    expect(sb.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it("nearest + smooth takes the animated path on an off-viewport row", async () => {
     const sb = makeScrollBox({
       viewportHeight: 20,
       scrollTop: 0,
@@ -186,6 +228,7 @@ describe("createTuiTourSessionAdapter.scrollToRow — placement-driven helper ch
     adapter.scrollToRow(
       { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
       "nearest",
+      "smooth",
     );
     await flushMacrotask();
     expect(createTimelineSpy).toHaveBeenCalledTimes(1);
@@ -200,6 +243,7 @@ describe("createTuiTourSessionAdapter — null scrollbox ref", () => {
     adapter.scrollToRow(
       { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
       "center",
+      "instant",
     );
     await flushMacrotask();
     // No throw, no scroll — the absent ref is the pre-mount guard.
@@ -257,11 +301,11 @@ describe("createTuiTourSessionAdapter.scrollToCard — post-submit retry path (i
       },
     };
     const adapter = makeAdapter(sb as unknown as FakeScrollBox);
-    adapter.scrollToCard("ann1", "nearest");
+    adapter.scrollToCard("ann1", "nearest", "smooth");
     // Flush twice — first attempt fires (target missing), then the retry.
     await flushMacrotask();
     await flushMacrotask();
-    // The retry threaded `animate: false` → no Timeline.
+    // The retry forced instant → no Timeline (issue #348 axis decoupling).
     expect(createTimelineSpy).not.toHaveBeenCalled();
     // The landing happened: nearest-aligned scrollTop is
     // (child.y + child.height) - viewport.height = 104 - 20 = 84.
@@ -290,7 +334,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (is
     });
     const events: boolean[] = [];
     const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
-    adapter.scrollToCard("ann1", "nearest");
+    adapter.scrollToCard("ann1", "nearest", "smooth");
     // The signal must land before the macrotask flushes — the probe runs
     // in the same React render cycle as the cursor change that triggered
     // the scroll, so suppression has to be live by then.
@@ -308,7 +352,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (is
       });
       const events: boolean[] = [];
       const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
-      adapter.scrollToCard("ann1", "nearest");
+      adapter.scrollToCard("ann1", "nearest", "smooth");
       expect(events).toEqual([true]);
       // Flush the scheduleScroll macrotask so the scroll fires.
       await vi.advanceTimersByTimeAsync(0);
@@ -334,7 +378,7 @@ describe("createTuiTourSessionAdapter.scrollToCard — scroll-pending signal (is
       });
       const events: boolean[] = [];
       const adapter = makeAdapter(sb, { setScrollPending: (p) => events.push(p) });
-      adapter.scrollToCard("ann1", "nearest");
+      adapter.scrollToCard("ann1", "nearest", "smooth");
       expect(events).toEqual([true]);
       // Drain all 21 macrotasks (initial + 20 retries). Each retry
       // re-schedules via setTimeout(0); advanceTimersByTimeAsync(0)

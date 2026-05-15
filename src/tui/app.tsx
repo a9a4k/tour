@@ -863,9 +863,17 @@ function App(props: AppProps) {
     // PRD #192 / ADR 0022: n/p moves the unified cursor onto the
     // comment's card directly — no synthesized row anchor. Thread
     // preferredSide so an `h`/`l` choice survives the jump (issue #200).
+    // Issue #348: n/p frames the card mid-viewport with a smooth tween
+    // — predictable focal point + perceptible travel distance for
+    // adjacent comments. Decouples placement (center) from behavior
+    // (smooth); fresh landings (materialize, URL restore, send-to-agent
+    // recall) keep their `center + instant` mapping via the reducer's
+    // default-behavior helper.
     store.dispatch({
       type: "cursor.set",
       anchor: cursorFromComment(ann, preferredSideOf(cursor)),
+      placement: "center",
+      behavior: "smooth",
     });
   };
 

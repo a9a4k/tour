@@ -14,7 +14,10 @@ import {
   type TourEventHandler,
   type TourSessionAdapter,
 } from "../../src/core/tour-session-runtime.js";
-import type { ScrollPlacement } from "../../src/core/tour-session.js";
+import type {
+  ScrollMotion,
+  ScrollPlacement,
+} from "../../src/core/tour-session.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import type { ReplyLock } from "../../src/core/reply-lock.js";
 import type { Tour, Comment } from "../../src/core/types.js";
@@ -98,8 +101,12 @@ interface FakeAdapter extends TourSessionAdapter {
   lockCalls: string[];
   writeCalls: Array<{ tourId: string; input: WriteCommentInput }>;
   requestReplyCalls: Array<{ tourId: string; commentId: string }>;
-  scrollCardCalls: Array<{ id: string; mode: ScrollPlacement }>;
-  scrollRowCalls: Array<{ anchor: ScrollRowAnchor; mode: ScrollPlacement }>;
+  scrollCardCalls: Array<{ id: string; mode: ScrollPlacement; behavior: ScrollMotion }>;
+  scrollRowCalls: Array<{
+    anchor: ScrollRowAnchor;
+    mode: ScrollPlacement;
+    behavior: ScrollMotion;
+  }>;
   scrollComposerCalls: Array<ComposerTarget>;
   scrollPickerCalls: number[];
   revealFileCalls: string[];
@@ -183,11 +190,11 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         entry.unsubscribed = true;
       };
     },
-    scrollToCard: (id, mode) => {
-      scrollCardCalls.push({ id, mode });
+    scrollToCard: (id, mode, behavior) => {
+      scrollCardCalls.push({ id, mode, behavior });
     },
-    scrollToRow: (anchor, mode) => {
-      scrollRowCalls.push({ anchor, mode });
+    scrollToRow: (anchor, mode, behavior) => {
+      scrollRowCalls.push({ anchor, mode, behavior });
     },
     scrollToComposer: (target) => {
       scrollComposerCalls.push(target);
@@ -1204,12 +1211,14 @@ describe("TourSessionRuntime", () => {
         placement: "center",
       });
 
-      expect(adapter.scrollCardCalls).toEqual([{ id: "ann1", mode: "center" }]);
+      expect(adapter.scrollCardCalls).toEqual([
+        { id: "ann1", mode: "center", behavior: "instant" },
+      ]);
       expect(adapter.scrollRowCalls).toEqual([]);
       stop();
     });
 
-    it("scrollCursorTarget intent (kind=row) → adapter.scrollToRow with the row anchor and placement", () => {
+    it("scrollCursorTarget intent (kind=row) → adapter.scrollToRow with the row anchor, placement, and behavior", () => {
       const store = storeWithTour("tour-a");
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -1230,6 +1239,7 @@ describe("TourSessionRuntime", () => {
         {
           anchor: { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
           mode: "nearest",
+          behavior: "smooth",
         },
       ]);
       expect(adapter.scrollCardCalls).toEqual([]);
@@ -1273,7 +1283,7 @@ describe("TourSessionRuntime", () => {
 
       expect(
         adapter.scrollCardCalls.filter((c) => c.id === "a-new" && c.mode === "center"),
-      ).toEqual([{ id: "a-new", mode: "center" }]);
+      ).toEqual([{ id: "a-new", mode: "center", behavior: "instant" }]);
       stop();
     });
 
@@ -1399,7 +1409,7 @@ describe("TourSessionRuntime", () => {
       // "nearest"); the auto-recall is the "center" one.
       expect(
         adapter.scrollCardCalls.filter((c) => c.id === "root" && c.mode === "center"),
-      ).toEqual([{ id: "root", mode: "center" }]);
+      ).toEqual([{ id: "root", mode: "center", behavior: "instant" }]);
       stop();
     });
 

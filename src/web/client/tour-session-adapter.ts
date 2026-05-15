@@ -8,6 +8,7 @@ import type { ReplyLock } from "../../core/reply-lock.js";
 import type { Comment } from "../../core/types.js";
 import {
   isBundleResolved,
+  type ScrollMotion,
   type ScrollPlacement,
   type TourSessionState,
   type TourSessionStore,
@@ -31,15 +32,14 @@ export interface WebTourSessionAdapterDeps {
   };
 }
 
-// Cursor-driven scroll behavior derives from the intent's placement (issue
-// #293). `nearest` is in-flight navigation (`n`/`p`, `j`/`k`, click-to-
-// position, bundle-refresh re-snap) — smooth scroll conveys travel
-// distance so adjacent landings keep spatial continuity. `center` is a
-// fresh landing (initial materialize, URL `?ann=` restore, stale fallback)
-// — instant so the target frames immediately with no prior frame of
-// reference to preserve.
-function behaviorFor(mode: ScrollPlacement): ScrollBehavior {
-  return mode === "nearest" ? "smooth" : "instant";
+// `ScrollMotion` and `ScrollPlacement` are independent axes on the
+// `scrollCursorTarget` intent (issue #348). The adapter forwards both
+// to the browser's `scrollIntoView` — placement maps to the `block`
+// option, motion to `behavior`. Browser-native smooth-scroll already
+// interrupts a prior in-flight tween on every new call, so rapid `n`/
+// `p` sequences converge on the final target without queueing.
+function browserBehaviorOf(motion: ScrollMotion): ScrollBehavior {
+  return motion === "smooth" ? "smooth" : "instant";
 }
 
 // Mirror of the view's `isFileFolded || isClassifierCollapsed` rule —
@@ -133,15 +133,19 @@ export function createWebTourSessionAdapter(
       };
       return () => evtSource.close();
     },
-    scrollToCard: (id: string, mode: ScrollPlacement) => {
+    scrollToCard: (id: string, placement: ScrollPlacement, motion: ScrollMotion) => {
       if (typeof document === "undefined") return;
       requestAnimationFrame(() => {
         deps.commentRefs.current
           .get(id)
-          ?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
+          ?.scrollIntoView({ behavior: browserBehaviorOf(motion), block: placement });
       });
     },
-    scrollToRow: (anchor: ScrollRowAnchor, mode: ScrollPlacement) => {
+    scrollToRow: (
+      anchor: ScrollRowAnchor,
+      placement: ScrollPlacement,
+      motion: ScrollMotion,
+    ) => {
       if (typeof document === "undefined") return;
       requestAnimationFrame(() => {
         const cbs = deps.callbacksRef.current;
@@ -151,7 +155,7 @@ export function createWebTourSessionAdapter(
         const cell = block.querySelector<HTMLElement>(
           `.tour-row-gutter[data-side="${anchor.side}"][data-line-number="${anchor.lineNumber}"]`,
         );
-        cell?.scrollIntoView({ behavior: behaviorFor(mode), block: mode });
+        cell?.scrollIntoView({ behavior: browserBehaviorOf(motion), block: placement });
       });
     },
     scrollToComposer: (target) => {

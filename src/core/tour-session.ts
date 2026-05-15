@@ -127,7 +127,12 @@ export type Action =
   | { type: "tourList.loading" }
   | { type: "tourList.loaded"; tours: TourSummary[] }
   | { type: "tourList.failed"; error: string }
-  | { type: "cursor.set"; anchor: Cursor; placement?: ScrollPlacement }
+  | {
+      type: "cursor.set";
+      anchor: Cursor;
+      placement?: ScrollPlacement;
+      behavior?: ScrollMotion;
+    }
   | { type: "cursor.clear" }
   | { type: "cursor.setSide"; side: "additions" | "deletions" }
   | { type: "cursor.materialize"; anchor: Cursor }
@@ -169,18 +174,39 @@ export type ScrollCursorTarget =
   | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
   | { kind: "card"; commentId: string };
 
-// `nearest`: only scroll when target is off-screen — used for `n`/`p` and
-// `j`/`k` so adjacent landings don't jolt. `center`: always frame the target
-// in the middle — used for fresh landings (initial bundle load, URL `?ann=`
-// restore, post-create scroll-to-new-card) where the user is arriving cold.
+// `ScrollPlacement` and `ScrollMotion` are independent axes on the
+// `scrollCursorTarget` intent (PRD / issue #348).
+//
+// Placement — *where* does the frame land.
+//   `nearest`: only scroll when target is off-screen — used for `j`/`k`
+//   step motion and click (spatial gestures).
+//   `center`: always frame the target mid-viewport — used for `n`/`p`
+//   comment-walking and fresh landings (cursor materialize, URL `?ann=`
+//   restore, `r`/`s` auto-recall).
+//
+// Motion — *how* the frame gets there.
+//   `instant`: write the scroll position in one frame — used for fresh
+//   landings where there's no prior frame of reference to preserve.
+//   `smooth`: animate the scroll so the eye tracks the travel distance —
+//   used for in-flight navigation gestures (`n`/`p`, `j`/`k`, click).
+//
+// Default mapping when a `cursor.set` dispatch omits `behavior`:
+// `center → instant, nearest → smooth`. This preserves today's wiring
+// for sites that haven't migrated.
 export type ScrollPlacement = "nearest" | "center";
+export type ScrollMotion = "instant" | "smooth";
 
 export type Intent =
   | { type: "loadTour"; tourId: string }
   | { type: "scrollPickerRow"; idx: number }
   | { type: "mirrorUrl"; tourId: string }
   | { type: "revalidateCursor" }
-  | { type: "scrollCursorTarget"; target: ScrollCursorTarget; placement: ScrollPlacement }
+  | {
+      type: "scrollCursorTarget";
+      target: ScrollCursorTarget;
+      placement: ScrollPlacement;
+      behavior: ScrollMotion;
+    }
   | { type: "selectSidebarFile"; file: string }
   | { type: "mirrorAnnUrl"; commentId: string | null }
   | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
@@ -368,8 +394,11 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: NO_INTENTS,
       };
 
-    case "cursor.set":
-      return setCursor(state, action.anchor, action.placement ?? "nearest");
+    case "cursor.set": {
+      const placement = action.placement ?? "nearest";
+      const behavior = action.behavior ?? defaultBehaviorFor(placement);
+      return setCursor(state, action.anchor, placement, behavior);
+    }
 
     case "cursor.clear": {
       if (state.cursor === null) return { state, intents: NO_INTENTS };
@@ -415,7 +444,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // anchor. First-landing uses `center` placement: the surface frames
       // the cursor mid-viewport because the user is arriving cold.
       if (state.cursor !== null) return { state, intents: NO_INTENTS };
-      return setCursor(state, action.anchor, "center");
+      return setCursor(state, action.anchor, "center", "instant");
 
     case "expansion.expand":
       return withExpansion(
@@ -646,6 +675,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
             type: "scrollCursorTarget",
             target: { kind: "card", commentId: state.cursor.commentId },
             placement: "center",
+            behavior: "instant",
           },
           { type: "requestReply", tourId: action.tourId, commentId: action.commentId },
         ],
@@ -718,9 +748,10 @@ function setCursor(
   state: TourSessionState,
   next: Cursor,
   placement: ScrollPlacement,
+  behavior: ScrollMotion,
 ): ReduceResult {
   const intents: Intent[] = [
-    { type: "scrollCursorTarget", target: scrollTargetOf(next), placement },
+    { type: "scrollCursorTarget", target: scrollTargetOf(next), placement, behavior },
   ];
   const prevFile = isRowAnchor(state.cursor) ? state.cursor.file : null;
   const nextFile = isRowAnchor(next) ? next.file : null;
@@ -738,6 +769,17 @@ function setCursor(
 function scrollTargetOf(c: Cursor): ScrollCursorTarget {
   if (c.kind === "card") return { kind: "card", commentId: c.commentId };
   return { kind: "row", file: c.file, side: c.side, lineNumber: c.lineNumber };
+}
+
+// Default motion when a `cursor.set` dispatch omits `behavior` (issue
+// #348). Preserves today's wiring: fresh landings (`center`) write
+// instantly with no prior frame of reference to preserve; in-flight
+// gestures (`nearest`) animate so the eye tracks the travel distance.
+// Sites that want the off-diagonal combinations (smooth-to-center for
+// `n`/`p`, instant-to-nearest for the TUI's post-submit retry budget)
+// pass `behavior` explicitly.
+function defaultBehaviorFor(placement: ScrollPlacement): ScrollMotion {
+  return placement === "center" ? "instant" : "smooth";
 }
 
 // --- Selectors --------------------------------------------------------------

@@ -56,11 +56,11 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-// Issue #293. Cursor-driven scroll behavior derives from the intent's
-// `placement` discriminator. `nearest` (n/p/j/k/click-to-position) →
-// `behavior: "smooth"` so travel distance is perceptible; `center`
-// (cursor materialize / URL ?ann= restore / stale-fallback) →
-// `behavior: "instant"` so fresh landings frame immediately.
+// Issue #293 / #348. `placement` and `behavior` are independent axes on
+// the `scrollCursorTarget` intent. The adapter forwards both to
+// `scrollIntoView` — placement → `block`, behavior → `behavior`. All
+// four (placement, behavior) combinations are exercised below; the
+// runtime + reducer drive which combination fires per gesture.
 
 function flushRaf(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -78,36 +78,62 @@ function makeRowDom(): { fileBlock: HTMLElement; scrollSpy: ReturnType<typeof vi
   return { fileBlock, scrollSpy };
 }
 
-describe("createWebTourSessionAdapter.scrollToCard — placement-driven behavior (Issue #293)", () => {
-  it("scrolls smoothly when placement is 'nearest' (n/p/j/k in-flight navigation)", async () => {
+describe("createWebTourSessionAdapter.scrollToCard — (placement, behavior) forwarding (Issue #293 / #348)", () => {
+  it("nearest + smooth → scrollIntoView({ behavior: 'smooth', block: 'nearest' }) — j/k + click", async () => {
     const card = document.createElement("div");
     const scrollSpy = vi.fn();
     card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
     const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
 
-    adapter.scrollToCard("ann1", "nearest");
+    adapter.scrollToCard("ann1", "nearest", "smooth");
     await flushRaf();
 
     expect(scrollSpy).toHaveBeenCalledTimes(1);
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" });
   });
 
-  it("scrolls instantly when placement is 'center' (fresh landing — initial / URL restore / stale fallback)", async () => {
+  it("center + instant → scrollIntoView({ behavior: 'instant', block: 'center' }) — fresh landing", async () => {
     const card = document.createElement("div");
     const scrollSpy = vi.fn();
     card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
     const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
 
-    adapter.scrollToCard("ann1", "center");
+    adapter.scrollToCard("ann1", "center", "instant");
     await flushRaf();
 
     expect(scrollSpy).toHaveBeenCalledTimes(1);
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "instant", block: "center" });
   });
+
+  it("center + smooth → scrollIntoView({ behavior: 'smooth', block: 'center' }) — n/p comment-walking (#348)", async () => {
+    const card = document.createElement("div");
+    const scrollSpy = vi.fn();
+    card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
+    const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
+
+    adapter.scrollToCard("ann1", "center", "smooth");
+    await flushRaf();
+
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+  });
+
+  it("nearest + instant → scrollIntoView({ behavior: 'instant', block: 'nearest' }) — off-diagonal combination", async () => {
+    const card = document.createElement("div");
+    const scrollSpy = vi.fn();
+    card.scrollIntoView = scrollSpy as unknown as Element["scrollIntoView"];
+    const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
+
+    adapter.scrollToCard("ann1", "nearest", "instant");
+    await flushRaf();
+
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: "instant", block: "nearest" });
+  });
 });
 
-describe("createWebTourSessionAdapter.scrollToRow — placement-driven behavior (Issue #293)", () => {
-  it("scrolls the gutter cell smoothly when placement is 'nearest' (j/k off-screen target)", async () => {
+describe("createWebTourSessionAdapter.scrollToRow — (placement, behavior) forwarding (Issue #293 / #348)", () => {
+  it("nearest + smooth scrolls the gutter cell smoothly — j/k off-screen target", async () => {
     const { fileBlock, scrollSpy } = makeRowDom();
     const adapter = makeAdapter({
       callbacks: {
@@ -120,6 +146,7 @@ describe("createWebTourSessionAdapter.scrollToRow — placement-driven behavior 
     adapter.scrollToRow(
       { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
       "nearest",
+      "smooth",
     );
     await flushRaf();
 
@@ -127,7 +154,7 @@ describe("createWebTourSessionAdapter.scrollToRow — placement-driven behavior 
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" });
   });
 
-  it("scrolls the gutter cell instantly when placement is 'center'", async () => {
+  it("center + instant scrolls the gutter cell to the centre instantly", async () => {
     const { fileBlock, scrollSpy } = makeRowDom();
     const adapter = makeAdapter({
       callbacks: {
@@ -140,11 +167,33 @@ describe("createWebTourSessionAdapter.scrollToRow — placement-driven behavior 
     adapter.scrollToRow(
       { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
       "center",
+      "instant",
     );
     await flushRaf();
 
     expect(scrollSpy).toHaveBeenCalledTimes(1);
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "instant", block: "center" });
+  });
+
+  it("center + smooth tweens the gutter cell to centre — RowAnchor n/p variant", async () => {
+    const { fileBlock, scrollSpy } = makeRowDom();
+    const adapter = makeAdapter({
+      callbacks: {
+        findFileBlock: () => fileBlock,
+        setSelectedFile: () => {},
+        revealFileAncestors: () => {},
+      },
+    });
+
+    adapter.scrollToRow(
+      { kind: "row", file: "src/a.ts", side: "additions", lineNumber: 7 },
+      "center",
+      "smooth",
+    );
+    await flushRaf();
+
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
   });
 });
 

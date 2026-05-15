@@ -605,6 +605,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 7 },
         placement: "nearest",
+        behavior: "smooth",
       },
       { type: "selectSidebarFile", file: "foo.ts" },
     ]);
@@ -624,6 +625,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 5 },
         placement: "nearest",
+        behavior: "smooth",
       },
     ]);
   });
@@ -680,6 +682,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "card", commentId: "ann-7" },
         placement: "nearest",
+        behavior: "smooth",
       },
       { type: "mirrorAnnUrl", commentId: "ann-7" },
     ]);
@@ -699,6 +702,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 4 },
         placement: "nearest",
+        behavior: "smooth",
       },
       { type: "selectSidebarFile", file: "foo.ts" },
       { type: "mirrorAnnUrl", commentId: null },
@@ -719,6 +723,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "card", commentId: "ann-2" },
         placement: "nearest",
+        behavior: "smooth",
       },
       { type: "mirrorAnnUrl", commentId: "ann-2" },
     ]);
@@ -738,6 +743,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "card", commentId: "ann-1" },
         placement: "nearest",
+        behavior: "smooth",
       },
     ]);
   });
@@ -769,6 +775,71 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
+  // Issue #348: `placement` and `behavior` are independent axes on the
+  // `scrollCursorTarget` intent. `cursor.set` accepts both as optional
+  // fields; when `behavior` is omitted the reducer fills in the
+  // `center → instant, nearest → smooth` default. `n` / `p` jump sites
+  // pass `placement: "center", behavior: "smooth"` to land mid-viewport
+  // with a perceptible tween between adjacent cards.
+  describe("cursor.set — placement / behavior axis decoupling (issue #348)", () => {
+    it("n/p shape (placement: 'center', behavior: 'smooth') emits center + smooth", () => {
+      const r = reduce(initialTourSessionState(), {
+        type: "cursor.set",
+        anchor: cardAnchor({ commentId: "ann-9" }),
+        placement: "center",
+        behavior: "smooth",
+      });
+      expect(r.intents[0]).toEqual({
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-9" },
+        placement: "center",
+        behavior: "smooth",
+      });
+    });
+
+    it("default behavior for placement: 'center' is 'instant' (URL ?ann= restore)", () => {
+      const r = reduce(initialTourSessionState(), {
+        type: "cursor.set",
+        anchor: cardAnchor({ commentId: "ann-1" }),
+        placement: "center",
+      });
+      expect(r.intents[0]).toEqual({
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-1" },
+        placement: "center",
+        behavior: "instant",
+      });
+    });
+
+    it("default placement (no field) is 'nearest' with default behavior 'smooth' (j/k + click)", () => {
+      const r = reduce(initialTourSessionState(), {
+        type: "cursor.set",
+        anchor: rowAnchor({ file: "foo.ts", lineNumber: 3 }),
+      });
+      expect(r.intents[0]).toEqual({
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 3 },
+        placement: "nearest",
+        behavior: "smooth",
+      });
+    });
+
+    it("explicit behavior overrides the placement-derived default (nearest + instant for retry budget)", () => {
+      const r = reduce(initialTourSessionState(), {
+        type: "cursor.set",
+        anchor: rowAnchor({ file: "foo.ts", lineNumber: 3 }),
+        placement: "nearest",
+        behavior: "instant",
+      });
+      expect(r.intents[0]).toEqual({
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 3 },
+        placement: "nearest",
+        behavior: "instant",
+      });
+    });
+  });
+
   it("cursor.materialize on a null cursor sets the cursor and emits the same intents as cursor.set", () => {
     const anchor = cardAnchor({ commentId: "ann-5" });
     const r = reduce(initialTourSessionState(), { type: "cursor.materialize", anchor });
@@ -778,6 +849,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         type: "scrollCursorTarget",
         target: { kind: "card", commentId: "ann-5" },
         placement: "center",
+        behavior: "instant",
       },
       { type: "mirrorAnnUrl", commentId: "ann-5" },
     ]);
@@ -1093,6 +1165,7 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 42 },
         placement: "nearest",
+        behavior: "smooth",
       },
       { type: "selectSidebarFile", file: "foo.ts" },
     ]);
@@ -1129,6 +1202,7 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
         type: "scrollCursorTarget",
         target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 1 },
         placement: "nearest",
+        behavior: "smooth",
       },
     ]);
   });
@@ -1935,6 +2009,7 @@ describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
         type: "scrollCursorTarget",
         target: { kind: "card", commentId: "root" },
         placement: "center",
+        behavior: "instant",
       },
       { type: "requestReply", tourId: "tour-a", commentId: "leaf" },
     ]);
@@ -1999,6 +2074,7 @@ describe("reduce — send-to-agent action (PRD #278 slice 7)", () => {
       type: "scrollCursorTarget",
       target: { kind: "card", commentId: "root" },
       placement: "center",
+      behavior: "instant",
     });
     expect(r.intents[1]).toEqual({
       type: "requestReply",
