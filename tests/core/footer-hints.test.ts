@@ -152,9 +152,12 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
 });
 
 describe("composeFooterHints (core, surface: web)", () => {
-  it("emits exactly the 8-key webapp subset when showSendHint is false", () => {
+  // PRD #343 / ADR 0031 / issue #346: the web diff-mode legend gains
+  // `Esc: sidebar` as the pane-toggle entry-point. The 8 prior keys
+  // are unchanged.
+  it("emits the diff-mode webapp legend with `Esc: sidebar` when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  L: layout  ·  T: picker",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -165,7 +168,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  L: layout  ·  T: picker",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -194,13 +197,91 @@ describe("composeFooterHints (core, surface: web)", () => {
       composeFooterHints({ surface: "web", replyAgent: "claude", showSendHint: false }),
     ];
     for (const out of cases) {
-      expect(out).not.toContain("Enter");
-      expect(out).not.toContain("e:");
-      expect(out).not.toContain("y:");
+      // The web diff legend's `Esc: sidebar` is the only `Esc` token
+      // it should ever contain; TUI's `Enter: expand`, `e: expand all`,
+      // `y: yank path`, `Space: page`, `[/]: width`, `q: quit`, `Tab`
+      // are all forbidden.
+      expect(out).not.toContain("Enter:");
+      expect(out).not.toContain("e: expand all");
+      expect(out).not.toContain("y: yank");
       expect(out).not.toContain("Space");
       expect(out).not.toContain("Tab");
       expect(out).not.toContain("[/]");
-      expect(out).not.toContain("q:");
+      expect(out).not.toContain("q: quit");
     }
+  });
+});
+
+// PRD #343 / ADR 0031 / issue #346: the web legend is pane-aware too.
+// Sidebar mode swaps to a shorter sidebar-relevant string; diff mode
+// keeps today's web legend plus `Esc: sidebar`.
+describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #343)", () => {
+  it("paneFocus 'diff' is the default — no paneFocus emits the diff-mode legend", () => {
+    expect(composeFooterHints({ surface: "web" })).toBe(
+      composeFooterHints({ surface: "web", paneFocus: "diff" }),
+    );
+  });
+
+  it("diff-mode web legend includes `Esc: sidebar`", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    expect(out).toContain("Esc: sidebar");
+  });
+
+  it("diff-mode web legend retains today's other persistent hints", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    expect(out).toContain("j/k: move");
+    expect(out).toContain("h/l: side");
+    expect(out).toContain("n/p: nav");
+    expect(out).toContain("c: comment");
+    expect(out).toContain("r: reply");
+    expect(out).toContain("L: layout");
+    expect(out).toContain("T: picker");
+  });
+
+  it("diff-mode web legend inserts `s: send to {agent}` when the send hint is visible", () => {
+    const out = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    expect(out).toContain("s: send to claude");
+  });
+
+  it("sidebar-mode web legend emits the documented pane-relevant string", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
+    expect(out).toBe(
+      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  L: layout  ·  T: picker  ·  Esc: diff",
+    );
+  });
+
+  it("sidebar-mode web legend omits diff-only keys (`n/p`, `c`, `r`, `s`)", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
+    expect(out).not.toContain("n/p:");
+    expect(out).not.toContain("c: comment");
+    expect(out).not.toContain("r: reply");
+    expect(out).not.toContain("s: send to");
+  });
+
+  it("sidebar-mode web legend gates the send-hint conditional off", () => {
+    const sidebarWithSend = composeFooterHints({
+      surface: "web",
+      paneFocus: "sidebar",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    expect(sidebarWithSend).not.toContain("s: send to");
+    const diffWithSend = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    expect(diffWithSend).toContain("s: send to claude");
+  });
+
+  it("sidebar-mode web legend includes `Esc: diff` as the pane-toggle hint", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
+    expect(out).toContain("Esc: diff");
   });
 });

@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Webapp keyboard sidebar navigation: `Esc` enters the sidebar tree;
+  `j`/`k`/`ArrowDown`/`ArrowUp` walk file rows; `Enter` activates;
+  `l`/`h` expand/collapse folders (issue #346, PRD #343, ADR 0031).**
+  The webapp's file tree gains the same Esc/Enter pane-toggle the TUI
+  ships with: `Esc` from the diff enters the sidebar (DOM focus moves
+  to the selected row via roving tabindex), `Enter` on a file row
+  selects the file and flips back to diff, `Enter` on a folder row
+  toggles the fold. `c` / `r` / `s` are silent no-ops while paneFocus
+  is sidebar (the user explicitly returns to diff first). Mouse +
+  keyboard converge on the same `paneFocus` slice — clicking a sidebar
+  row sets paneFocus = sidebar; clicking a diff row or Comment card
+  sets paneFocus = diff. `n`/`p` auto-flip paneFocus to diff. The
+  sidebar tree carries `role="tree"` / `role="treeitem"` /
+  `aria-expanded` (W3C ARIA tree-widget pattern); exactly one row
+  holds `tabindex="0"` so browser `Tab` walks the sidebar as a single
+  tab stop (preserves WCAG 2.1.1 / 2.4.3). Pane-focus accent border
+  (`.app-sidebar[data-pane-focus="sidebar"]`) plus per-row
+  `:focus-visible` outline give two redundant visual cues. Empty tour
+  → paneFocus = sidebar (first file row selected); Tour with Comments
+  → paneFocus = diff (cursor seeded at first Comment — existing
+  behavior preserved). Webapp footer legend gains `Esc: sidebar` in
+  diff mode and swaps to the shorter sidebar string in sidebar mode.
+
+  Issue: #346
+
 ### Changed
 
 - **TUI keybinding: `Tab` / `Shift-Tab` removed; `Esc` now toggles

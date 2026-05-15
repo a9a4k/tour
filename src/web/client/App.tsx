@@ -77,6 +77,7 @@ import {
 } from "./resize-reanchor-target.js";
 import { Footer } from "./Footer.js";
 import { composeFooterHints } from "../../core/footer-hints.js";
+import { seedPaneFocus } from "../../core/pane-focus-state.js";
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -164,6 +165,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // shadowed the slice on the webapp is gone.
   const replyLock = resolvedReplyLock(sessionState);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  // PRD #343 / ADR 0031 / issue #346: sidebar keyboard cursor. Tracks the
+  // path of the row that owns the roving `tabindex=0` when paneFocus =
+  // sidebar; null when the bundle hasn't seeded yet. Distinct from
+  // `selectedFile` (which highlights the active file's diff) because the
+  // sidebar cursor can sit on a folder row too. Sidebar j/k motion
+  // updates this; Enter on a file row syncs selectedFile to match.
+  const [sidebarSelectedPath, setSidebarSelectedPath] = useState<string | null>(null);
   // PRD #330 / ADR 0028: transient footer status surface. The cursor-keymap's
   // `r` / `s` miss branches flash a reason here; the timer auto-dismisses
   // after ~2s. Last-write-wins — replacement clears the prior pending
@@ -237,6 +245,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // `bundle.refreshed` branches (PRD #278 slice 1) — the surface no
   // longer dispatches `expansion.seedFromOrphans` as a follow-up.
   const expansion = sessionState.expansion;
+  // PRD #343 / ADR 0031 / issue #346: cross-surface pane focus reads
+  // from the Tour-session slice. The webapp Esc handler dispatches
+  // `paneFocus.toggle`; sidebar / diff clicks dispatch
+  // `paneFocus.setSidebar` / `paneFocus.setDiff`; the bundle-load seed
+  // effect dispatches one of the set actions based on `seedPaneFocus`.
+  const paneFocus = sessionState.paneFocus;
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -512,6 +526,37 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     revealFileAncestors(action.target.file);
   }, [tourMeta, tourId, view, cursor, revealFileAncestors, store]);
 
+  // PRD #343 / ADR 0031 / issue #346: cross-surface pane-focus seed
+  // effect. Mirrors the TUI's bundle-load conditional in
+  // src/tui/app.tsx — Tour with top-level Comments → paneFocus.setDiff
+  // (cursor seeds at the first Comment); Tour without Comments →
+  // paneFocus.setSidebar (sidebar lands at the first file row). Gated
+  // on the seededTourIdRef so a same-tour bundle.refreshed doesn't
+  // re-seed over user-driven flips. Also seeds the sidebar keyboard
+  // cursor (`sidebarSelectedPath`) to the file of the first comment
+  // (diff seed) or the first file row (sidebar seed) so the roving
+  // tabindex has a starting target.
+  const paneFocusSeededTourIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tourMeta || tourMeta.id !== tourId) return;
+    if (paneFocusSeededTourIdRef.current === tourId) return;
+    if (view.kind !== "ok") return;
+    paneFocusSeededTourIdRef.current = tourId;
+    const topLevel = view.nav.topLevel;
+    const hasComments = topLevel.length > 0;
+    store.dispatch(
+      seedPaneFocus(hasComments) === "diff"
+        ? { type: "paneFocus.setDiff" }
+        : { type: "paneFocus.setSidebar" },
+    );
+    if (hasComments) {
+      setSidebarSelectedPath(topLevel[0].file);
+    } else {
+      const firstFile = view.tree.visibleRows.find((r) => r.kind === "file");
+      setSidebarSelectedPath(firstFile?.path ?? null);
+    }
+  }, [tourMeta, tourId, view, store]);
+
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
   useEffect(() => {
@@ -519,6 +564,32 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const el = sidebarRowRefs.current.get(selectedFile);
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [selectedFile]);
+
+  // PRD #343 / ADR 0031 / issue #346: roving tabindex + DOM focus
+  // realisation. When paneFocus = sidebar, the row at
+  // sidebarSelectedPath gets `.focus()` so the browser-native
+  // `:focus-visible` outline shows AND `Tab` from outside lands on
+  // the keyboard-selected row. When paneFocus flips to diff, blur the
+  // currently-focused sidebar row so subsequent keys target the diff.
+  // Skip the focus call when the keyboard target hasn't seeded yet
+  // (initial bundle-load race — the paneFocus seed effect populates
+  // sidebarSelectedPath on its first run).
+  useEffect(() => {
+    if (paneFocus === "sidebar") {
+      if (sidebarSelectedPath === null) return;
+      const el = sidebarRowRefs.current.get(sidebarSelectedPath);
+      el?.focus({ preventScroll: false });
+      return;
+    }
+    if (typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.classList.contains("file-entry")) {
+      active.blur();
+    }
+    if (active instanceof HTMLElement && active.classList.contains("folder-entry")) {
+      active.blur();
+    }
+  }, [paneFocus, sidebarSelectedPath]);
 
   // Issue #303: pin the cursor row at the same on-screen y-coordinate
   // across a layout toggle (shift+L / header `LayoutToggle`). The
@@ -814,6 +885,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const selectFile = useCallback(
     (name: string) => {
       setSelectedFile(name);
+      // PRD #343 / ADR 0031 / issue #346: keep the sidebar keyboard
+      // cursor in sync with file selection so a subsequent Esc into
+      // sidebar mode lands the roving tabindex on the same row.
+      setSidebarSelectedPath(name);
       const el = findFileBlock(name);
       // Instant scroll, file header at the top: clicking a file expresses
       // "show me from the top." Smooth scroll over multi-viewport distances
@@ -835,6 +910,25 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (seeded) store.dispatch({ type: "cursor.set", anchor: seeded });
     },
     [findFileBlock, view, store],
+  );
+
+  // PRD #343 / ADR 0031 / issue #346: mouse-click handlers route
+  // through paneFocus too. Sidebar row clicks set paneFocus = sidebar
+  // (and the DOM focus is realised via the focus useEffect above);
+  // diff row / comment card clicks set paneFocus = diff. The auto-flip
+  // matrix from the PRD lives here for the click axis; keyboard
+  // dispatch's auto-flip happens at the keymap action handler.
+  const onSidebarRowClick = useCallback(
+    (path: string, kind: "file" | "folder") => {
+      setSidebarSelectedPath(path);
+      store.dispatch({ type: "paneFocus.setSidebar" });
+      if (kind === "file") {
+        selectFile(path);
+      } else {
+        toggleFolder(path);
+      }
+    },
+    [store, selectFile, toggleFolder],
   );
 
   // Tour-level (PR-equivalent) `+N -M` totals for the title-bar indicator
@@ -1156,6 +1250,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       }
       const cardAuthorKind =
         view.kind === "ok" ? view.cursor.cardComment?.author_kind ?? null : null;
+      // PRD #343 / ADR 0031 / issue #346: sidebar keyboard navigation
+      // routes through paneFocus + selectedRowKind. The keymap returns
+      // sidebar-mode actions (move-file-up/down, select-file,
+      // toggle-folder, expand-folder, collapse-folder, collapse-parent,
+      // pane-focus-toggle, close-modal) when paneFocus = sidebar; the
+      // App switch arm below dispatches the matching store actions.
+      const visibleRows =
+        view.kind === "ok" ? view.tree.visibleRows : [];
+      const selectedRow =
+        sidebarSelectedPath === null
+          ? null
+          : visibleRows.find((r) => r.path === sidebarSelectedPath) ?? null;
       const action = dispatchCursorKey(
         {
           key: e.key,
@@ -1172,6 +1278,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           cursorOnHumanCard: cardAuthorKind === "human",
           replyLockHeld: replyLock !== null,
           replyAgent: replyAgent ?? undefined,
+          paneFocus,
+          selectedRowKind: selectedRow?.kind ?? null,
         },
       );
       if (action.type === "noop") return;
@@ -1199,6 +1307,106 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         case "open-picker":
           openPicker();
           return;
+        case "pane-focus-toggle":
+          // PRD #343 / ADR 0031 / issue #346: Esc toggles paneFocus
+          // (modal-unwind already routed through close-modal above).
+          store.dispatch({ type: "paneFocus.toggle" });
+          return;
+        case "close-modal":
+          // Defense in depth: in production the inline composer
+          // textarea's onKeyDown intercepts Esc when focus is inside
+          // the textarea, and the picker owns its close binding. This
+          // arm fires when Esc lands on the global handler with a
+          // modal open but unfocused — e.g. a click-outside while
+          // composer is open.
+          if (composerTarget !== null) {
+            store.dispatch({ type: "composer.close" });
+          } else if (pickerOpen) {
+            store.dispatch({ type: "picker.close" });
+          }
+          return;
+        case "move-file-down":
+        case "move-file-up": {
+          if (view.kind !== "ok") return;
+          const rows = view.tree.visibleRows;
+          if (rows.length === 0) return;
+          const idx =
+            sidebarSelectedPath === null
+              ? -1
+              : rows.findIndex((r) => r.path === sidebarSelectedPath);
+          const delta = action.type === "move-file-down" ? 1 : -1;
+          const nextIdx =
+            idx === -1
+              ? action.type === "move-file-down"
+                ? 0
+                : rows.length - 1
+              : Math.max(0, Math.min(rows.length - 1, idx + delta));
+          if (nextIdx === idx) return;
+          setSidebarSelectedPath(rows[nextIdx].path);
+          return;
+        }
+        case "select-file": {
+          // PRD #343 / ADR 0031 / issue #346: Enter on a file row in
+          // sidebar mode selects the file AND flips paneFocus to diff
+          // (auto-flip matrix). selectFile already updates
+          // sidebarSelectedPath; the keymap's auto-flip happens here.
+          if (selectedRow?.kind !== "file") return;
+          selectFile(selectedRow.path);
+          store.dispatch({ type: "paneFocus.setDiff" });
+          return;
+        }
+        case "toggle-folder": {
+          // PRD #343 / ADR 0031 / issue #346: Enter on a folder row in
+          // sidebar mode toggles the fold; paneFocus stays on sidebar
+          // (folder toggle is sidebar-internal per the auto-flip
+          // matrix). Selection stays on the same folder row.
+          if (selectedRow?.kind !== "folder") return;
+          toggleFolder(selectedRow.path);
+          return;
+        }
+        case "expand-folder": {
+          // l / ArrowRight on a collapsed folder. No-op when already
+          // open (matches the TUI's `if (!collapsedFolders.has(path))`
+          // guard); the toggle dispatch would otherwise CLOSE the
+          // folder, which contradicts the directional semantic.
+          if (selectedRow?.kind !== "folder") return;
+          if (!collapsedFolders.has(selectedRow.path)) return;
+          toggleFolder(selectedRow.path);
+          return;
+        }
+        case "collapse-folder": {
+          // h / ArrowLeft on an open folder. Symmetric to expand-folder.
+          if (selectedRow?.kind !== "folder") return;
+          if (collapsedFolders.has(selectedRow.path)) return;
+          toggleFolder(selectedRow.path);
+          return;
+        }
+        case "collapse-parent": {
+          // h / ArrowLeft on a file row: jump the sidebar cursor up to
+          // the parent folder. Matches the TUI's collapse-parent
+          // semantic but the webapp doesn't need to re-flatten the
+          // tree — visibleRows already excludes hidden subtrees, so
+          // the parent's row index is stable.
+          if (selectedRow?.kind !== "file") return;
+          if (view.kind !== "ok") return;
+          const segments = selectedRow.path.split("/");
+          if (segments.length < 2) return;
+          // Walk up segments looking for a visible folder row whose
+          // path matches; the file's nearest visible ancestor is the
+          // target (path-compression in core/file-tree.ts may have
+          // collapsed several segments into a single folder row, so
+          // an exact path match isn't guaranteed at any one depth).
+          const candidates: string[] = [];
+          for (let i = segments.length - 1; i > 0; i--) {
+            candidates.push(segments.slice(0, i).join("/"));
+          }
+          const parentRow = view.tree.visibleRows.find(
+            (r) => r.kind === "folder" && candidates.includes(r.path),
+          );
+          if (!parentRow) return;
+          setSidebarSelectedPath(parentRow.path);
+          return;
+        }
         case "toggle-layout": {
           // Issue #303: `setLayoutChoice` snapshots the cursor row's
           // pre-toggle viewport-y before dispatching; the layout-change
@@ -1209,9 +1417,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           return;
         }
         case "nav-next-comment":
+          // PRD #343 / ADR 0031 / issue #346: n/p auto-flip paneFocus
+          // to diff (Comment jump targets the diff pane).
+          store.dispatch({ type: "paneFocus.setDiff" });
           navigateBy(1);
           return;
         case "nav-prev-comment":
+          store.dispatch({ type: "paneFocus.setDiff" });
           navigateBy(-1);
           return;
         case "move-down": {
@@ -1347,6 +1559,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     hunkSeparatorGapSize,
     store,
     flashFooterStatus,
+    paneFocus,
+    sidebarSelectedPath,
+    selectFile,
+    toggleFolder,
+    collapsedFolders,
   ]);
 
   const closeComposer = useCallback(() => {
@@ -1355,8 +1572,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   // Row clicks seed the Line cursor only (issue #137 / PRD #136). The
   // composer is reached via the keyboard `a` shortcut.
+  // PRD #343 / ADR 0031 / issue #346: also flip paneFocus to diff so
+  // subsequent keystrokes target the diff pane (mouse + keyboard
+  // converge on the same paneFocus state).
   const setCursorFromRowClick = useCallback(
     (file: string, side: "additions" | "deletions", line: number) => {
+      store.dispatch({ type: "paneFocus.setDiff" });
       store.dispatch({
         type: "cursor.set",
         anchor: { kind: "row", file, lineNumber: line, side, preferredSide: side },
@@ -1421,11 +1642,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // (PRD #192 / ADR 0022 slice 2). Mouse-driven path matches keyboard
   // n/p: both write a CardAnchor for the clicked / nav'd top-level
   // comment.
+  // PRD #343 / ADR 0031 / issue #346: also flip paneFocus to diff —
+  // comment cards live in the diff pane.
   const setCursorFromCardClick = useCallback(
     (commentId: string) => {
       if (view.kind !== "ok") return;
       const a = view.bundle.comments.find((x) => x.id === commentId);
       if (!a) return;
+      store.dispatch({ type: "paneFocus.setDiff" });
       store.dispatch({
         type: "cursor.set",
         anchor: cursorFromComment(a, preferredSideOf(store.getState().cursor)),
@@ -1585,6 +1809,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
               style={{ width: sidebarWidth }}
               aria-label="Files"
+              data-pane-focus={paneFocus === "sidebar" ? "sidebar" : undefined}
             >
               <div className="sidebar-scroll" />
               <SidebarResizeHandle
@@ -1622,11 +1847,27 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
               style={{ width: sidebarWidth }}
               aria-label="Files"
+              // PRD #343 / ADR 0031 / issue #346: pane-focus accent
+              // border on the sidebar container when keyboard input
+              // targets the file tree. CSS owns the actual border
+              // styling — this attribute is the read-side hook.
+              data-pane-focus={paneFocus === "sidebar" ? "sidebar" : undefined}
             >
-              <div className="sidebar-scroll">
+              <div className="sidebar-scroll" role="tree" aria-label="Files">
                 {view.tree.visibleRows.map((row) =>
                   row.kind === "folder" ? (
-                    <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />
+                    <FolderRow
+                      key={`d:${row.path}`}
+                      row={row}
+                      onToggle={toggleFolder}
+                      onActivate={onSidebarRowClick}
+                      // PRD #343 / ADR 0031 / issue #346: roving
+                      // tabindex — exactly one row has tabindex=0 at
+                      // any time (the sidebar keyboard cursor), all
+                      // others are tabindex=-1. Browser Tab walks the
+                      // sidebar in a single stop.
+                      isTabStop={sidebarSelectedPath === row.path}
+                    />
                   ) : (
                     <FileRow
                       key={`f:${row.path}`}
@@ -1634,6 +1875,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       selected={selectedFile === row.path}
                       registerRef={registerSidebarRef}
                       onSelect={selectFile}
+                      onActivate={onSidebarRowClick}
+                      isTabStop={sidebarSelectedPath === row.path}
                     />
                   ),
                 )}
@@ -1739,6 +1982,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             view.cursor.onCard &&
             view.cursor.cardComment?.author_kind === "human" &&
             replyLock === null,
+          // PRD #343 / ADR 0031 / issue #346: pane-aware legend.
+          // Sidebar mode shows the shorter sidebar-relevant keys;
+          // diff mode appends `Esc: sidebar` to today's web legend.
+          paneFocus,
         })}
       />
       {sessionState.picker.kind === "open" ? (
@@ -1813,6 +2060,16 @@ function LayoutToggle({ layout, onChange }: LayoutToggleProps): React.JSX.Elemen
 interface FolderRowProps {
   row: Extract<VisibleRow<BundleFile>, { kind: "folder" }>;
   onToggle: (path: string) => void;
+  // PRD #343 / ADR 0031 / issue #346: paneFocus dispatch on click.
+  // Unlike onToggle (which only mutates the fold state), onActivate
+  // also flips paneFocus to sidebar and moves the sidebar keyboard
+  // cursor to this row.
+  onActivate?: (path: string, kind: "folder") => void;
+  // PRD #343 / ADR 0031 / issue #346: roving tabindex flag. The row
+  // with isTabStop=true carries `tabindex=0`; every other row carries
+  // `tabindex=-1`. Exactly one row in the sidebar tree should hold
+  // the tab stop at any moment.
+  isTabStop?: boolean;
 }
 
 // React.memo so cursor / comment-nav state changes in App don't re-render
@@ -1822,9 +2079,14 @@ interface FolderRowProps {
 export const FolderRow = React.memo(function FolderRow({
   row,
   onToggle,
+  onActivate,
+  isTabStop,
 }: FolderRowProps): React.JSX.Element {
   const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
-  const handleClick = useCallback(() => onToggle(row.path), [onToggle, row.path]);
+  const handleClick = useCallback(() => {
+    if (onActivate) onActivate(row.path, "folder");
+    else onToggle(row.path);
+  }, [onActivate, onToggle, row.path]);
   return (
     <button
       type="button"
@@ -1832,6 +2094,10 @@ export const FolderRow = React.memo(function FolderRow({
       style={{ paddingLeft: 16 + row.depth * 16 }}
       title={row.path}
       onClick={handleClick}
+      role="treeitem"
+      aria-expanded={!row.collapsed}
+      aria-label={row.displayName}
+      tabIndex={isTabStop ? 0 : -1}
     >
       <Chevron className="tree-icon" />
       <FileDirectoryFillIcon className="tree-icon" />
@@ -1848,6 +2114,14 @@ interface FileRowProps {
   // arrows at the App-render site, which lets `React.memo` actually short-circuit.
   onSelect: (name: string) => void;
   registerRef: (path: string, el: HTMLButtonElement | null) => void;
+  // PRD #343 / ADR 0031 / issue #346: paneFocus dispatch on click.
+  // When onActivate is provided, clicks route through it (mouse path
+  // converges with the keyboard path on the same paneFocus.setSidebar
+  // + select-file outcome). Without onActivate the click falls back
+  // to plain onSelect for backwards-compat with the snapshot-lost
+  // branch's older signature.
+  onActivate?: (path: string, kind: "file") => void;
+  isTabStop?: boolean;
 }
 
 export const FileRow = React.memo(function FileRow({
@@ -1855,13 +2129,18 @@ export const FileRow = React.memo(function FileRow({
   selected,
   onSelect,
   registerRef,
+  onActivate,
+  isTabStop,
 }: FileRowProps): React.JSX.Element {
   const { Icon, statusClass } = fileIcon(row.file.type);
   const handleRef = useCallback(
     (el: HTMLButtonElement | null) => registerRef(row.path, el),
     [registerRef, row.path],
   );
-  const handleClick = useCallback(() => onSelect(row.path), [onSelect, row.path]);
+  const handleClick = useCallback(() => {
+    if (onActivate) onActivate(row.path, "file");
+    else onSelect(row.path);
+  }, [onActivate, onSelect, row.path]);
   return (
     <button
       ref={handleRef}
@@ -1870,6 +2149,10 @@ export const FileRow = React.memo(function FileRow({
       style={{ paddingLeft: 16 + row.depth * 16 }}
       title={row.path}
       onClick={handleClick}
+      role="treeitem"
+      aria-selected={selected}
+      aria-label={row.displayName}
+      tabIndex={isTabStop ? 0 : -1}
     >
       <Icon className={`status-icon ${statusClass}`} />
       <span className="file-name">{row.displayName}</span>

@@ -303,3 +303,186 @@ describe("dispatchCursorKey: suppression rules", () => {
     expect(dispatchCursorKey(key({ key: "x" }), baseCtx)).toEqual({ type: "noop" });
   });
 });
+
+// PRD #343 / ADR 0031 / issue #346: webapp Esc with modal-unwind
+// precedence + sidebar-mode key surface (j/k/h/l/Enter routes to
+// file-tree navigation; c/r/s silent no-ops). The paneFocus field on
+// CursorKeymapContext drives the surface switch; the default is
+// `"diff"` so callers that haven't migrated keep today's behavior.
+describe("dispatchCursorKey: Esc with modal-unwind precedence (PRD #343)", () => {
+  it("Esc with no modal and paneFocus = diff → pane-focus-toggle", () => {
+    expect(dispatchCursorKey(key({ key: "Escape" }), baseCtx)).toEqual({
+      type: "pane-focus-toggle",
+    });
+  });
+
+  it("Esc with no modal and paneFocus = sidebar → pane-focus-toggle (same action)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "Escape" }), { ...baseCtx, paneFocus: "sidebar" }),
+    ).toEqual({ type: "pane-focus-toggle" });
+  });
+
+  it("Esc with composer open → close-modal (paneFocus unchanged)", () => {
+    const ctx: CursorKeymapContext = { ...baseCtx, composerOpen: true };
+    expect(dispatchCursorKey(key({ key: "Escape" }), ctx)).toEqual({
+      type: "close-modal",
+    });
+  });
+
+  it("Esc with picker open → close-modal", () => {
+    const ctx: CursorKeymapContext = { ...baseCtx, pickerOpen: true };
+    expect(dispatchCursorKey(key({ key: "Escape" }), ctx)).toEqual({
+      type: "close-modal",
+    });
+  });
+
+  it("Esc with both composer and picker open → close-modal", () => {
+    const ctx: CursorKeymapContext = {
+      ...baseCtx,
+      composerOpen: true,
+      pickerOpen: true,
+    };
+    expect(dispatchCursorKey(key({ key: "Escape" }), ctx)).toEqual({
+      type: "close-modal",
+    });
+  });
+
+  it("Shift+Esc / Ctrl+Esc / Cmd+Esc → noop (modifier guard)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "Escape", shiftKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "Escape", ctrlKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "Escape", metaKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+  });
+});
+
+describe("dispatchCursorKey: sidebar-mode key surface (PRD #343 / issue #346)", () => {
+  const sidebarCtx = (
+    selectedRowKind: "file" | "folder" | null = "file",
+  ): CursorKeymapContext => ({
+    ...baseCtx,
+    paneFocus: "sidebar",
+    selectedRowKind,
+  });
+
+  it("j / ArrowDown → move-file-down (file row selected)", () => {
+    expect(dispatchCursorKey(key({ key: "j" }), sidebarCtx("file"))).toEqual({
+      type: "move-file-down",
+    });
+    expect(dispatchCursorKey(key({ key: "ArrowDown" }), sidebarCtx("file"))).toEqual({
+      type: "move-file-down",
+    });
+  });
+
+  it("k / ArrowUp → move-file-up (file row selected)", () => {
+    expect(dispatchCursorKey(key({ key: "k" }), sidebarCtx("file"))).toEqual({
+      type: "move-file-up",
+    });
+    expect(dispatchCursorKey(key({ key: "ArrowUp" }), sidebarCtx("file"))).toEqual({
+      type: "move-file-up",
+    });
+  });
+
+  it("Enter on file row → select-file", () => {
+    expect(dispatchCursorKey(key({ key: "Enter" }), sidebarCtx("file"))).toEqual({
+      type: "select-file",
+    });
+  });
+
+  it("Enter on folder row → toggle-folder", () => {
+    expect(dispatchCursorKey(key({ key: "Enter" }), sidebarCtx("folder"))).toEqual({
+      type: "toggle-folder",
+    });
+  });
+
+  it("l / ArrowRight on folder row → expand-folder", () => {
+    expect(dispatchCursorKey(key({ key: "l" }), sidebarCtx("folder"))).toEqual({
+      type: "expand-folder",
+    });
+    expect(
+      dispatchCursorKey(key({ key: "ArrowRight" }), sidebarCtx("folder")),
+    ).toEqual({ type: "expand-folder" });
+  });
+
+  it("l / ArrowRight on file row → noop (file rows have no expand semantic)", () => {
+    expect(dispatchCursorKey(key({ key: "l" }), sidebarCtx("file"))).toEqual({
+      type: "noop",
+    });
+    expect(
+      dispatchCursorKey(key({ key: "ArrowRight" }), sidebarCtx("file")),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("h / ArrowLeft on folder row → collapse-folder", () => {
+    expect(dispatchCursorKey(key({ key: "h" }), sidebarCtx("folder"))).toEqual({
+      type: "collapse-folder",
+    });
+    expect(
+      dispatchCursorKey(key({ key: "ArrowLeft" }), sidebarCtx("folder")),
+    ).toEqual({ type: "collapse-folder" });
+  });
+
+  it("h / ArrowLeft on file row → collapse-parent (jump to parent folder)", () => {
+    expect(dispatchCursorKey(key({ key: "h" }), sidebarCtx("file"))).toEqual({
+      type: "collapse-parent",
+    });
+    expect(
+      dispatchCursorKey(key({ key: "ArrowLeft" }), sidebarCtx("file")),
+    ).toEqual({ type: "collapse-parent" });
+  });
+
+  it("c / r / s in sidebar mode → noop (silent gating per PRD #343 stories 21-22)", () => {
+    const ctxFile = sidebarCtx("file");
+    expect(dispatchCursorKey(key({ key: "c" }), ctxFile)).toEqual({ type: "noop" });
+    expect(dispatchCursorKey(key({ key: "r" }), ctxFile)).toEqual({ type: "noop" });
+    expect(dispatchCursorKey(key({ key: "s" }), ctxFile)).toEqual({ type: "noop" });
+    // Including when reply-agent / card context would normally fire them
+    // in diff mode — the paneFocus gate dominates.
+    const ctxLoaded: CursorKeymapContext = {
+      ...ctxFile,
+      cursorOnCard: true,
+      cursorOnHumanCard: true,
+      replyAgent: "claude",
+    };
+    expect(dispatchCursorKey(key({ key: "c" }), ctxLoaded)).toEqual({ type: "noop" });
+    expect(dispatchCursorKey(key({ key: "r" }), ctxLoaded)).toEqual({ type: "noop" });
+    expect(dispatchCursorKey(key({ key: "s" }), ctxLoaded)).toEqual({ type: "noop" });
+  });
+
+  it("n / p in sidebar mode still classify as nav-next/prev-comment (auto-flip handled App-side)", () => {
+    expect(dispatchCursorKey(key({ key: "n" }), sidebarCtx("file"))).toEqual({
+      type: "nav-next-comment",
+    });
+    expect(dispatchCursorKey(key({ key: "p" }), sidebarCtx("file"))).toEqual({
+      type: "nav-prev-comment",
+    });
+  });
+
+  it("Shift+L / Shift+T still open layout / picker in sidebar mode (pane-agnostic)", () => {
+    const ctx = sidebarCtx("file");
+    expect(dispatchCursorKey(key({ key: "L", shiftKey: true }), ctx)).toEqual({
+      type: "toggle-layout",
+    });
+    expect(dispatchCursorKey(key({ key: "T", shiftKey: true }), ctx)).toEqual({
+      type: "open-picker",
+    });
+  });
+
+  it("Enter with no selectedRowKind falls back to select-file (defensive)", () => {
+    expect(dispatchCursorKey(key({ key: "Enter" }), sidebarCtx(null))).toEqual({
+      type: "select-file",
+    });
+  });
+
+  it("paneFocus default is `diff` — omitting it keeps today's diff-mode behavior", () => {
+    // No paneFocus field → j routes to cursor move-down, not sidebar
+    // move-file-down. Regression guard against an accidental flip.
+    expect(dispatchCursorKey(key({ key: "j" }), baseCtx)).toEqual({
+      type: "move-down",
+    });
+  });
+});

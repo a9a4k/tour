@@ -1215,9 +1215,18 @@ describe("App comment-create failure status (Issue #334)", () => {
     });
     await flush();
 
-    // Empty comments → cursor null at mount. `c` materializes the
-    // cursor to the first annotatable row and opens the top-level
-    // composer.
+    // PRD #343 / ADR 0031 / issue #346: empty-tour seed lands
+    // paneFocus = sidebar, where `c` is a silent no-op. Esc first
+    // flips paneFocus to diff so the subsequent `c` press
+    // materializes the cursor and opens the top-level composer
+    // (today's pre-#346 behavior, just one keypress earlier in the
+    // sequence).
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
     await act(async () => {
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "c", bubbles: true }),
@@ -1353,5 +1362,331 @@ describe("App comment-create failure status (Issue #334)", () => {
     // The live region always renders an empty prefix when status is
     // null (the legend follows in a sibling span). No failure prefix.
     expect(status!.textContent ?? "").not.toContain("failed:");
+  });
+});
+
+// PRD #343 / ADR 0031 / issue #346: cross-surface pane-focus. The
+// webapp gains keyboard sidebar navigation (Esc/Enter, j/k/h/l) plus
+// ARIA tree-widget semantics (role=tree / role=treeitem / aria-
+// expanded) and roving tabindex (exactly one row holds tabindex=0).
+// These tests mount <App> against the standard smoke fixture (with
+// one top-level Comment so the seed lands paneFocus=diff) AND a
+// no-Comment fixture (so the seed lands paneFocus=sidebar).
+
+const noCommentTourId = "2026-05-15-000000-pane-focus-no-comments";
+
+const noCommentBundle = {
+  kind: "ok" as const,
+  tour: {
+    ...tourSummary,
+    id: noCommentTourId,
+    title: "No-comments pane-focus tour",
+  },
+  comments: [],
+  diff,
+  files: bundle.files,
+};
+
+function stubPaneFocusFetch(id: string, b: typeof bundle) {
+  return vi.fn((input: RequestInfo | URL) => {
+    const u = typeof input === "string" ? input : input.toString();
+    if (u.includes("/api/tours?")) {
+      return Promise.resolve(
+        new Response(JSON.stringify([b.tour]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${id}`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(b), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${id}/reply-lock`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as unknown as typeof fetch;
+}
+
+describe("App cross-surface pane focus (PRD #343 / issue #346)", () => {
+  it("sidebar carries role=tree and rows carry role=treeitem with aria-expanded on folders", async () => {
+    globalThis.fetch = stubPaneFocusFetch(tourId, bundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const tree = container.querySelector('[role="tree"]');
+    expect(tree).not.toBeNull();
+
+    const treeitems = container.querySelectorAll('[role="treeitem"]');
+    expect(treeitems.length).toBeGreaterThan(0);
+
+    // The two-file fixture has a `src/` folder collapse — at least one
+    // folder treeitem is in the DOM and has aria-expanded set.
+    const folderItems = container.querySelectorAll(
+      '.folder-entry[role="treeitem"]',
+    );
+    expect(folderItems.length).toBeGreaterThan(0);
+    for (const f of Array.from(folderItems)) {
+      expect(f.getAttribute("aria-expanded")).not.toBeNull();
+    }
+  });
+
+  it("exactly one sidebar row carries tabindex=0 at any time (roving-tabindex)", async () => {
+    globalThis.fetch = stubPaneFocusFetch(tourId, bundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const treeitems = container.querySelectorAll('[role="treeitem"]');
+    const tabStops = Array.from(treeitems).filter(
+      (el) => el.getAttribute("tabindex") === "0",
+    );
+    expect(tabStops.length).toBe(1);
+    const others = Array.from(treeitems).filter(
+      (el) => el.getAttribute("tabindex") !== "0",
+    );
+    for (const el of others) {
+      expect(el.getAttribute("tabindex")).toBe("-1");
+    }
+  });
+
+  it("mounting with top-level Comments lands paneFocus = diff (no accent border on sidebar)", async () => {
+    globalThis.fetch = stubPaneFocusFetch(tourId, bundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const aside = container.querySelector(".app-sidebar");
+    expect(aside).not.toBeNull();
+    // paneFocus=diff → data-pane-focus attribute absent or != "sidebar"
+    expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
+  });
+
+  it("mounting without top-level Comments lands paneFocus = sidebar (accent border + first file selected)", async () => {
+    globalThis.fetch = stubPaneFocusFetch(noCommentTourId, noCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: noCommentTourId }));
+    });
+    await flush();
+
+    const aside = container.querySelector(".app-sidebar");
+    expect(aside).not.toBeNull();
+    expect(aside!.getAttribute("data-pane-focus")).toBe("sidebar");
+
+    // First file row holds the tab stop (roving-tabindex starting
+    // position on empty tours).
+    const tabStops = container.querySelectorAll('[role="treeitem"][tabindex="0"]');
+    expect(tabStops.length).toBe(1);
+  });
+
+  it("Esc from diff flips paneFocus to sidebar (accent border appears)", async () => {
+    globalThis.fetch = stubPaneFocusFetch(tourId, bundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    // Start state: paneFocus = diff (Tour with Comments).
+    let aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
+
+    aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).toBe("sidebar");
+  });
+
+  it("Esc from sidebar flips paneFocus back to diff (accent border disappears)", async () => {
+    globalThis.fetch = stubPaneFocusFetch(noCommentTourId, noCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: noCommentTourId }));
+    });
+    await flush();
+
+    // Start state: paneFocus = sidebar (empty tour).
+    let aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).toBe("sidebar");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
+
+    aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
+  });
+
+  it("sidebar j moves the roving tabindex to the next visible row", async () => {
+    globalThis.fetch = stubPaneFocusFetch(noCommentTourId, noCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: noCommentTourId }));
+    });
+    await flush();
+
+    // Initial tab stop is on the first visible row.
+    const initialStops = container.querySelectorAll(
+      '[role="treeitem"][tabindex="0"]',
+    );
+    expect(initialStops.length).toBe(1);
+    const initialKey = (initialStops[0] as HTMLElement).getAttribute("title");
+
+    // j advances to the next row.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const nextStops = container.querySelectorAll(
+      '[role="treeitem"][tabindex="0"]',
+    );
+    expect(nextStops.length).toBe(1);
+    const nextKey = (nextStops[0] as HTMLElement).getAttribute("title");
+    expect(nextKey).not.toBe(initialKey);
+  });
+
+  it("footer legend swaps to the sidebar string when paneFocus = sidebar", async () => {
+    globalThis.fetch = stubPaneFocusFetch(noCommentTourId, noCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: noCommentTourId }));
+    });
+    await flush();
+
+    // Empty-tour seed → paneFocus = sidebar → sidebar legend.
+    const legend = container.querySelector("footer.app-footer");
+    expect(legend).not.toBeNull();
+    expect(legend!.textContent).toContain("Esc: diff");
+    expect(legend!.textContent).not.toContain("n/p: nav");
+  });
+
+  it("footer legend keeps the diff form (with Esc: sidebar) when paneFocus = diff", async () => {
+    globalThis.fetch = stubPaneFocusFetch(tourId, bundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    const legend = container.querySelector("footer.app-footer");
+    expect(legend).not.toBeNull();
+    expect(legend!.textContent).toContain("Esc: sidebar");
+    expect(legend!.textContent).toContain("n/p: nav");
+  });
+
+  it("clicking a sidebar file row sets paneFocus = sidebar AND moves the roving tabindex", async () => {
+    globalThis.fetch = stubPaneFocusFetch(tourId, bundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    // Start: paneFocus = diff (with-comments seed).
+    let aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
+
+    const fileEntry = container.querySelector(
+      '.file-entry[role="treeitem"]',
+    ) as HTMLButtonElement;
+    expect(fileEntry).not.toBeNull();
+    await act(async () => {
+      fileEntry.click();
+    });
+    await flush();
+
+    aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).toBe("sidebar");
+  });
+
+  it("Esc with the composer open closes the composer (paneFocus unchanged)", async () => {
+    globalThis.fetch = stubPaneFocusFetch(noCommentTourId, noCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: noCommentTourId }));
+    });
+    await flush();
+
+    // Empty-tour seed → paneFocus = sidebar. Esc flips to diff.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
+    let aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
+
+    // `c` lazy-materializes the cursor and opens the top-level
+    // composer on the first annotatable row.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(
+      container.querySelector<HTMLTextAreaElement>("textarea.composer-textarea"),
+    ).not.toBeNull();
+
+    // Press Escape — modal-unwind precedence kicks in: composer
+    // closes, paneFocus stays on diff.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
+
+    expect(
+      container.querySelector<HTMLTextAreaElement>("textarea.composer-textarea"),
+    ).toBeNull();
+    aside = container.querySelector(".app-sidebar");
+    expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
   });
 });

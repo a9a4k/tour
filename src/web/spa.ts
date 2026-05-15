@@ -40,6 +40,20 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     display: flex;
     flex-direction: column;
   }
+  /* PRD #343 / ADR 0031 / issue #346: 2px accent left-border when
+     paneFocus = sidebar. Mirrors the TUI's border-color flip — a
+     glanceable pane-level cue that complements the per-row
+     :focus-visible outline below. */
+  .app-sidebar[data-pane-focus="sidebar"] {
+    box-shadow: inset 2px 0 0 0 var(--border-accent);
+  }
+  /* Roving-tabindex focus outline. The browser's native focus ring
+     would also fire here but is suppressed on mouse via :focus-visible
+     so only keyboard-driven focus shows the outline. */
+  .sidebar-scroll [role="treeitem"]:focus-visible {
+    outline: 2px solid var(--border-accent);
+    outline-offset: -2px;
+  }
   .sidebar-scroll {
     overflow-y: auto;
     flex: 1;

@@ -28,15 +28,13 @@ export interface ComposeFooterHintsOptions {
   surface: FooterSurface;
   replyAgent?: string;
   showSendHint?: boolean;
-  // PRD #343 / ADR 0031 / issue #345: pane-aware legend. The TUI swaps
-  // between a sidebar-relevant subset and the full diff-mode legend per
-  // `paneFocus`. Sidebar mode drops diff-only keys (`n/p`, `c`, `r`,
-  // `s`, `C`, `Enter: expand`, `Space: page`, `[/]: width`) and adds
-  // `Esc: diff` as the pane-toggle hint; diff mode drops the retired
-  // `Tab: pane` and adds `Esc: sidebar`. Default is `"diff"` so call
-  // sites that don't pass `paneFocus` still get a sensible legend.
-  // Webapp keeps today's slice-1 form regardless of `paneFocus` —
-  // slice 3 (issue #346) cashes in the webapp half.
+  // PRD #343 / ADR 0031 / issue #345 + #346: pane-aware legend on both
+  // surfaces. Sidebar mode drops diff-only keys (`n/p`, `c`, `r`, `s`,
+  // and any TUI-only `C`, `Enter: expand`, `Space: page`, `[/]: width`)
+  // and adds `Esc: diff` as the pane-toggle hint; diff mode adds
+  // `Esc: sidebar` and (on TUI) drops the retired `Tab: pane`. Default
+  // is `"diff"` so call sites that don't pass `paneFocus` still get a
+  // sensible legend.
   paneFocus?: PaneFocus;
 }
 
@@ -52,6 +50,15 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit`
     );
   }
+  if (opts.surface === "web" && paneFocus === "sidebar") {
+    // Sidebar-mode web legend (PRD #343 / ADR 0031 / issue #346). Mirrors
+    // the TUI's sidebar-mode subset minus the TUI-only keys (`e`, `y`,
+    // `q`): the webapp doesn't bind those today. Send-hint gated off
+    // here for the same reason as the TUI sidebar branch.
+    return (
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  L: layout  ·  T: picker  ·  Esc: diff`
+    );
+  }
   const send =
     opts.showSendHint && opts.replyAgent
       ? `  ·  s: send to ${opts.replyAgent}`
@@ -61,5 +68,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
-  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  L: layout  ·  T: picker`;
+  // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
+  // 8-key subset + `Esc: sidebar` as the pane-toggle entry-point.
+  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
 }
