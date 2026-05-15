@@ -82,12 +82,6 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   .app-sidebar.is-resizing * {
     user-select: none;
   }
-  .app-sidebar h2 {
-    padding: 12px 16px;
-    font-size: 14px;
-    color: var(--fg-muted);
-    border-bottom: 1px solid var(--border-default);
-  }
   .file-entry {
     padding: 8px 16px;
     cursor: pointer;

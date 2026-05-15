@@ -1528,10 +1528,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             <aside
               className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
               style={{ width: sidebarWidth }}
+              aria-label="Files"
             >
-              <div className="sidebar-scroll">
-                <h2>Files</h2>
-              </div>
+              <div className="sidebar-scroll" />
               <SidebarResizeHandle
                 width={sidebarWidth}
                 onResize={handleSidebarResize}
@@ -1566,9 +1565,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             <aside
               className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
               style={{ width: sidebarWidth }}
+              aria-label="Files"
             >
               <div className="sidebar-scroll">
-                <h2>Files</h2>
                 {view.tree.visibleRows.map((row) =>
                   row.kind === "folder" ? (
                     <FolderRow key={`d:${row.path}`} row={row} onToggle={toggleFolder} />

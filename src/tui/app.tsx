@@ -1636,7 +1636,7 @@ function App(props: AppProps) {
           }
         }
         if (targetFile === null) return;
-        yankToClipboard(targetFile);
+        yankToClipboard(targetFile, renderer);
         const message = `Copied ${targetFile}`;
         setFooterStatus(message);
         if (yankFooterTimerRef.current !== null) {
@@ -1693,7 +1693,6 @@ function App(props: AppProps) {
           width={sidebarWidth}
           borderStyle="single"
           borderColor={sidebarFocused ? theme.border.accent : theme.border.default}
-          title=" Files "
           flexDirection="column"
           onMouseDown={() => setSidebarFocused(true)}
         >
