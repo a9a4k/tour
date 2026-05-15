@@ -450,23 +450,24 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("e", { shift: true }), diffPane).type).toBe("noop");
   });
 
-  // Issue #326: `y` yanks the focused file's repo-relative path to the
-  // system clipboard via OSC 52. Available in both panes — App-side
-  // resolves the file from the cursor (diff pane) or sidebar selection.
-  it("y dispatches yank-file-path regardless of pane focus", () => {
-    expect(dispatchKey(k("y"), sidebar).type).toBe("yank-file-path");
-    expect(dispatchKey(k("y"), diffPane).type).toBe("yank-file-path");
-    expect(dispatchKey(k("y"), sidebarFolder).type).toBe("yank-file-path");
-    expect(dispatchKey(k("y"), diffPaneOnCard).type).toBe("yank-file-path");
-    expect(dispatchKey(k("y"), sidebarOnCard).type).toBe("yank-file-path");
+  // Issue #326 / PRD #356 / issue #357: `y` dispatches `yank-at-cursor`
+  // in both panes; the App-side handler routes on the resolver's
+  // `YankTarget` kind (line text on a diff row, file path on a card /
+  // interactive row / sidebar file row, none on degenerate states).
+  it("y dispatches yank-at-cursor regardless of pane focus", () => {
+    expect(dispatchKey(k("y"), sidebar).type).toBe("yank-at-cursor");
+    expect(dispatchKey(k("y"), diffPane).type).toBe("yank-at-cursor");
+    expect(dispatchKey(k("y"), sidebarFolder).type).toBe("yank-at-cursor");
+    expect(dispatchKey(k("y"), diffPaneOnCard).type).toBe("yank-at-cursor");
+    expect(dispatchKey(k("y"), sidebarOnCard).type).toBe("yank-at-cursor");
   });
 
-  it("Ctrl+Y is not consumed as yank-file-path (modifier guard)", () => {
+  it("Ctrl+Y is not consumed as yank-at-cursor (modifier guard)", () => {
     expect(dispatchKey(k("y", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("y", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  it("Shift+Y is not consumed as yank-file-path (uppercase reserved for variant; not in scope)", () => {
+  it("Shift+Y is not consumed as yank-at-cursor (uppercase reserved for variant; not in scope)", () => {
     expect(dispatchKey(k("y", { shift: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("y", { shift: true }), diffPane).type).toBe("noop");
   });

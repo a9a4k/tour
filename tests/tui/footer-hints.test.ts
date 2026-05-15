@@ -51,11 +51,13 @@ describe("TUI_FOOTER_HINTS", () => {
     expect(TUI_FOOTER_HINTS).toContain("[/]: width");
   });
 
-  // Issue #326: `y: yank path` is persistent (not gated on a configured
-  // agent) — the action is always available; resolution-failure is a
-  // labelled no-op handled App-side.
-  it("surfaces `y: yank path` as a persistent hint", () => {
-    expect(TUI_FOOTER_HINTS).toContain("y: yank path");
+  // Issue #326 / PRD #356 / issue #357: `y: yank` is persistent (not
+  // gated on a configured agent) — the action is always available; the
+  // resolver picks line text or path based on cursor context, and the
+  // App-side handler labels degenerate states via footer flash.
+  it("surfaces `y: yank` as a persistent hint", () => {
+    expect(TUI_FOOTER_HINTS).toContain("y: yank");
+    expect(TUI_FOOTER_HINTS).not.toContain("y: yank path");
   });
 
   it("omits the `s: send to {agent}` hint by default (no reply-agent configured)", () => {

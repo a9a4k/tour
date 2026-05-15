@@ -26,6 +26,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #352
 
+### Changed
+
+- **TUI `y` is now context-aware (PRD #356, issue #357).** Semantics
+  expansion of the shipped #326 binding: pressing bare `y` in diff mode
+  with the cursor on a context / addition / deletion / change row now
+  copies the raw line text (no `+` / `-` / ` ` prefix character, no
+  trailing newline) to the system clipboard and flashes
+  `Copied "<truncated preview>"`. Cursor on an interactive row
+  (hunk-header / expand-down / boundary-top / collapsed-file) or on a
+  Comment card falls back to the file path — same `Copied <path>`
+  flash as #326. Sidebar selection of a file row keeps the
+  copy-the-path semantics; folder rows and null states flash
+  `y: no file selected` / `y: no cursor`. Resolution lives in a new
+  shared `src/core/yank-target.ts` module that the upcoming webapp
+  slice consumes unchanged. Persistent footer legend now reads
+  `y: yank` (replacing `y: yank path`) to cover both outcomes.
+
+  Issue: #357 · PRD: #356
+
 ## [3.1.1] — 2026-05-15
 
 ### Changed

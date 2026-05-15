@@ -69,7 +69,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // PRD #349 / ADR 0032 / issue #352: `o: open` slots next to
     // `y: yank path` — both are "side-effect on cursor's file."
     return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  o: open  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
+      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank  ·  o: open  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's

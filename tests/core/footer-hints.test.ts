@@ -90,7 +90,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("Enter: expand");
     expect(out).toContain("e: expand all");
     expect(out).toContain("C: collapse replies");
-    expect(out).toContain("y: yank path");
+    expect(out).toContain("y: yank");
     expect(out).toContain("o: open");
     expect(out).toContain("Space: page");
     expect(out).toContain("L: layout");
@@ -100,15 +100,15 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
   });
 
   // PRD #349 / ADR 0032 / issue #352: `o: open` slots adjacent to
-  // `y: yank path` — both are "side-effect on cursor's file."
-  it("diff-mode legend places `o: open` next to `y: yank path`", () => {
+  // `y: yank` — both are "side-effect on cursor's file."
+  it("diff-mode legend places `o: open` next to `y: yank`", () => {
     const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
-    const y = out.indexOf("y: yank path");
+    const y = out.indexOf("y: yank");
     const o = out.indexOf("o: open");
     expect(y).toBeGreaterThanOrEqual(0);
     expect(o).toBeGreaterThan(y);
     // No other persistent hint between y and o.
-    const between = out.slice(y + "y: yank path".length, o);
+    const between = out.slice(y + "y: yank".length, o);
     expect(between).toBe("  ·  ");
   });
 
