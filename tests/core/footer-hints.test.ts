@@ -9,6 +9,10 @@ import {
 // for both surfaces. The TUI consumer in src/tui/footer-hints.ts is a
 // thin delegate pinned to `surface: "tui"`; the webapp's Footer.tsx
 // composes with `surface: "web"` to render only the bound-keys subset.
+// Issue #337 / ADR 0029 + ADR 0030: the TUI legend reads `c: comment`,
+// `C: collapse replies`, `T: picker` after the keybinding cutover. The
+// webapp legend keeps its slice-1 form (`a: comment`, `t: picker`) until
+// the Stage A webapp slice lands.
 
 describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI export", () => {
   it("emits today's TUI_FOOTER_HINTS constant verbatim with no options", () => {
@@ -39,6 +43,21 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
     expect(r).toBeGreaterThanOrEqual(0);
     expect(s).toBeGreaterThan(r);
     expect(enter).toBeGreaterThan(s);
+  });
+
+  // Issue #337 / ADR 0029 + ADR 0030: lock the new labels in the TUI
+  // legend so the keybinding cutover can't drift back to the pre-cutover
+  // shape (`a: comment`, `c: collapse`, `t: picker`). `includes` is
+  // case-sensitive so the lowercase "c: collapse" check does not match
+  // the new "C: collapse replies" label.
+  it("uses the post-cutover TUI labels (`c: comment`, `C: collapse replies`, `T: picker`)", () => {
+    const out = composeFooterHints({ surface: "tui" });
+    expect(out).toContain("c: comment");
+    expect(out).toContain("C: collapse replies");
+    expect(out).toContain("T: picker");
+    expect(out).not.toContain("a: comment");
+    expect(out).not.toContain("c: collapse");
+    expect(out).not.toContain("t: picker");
   });
 });
 

@@ -63,7 +63,6 @@ import {
   buildTopLevelComposer,
 } from "./composer-state.js";
 import { useTourSessionView } from "../core/tour-session-view.js";
-import { foldToggleAction } from "../core/fold-toggle.js";
 import {
   fileCardPlaceholder,
   fileClassification,
@@ -1399,20 +1398,6 @@ function App(props: AppProps) {
         // Issue #294 Slice 1: the keyboard path animates; mouse-click
         // stays instant (passed through the default at the mouse site).
         selectSidebarFile(selectedRow.path, { animate: true });
-        return;
-      }
-      case "toggle-collapse": {
-        if (selectedRow?.kind !== "file") return;
-        const f = selectedRow.file;
-        const cls = fileClassification(classifications, f.name);
-        if (cls.reason === "binary") return;
-        // Issue #316: dispatch decided by `foldToggleAction` (see helper).
-        store.dispatch(foldToggleAction(f.name, isFileCollapsed(f.name), cls));
-        return;
-      }
-      case "toggle-folder": {
-        if (selectedRow?.kind !== "folder") return;
-        store.dispatch({ type: "folds.toggleFolder", path: selectedRow.path });
         return;
       }
       case "expand-folder": {

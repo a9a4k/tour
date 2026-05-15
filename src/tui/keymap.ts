@@ -15,7 +15,7 @@ export interface KeymapContext {
   cursorOnInteractive: boolean;
   /** Whether the cursor sits on an Annotation card (PRD #192 / ADR 0022).
    *  Routes the row-kind-aware dispatch: `r` and `s` fire only when this
-   *  is true; `a` fires only when this is false (and the cursor isn't on
+   *  is true; `c` fires only when this is false (and the cursor isn't on
    *  an interactive row either). On a card / row mismatch the action is
    *  a labelled no-op the App shell surfaces via the footer hint. */
   cursorOnCard: boolean;
@@ -28,8 +28,6 @@ export type KeyAction =
   | { type: "move-file-down" }
   | { type: "move-file-up" }
   | { type: "select-file" }
-  | { type: "toggle-collapse" }
-  | { type: "toggle-folder" }
   | { type: "expand-folder" }
   | { type: "collapse-folder" }
   | { type: "collapse-parent" }
@@ -90,16 +88,23 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     return { type: "cursor-end" };
   }
 
-  // Layout toggle moved from `l` to Shift-L (ADR 0011): the lowercase pair
-  // `h`/`l` is now reserved for cursor side selection in the diff pane.
+  // Capital-letter bindings are reserved for Tour-wide state (ADR 0030):
+  // `L` toggles layout (ADR 0011), `T` opens the picker, `C` toggles the
+  // replies-collapse across every Thread. Lowercase letters bind cursor-
+  // target actions on the same axis (e.g. `c` for comment, `t` is unbound).
   if (!key.ctrl && key.shift && key.name === "l") {
     return { type: "toggle-layout" };
+  }
+  if (!key.ctrl && key.shift && key.name === "t") {
+    return { type: "open-picker" };
+  }
+  if (!ctx.sidebarFocused && !key.ctrl && key.shift && key.name === "c") {
+    return { type: "toggle-replies-collapse" };
   }
 
   if (!key.ctrl && !key.shift) {
     if (key.name === "n") return { type: "next-annotation" };
     if (key.name === "p") return { type: "prev-annotation" };
-    if (key.name === "t") return { type: "open-picker" };
     // Issue #297: `e` dispatches per-file Expand-all on the cursored
     // file. The keyboard path mirrors the file-header's `↕` mouse
     // affordance — both end on `expansion.expandFileAll(cursor.file)`.
@@ -116,11 +121,14 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     // (sidebar parked on a folder, null cursor on a degenerate state).
     if (key.name === "y") return { type: "yank-file-path" };
     // Row-kind-aware action dispatch (PRD #192 / ADR 0022). The unified
-    // cursor routes action keys by row kind: `a` is a row-only action,
-    // `r` and `s` are card-only actions. Mismatches map to labelled
-    // no-ops the App shell surfaces via the footer hint — silent vs.
-    // wrong-target trade-off resolved by saying so.
-    if (key.name === "a") {
+    // cursor routes action keys by row kind: `c` (issue #337, ADR 0029)
+    // is a row-only action, `r` and `s` are card-only actions. Mismatches
+    // map to labelled no-ops the App shell surfaces via the footer hint —
+    // silent vs. wrong-target trade-off resolved by saying so. `c` is
+    // scoped to the diff pane: sidebar `c` is a plain noop (its prior
+    // toggle-folder/toggle-collapse binding is retired; `h`/`l` cover
+    // those operations per issue #337).
+    if (!ctx.sidebarFocused && key.name === "c") {
       if (ctx.cursorOnCard) return { type: "noop-comment-on-card" };
       return { type: "open-top-level-composer" };
     }
@@ -152,10 +160,10 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "j" || key.name === "down") return { type: "move-file-down" };
     if (key.name === "k" || key.name === "up") return { type: "move-file-up" };
     if (key.name === "return") return { type: "select-file" };
-    if (!key.ctrl && !key.shift && key.name === "c") {
-      if (ctx.selectedRowKind === "folder") return { type: "toggle-folder" };
-      if (ctx.selectedRowKind === "file") return { type: "toggle-collapse" };
-    }
+    // The prior sidebar `c` arm (toggle-folder / toggle-collapse) was
+    // retired in issue #337 — `h`/`l` already cover folder expand /
+    // collapse and per-file diff collapse in the sidebar, and lowercase
+    // `c` is the cursor-target comment binding (diff-pane only).
     if ((key.name === "right" || key.name === "l") && ctx.selectedRowKind === "folder") {
       return { type: "expand-folder" };
     }
@@ -171,11 +179,6 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "k" || key.name === "up") return { type: "cursor-up" };
     if (key.name === "h" || key.name === "left") return { type: "cursor-side-left" };
     if (key.name === "l" || key.name === "right") return { type: "cursor-side-right" };
-  }
-
-  // Outside the sidebar, `c` collapses just the Replies in every Thread.
-  if (!ctx.sidebarFocused && !key.ctrl && !key.shift && key.name === "c") {
-    return { type: "toggle-replies-collapse" };
   }
 
   return { type: "noop" };

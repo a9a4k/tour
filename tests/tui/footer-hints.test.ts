@@ -25,10 +25,14 @@ function ann(o: Partial<Annotation> & Pick<Annotation, "id" | "body">): Annotati
 
 describe("TUI_FOOTER_HINTS", () => {
   // Issue #183 / PRD #181: the top-level annotate affordance is labelled
-  // "Comment" in both surfaces. The verb the hint surfaces against the
-  // `a` keystroke must match — `a` keybinding itself is unchanged.
-  it("labels the `a` action as `comment`, not `annotate`", () => {
-    expect(TUI_FOOTER_HINTS).toContain("a: comment");
+  // "Comment" in both surfaces. Issue #337 / ADR 0029 + ADR 0030 moved
+  // the binding from `a` to `c` (lowercase = cursor-target); the legend
+  // must show `c: comment` and never the pre-cutover `a: comment` or
+  // `a: annotate` shapes.
+  it("labels the `c` action as `comment`, not `annotate` (post `a → c` cutover)", () => {
+    expect(TUI_FOOTER_HINTS).toContain("c: comment");
+    expect(TUI_FOOTER_HINTS).not.toContain("a: comment");
+    expect(TUI_FOOTER_HINTS).not.toContain("c: annotate");
     expect(TUI_FOOTER_HINTS).not.toContain("a: annotate");
   });
 
