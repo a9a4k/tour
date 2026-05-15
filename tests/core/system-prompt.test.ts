@@ -32,4 +32,14 @@ describe("replyAgentSystemPrompt", () => {
     expect(prompt).toContain("Always reply");
     expect(prompt).toContain("Never exit without writing a reply");
   });
+
+  it("speaks the Stage A vocabulary: Comment, not Annotation (ADR 0029)", () => {
+    // PRD #335 / issue #339: the prompt shapes what every reply-agent
+    // invocation writes from this release forward. If the prompt drifts
+    // back to the old vocabulary, agent output drifts with it.
+    const prompt = replyAgentSystemPrompt();
+    expect(prompt).not.toMatch(/annotation/i);
+    expect(prompt).toContain("responding to a Reply or Comment");
+    expect(prompt).toContain("writes that as the Comment body — verbatim");
+  });
 });
