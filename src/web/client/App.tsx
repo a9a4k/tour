@@ -583,10 +583,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
     if (typeof document === "undefined") return;
     const active = document.activeElement;
-    if (active instanceof HTMLElement && active.classList.contains("file-entry")) {
-      active.blur();
-    }
-    if (active instanceof HTMLElement && active.classList.contains("folder-entry")) {
+    if (active instanceof HTMLElement && active.getAttribute("role") === "treeitem") {
       active.blur();
     }
   }, [paneFocus, sidebarSelectedPath]);
@@ -1330,17 +1327,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (view.kind !== "ok") return;
           const rows = view.tree.visibleRows;
           if (rows.length === 0) return;
+          const down = action.type === "move-file-down";
           const idx =
             sidebarSelectedPath === null
               ? -1
               : rows.findIndex((r) => r.path === sidebarSelectedPath);
-          const delta = action.type === "move-file-down" ? 1 : -1;
-          const nextIdx =
-            idx === -1
-              ? action.type === "move-file-down"
-                ? 0
-                : rows.length - 1
-              : Math.max(0, Math.min(rows.length - 1, idx + delta));
+          let nextIdx: number;
+          if (idx === -1) {
+            nextIdx = down ? 0 : rows.length - 1;
+          } else {
+            nextIdx = Math.max(0, Math.min(rows.length - 1, idx + (down ? 1 : -1)));
+          }
           if (nextIdx === idx) return;
           setSidebarSelectedPath(rows[nextIdx].path);
           return;
