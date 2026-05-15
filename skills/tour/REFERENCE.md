@@ -23,12 +23,16 @@ Each line of input to `tour comment <id> --batch -` is a JSON object:
 
 ### Anchor validation
 
-Anchors are validated at write time. A typo in `file` or an out-of-range line is rejected with a clear error. Always run `tour show <id> --json` after a batch to confirm all comments landed.
+Anchors are validated at write time. A typo in `file` or an out-of-range line is rejected with a clear error. The CLI prints `Added N comments to <id>` on a successful batch — that's your confirmation. No post-write verification step.
+
+### Field names
+
+The on-disk and JSON field is `.comments`. The legacy `.annotations` field exists only as the ADR-0029 read-fallback — never query it. The CLI subcommand is `tour comment`; `tour annotate` is a legacy alias preserved for back-compat, don't reach for it.
 
 ## CLI surface
 
 ```
-tour                                                                                # opens best surface for env (v2.0.0+); when no id, pre-picks most-recent open tour and prints its deep URL
+tour                                                                                # opens best surface for env; when no id, pre-picks most-recent open tour and prints its deep URL
 tour create --head <ref> [--base <ref>] [--title <s>] [--json]
 tour comment <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
 tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
@@ -46,8 +50,21 @@ tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>]                 
 ### Head magic values
 
 - `--head HEAD` — latest commit
-- `--head WIP` — synthetic snapshot of the working tree (uncommitted work)
+- `--head WIP` — synthetic snapshot of the working tree (uncommitted work). Each invocation produces a fresh synthetic sha when the working tree has changed, so the `head_sha`-match reuse rule still applies.
 - `--head <sha>` — specific commit
+
+### Base resolution {#base-resolution}
+
+`--base` defaults probe `origin/HEAD` → `origin/main` → `origin/master` → `@{upstream}` and pick the first that produces a non-empty merge-base. This matches the GitHub PR diff for the common feature-branch-off-main flow. Pass `--base` explicitly only when reviewing against a non-default-branch target.
+
+### Install fallback
+
+```sh
+bunx tourdiff <command>      # bun
+npx -y tourdiff <command>    # npm
+pnpm dlx tourdiff <command>  # pnpm
+yarn dlx tourdiff <command>  # yarn
+```
 
 ## Reply-agent selection
 
@@ -69,7 +86,7 @@ Shipped registry:
 
 If you can't confidently self-identify (you're running inside Cursor, Windsurf, Aider, Continue, Augment, or another wrapper that uses a shipped CLI under the hood without exposing its name), **drop the flag entirely**. Don't guess — defaulting to `claude` when the user might have `codex` or `gemini` installed is surprising and invasive.
 
-When `--reply-agent` is unset, Tour v2.0.0+ auto-detects shipped CLIs on the user's `PATH` and prints a one-line tip after server startup:
+When `--reply-agent` is unset, Tour auto-detects shipped CLIs on the user's `PATH` and prints a one-line tip after server startup:
 
 ```
 Tip: detected 'claude' on PATH. Run with --reply-agent claude to enable agent replies.

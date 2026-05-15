@@ -13,9 +13,7 @@ description: >
   reply on an existing Tour, via `tour pickup`.
 
   Does NOT apply to inline chat feedback consumed this turn, opening GitHub
-  PRs, filing issues, or repo-wide notes with no line
-  anchor. For comment style and authoring guidance, see the body of
-  this skill.
+  PRs, filing issues, or repo-wide notes with no line anchor.
 allowed-tools: Bash(tour:*),
   Bash(bunx tourdiff:*),
   Bash(npx tourdiff:*),
@@ -28,10 +26,10 @@ allowed-tools: Bash(tour:*),
 
 ## Author
 
-When asked for a review / walkthrough on a branch or diff:
+Before creating: if `tour list --status open --json` returns a tour whose `head_sha` matches `git rev-parse HEAD`, reuse its id. Otherwise create.
 
 ```sh
-TOUR_ID=$(tour create --head HEAD)
+TOUR_ID=$(tour create --head HEAD --title "<short>")
 cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
 {"file":"src/foo.ts","side":"additions","line_start":12,"line_end":14,"body":"..."}
 {"file":"src/foo.ts","side":"additions","line_start":40,"body":"..."}
@@ -39,15 +37,15 @@ JSONL
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-The background server prints a Cmd/Ctrl-clickable URL. Your job ends there — don't pass `--open`. Same-cwd re-runs reuse the running server.
+The server prints a clickable URL. Your job ends there — don't pass `--open`.
 
 For terminal review: `tour tui "$TOUR_ID"`.
 
 Pass `--reply-agent <name>` only when you can self-identify (Claude Code → `claude`, Codex → `codex`). If unsure, drop the flag — Tour auto-detects shipped CLIs on PATH. See [REFERENCE.md](REFERENCE.md#reply-agent-selection).
 
-For uncommitted work, use `--head WIP` — Tour snapshots the working tree as a synthetic commit; no need to commit first.
+Uncommitted work: `--head WIP` (synthetic snapshot, no commit needed).
 
-Don't pass `--base` unless reviewing against a non-default-branch target. The default probes `origin/HEAD` → `origin/main` → `origin/master` → `@{upstream}` and picks the first that produces a non-empty merge-base — matching the GitHub PR diff for the common feature-branch-off-main flow.
+`--base` only for non-default-branch targets; default matches the GitHub PR diff. See [REFERENCE.md](REFERENCE.md#base-resolution).
 
 ## Comment rules
 
@@ -55,9 +53,9 @@ Don't pass `--base` unless reviewing against a non-default-branch target. The de
 2. **Order by reading flow, motivation first.** Open with one comment answering _why does this PR exist?_ (the problem, not the diff) — anchored to a representative line or the first changed file. Then move through the changes in reading order, not file order.
 3. **What to comment on**: new dependency shapes, why a refactor moved boundaries this way, the non-obvious trade-off, the part the diff doesn't explain, the bug's root cause.
 4. **What to skip**: variable renames, micro-formatting, "five lines instead of seven", linter-catchable nits. If the diff is the explanation, don't comment.
-5. **Leverage every word.** Cut anything that doesn't carry the _why_. Inline any context the reader needs (linked issue, codebase convention, Slack thread) or drop the comment.
+5. **Lead with the claim; cut unless un-evaluable.** Sentence 1 is the load-bearing point — a reader who stops there has the answer. Sentences 2+ survive only if removing them leaves the claim unjudgable by a reasonable reviewer of this codebase. Evidence (provenance, timeline, links) is reply material — the reader can ask.
 6. **Match medium to message.** Diagrams for flow, snippets for code changes, tables for comparisons, prose for the *why* and the narrative. Markdown renders rich in the webapp.
-7. **Findings batch**: external findings (security scan, lint, thorough-review) get one comment per finding — drop the narrative arc.
+7. **Findings batch**: external findings (security scan, lint, thorough-review) get one comment per finding — drop the narrative arc. Optional `[severity]` prefix per [Conventional Comments](https://conventionalcomments.org/).
 
 ## Continue (pickup)
 
@@ -67,7 +65,7 @@ When the user references human comments on an existing Tour:
 tour pickup "$TOUR_ID" --json
 ```
 
-Returns a `ConversationTree`. Actors:
+Returns comments + replies. Actors:
 
 | `author_kind` | `author` value                                    | Actor         |
 | ------------- | ------------------------------------------------- | ------------- |
@@ -80,7 +78,7 @@ Most human comments have no reply-agent child — they're directives for you. Co
 For each thread: code change | reply | close | defer. Reply with `replies_to`:
 
 ```sh
-echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_xxx","body":"..."}' | tour comment "$TOUR_ID" --batch -
+echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"<comment-id>","body":"..."}' | tour comment "$TOUR_ID" --batch -
 ```
 
 Replies inherit the parent's anchor; `file`/`side`/`line_start` are still required at write time.
@@ -93,16 +91,9 @@ tour show "$TOUR_ID" --json
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Reuse for same HEAD; create a new Tour for a different HEAD.
-
-## Install fallback
-
-```sh
-bunx tourdiff <command>      # bun
-npx -y tourdiff <command>    # npm
-```
+Reuse when `head_sha` matches current HEAD; create a new Tour when it doesn't.
 
 ## Reference
 
-- [REFERENCE.md](REFERENCE.md) — JSONL schema, flag reference, reply-agent registry, edge cases
+- [REFERENCE.md](REFERENCE.md) — JSONL schema, flag reference, reply-agent registry, install fallback, edge cases
 - [EXAMPLES.md](EXAMPLES.md) — worked examples

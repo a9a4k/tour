@@ -1,6 +1,6 @@
 # Tour Examples
 
-Worked examples for the three phases.
+Worked examples through the lead-with-claim + un-evaluable rule.
 
 ## Example 1 — Narrative refactor tour
 
@@ -10,16 +10,16 @@ Context: user has refactored a function. Wants a narrative tour for a teammate.
 TOUR_ID=$(tour create --head HEAD --title "Extract validation into its own module")
 
 cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
-{"file":"src/validate.ts","side":"additions","line_start":1,"line_end":3,"body":"## Setup\n\nExtracts inline validation from `process.ts` into its own module. Lets us unit-test validation without `process.ts`'s file-I/O. No rule changes."}
-{"file":"src/validate.ts","side":"additions","line_start":12,"line_end":24,"body":"## The validator\n\nThe function that lived inline in `process.ts`. Same inputs, outputs, error shapes — only location moved."}
-{"file":"src/process.ts","side":"deletions","line_start":40,"line_end":52,"body":"## The hole this leaves\n\nThe deleted block is now in `validate.ts:12-24`, called via import."}
-{"file":"src/process.ts","side":"additions","line_start":40,"body":"## The call site\n\nReplaces the deleted block with a one-line call. Reading order: this file is the *outcome*; `validate.ts` is *what moved*."}
+{"file":"src/validate.ts","side":"additions","line_start":1,"line_end":3,"body":"## Setup\n\nValidation extracted from `process.ts` — pure move, no rule changes. Tests can now skip `process.ts`'s file-I/O setup."}
+{"file":"src/validate.ts","side":"additions","line_start":12,"line_end":24,"body":"## The validator\n\nLifted from `process.ts`. Same inputs, outputs, error shapes — only location moved."}
+{"file":"src/process.ts","side":"deletions","line_start":40,"line_end":52,"body":"## The hole this leaves\n\nNow in `validate.ts:12-24`, called via import."}
+{"file":"src/process.ts","side":"additions","line_start":40,"body":"## The call site\n\nOne-line import call replaces the deleted block."}
 JSONL
 
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Four comments as narrative beats: setup → what moved → what was left → what replaced it. No "as discussed in #142"; no "obviously".
+Four comments, each leading with a single claim. Provenance ("as discussed in #142"), adverbs ("obviously"), and reading-order hints are reply material.
 
 ## Example 2 — Findings batch from an external reviewer
 
@@ -28,17 +28,16 @@ Context: a security scan produced a list of issues. Convert to Tour for the huma
 ```sh
 TOUR_ID=$(tour create --head HEAD --title "Security scan findings")
 
-# Findings from your scan tool, transformed to Tour JSONL
 cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
-{"file":"src/auth.ts","side":"additions","line_start":34,"body":"**[high]** Unparameterised SQL. `user_id` is interpolated directly into the query string. Replace with a parameterised statement (`db.query(sql, [user_id])`)."}
-{"file":"src/auth.ts","side":"additions","line_start":67,"body":"**[medium]** Password compared with `==` rather than a constant-time compare. Use `crypto.timingSafeEqual()` to avoid timing-attack surface."}
-{"file":"src/session.ts","side":"additions","line_start":12,"body":"**[low]** Session token has no expiration. Add an `expires_at` and refuse expired tokens at read."}
+{"file":"src/auth.ts","side":"additions","line_start":34,"body":"`[issue, security]` Unparameterised SQL — `user_id` interpolated. Use `db.query(sql, [user_id])`."}
+{"file":"src/auth.ts","side":"additions","line_start":67,"body":"`[issue, security]` Non-constant-time password compare. Use `crypto.timingSafeEqual()`."}
+{"file":"src/session.ts","side":"additions","line_start":12,"body":"`[suggestion]` Session token has no expiration. Add `expires_at`; reject expired at read."}
 JSONL
 
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Findings style — no narrative arc. Each comment stands alone. Severity labels in the body help the human triage.
+Conventional Comments labels signal intent in sentence 0, leaving sentence 1 to be pure claim.
 
 ## Example 3 — Pickup → reply
 
@@ -52,18 +51,18 @@ Abridged output:
 
 ```json
 {
-  "id": "ann_a7c4",
+  "id": "2026-05-15-131034-29on",
   "comments": [
     {
-      "id": "ann_root_01",
+      "id": "2026-05-15-131200-h4of",
       "file": "src/validate.ts",
       "line_start": 12,
-      "body": "## The validator\n\nThis is the function that lived inline...",
+      "body": "## The validator\n\nLifted from `process.ts`...",
       "author": "agent",
       "author_kind": "agent",
       "replies": [
         {
-          "id": "ann_reply_01",
+          "id": "2026-05-15-141022-r1pl",
           "body": "Why didn't we keep this in `process.ts` and just export it?",
           "author": "almas",
           "author_kind": "human"
@@ -74,10 +73,10 @@ Abridged output:
 }
 ```
 
-The human asked a clarification question. Decision: reply in prose, no code change. Write the reply:
+Reply in prose (no code change required):
 
 ```sh
-echo '{"file":"src/validate.ts","side":"additions","line_start":12,"replies_to":"ann_root_01","body":"Exporting from `process.ts` would have worked, but it stays the dependency hub for any validation test. Pulling out lets tests skip the file-I/O setup. Trade-off: one more file."}' \
+echo '{"file":"src/validate.ts","side":"additions","line_start":12,"replies_to":"2026-05-15-131200-h4of","body":"Exporting from `process.ts` would have worked but kept it as the dependency hub for any validation test. Pulling out lets tests skip the file-I/O setup."}' \
   | tour comment "$TOUR_ID" --batch -
 ```
 
@@ -91,43 +90,43 @@ Context: the human's reply was "this loop is O(n²); use a Map." Action required
 tour pickup "$TOUR_ID" --json   # confirm the request
 ```
 
-Identify the file/lines and make the code change through your normal file-editing tools — Tour doesn't edit code itself. Then close the loop with a reply documenting the fix:
+Make the code change through your normal file-editing tools — Tour doesn't edit code. Then reply documenting the fix:
 
 ```sh
-echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"ann_xxx","body":"Done in commit abc123. Replaced the nested loop with a `Map<id, item>` lookup. O(n) now."}' \
+echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"2026-05-15-131200-zq2t","body":"Done in commit abc123. Replaced nested loop with `Map<id, item>` lookup. O(n) now."}' \
   | tour comment "$TOUR_ID" --batch -
 ```
 
-The reply lives in the Tour; the actual change lives in your commit history. The Tour is now ready for the human to re-read or close.
+The reply lives in the Tour; the actual change lives in your commit history.
 
-## Example 5 — Rich GFM body (table + lists + code)
+## Example 5 — Rich GFM body (table)
 
-Context: agent walks through a config schema rename. Compact body with table, bullet list, and inline code — all render natively in the webapp.
+Context: config schema rename. Table + claim, nothing else.
 
 ```sh
 TOUR_ID=$(tour create --head HEAD --title "Migrate config from flat to namespaced keys")
 
 cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
-{"file":"src/config.ts","side":"additions","line_start":1,"line_end":12,"body":"## Schema rename\n\n| Before | After |\n|---|---|\n| `timeout` | `network.timeout_ms` |\n| `retries` | `network.retries` |\n| `cache_size` | `cache.max_entries` |\n\n**Why namespace:** flat keys had started to collide — `timeout` meant two different things in different code paths. Namespacing makes ownership obvious and prevents future collisions.\n\n**One-way migration:** old keys are not read after this PR. The bottom-of-file `migrateLegacyConfig` helper converts on-disk configs once; remove it after one release."}
+{"file":"src/config.ts","side":"additions","line_start":1,"line_end":12,"body":"## Schema rename — one-way migration\n\n| Before | After |\n|---|---|\n| `timeout` | `network.timeout_ms` |\n| `retries` | `network.retries` |\n| `cache_size` | `cache.max_entries` |\n\n`migrateLegacyConfig` converts on-disk configs once; remove after one release."}
 JSONL
 
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-One comment, four GFM elements (heading, table, bold, inline code). The webapp renders all four; the TUI shows the same as raw markdown source.
+The table IS the claim — enabling the reader to judge the rename. "Why namespace" rationale is reply material if asked.
 
 ## Example 6 — Mermaid body (sequence diagram)
 
-Context: agent introduces a background refresh queue. A diagram lands the flow faster than a paragraph would.
+Context: agent introduces a background refresh queue. Diagram lands the flow faster than prose.
 
 ```sh
 TOUR_ID=$(tour create --head HEAD --title "Add background refresh queue")
 
 cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
-{"file":"src/queue.ts","side":"additions","line_start":1,"line_end":3,"body":"## Refresh pipeline\n\nThis PR adds a background queue so stale items refresh without blocking the request path.\n\n```mermaid\nsequenceDiagram\n    Client->>API: GET /resource\n    API->>Cache: lookup\n    Cache-->>API: hit (possibly stale)\n    API-->>Client: response (fast path)\n    Note over API,Queue: if served stale\n    API->>Queue: enqueue refresh\n    Queue->>Source: fetch fresh\n    Source-->>Queue: data\n    Queue->>Cache: write\n```\n\n**Invariant:** the request path never waits on the queue. If the queue is full or the source is down, stale-served data is returned and the refresh is dropped — never the reverse."}
+{"file":"src/queue.ts","side":"additions","line_start":1,"line_end":3,"body":"## Refresh pipeline — request path never waits\n\n```mermaid\nsequenceDiagram\n    Client->>API: GET /resource\n    API->>Cache: lookup\n    Cache-->>API: hit (possibly stale)\n    API-->>Client: response (fast path)\n    Note over API,Queue: if served stale\n    API->>Queue: enqueue refresh\n    Queue->>Source: fetch fresh\n    Source-->>Queue: data\n    Queue->>Cache: write\n```\n\nIf queue is full or source is down: stale served, refresh dropped — never the reverse."}
 JSONL
 
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
-Mermaid fences render as diagrams in the webapp; the TUI shows them as a fenced code block (still readable, just not graphical). Reserve diagrams for control/data flow that would otherwise need multiple paragraphs — overuse dilutes their value.
+Diagrams render in the webapp; the TUI shows them as a fenced code block. Reserve diagrams for control/data flow that would otherwise need multiple paragraphs.
