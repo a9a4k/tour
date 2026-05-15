@@ -7,9 +7,9 @@ import type { ReplyLock } from "./reply-lock.js";
 // The top-level variant carries the live `bundle` so the validator inside
 // `createAnnotation` can resolve the file + line range without a second
 // disk read (PRD #140 / slice 4 #144). The reply variant carries the
-// resolved parent Annotation — `createReply` re-reads `annotations.jsonl`
-// to prove the parent at write time, so passing the parent here is purely
-// for routing and the reply-payload shape `createReply` expects.
+// resolved parent Annotation — `createReply` re-reads the on-disk Comment
+// log to prove the parent at write time, so passing the parent here is
+// purely for routing and the reply-payload shape `createReply` expects.
 //
 // Single source of truth, imported by both `src/cli/tui.ts` (the writer's
 // implementation) and `src/tui/app.tsx` (the input's constructor). Pre-fix

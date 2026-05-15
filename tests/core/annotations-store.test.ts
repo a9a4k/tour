@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createAnnotation,
   createReply,
@@ -498,7 +498,7 @@ describe("annotations-store", () => {
       expect(replyAgent.author).toBe("agent");
     });
 
-    it("always re-reads annotations.jsonl (caller cannot bypass with stale in-memory data)", async () => {
+    it("always re-reads the on-disk Comment log (caller cannot bypass with stale in-memory data)", async () => {
       // Parent is added between the caller's "decision" to reply and the
       // seam call — createReply finds it because it re-reads on every call.
       const parent = makeAnnotation({ id: "p-late" });
