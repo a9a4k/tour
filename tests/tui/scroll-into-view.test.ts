@@ -239,6 +239,52 @@ describe("scrollChildIntoView", () => {
     scrollChildIntoView(sb as unknown as ScrollBoxRenderable, "target");
     expect(refreshOrder).toEqual(["content", "file", "child"]);
   });
+
+  // PRD #343 follow-up: when the element's height equals the viewport's
+  // height AND the element sits entirely outside the viewport, the
+  // strict `<` / `>` comparisons in nearestDelta used to fall through
+  // to `return 0`, leaving an n/p jump's scroll silently skipped. The
+  // user symptom: pressing `p` after `n` would move the cursor in
+  // state but not scroll the viewport back to the first comment when
+  // the first comment's rendered height happened to match the diff
+  // pane's height (very common after seed-effect center-frames it).
+  // The fix uses `<=` so the equal-size case routes through one of the
+  // scroll branches.
+  it("scrolls when element height equals viewport height and element is fully below", () => {
+    // Viewport at screen-y [3, 40] (height 37). Element at [521, 558]
+    // (height 37). endOutside, equal sizes → delta = ee - ve = 518.
+    const fake = makeFakeScrollbox({
+      viewportY: 3,
+      viewportHeight: 37,
+      scrollTop: 170,
+      scrollHeight: 727,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 521,
+      freshChildHeight: 37,
+    });
+    const result = scrollChildIntoView(fake.sb as unknown as ScrollBoxRenderable, "target");
+    expect(result).toBe(true);
+    expect(fake.scrollTarget).toEqual({ type: "by", value: { x: 0, y: 518 } });
+  });
+
+  it("scrolls when element height equals viewport height and element is fully above", () => {
+    // Viewport at screen-y [50, 70] (height 20). Element at [10, 30]
+    // (height 20). startOutside, equal sizes → delta = es - vs = -40.
+    const fake = makeFakeScrollbox({
+      viewportY: 50,
+      viewportHeight: 20,
+      scrollTop: 100,
+      scrollHeight: 500,
+      staleChildY: 0,
+      staleChildHeight: 0,
+      freshChildY: 10,
+      freshChildHeight: 20,
+    });
+    const result = scrollChildIntoView(fake.sb as unknown as ScrollBoxRenderable, "target");
+    expect(result).toBe(true);
+    expect(fake.scrollTarget).toEqual({ type: "by", value: { x: 0, y: -40 } });
+  });
 });
 
 // Issue #302: the footer-hint "is the card in view" probe was driven by

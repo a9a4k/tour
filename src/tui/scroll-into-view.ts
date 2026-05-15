@@ -237,10 +237,18 @@ function nearestDelta(es: number, ee: number, vs: number, ve: number): number {
   const startOutside = es < vs;
   const endOutside = ee > ve;
   if (startOutside && endOutside) return 0;
-  if ((startOutside && elementSize < viewportSize) || (endOutside && elementSize > viewportSize)) {
+  // `<=` (not `<`) handles the equal-size case: when the element is
+  // exactly the height of the viewport AND sits entirely outside (top
+  // above viewport, or bottom below viewport), nearestDelta must still
+  // return a non-zero scroll delta — otherwise an n/p jump to a card
+  // whose card-height matches viewport-height becomes a silent no-op.
+  // Both deltas (`es - vs` and `ee - ve`) are equal in the equality
+  // case, so either branch is correct; the placement of `<=` is purely
+  // to make a branch match.
+  if ((startOutside && elementSize <= viewportSize) || (endOutside && elementSize > viewportSize)) {
     return es - vs;
   }
-  if ((startOutside && elementSize > viewportSize) || (endOutside && elementSize < viewportSize)) {
+  if ((startOutside && elementSize > viewportSize) || (endOutside && elementSize <= viewportSize)) {
     return ee - ve;
   }
   return 0;
