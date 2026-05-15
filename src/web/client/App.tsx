@@ -56,6 +56,7 @@ import {
   type TourSessionView,
 } from "../../core/tour-session-view.js";
 import { dispatchCursorKey } from "./cursor-keymap.js";
+import { resolveOpenTarget } from "../../core/open-target-resolver.js";
 import { FileBlock, type ExpandAction } from "./FileBlock.js";
 import { tourDiffStats } from "../../core/diff-stats.js";
 import { headerSourcePair } from "../../core/header-source-pair.js";
@@ -1547,6 +1548,50 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             tourId,
             commentId: target.leafId,
           });
+          return;
+        }
+        case "open-in-editor": {
+          // PRD #349 / ADR 0032 / issue #353: webapp parity for `o`.
+          // Resolve the target client-side via the shared
+          // open-target-resolver; null → footer hint, no roundtrip.
+          // Otherwise POST to /api/tours/<id>/open-in-editor and pipe
+          // the response's `message` field verbatim into the footer —
+          // no status-code branching, the server is the source of truth
+          // for user-facing strings (matches the wording the TUI
+          // surfaces from core/editor-spawn).
+          const target = resolveOpenTarget(cursor);
+          if (!target) {
+            if (cursor && cursor.kind === "card") {
+              flashFooterStatus("o: card cursor — j/k to land on a row first");
+            } else if (cursor && cursor.kind === "row" && cursor.interactive) {
+              flashFooterStatus("o: not on a diff row — j/k to land on a line");
+            } else {
+              flashFooterStatus("o: no file under cursor");
+            }
+            return;
+          }
+          if (!tourId) return;
+          void fetch(`/api/tours/${tourId}/open-in-editor`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              file: target.file,
+              line: target.line,
+              side: cursor && cursor.kind === "row" ? cursor.side : "additions",
+            }),
+          }).then(
+            async (res) => {
+              const data = (await res
+                .json()
+                .catch(() => ({ message: "o: server error" }))) as {
+                message?: string;
+              };
+              flashFooterStatus(data.message ?? "o: server error");
+            },
+            () => {
+              flashFooterStatus("o: server unreachable");
+            },
+          );
           return;
         }
       }

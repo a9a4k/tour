@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`o` on a webapp diff row opens the file at that line in your GUI
+  editor (issue #353, PRD #349, ADR 0032).** Webapp parity for the
+  cross-surface open-in-editor feature. `tour serve --editor 'code -g'`
+  honors the same precedence chain as the TUI (`--editor` →
+  `$TOUR_EDITOR` → `$VISUAL` → `$EDITOR` → null). Pressing bare `o` on
+  a diff row resolves `(file, line)` client-side, POSTs to a new
+  `/api/tours/<id>/open-in-editor` endpoint, and pipes the server's
+  `message` verbatim into the footer — `Opened <file>:<line>` on
+  success, `o: <bin>: command not found` / `o: editor failed (code N)`
+  on spawn failure, `o: editor not configured — set $TOUR_EDITOR or
+  pass --editor` when no editor is configured, `o: terminal editor —
+  open from TUI instead` when a terminal-classified editor is
+  configured (the server refuses these with HTTP 409 — the webapp has
+  no terminal to lend; users with vim/nvim/nano/emacs/hx/micro keep
+  using the TUI for `o`). The server validates `file ∈ tour.diff.files`
+  as defense-in-depth on top of the 127.0.0.1-only bind; a misbehaving
+  local script can't compound into arbitrary spawn. `o` is suppressed
+  by picker-open and editable-focus but fires through the
+  composer-open gate so mid-compose fact-checking works. Footer legend
+  gains `o: open` next to `r: reply` on both pane modes.
+
+  Issue: #353 · PRD: #349 · ADR: 0032
+
 - **`o` on a TUI diff row opens the file at that line in your GUI editor
   (issue #352, PRD #349, ADR 0032).** Tracer-bullet slice 1 of the
   cross-surface open-in-editor feature: `tour tui --editor 'code -g'`

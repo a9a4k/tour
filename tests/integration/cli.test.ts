@@ -713,6 +713,20 @@ describe("CLI integration", () => {
       expect(tuiLine).toBeDefined();
       expect(tuiLine).toContain("[--editor <cmd>]");
     });
+
+    // PRD #349 / ADR 0032 / issue #353: webapp parity for `o` extends
+    // the `--editor` flag onto the `tour serve` line. The USAGE block
+    // already carried it from #352; this is the regression guard so
+    // the doc + the parser don't drift apart.
+    it("`tour --help` documents `--editor` on the `tour serve` line (issue #353)", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      const serveLine = r.stdout
+        .split("\n")
+        .find((l) => l.trim().startsWith("tour serve "));
+      expect(serveLine).toBeDefined();
+      expect(serveLine).toContain("[--editor <cmd>]");
+    });
   });
 
   describe("pickup", () => {

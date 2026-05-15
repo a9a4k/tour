@@ -287,6 +287,57 @@ describe("dispatchCursorKey: suppression rules", () => {
     });
   });
 
+  // PRD #349 / ADR 0032 / issue #353: `o` fires when the composer is
+  // open (mid-compose fact-checking) but is suppressed by picker and
+  // editable-focus like every other action key. Modifier guards also
+  // apply (Ctrl/Cmd/Alt/Shift+O → noop so browser shortcuts are
+  // unaffected).
+  it("o → open-in-editor on a row cursor in diff mode", () => {
+    expect(dispatchCursorKey(key({ key: "o" }), baseCtx)).toEqual({
+      type: "open-in-editor",
+    });
+  });
+
+  it("o still fires when the composer is open (above the composer-open gate)", () => {
+    const ctx = { ...baseCtx, composerOpen: true };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({
+      type: "open-in-editor",
+    });
+  });
+
+  it("o is suppressed when the picker is open", () => {
+    const ctx = { ...baseCtx, pickerOpen: true };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({ type: "noop" });
+  });
+
+  it("o is suppressed when focus is in an editable element", () => {
+    const ctx = { ...baseCtx, focusInEditable: true };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({ type: "noop" });
+  });
+
+  it("Shift+O / Ctrl+O / Cmd+O → noop (modifier guards)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "o", shiftKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "o", ctrlKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "o", metaKey: true }), baseCtx),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("o fires in sidebar mode too — App-side handler surfaces the resolution-failure hint when no row is under cursor", () => {
+    const ctx: CursorKeymapContext = {
+      ...baseCtx,
+      paneFocus: "sidebar",
+      selectedRowKind: "file",
+    };
+    expect(dispatchCursorKey(key({ key: "o" }), ctx)).toEqual({
+      type: "open-in-editor",
+    });
+  });
+
   it("Cmd / Ctrl / Alt modifiers → noop (browser shortcuts)", () => {
     expect(dispatchCursorKey(key({ key: "j", metaKey: true }), baseCtx)).toEqual({
       type: "noop",

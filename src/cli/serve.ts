@@ -1,4 +1,5 @@
 import { assertShippedAgent } from "../agents/index.js";
+import type { EditorConfig } from "../core/editor-config.js";
 
 interface ServeArgs {
   port: number;
@@ -7,6 +8,10 @@ interface ServeArgs {
   tourId?: string;
   cwd: string;
   replyAgent?: string;
+  // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
+  // main.ts (--editor → $TOUR_EDITOR → $VISUAL → $EDITOR → null).
+  // Threads through to the POST /api/tours/<id>/open-in-editor handler.
+  editor?: EditorConfig | null;
 }
 
 export async function serve(args: ServeArgs): Promise<void> {

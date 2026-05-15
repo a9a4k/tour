@@ -14,6 +14,8 @@ import { loadTourBundle } from "../core/tour-bundle.js";
 import { detectAgentsOnPath } from "../core/agent-path-detector.js";
 import { isOnPath } from "../core/is-on-path.js";
 import { availableShippedAgents } from "../agents/index.js";
+import { spawnGuiEditor } from "../core/editor-spawn.js";
+import type { EditorConfig } from "../core/editor-config.js";
 import { html } from "./spa.js";
 import {
   EMBEDDED_BUILD_MODE,
@@ -26,8 +28,9 @@ import {
   type ClientAsset,
 } from "./client-assets.js";
 import { resolveServePort } from "./resolve-serve-port.js";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { access } from "node:fs/promises";
 
 interface ServeArgs {
   port: number;
@@ -36,6 +39,10 @@ interface ServeArgs {
   tourId?: string;
   cwd: string;
   replyAgent?: string;
+  // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
+  // main.ts. Powers the POST /api/tours/<id>/open-in-editor handler;
+  // null when no editor was configured (the handler returns 412).
+  editor?: EditorConfig | null;
 }
 
 declare const Bun: {
@@ -152,6 +159,7 @@ function contentTypeFor(path: string): string {
 
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, portExplicit, cwd, replyAgent } = args;
+  const editor = args.editor ?? null;
 
   // Path component appended to printed URLs (issue #179). Lets the user
   // Cmd-click straight to their tour in a modern terminal. The SPA reads
@@ -363,6 +371,94 @@ export async function startServer(args: ServeArgs): Promise<void> {
           return Response.json(result, {
             status: httpStatusForRequestReplyResult(result),
           });
+        }
+
+        // PRD #349 / ADR 0032 / issue #353: webapp parity for `o`. The
+        // server spawns the configured GUI editor on the browser's behalf
+        // via core/editor-spawn (shared with the TUI). Terminal-classified
+        // editors are refused with 409 — the server has no terminal to
+        // lend (physics, not policy). The tour-scoped path + the
+        // file ∈ tour.diff.files check is the security boundary;
+        // 127.0.0.1-only binding is the outer guard.
+        const openInEditorMatch = url.pathname.match(
+          /^\/api\/tours\/([^/]+)\/open-in-editor$/,
+        );
+        if (openInEditorMatch && req.method === "POST") {
+          const idOrPrefix = openInEditorMatch[1];
+          let resolvedId: string;
+          try {
+            resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+          } catch {
+            return Response.json(
+              { ok: false, message: "o: tour not found" },
+              { status: 404 },
+            );
+          }
+          const body = (await req.json().catch(() => null)) as
+            | Record<string, unknown>
+            | null;
+          if (!body) {
+            return Response.json(
+              { ok: false, message: "o: invalid body" },
+              { status: 400 },
+            );
+          }
+          const file = asString(body.file);
+          const line = asInt(body.line);
+          if (file === undefined || line === undefined) {
+            return Response.json(
+              { ok: false, message: "o: invalid body" },
+              { status: 400 },
+            );
+          }
+          // `side` is carried for forward compatibility with a future
+          // staleness-warning follow-up; not acted on in this slice.
+          const bundle = await loadTourBundle(cwd, resolvedId);
+          if (bundle.kind !== "ok") {
+            return Response.json(
+              { ok: false, message: "o: tour snapshot lost" },
+              { status: 404 },
+            );
+          }
+          const inTour = bundle.files.some((f) => f.name === file);
+          if (!inTour) {
+            return Response.json(
+              { ok: false, message: `o: ${file} not in tour diff` },
+              { status: 400 },
+            );
+          }
+          const absPath = isAbsolute(file) ? file : join(cwd, file);
+          const present = await access(absPath).then(
+            () => true,
+            () => false,
+          );
+          if (!present) {
+            return Response.json(
+              { ok: false, message: `o: ${file} not in working tree` },
+              { status: 404 },
+            );
+          }
+          if (editor === null) {
+            return Response.json(
+              {
+                ok: false,
+                message:
+                  "o: editor not configured — set $TOUR_EDITOR or pass --editor",
+              },
+              { status: 412 },
+            );
+          }
+          if (editor.terminal) {
+            return Response.json(
+              {
+                ok: false,
+                message: "o: terminal editor — open from TUI instead",
+              },
+              { status: 409 },
+            );
+          }
+          const result = await spawnGuiEditor(editor, { file, line }, cwd);
+          return Response.json(result, { status: result.ok ? 200 : 500 });
         }
 
         const lockMatch = url.pathname.match(/^\/api\/tours\/([^/]+)\/reply-lock$/);

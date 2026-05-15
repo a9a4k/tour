@@ -181,7 +181,7 @@ describe("composeFooterHints (core, surface: web)", () => {
   // are unchanged.
   it("emits the diff-mode webapp legend with `Esc: sidebar` when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -192,7 +192,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to claude  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -224,7 +224,8 @@ describe("composeFooterHints (core, surface: web)", () => {
       // The web diff legend's `Esc: sidebar` is the only `Esc` token
       // it should ever contain; TUI's `Enter: expand`, `e: expand all`,
       // `y: yank path`, `Space: page`, `[/]: width`, `q: quit`, `Tab`
-      // are all forbidden.
+      // are all forbidden. PRD #349 / issue #353: `o: open` is bound
+      // on both surfaces now, so it's allowed.
       expect(out).not.toContain("Enter:");
       expect(out).not.toContain("e: expand all");
       expect(out).not.toContain("y: yank");
@@ -233,6 +234,28 @@ describe("composeFooterHints (core, surface: web)", () => {
       expect(out).not.toContain("[/]");
       expect(out).not.toContain("q: quit");
     }
+  });
+
+  // PRD #349 / ADR 0032 / issue #353: `o: open` slots into the webapp
+  // legends in both pane modes (web parity for the TUI's `o`).
+  it("diff-mode web legend includes `o: open` between `r: reply` and `L: layout`", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    expect(out).toContain("o: open");
+    const r = out.indexOf("r: reply");
+    const o = out.indexOf("o: open");
+    const layout = out.indexOf("L: layout");
+    expect(r).toBeGreaterThanOrEqual(0);
+    expect(o).toBeGreaterThan(r);
+    expect(layout).toBeGreaterThan(o);
+  });
+
+  it("sidebar-mode web legend includes `o: open` before `L: layout`", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
+    expect(out).toContain("o: open");
+    const o = out.indexOf("o: open");
+    const layout = out.indexOf("L: layout");
+    expect(o).toBeGreaterThanOrEqual(0);
+    expect(layout).toBeGreaterThan(o);
   });
 });
 
@@ -275,7 +298,7 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
   it("sidebar-mode web legend emits the documented pane-relevant string", () => {
     const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
     expect(out).toBe(
-      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  L: layout  ·  T: picker  ·  Esc: diff",
+      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff",
     );
   });
 

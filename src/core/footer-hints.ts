@@ -56,9 +56,11 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // Sidebar-mode web legend (PRD #343 / ADR 0031 / issue #346). Mirrors
     // the TUI's sidebar-mode subset minus the TUI-only keys (`e`, `y`,
     // `q`): the webapp doesn't bind those today. Send-hint gated off
-    // here for the same reason as the TUI sidebar branch.
+    // here for the same reason as the TUI sidebar branch. PRD #349 /
+    // ADR 0032 / issue #353: `o: open` slots in (side-effect on
+    // cursor's file, like the TUI's `y`).
     return (
-      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  L: layout  ·  T: picker  ·  Esc: diff`
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff`
     );
   }
   const send =
@@ -73,6 +75,9 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     );
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
-  // 8-key subset + `Esc: sidebar` as the pane-toggle entry-point.
-  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
+  // 8-key subset + `Esc: sidebar` as the pane-toggle entry-point. PRD
+  // #349 / ADR 0032 / issue #353: `o: open` slotted between `r: reply`
+  // (with optional send hint) and `L: layout` so the cursor-target
+  // action cluster stays adjacent.
+  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
 }
