@@ -133,7 +133,7 @@ describe("dispatchCursorKey: r / s gated by cursor row kind (PRD #192)", () => {
     // The keymap doesn't know whether a card composer is open; the App-side
     // handler is responsible for that. Here we simply confirm the dispatcher
     // doesn't treat composerOpen as a card-action suppressor (consistent
-    // with how n/p/L/t survive composer-open).
+    // with how n/p/L/T survive composer-open).
     const ctx: CursorKeymapContext = {
       ...cardCtx,
       composerOpen: true,
