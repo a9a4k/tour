@@ -63,6 +63,10 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c"), sidebar).type).not.toBe("quit");
   });
 
+  it("Shift+C does not quit (Ctrl is the only modifier that quits on c)", () => {
+    expect(dispatchKey(k("c", { shift: true }), sidebar).type).not.toBe("quit");
+  });
+
   it("Tab toggles pane", () => {
     expect(dispatchKey(k("tab"), sidebar).type).toBe("toggle-pane");
   });
@@ -96,29 +100,53 @@ describe("dispatchKey", () => {
     ).toBe("noop");
   });
 
-  it("c on a file row toggles per-file diff collapse", () => {
-    expect(dispatchKey(k("c"), sidebar).type).toBe("toggle-collapse");
+  // Issue #337 / ADR 0029: lowercase `c` is the cursor-target comment
+  // binding (formerly `a`); the prior sidebar `c` arm (toggle-folder /
+  // toggle-collapse) is retired because `h`/`l` already cover those.
+  // The diff-pane `c` arm (toggle-replies-collapse) moves to capital
+  // `C` per ADR 0030 (lowercase = cursor-target, capital = global).
+  it("c on a file row in the sidebar is a plain noop (prior toggle-collapse retired)", () => {
+    expect(dispatchKey(k("c"), sidebar).type).toBe("noop");
   });
 
-  it("c on a folder row toggles folder expand/collapse", () => {
-    expect(dispatchKey(k("c"), sidebarFolder).type).toBe("toggle-folder");
+  it("c on a folder row in the sidebar is a plain noop (prior toggle-folder retired)", () => {
+    expect(dispatchKey(k("c"), sidebarFolder).type).toBe("noop");
   });
 
-  it("c outside sidebar toggles replies collapse (sidebar collapse stays sidebar-only)", () => {
-    expect(dispatchKey(k("c"), diffPane).type).toBe("toggle-replies-collapse");
+  it("c in the diff pane on a row dispatches open-top-level-composer (formerly bound to `a`)", () => {
+    expect(dispatchKey(k("c"), diffPane).type).toBe("open-top-level-composer");
   });
 
-  it("Ctrl+C outside sidebar is not consumed as toggle-replies-collapse (still quits)", () => {
+  it("c in the diff pane on a card dispatches noop-comment-on-card (card-vs-row mismatch)", () => {
+    expect(dispatchKey(k("c"), diffPaneOnCard).type).toBe("noop-comment-on-card");
+  });
+
+  it("Shift+C in the diff pane dispatches toggle-replies-collapse (formerly bare `c`)", () => {
+    expect(dispatchKey(k("c", { shift: true }), diffPane).type).toBe(
+      "toggle-replies-collapse",
+    );
+    expect(dispatchKey(k("c", { shift: true }), diffPaneOnCard).type).toBe(
+      "toggle-replies-collapse",
+    );
+  });
+
+  it("Shift+C in the sidebar is a noop (toggle-replies-collapse is diff-pane only)", () => {
+    expect(dispatchKey(k("c", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("c", { shift: true }), sidebarFolder).type).toBe("noop");
+  });
+
+  it("Ctrl+C outside sidebar still quits (Ctrl wins over Shift+C and bare `c`)", () => {
     expect(dispatchKey(k("c", { ctrl: true }), diffPane).type).toBe("quit");
   });
 
-  it("c is a no-op when no row is selected", () => {
+  it("c is a noop when sidebar has no rows and diff pane is also empty", () => {
     expect(
       dispatchKey(k("c"), {
         sidebarFocused: true,
         rowCount: 0,
         selectedRowKind: null,
         cursorOnInteractive: false,
+        cursorOnCard: false,
       }).type,
     ).toBe("noop");
   });
@@ -313,10 +341,20 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("p", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  it("t returns open-picker regardless of pane focus", () => {
-    expect(dispatchKey(k("t"), sidebar).type).toBe("open-picker");
-    expect(dispatchKey(k("t"), diffPane).type).toBe("open-picker");
-    expect(dispatchKey(k("t"), sidebarFolder).type).toBe("open-picker");
+  // Issue #337 / ADR 0030: open-picker moved from bare `t` to Shift+T
+  // (capital = Tour-wide state). Bare `t` is a plain noop after the
+  // cutover — no alias, no footer status.
+  it("Shift+T returns open-picker regardless of pane focus (ADR 0030)", () => {
+    expect(dispatchKey(k("t", { shift: true }), sidebar).type).toBe("open-picker");
+    expect(dispatchKey(k("t", { shift: true }), diffPane).type).toBe("open-picker");
+    expect(dispatchKey(k("t", { shift: true }), sidebarFolder).type).toBe("open-picker");
+  });
+
+  it("bare t is a plain noop after the t → T cutover (issue #337)", () => {
+    expect(dispatchKey(k("t"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("t"), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("t"), sidebarFolder).type).toBe("noop");
+    expect(dispatchKey(k("t"), diffPaneOnCard).type).toBe("noop");
   });
 
   // Issue #297: per-file Expand-all keyboard binding. Mirrors the
@@ -366,15 +404,27 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("t", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  it("a returns open-top-level-composer regardless of pane focus", () => {
-    expect(dispatchKey(k("a"), sidebar).type).toBe("open-top-level-composer");
-    expect(dispatchKey(k("a"), diffPane).type).toBe("open-top-level-composer");
-    expect(dispatchKey(k("a"), sidebarFolder).type).toBe("open-top-level-composer");
+  it("Ctrl+Shift+T is not consumed as open-picker (modifier guard)", () => {
+    expect(dispatchKey(k("t", { ctrl: true, shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("t", { ctrl: true, shift: true }), diffPane).type).toBe("noop");
   });
 
-  it("Ctrl+A is not consumed as open-top-level-composer", () => {
+  // Issue #337 / ADR 0029: bare `a` is unbound after the a → c cutover.
+  // The comment-composer binding moves to lowercase `c`; bare `a` returns
+  // a plain noop with no footer status — hard cutover, no alias.
+  it("bare a is a plain noop after the a → c cutover (issue #337)", () => {
+    expect(dispatchKey(k("a"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("a"), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("a"), sidebarFolder).type).toBe("noop");
+    expect(dispatchKey(k("a"), diffPaneOnCard).type).toBe("noop");
+    expect(dispatchKey(k("a"), sidebarOnCard).type).toBe("noop");
+  });
+
+  it("Ctrl+A / Shift+A do not fire any action (modifier-free binding was retired)", () => {
     expect(dispatchKey(k("a", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("a", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("a", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("a", { shift: true }), diffPane).type).toBe("noop");
   });
 
   it("r returns open-reply-composer when the cursor is on a card (PRD #192)", () => {
@@ -402,9 +452,17 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("s"), diffPane).type).toBe("noop-send-on-row");
   });
 
-  it("a on a card returns noop-comment-on-card (PRD #192 — `a` is row-only)", () => {
-    expect(dispatchKey(k("a"), sidebarOnCard).type).toBe("noop-comment-on-card");
-    expect(dispatchKey(k("a"), diffPaneOnCard).type).toBe("noop-comment-on-card");
+  // Issue #337 / ADR 0029: the row-only labelled-noop now lives on `c`,
+  // not `a` (bare `a` is unbound). `c` is scoped to the diff pane —
+  // sidebar+card → plain noop (the cursor lives in the diff pane, but
+  // the user has Tab-focused the sidebar; the row-only contract no
+  // longer fires under sidebar focus).
+  it("c on a card in the diff pane returns noop-comment-on-card (PRD #192 — row-only)", () => {
+    expect(dispatchKey(k("c"), diffPaneOnCard).type).toBe("noop-comment-on-card");
+  });
+
+  it("c on a card while sidebar is focused is a plain noop (sidebar `c` is unbound)", () => {
+    expect(dispatchKey(k("c"), sidebarOnCard).type).toBe("noop");
   });
 
   it("Ctrl+S / Shift+S do not fire send-to-agent (modifier-free binding only)", () => {

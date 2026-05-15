@@ -3,10 +3,12 @@ import type { Annotation } from "../core/types.js";
 import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hints.js";
 
 // The bottom-bar key-action hint surfaced by the TUI app shell. The
-// `a` action is labelled "comment" (issue #183, PRD #181) to align with
-// the verb every collaborative code-review tool reaches for; the
-// keybinding itself is unchanged and `tour annotate` plus the
-// "Annotation" domain noun are untouched.
+// comment binding (formerly `a`, now `c` per ADR 0029 + issue #337) is
+// labelled "comment" to align with the verb every collaborative code-
+// review tool reaches for; ADR 0029 records the unit-name flip from
+// Annotation to Comment, and ADR 0030 records the lowercase/capital
+// convention that motivated the `t → T`, `c → C` rebinds shipping in
+// the same slice.
 //
 // `s send to {agent}` (issue #184, PRD #181) is surfaced conditionally —
 // only when the focused card is a human Annotation, `--reply-agent` is
