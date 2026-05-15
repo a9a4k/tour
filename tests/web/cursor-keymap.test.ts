@@ -87,13 +87,23 @@ describe("dispatchCursorKey: layout rebind", () => {
 });
 
 describe("dispatchCursorKey: annotate-at-cursor", () => {
-  it("a on a row cursor → annotate-at-cursor (App-side handler materializes the cursor on null)", () => {
-    expect(dispatchCursorKey(key({ key: "a" }), baseCtx)).toEqual({
+  it("c on a row cursor → annotate-at-cursor (App-side handler materializes the cursor on null)", () => {
+    expect(dispatchCursorKey(key({ key: "c" }), baseCtx)).toEqual({
       type: "annotate-at-cursor",
     });
   });
 
-  it("a on a card cursor → noop (PRD #192 / ADR 0022 — `a` is row-only)", () => {
+  it("c on a card cursor → noop (PRD #192 / ADR 0022 — `c` is row-only)", () => {
+    expect(dispatchCursorKey(key({ key: "c" }), cardCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  // PRD #335 / ADR 0029 hard cutover: bare `a` is unbound. No alias.
+  it("bare a → noop (PRD #335 / ADR 0029 — `a` is unbound after the rebind)", () => {
+    expect(dispatchCursorKey(key({ key: "a" }), baseCtx)).toEqual({
+      type: "noop",
+    });
     expect(dispatchCursorKey(key({ key: "a" }), cardCtx)).toEqual({
       type: "noop",
     });
@@ -123,7 +133,7 @@ describe("dispatchCursorKey: r / s gated by cursor row kind (PRD #192)", () => {
     // The keymap doesn't know whether a card composer is open; the App-side
     // handler is responsible for that. Here we simply confirm the dispatcher
     // doesn't treat composerOpen as a card-action suppressor (consistent
-    // with how n/p/L/t survive composer-open).
+    // with how n/p/L/T survive composer-open).
     const ctx: CursorKeymapContext = {
       ...cardCtx,
       composerOpen: true,
@@ -142,24 +152,25 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
   // ADR 0028 / PRD #330: cross-axis misses on the webapp footer flash a
   // reason via the transient status slot. The keymap emits the message; the
   // App-side handler routes it into setFooterStatus with a ~2s auto-dismiss.
+  // PRD #335 / ADR 0029 flipped "annotation" → "comment" in these strings.
 
-  it("r on a diff-row cursor → status `No annotation under cursor.`", () => {
+  it("r on a diff-row cursor → status `No comment under cursor.`", () => {
     expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({
       type: "status",
-      message: "No annotation under cursor.",
+      message: "No comment under cursor.",
     });
   });
 
-  it("s on a diff-row cursor with reply-agent configured → status `Send only works on annotation cards.`", () => {
+  it("s on a diff-row cursor with reply-agent configured → status `Send only works on comment cards.`", () => {
     expect(
       dispatchCursorKey(key({ key: "s" }), { ...baseCtx, replyAgent: "claude" }),
     ).toEqual({
       type: "status",
-      message: "Send only works on annotation cards.",
+      message: "Send only works on comment cards.",
     });
   });
 
-  it("s on a non-human (agent) card → status `Send only works on human annotations.`", () => {
+  it("s on a non-human (agent) card → status `Send only works on human comments.`", () => {
     const agentCardCtx: CursorKeymapContext = {
       ...baseCtx,
       cursorOnCard: true,
@@ -168,7 +179,7 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
     };
     expect(dispatchCursorKey(key({ key: "s" }), agentCardCtx)).toEqual({
       type: "status",
-      message: "Send only works on human annotations.",
+      message: "Send only works on human comments.",
     });
   });
 
@@ -206,9 +217,18 @@ describe("dispatchCursorKey: annotation navigation (β-coupling)", () => {
     });
   });
 
-  it("t → open-picker", () => {
-    expect(dispatchCursorKey(key({ key: "t" }), baseCtx)).toEqual({
+  it("T (Shift+t) → open-picker", () => {
+    expect(dispatchCursorKey(key({ key: "T", shiftKey: true }), baseCtx)).toEqual({
       type: "open-picker",
+    });
+  });
+
+  // PRD #335 / ADR 0029 + ADR 0030 promoted `t → T` so the global-state
+  // binding follows the lowercase=cursor / capital=global rule. Bare `t`
+  // is now unbound — hard cutover, no alias.
+  it("bare t → noop (PRD #335 / ADR 0030 — picker promoted to capital T)", () => {
+    expect(dispatchCursorKey(key({ key: "t" }), baseCtx)).toEqual({
+      type: "noop",
     });
   });
 
@@ -228,25 +248,31 @@ describe("dispatchCursorKey: annotation navigation (β-coupling)", () => {
 describe("dispatchCursorKey: suppression rules", () => {
   it("focus in editable element → all cursor keys noop", () => {
     const ctx = { ...baseCtx, focusInEditable: true };
-    for (const k of ["j", "k", "h", "l", "ArrowDown", "ArrowUp", "a", "n", "p", "t"]) {
+    for (const k of ["j", "k", "h", "l", "ArrowDown", "ArrowUp", "c", "n", "p"]) {
       expect(dispatchCursorKey(key({ key: k }), ctx)).toEqual({ type: "noop" });
     }
     expect(
       dispatchCursorKey(key({ key: "L", shiftKey: true }), ctx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "T", shiftKey: true }), ctx),
     ).toEqual({ type: "noop" });
   });
 
   it("picker open → all keys noop (picker owns input)", () => {
     const ctx = { ...baseCtx, pickerOpen: true };
-    for (const k of ["j", "k", "h", "l", "n", "p", "a", "t"]) {
+    for (const k of ["j", "k", "h", "l", "n", "p", "c"]) {
       expect(dispatchCursorKey(key({ key: k }), ctx)).toEqual({ type: "noop" });
     }
     expect(
       dispatchCursorKey(key({ key: "L", shiftKey: true }), ctx),
     ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "T", shiftKey: true }), ctx),
+    ).toEqual({ type: "noop" });
   });
 
-  it("composer open → motion keys noop, but n/p/L/t/a still dispatch", () => {
+  it("composer open → motion keys noop, but n/p/L/T/c still dispatch", () => {
     const ctx = { ...baseCtx, composerOpen: true };
     // j/k/h/l/arrows go inert so the textarea owns them
     expect(dispatchCursorKey(key({ key: "j" }), ctx)).toEqual({ type: "noop" });

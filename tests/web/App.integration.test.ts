@@ -1215,12 +1215,12 @@ describe("App annotation-create failure status (Issue #334)", () => {
     });
     await flush();
 
-    // Empty annotations → cursor null at mount. `a` materializes the
+    // Empty annotations → cursor null at mount. `c` materializes the
     // cursor to the first annotatable row and opens the top-level
     // composer.
     await act(async () => {
       document.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "a", bubbles: true }),
+        new KeyboardEvent("keydown", { key: "c", bubbles: true }),
       );
     });
     await flush();

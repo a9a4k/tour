@@ -11,7 +11,7 @@
 //
 // The `s: send to {agent}` hint is surfaced conditionally on both
 // surfaces — only when `--reply-agent` is configured AND the cursor is
-// on a human Annotation card AND the reply-lock is free (caller passes
+// on a human Comment card AND the reply-lock is free (caller passes
 // `showSendHint: true`). See ADR 0022 / issue #184 for the TUI side;
 // ADR 0028 / issue #330 for the webapp parity.
 //
@@ -39,5 +39,5 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  Space: page  ·  L: layout  ·  T: picker  ·  Tab: pane  ·  [/]: width  ·  q: quit`
     );
   }
-  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: comment  ·  r: reply${send}  ·  L: layout  ·  t: picker`;
+  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  L: layout  ·  T: picker`;
 }

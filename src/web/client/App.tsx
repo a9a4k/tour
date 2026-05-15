@@ -1023,9 +1023,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   // Global keydown router (ADR 0012). Cursor motion (j/k/h/l/arrows),
-  // side selection, annotate-at-cursor (a), annotation nav (n/p, with
+  // side selection, annotate-at-cursor (c), annotation nav (n/p, with
   // β-coupling to the line cursor), layout toggle (Shift-L, rebound
-  // from the previous lowercase l), and picker open (t) all flow
+  // from the previous lowercase l), and picker open (Shift-T) all flow
   // through the pure dispatchCursorKey classifier so the keymap
   // contract is testable independent of React state plumbing.
   // Effect is registered AFTER `flatRowsList` and `materializeCursor`

@@ -31,6 +31,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Webapp keybindings: `a → c` and `t → T`; status messages flip
+  from "annotation" to "comment" (issue #338, PRD #335).** Stage A
+  slice 3/4 of ADR 0029 (Comment replaces Annotation) + ADR 0030
+  (lowercase = cursor-target, capital = global). Bare `c` on a row
+  dispatches `annotate-at-cursor` (was `a`); `T` (Shift+t)
+  dispatches `open-picker` (was `t`). Bare `a` and bare `t` are now
+  unbound noops — hard cutover, no alias. The three cross-axis-miss
+  status messages flip vocabulary: `No annotation under cursor.` →
+  `No comment under cursor.`, `Send only works on annotation
+  cards.` → `Send only works on comment cards.`, and `Send only
+  works on human annotations.` → `Send only works on human
+  comments.`. The footer legend reads `c: comment` and `T: picker`.
+  The TUI side of the rebind lands in slice #337; this slice only
+  touches the webapp branch in `core/footer-hints.ts`.
+
+  Issue: #338
+
 - **Default diff layout is now Unified on first open (issue #329).**
   The initial value of `TourSessionState.layout` flips from `"split"`
   to `"unified"`. Tour is annotation-driven, not diff-driven: users
