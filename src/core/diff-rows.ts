@@ -267,24 +267,36 @@ function walkHunks(
     // encodes per-edge × gap-size rules; emit the leading expand-down
     // when the plan requires it, then the hunk-header carrying its
     // primaryExpand affordance.
+    //
+    // Issue #359: when the plan reports nothing left to expand
+    // (`primaryExpand === null`, i.e. gapAbove === 0), skip the
+    // hunk-header banner AND the leading expand-down entirely.
+    // Adjacent fully-expanded hunks read as one continuous stream of
+    // diff/context rows; files whose first hunk starts at line 1
+    // have no top-of-file banner above the first content row. The
+    // helper's return contract is unchanged — only the planner's
+    // interpretation of `primaryExpand: null` flips from "emit an
+    // inert banner" to "emit nothing".
     const plan = hunkHeaderExpandPlan(gapAbove, isFirst);
-    if (plan.emitLeadingExpandDown) {
+    if (plan.primaryExpand !== null) {
+      if (plan.emitLeadingExpandDown) {
+        rows.push({
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: hunkIndex,
+          text: expandDownRowText(),
+          gapAbove,
+        });
+      }
+
       rows.push({
-        kind: "interactive",
-        subKind: "expand-down",
-        boundaryRef: hunkIndex,
-        text: expandDownRowText(),
+        kind: "hunk-header",
+        header: hunk.hunkSpecs ?? "",
+        hunkIndex,
         gapAbove,
+        primaryExpand: plan.primaryExpand,
       });
     }
-
-    rows.push({
-      kind: "hunk-header",
-      header: hunk.hunkSpecs ?? "",
-      hunkIndex,
-      gapAbove,
-      primaryExpand: plan.primaryExpand,
-    });
 
     // Down-side context rows: lines just before this hunk's start.
     if (sep.down > 0) {
@@ -479,8 +491,11 @@ export const GAP_TWO_ROW_THRESHOLD = 40;
  *  cell; only mid-file large gaps additionally emit a standalone
  *  `expand-down` row above the banner. */
 export interface HunkHeaderExpandPlan {
-  /** Subkind to host on the hunk-header banner's left cell. `null` paints
-   *  an inert `…` placeholder and the row is not cursor-walkable. */
+  /** Subkind to host on the hunk-header banner's left cell. `null` signals
+   *  the planner to skip emission of the banner for this gap (issue #359):
+   *  fully-expanded mid-file gaps merge their flanking hunks into one
+   *  continuous stream, and a first hunk starting at line 1 has no
+   *  top-of-file banner. */
   primaryExpand: "up" | "all" | null;
   /** When true the planner emits a standalone `interactive-row[expand-down]`
    *  immediately before the hunk-header. Only set for mid-file large
@@ -495,7 +510,7 @@ export interface HunkHeaderExpandPlan {
  * mid-file). The file-bottom case is handled separately by the planner
  * — it emits a lone `expand-down` row with no hunk-header.
  *
- *   `gapAbove === 0`                          → null    (inert; cursor skips)
+ *   `gapAbove === 0`                          → null    (planner skips emission per issue #359)
  *   `gapAbove <  GAP_TWO_ROW_THRESHOLD` (=40) → "all"   (single Enter reveals the entire gap)
  *   `gapAbove >= 40` & `isFirst`              → "up"    (file-top: only one direction available)
  *   `gapAbove >= 40` & mid-file               → "up" + standalone Expand Down above the banner
