@@ -81,7 +81,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **CLI: `tour comment` is the primary annotation verb; `tour annotate`
+- **CLI: `tour comment` is the primary comment verb; `tour annotate`
   is a permanent silent alias (issue #336, PRD #335, ADR 0029).**
   Stage A slice 1/4 of the "Comment replaces Annotation" rename. Both
   verbs dispatch the same handler — identical flags, identical
