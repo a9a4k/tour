@@ -26,11 +26,25 @@ function parseArgs(argv: string[]): {
   flags: Record<string, string | boolean>;
 } {
   const args = argv.slice(2);
-  const command = args[0] ?? "";
+  // A leading flag means bare invocation (e.g. `tour --editor <cmd>`):
+  // smart-default surface with flags applied. `--help` / `-h` /
+  // `--version` / `-v` are kept as command-name aliases so the existing
+  // help/version exit paths in the switch keep working.
+  const first = args[0];
+  const helpVersion =
+    first === "--help" ||
+    first === "-h" ||
+    first === "--version" ||
+    first === "-v";
+  const treatAsBare =
+    first !== undefined && first.startsWith("-") && !helpVersion;
+  const command = treatAsBare ? "" : (first ?? "");
+  const startIdx = treatAsBare ? 0 : 1;
+
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
 
-  for (let i = 1; i < args.length; i++) {
+  for (let i = startIdx; i < args.length; i++) {
     const arg = args[i];
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
@@ -258,6 +272,7 @@ async function main(): Promise<void> {
               ? isOnPath("open")
               : isOnPath("xdg-open"),
         });
+        const editor = resolveEditor(flag(flags, "editor"), process.env);
         if (surface === "webapp") {
           await serve({
             port: defaultPreferredPort(),
@@ -265,9 +280,14 @@ async function main(): Promise<void> {
             open: false,
             cwd,
             replyAgent: flag(flags, "reply-agent"),
+            editor,
           });
         } else {
-          await tui({ cwd, replyAgent: flag(flags, "reply-agent") });
+          await tui({
+            cwd,
+            replyAgent: flag(flags, "reply-agent"),
+            editor,
+          });
         }
         break;
       }
