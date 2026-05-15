@@ -1768,8 +1768,6 @@ function App(props: AppProps) {
             setFooterStatus("o: card cursor — j/k to land on a row first");
           } else if (cursor && cursor.kind === "row" && cursor.interactive) {
             setFooterStatus("o: not on a diff row — j/k to land on a line");
-          } else if (selectedRow?.kind === "folder") {
-            setFooterStatus("o: no file under cursor");
           } else {
             setFooterStatus("o: no file under cursor");
           }

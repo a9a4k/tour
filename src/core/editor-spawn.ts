@@ -8,7 +8,7 @@
 // a healthy GUI editor doesn't exit at all in the window.
 
 import { spawn } from "node:child_process";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import type { EditorConfig } from "./editor-config.js";
 import type { OpenTarget } from "./open-target-resolver.js";
 
@@ -37,7 +37,15 @@ export function spawnGuiEditor(
   const absPath = isAbsolute(target.file) ? target.file : join(repoRoot, target.file);
   const argv = config.argv(absPath, target.line);
   const windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
-  const displayBin = config.bin.split("/").pop() ?? config.bin;
+  const displayBin = basename(config.bin);
+
+  const errorResult = (err: unknown): SpawnResult => {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") {
+      return { ok: false, message: `o: ${displayBin}: command not found` };
+    }
+    return { ok: false, message: `o: spawn failed (${e.message})` };
+  };
 
   return new Promise<SpawnResult>((resolve) => {
     let settled = false;
@@ -55,23 +63,11 @@ export function spawnGuiEditor(
         env: opts.env ? { ...process.env, ...opts.env } : process.env,
       });
     } catch (err) {
-      const e = err as NodeJS.ErrnoException;
-      if (e.code === "ENOENT") {
-        settle({ ok: false, message: `o: ${displayBin}: command not found` });
-      } else {
-        settle({ ok: false, message: `o: spawn failed (${e.message})` });
-      }
+      settle(errorResult(err));
       return;
     }
 
-    child.on("error", (err) => {
-      const e = err as NodeJS.ErrnoException;
-      if (e.code === "ENOENT") {
-        settle({ ok: false, message: `o: ${displayBin}: command not found` });
-      } else {
-        settle({ ok: false, message: `o: spawn failed (${e.message})` });
-      }
-    });
+    child.on("error", (err) => settle(errorResult(err)));
 
     child.on("exit", (code) => {
       if (code !== null && code !== 0) {
