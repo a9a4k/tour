@@ -75,6 +75,8 @@ import {
   resizeReanchorTarget,
   type ResizeReanchorTarget,
 } from "./resize-reanchor-target.js";
+import { Footer } from "./Footer.js";
+import { composeFooterHints } from "../../core/footer-hints.js";
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -1670,6 +1672,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           </>
         )}
       </div>
+      <Footer legend={composeFooterHints({ surface: "web" })} />
       {sessionState.picker.kind === "open" ? (
         <TourPicker
           rows={sessionState.picker.rows}

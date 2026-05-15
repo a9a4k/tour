@@ -255,6 +255,27 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     color: var(--fg-on-emphasis);
   }
   .layout-toggle-btn + .layout-toggle-btn { border-left: 1px solid var(--border-default); }
+  /* Issue #331: webapp footer hint strip — bottom sibling of #root's
+     column-flex, never position: fixed (no padding-bottom hack on the
+     scroll container). 1px hairline border-top, page canvas background,
+     muted foreground, wraps to a second line below ~1100px viewport so
+     the legend never clips. */
+  .app-footer {
+    flex-shrink: 0;
+    padding: 6px 16px;
+    border-top: 1px solid var(--border-muted);
+    background: var(--canvas-default);
+    color: var(--fg-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 8px;
+  }
+  .app-footer-legend {
+    overflow-wrap: anywhere;
+  }
   .file-block {
     margin-bottom: 24px;
     border: 1px solid var(--border-default);

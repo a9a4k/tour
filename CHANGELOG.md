@@ -44,6 +44,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp: footer hint strip on first paint (issue #331).** The webapp
+  now mounts a one-line muted footer at the bottom of the column-flex
+  root, rendering the static keybinding legend `j/k: move  ·  h/l:
+  side  ·  n/p: nav  ·  a: comment  ·  r: reply  ·  L: layout  ·  t:
+  picker` — the bound-keys subset of the TUI footer string. First
+  slice of PRD #330; the transient status surface (silent-failure
+  reasons for `s` / `r` no-ops, network-error feedback, send-hint
+  conditional) lands in subsequent slices. The legend composer
+  (`composeFooterHints({ surface, replyAgent?, showSendHint? })`)
+  lifts to `core/footer-hints.ts` so the shared key vocabulary
+  (`j/k`, `h/l`, `n/p`, `a`, `r`, `s`, `L`, `t`) cannot drift
+  between surfaces; the TUI consumer is now a thin `surface: "tui"`
+  delegate and its output is byte-identical to today.
+
+  Issue: #331
+
 - **TUI: `y` yanks the focused file's repo-relative path to the system
   clipboard (issue #326).** Webapp parity for the copy-path affordance
   added by issues #16 / #225 / #317 / #319. Pressing `y` resolves the

@@ -1,5 +1,6 @@
 import type { Cursor } from "../core/cursor-state.js";
 import type { Annotation } from "../core/types.js";
+import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hints.js";
 
 // The bottom-bar key-action hint surfaced by the TUI app shell. The
 // `a` action is labelled "comment" (issue #183, PRD #181) to align with
@@ -12,19 +13,18 @@ import type { Annotation } from "../core/types.js";
 // set, AND the lock is free. When the lock is held tour-wide the hint
 // stays in the footer but is rendered muted; pressing `s` is a no-op
 // with a one-line footer status driven by App.tsx, not by this constant.
+//
+// Issue #331: the actual string assembly lives in `core/footer-hints.ts`
+// so the webapp can share the vocabulary; this TUI export is a thin
+// delegate pinned to `surface: "tui"`. The signature is preserved for
+// back-compat with existing call sites.
 export interface FooterHintOptions {
   replyAgent?: string;
   showSendHint?: boolean;
 }
 
 export function composeFooterHints(opts: FooterHintOptions = {}): string {
-  const send =
-    opts.showSendHint && opts.replyAgent
-      ? `  ·  s: send to ${opts.replyAgent}`
-      : "";
-  return (
-    `j/k: move  ·  h/l: side  ·  n/p: nav  ·  a: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  c: collapse  ·  y: yank path  ·  Space: page  ·  L: layout  ·  t: picker  ·  Tab: pane  ·  [/]: width  ·  q: quit`
-  );
+  return composeFooterHintsCore({ surface: "tui", ...opts });
 }
 
 // Back-compat export: the bare constant is the default footer (no Send

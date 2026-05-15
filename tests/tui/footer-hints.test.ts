@@ -4,6 +4,7 @@ import {
   composeFooterHints,
   composeFooterPreview,
 } from "../../src/tui/footer-hints.js";
+import { composeFooterHints as composeFooterHintsCore } from "../../src/core/footer-hints.js";
 import type { Annotation } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 
@@ -54,6 +55,29 @@ describe("TUI_FOOTER_HINTS", () => {
 
   it("omits the `s: send to {agent}` hint by default (no reply-agent configured)", () => {
     expect(TUI_FOOTER_HINTS).not.toContain("s: send to");
+  });
+
+  // Issue #331: the TUI string is now assembled by `core/footer-hints.ts`
+  // and the TUI export is a thin `surface: "tui"` delegate. Lock the
+  // refactor against drift: TUI surface output of the core composer
+  // must stay byte-identical to today's TUI_FOOTER_HINTS and to the
+  // TUI delegate's output across the send-hint matrix.
+  it("is byte-identical to the core composer's `surface: tui` output", () => {
+    expect(TUI_FOOTER_HINTS).toBe(composeFooterHintsCore({ surface: "tui" }));
+    expect(composeFooterHints({ replyAgent: "claude", showSendHint: true })).toBe(
+      composeFooterHintsCore({
+        surface: "tui",
+        replyAgent: "claude",
+        showSendHint: true,
+      }),
+    );
+    expect(composeFooterHints({ replyAgent: "claude", showSendHint: false })).toBe(
+      composeFooterHintsCore({
+        surface: "tui",
+        replyAgent: "claude",
+        showSendHint: false,
+      }),
+    );
   });
 });
 
