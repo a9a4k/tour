@@ -8,6 +8,7 @@ import {
   chmod,
   rm,
   stat,
+  realpath,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -188,7 +189,11 @@ describe("POST /api/tours/:id/open-in-editor — happy path", () => {
     await new Promise((r) => setTimeout(r, 100));
     const argv = (await readFile(handle.logPath, "utf8")).trim().split("\n");
     // Unknown-binary default: `${file}:${line}` as a single arg.
-    expect(argv[argv.length - 1]).toBe(`${handle.dir}/hello.txt:1`);
+    // realpath collapses macOS's /var → /private/var symlink so the
+    // comparison holds on both platforms — the subprocess's cwd is
+    // realpath-resolved, but `handle.dir` is the unresolved tmpdir.
+    const expectedDir = await realpath(handle.dir);
+    expect(argv[argv.length - 1]).toBe(`${expectedDir}/hello.txt:1`);
   });
 });
 
