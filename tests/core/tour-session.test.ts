@@ -125,6 +125,7 @@ describe("initialTourSessionState", () => {
       composer: { kind: "closed" },
       collapsedFolders: new Set(),
       collapsedOverrides: {},
+      paneFocus: "sidebar",
     });
   });
 });
@@ -2092,5 +2093,57 @@ describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
     expect(store.getState().composer).toBe(composerBefore);
     // No cursor → no revalidateCursor either; the intent stream is empty.
     expect(intents).toEqual([]);
+  });
+});
+
+describe("reduce — paneFocus slice (PRD #343 / ADR 0031 / issue #344)", () => {
+  it("paneFocus.setDiff flips the slice and emits no intents", () => {
+    const before = initialTourSessionState();
+    expect(before.paneFocus).toBe("sidebar");
+    const r = reduce(before, { type: "paneFocus.setDiff" });
+    expect(r.state.paneFocus).toBe("diff");
+    expect(r.intents).toEqual([]);
+  });
+
+  it("paneFocus.setSidebar flips back to sidebar", () => {
+    const s = reduce(initialTourSessionState(), { type: "paneFocus.setDiff" }).state;
+    const r = reduce(s, { type: "paneFocus.setSidebar" });
+    expect(r.state.paneFocus).toBe("sidebar");
+    expect(r.intents).toEqual([]);
+  });
+
+  it("paneFocus.toggle round-trips sidebar ↔ diff", () => {
+    const a = reduce(initialTourSessionState(), { type: "paneFocus.toggle" });
+    expect(a.state.paneFocus).toBe("diff");
+    const b = reduce(a.state, { type: "paneFocus.toggle" });
+    expect(b.state.paneFocus).toBe("sidebar");
+  });
+
+  it("idempotent set on the current pane returns the same state ref", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "paneFocus.setSidebar" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("paneFocus flips leave the cursor slice untouched", () => {
+    let s = initialTourSessionState();
+    s = reduce(s, {
+      type: "cursor.set",
+      anchor: {
+        kind: "row",
+        file: "f.ts",
+        side: "additions",
+        lineNumber: 7,
+        preferredSide: "additions",
+      },
+    }).state;
+    const cursorBefore = s.cursor;
+    s = reduce(s, { type: "paneFocus.setDiff" }).state;
+    expect(s.cursor).toBe(cursorBefore);
+    s = reduce(s, { type: "paneFocus.toggle" }).state;
+    expect(s.cursor).toBe(cursorBefore);
+    s = reduce(s, { type: "paneFocus.setSidebar" }).state;
+    expect(s.cursor).toBe(cursorBefore);
   });
 });

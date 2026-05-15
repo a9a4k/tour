@@ -5,6 +5,8 @@ import type { ReplyLock } from "./reply-lock.js";
 import type { Comment, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
 import { isCardAnchor, isRowAnchor } from "./cursor-state.js";
+import type { PaneFocus, PaneFocusAction } from "./pane-focus-state.js";
+import { reducePaneFocus } from "./pane-focus-state.js";
 import type {
   BoundaryRef,
   ExpandMode,
@@ -103,6 +105,13 @@ export interface TourSessionState {
   composer: ComposerSlice;
   collapsedFolders: Set<string>;
   collapsedOverrides: Record<string, boolean>;
+  // Cross-surface pane focus (PRD #343 / ADR 0031 / issue #344). Sibling
+  // to `cursor`; routes keyboard input between the sidebar tree and the
+  // diff pane on both surfaces. Initial value is "sidebar" — matching the
+  // TUI's retired `sidebarFocused = useState(true)` default; the surface
+  // overrides via `paneFocus.setDiff` in the bundle-load seed-effect when
+  // the Tour has top-level Comments.
+  paneFocus: PaneFocus;
 }
 
 export type Action =
@@ -153,7 +162,8 @@ export type Action =
   | { type: "folds.clearOverride"; file: string }
   | { type: "folds.clearAll" }
   | { type: "layout.set"; layout: Layout }
-  | { type: "send-to-agent"; tourId: string; commentId: string };
+  | { type: "send-to-agent"; tourId: string; commentId: string }
+  | PaneFocusAction;
 
 export type ScrollCursorTarget =
   | { kind: "row"; file: string; side: "additions" | "deletions"; lineNumber: number }
@@ -196,6 +206,7 @@ export function initialTourSessionState(): TourSessionState {
     composer: { kind: "closed" },
     collapsedFolders: new Set<string>(),
     collapsedOverrides: {},
+    paneFocus: "sidebar",
   };
 }
 
@@ -600,6 +611,19 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "layout.set":
       if (state.layout === action.layout) return { state, intents: NO_INTENTS };
       return { state: { ...state, layout: action.layout }, intents: NO_INTENTS };
+
+    case "paneFocus.setSidebar":
+    case "paneFocus.setDiff":
+    case "paneFocus.toggle": {
+      // PRD #343 / ADR 0031 / issue #344. Delegates to the pure
+      // `reducePaneFocus` helper in core/pane-focus-state.ts so the
+      // transition rules live next to the auto-flip predicate and the
+      // seed-effect conditional. Same-ref short-circuit when the action
+      // is a no-op (idempotent set on the current pane).
+      const next = reducePaneFocus(state.paneFocus, action);
+      if (next === state.paneFocus) return { state, intents: NO_INTENTS };
+      return { state: { ...state, paneFocus: next }, intents: NO_INTENTS };
+    }
 
     case "send-to-agent": {
       // Holds no state — the action's job is to emit the auto-recall + dispatch

@@ -239,7 +239,6 @@ function App(props: AppProps) {
   // `SMOOTH_SCROLL_DEFAULT_DURATION_MS + 50ms`; that state change forces
   // a re-render where the probe sees the settled scrollTop.
   const [scrollPending, setScrollPending] = useState(false);
-  const [sidebarFocused, setSidebarFocused] = useState(true);
   const [repliesCollapsed, setRepliesCollapsed] = useState(false);
   // Tour-session store (PRD #207 slice 1, issue #209; bundle / replyLock
   // moved to the store in issue #211). The store is the single source of
@@ -286,6 +285,15 @@ function App(props: AppProps) {
   const collapsedFolders = sessionState.collapsedFolders;
   const collapsedOverrides = sessionState.collapsedOverrides;
   const layout = sessionState.layout;
+  // PRD #343 / ADR 0031 / issue #344: paneFocus replaces the retired
+  // `sidebarFocused: useState(true)`. The cross-surface slice in
+  // `core/tour-session.ts` is the single source of truth; the surface
+  // dispatches `paneFocus.set*` to mutate and derives the booleans below
+  // for the eight read sites (keymap context, border-color flip,
+  // sidebar-row paint, mouse handlers, etc.) without changing any of
+  // their call shapes.
+  const paneFocus = sessionState.paneFocus;
+  const sidebarFocused = paneFocus === "sidebar";
   // Tour-session view (PRD #242 / issue #244) — single source for the
   // rendered shape. Eight previously-duplicated `useMemo` derivations +
   // seven previously-inline cursor/nav predicates all flow from these
@@ -569,9 +577,18 @@ function App(props: AppProps) {
   useEffect(() => {
     if (seededTourIdRef.current !== bundle.tour.id) {
       seededTourIdRef.current = bundle.tour.id;
-      if (topLevel.length === 0) return;
+      // PRD #343 / ADR 0031 / issue #344: paneFocus seed conditional
+      // tracks the existing cursor-seed conditional. Tour with Comments
+      // → paneFocus.setDiff (cursor seeds at the first Comment); Tour
+      // without Comments → paneFocus.setSidebar (cursor stays null;
+      // sidebar selection materializes at the first file row, which is
+      // already the post-tour.switched default).
+      if (topLevel.length === 0) {
+        store.dispatch({ type: "paneFocus.setSidebar" });
+        return;
+      }
       const first = topLevel[0];
-      setSidebarFocused(false);
+      store.dispatch({ type: "paneFocus.setDiff" });
       const seed = initialCursor({
         topLevelComments: topLevel,
         flatRows: flatRowsList,
@@ -820,7 +837,7 @@ function App(props: AppProps) {
   const jumpToComment = (ann: Comment) => {
     // Issue #132: explicit comment jumps (n/p) drop sidebar focus so
     // subsequent j/k move the diff cursor, not the file row.
-    setSidebarFocused(false);
+    store.dispatch({ type: "paneFocus.setDiff" });
     const rowIdx = revealAndLocateFile(ann.file, tree, collapsedFolders, commentCounts);
     if (rowIdx !== null && rowIdx !== safeRowIdx) {
       setSelectedRowIdx(rowIdx);
@@ -868,7 +885,7 @@ function App(props: AppProps) {
     side: "additions" | "deletions",
     lineNumber: number,
   ) => {
-    setSidebarFocused(false);
+    store.dispatch({ type: "paneFocus.setDiff" });
     store.dispatch({
       type: "cursor.set",
       anchor: { kind: "row", file, lineNumber, side, preferredSide: side },
@@ -890,7 +907,7 @@ function App(props: AppProps) {
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
   ) => {
-    setSidebarFocused(false);
+    store.dispatch({ type: "paneFocus.setDiff" });
     store.dispatch({
       type: "cursor.set",
       anchor: cursorOnInteractive({
@@ -917,7 +934,7 @@ function App(props: AppProps) {
   const onCardClick = (commentId: string) => {
     const ann = comments.find((a) => a.id === commentId);
     if (!ann) return;
-    setSidebarFocused(false);
+    store.dispatch({ type: "paneFocus.setDiff" });
     store.dispatch({
       type: "cursor.set",
       anchor: cursorFromComment(ann, preferredSideOf(cursor)),
@@ -1133,7 +1150,7 @@ function App(props: AppProps) {
   // card, and lands the cursor on the file's first annotatable row. Kept
   // out-of-switch so the two entry points can't drift.
   const selectSidebarFile = (filePath: string, opts: { animate?: boolean } = {}) => {
-    setSidebarFocused(false);
+    store.dispatch({ type: "paneFocus.setDiff" });
     if (diffScrollRef.current) {
       // Issue #294 Slice 1: the keyboard `select-file` path passes
       // `animate: true`; the mouse-click path on a file row passes nothing
@@ -1378,10 +1395,10 @@ function App(props: AppProps) {
         renderer.destroy();
         return;
       case "toggle-pane":
-        setSidebarFocused((v) => !v);
+        store.dispatch({ type: "paneFocus.toggle" });
         return;
       case "focus-sidebar":
-        setSidebarFocused(true);
+        store.dispatch({ type: "paneFocus.setSidebar" });
         return;
       case "move-file-down":
         setSelectedRowIdx((i) => Math.min(i + 1, (treeSlice?.visibleRows.length ?? 0) - 1));
@@ -1691,7 +1708,7 @@ function App(props: AppProps) {
           borderStyle="single"
           borderColor={sidebarFocused ? theme.border.accent : theme.border.default}
           flexDirection="column"
-          onMouseDown={() => setSidebarFocused(true)}
+          onMouseDown={() => store.dispatch({ type: "paneFocus.setSidebar" })}
         >
           <scrollbox ref={sidebarScrollRef} height="100%">
             {visibleRows.map((row, idx) => {
@@ -1725,7 +1742,7 @@ function App(props: AppProps) {
                 } else {
                   // Folder click is tree-internal navigation, not a "go to
                   // this file" gesture — keep focus on the sidebar.
-                  setSidebarFocused(true);
+                  store.dispatch({ type: "paneFocus.setSidebar" });
                 }
               };
               if (row.kind === "folder") {
@@ -1833,7 +1850,7 @@ function App(props: AppProps) {
           borderColor={!sidebarFocused ? theme.border.accent : theme.border.default}
           title=" Diff "
           flexDirection="column"
-          onMouseDown={() => setSidebarFocused(false)}
+          onMouseDown={() => store.dispatch({ type: "paneFocus.setDiff" })}
         >
           {view.kind === "ok" && bundle.kind === "ok" && bundle.diff && (() => {
             // Issue #307: synthesise GitHub-style sticky file-header in
