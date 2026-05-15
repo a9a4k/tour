@@ -1,6 +1,6 @@
 # Tour Examples
 
-Worked examples through the lead-with-claim + un-evaluable rule.
+Worked examples for the Comment rules — each one anchored, plain-language, mechanism-as-story.
 
 ## Example 1 — Narrative refactor tour
 
@@ -130,3 +130,25 @@ tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
 Diagrams render in the webapp; the TUI shows them as a fenced code block. Reserve diagrams for control/data flow that would otherwise need multiple paragraphs.
+
+## Example 7 — Multi-comment narrative for a non-trivial mechanism
+
+Context: a queue handler was hanging on stuck external LLM calls; the fix adds a hard timeout that reuses existing retry plumbing. Tour walks the reader through five anchors, each speaking to its line.
+
+```sh
+TOUR_ID=$(tour create --head HEAD --title "Add 10-min hard timeout to thematic-analysis handler")
+
+cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
+{"file":"services/insights/src/thematic-analysis.constants.ts","side":"additions","line_start":4,"line_end":14,"body":"## Why 10 minutes — it sits between two existing limits\n\nSometimes the LLM call hangs and never returns. Without a timeout, the job stays in PROCESSING and the user eventually sees \"Analysis didn't complete\" with no retry path.\n\nThis PR adds a 10-minute hard timeout via `AbortSignal.timeout`. When it fires, the LLM call rejects with an abort error. Our existing error handler recognises it as retryable, sets the job back to PENDING, and re-throws. Because we re-throw, SQS never gets a confirmation for the message — so after its ~20-minute visibility window, SQS redelivers the same message to another worker, which retries the job.\n\nThe 10-minute number has to fit between two real limits:\n\n`slowest successful call (~2 min)  <  hard timeout (10 min)  <  SQS visibility (~20 min)`\n\nAnything in that range works; we picked 10. No new code paths — the fix reuses existing retry plumbing."}
+{"file":"packages/maze-ai/src/types.ts","side":"additions","line_start":109,"line_end":116,"body":"## The package exposes the hook; the caller composes\n\nWe added `abortSignal` to `ExecuteOptions` so any caller can opt into cancellation. The JSDoc describes a *pattern*, not a built-in helper — the actual timeout value and `AbortSignal.any([...])` composition live at the call site, not in this package.\n\nDifferent callers have different wall-clock budgets: SQS handlers fit inside the visibility window, Temporal activities respect heartbeat, HTTP handlers care about request timeout. The package can't pick one number that's right for everyone."}
+{"file":"services/insights/src/handler.ts","side":"additions","line_start":58,"line_end":60,"body":"## Why `deadlineSignal` is at outer scope (not inside the try)\n\nThe catch block at the bottom of this method needs to read `deadlineSignal.aborted` when logging — so we can tell whether an abort was a worker shutdown, a deadline timeout, or both. A `let` at outer scope keeps the variable visible from the catch. A `const` inside the try would be out of scope by then.\n\nWhy \"or both\"? When we compose the signals below with `AbortSignal.any([...])`, both `.aborted` flags can end up true if the worker and the deadline fire close together. The catch logs two independent booleans so the race case is visible in monitoring; a single enum would silently pick one and hide the other."}
+{"file":"services/insights/src/handler.ts","side":"additions","line_start":144,"line_end":151,"body":"## The composition — two signals merged into one\n\nTwo cancellation signals feed into `AbortSignal.any([signal, deadlineSignal])`:\n\n- `signal` (worker-level) — already exists, comes from the queue consumer. Aborts when SQS visibility expires or the worker shuts down.\n- `deadlineSignal` (new in this PR) — `AbortSignal.timeout(10min)`. Aborts strictly on wall-clock.\n\nThe combined signal aborts when either input aborts. We pass it to the LLM call; when it fires, the call rejects and the existing `handleJobError` flips the job to PENDING and re-throws.\n\nNo new control flow, no explicit re-enqueue, no UI change."}
+{"file":"services/insights/src/handler.spec.ts","side":"additions","line_start":427,"line_end":434,"body":"## Vitest's fake timers can't drive `AbortSignal.timeout`\n\nThe natural way to test a 10-minute deadline is `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync(LLM_HARD_TIMEOUT_MS)`. It doesn't fire the abort.\n\nWhy: `vi.useFakeTimers()` only hooks the global `setTimeout`. `AbortSignal.timeout(ms)` is built into Node natively and doesn't go through `setTimeout`, so Vitest never sees it.\n\nWorkaround (inline in the spec): replace `AbortSignal.timeout` with a stub that *does* use `setTimeout` internally — create an AbortController and call `controller.abort()` from inside a `setTimeout` callback. Now the fake timer can advance the inner `setTimeout`, which fires the abort. Deterministic."}
+JSONL
+
+tour serve "$TOUR_ID" --reply-agent claude &
+```
+
+Five comments, each anchored at the line that motivates it. Plain language throughout; technical terms only where the identifier IS the term (`AbortSignal.any`, `PENDING`, SQS visibility). Each heading carries the claim; bodies tell the mechanism as a story without forward-referencing code elsewhere in the diff. Length matches the mechanism — Comment 4 is ~110 words because there are two signals to introduce; Comment 5 is ~115 because the test workaround needs three steps; none exceeds ~165.
+
+Contrast with Example 1 (validation refactor): each comment there is ~25 words because the mechanism is a single move. Same rule, different length — the mechanism sets the budget.
