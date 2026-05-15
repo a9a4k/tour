@@ -188,6 +188,28 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       }
     };
   }, []);
+  // Issue #334: route the composer's `submitting → errored` transition
+  // (the runtime dispatches `composer.failed` when the adapter's
+  // `writeAnnotation` rejects — see core/tour-session-runtime.ts:238)
+  // into the footer status slot. Prefix is `Comment failed` for top-
+  // level annotations and `Reply failed` for replies; the same path
+  // covers non-2xx responses (adapter throws `data.error ?? HTTP <n>`)
+  // and network errors (fetch rejects, message propagated verbatim).
+  // Successful creates do NOT flash — the watcher-driven repaint is
+  // the confirmation (per PRD #330's Out of Scope). The ref gates on
+  // the *transition* into errored so retry → submitting → errored
+  // re-flashes even when the new error string matches the previous.
+  const wasComposerErroredRef = useRef(false);
+  const composerSlice = sessionState.composer;
+  useEffect(() => {
+    const isErrored = composerSlice.kind === "errored";
+    if (isErrored && !wasComposerErroredRef.current) {
+      const verb =
+        composerSlice.target.kind === "reply" ? "Reply" : "Comment";
+      flashFooterStatus(`${verb} failed: ${composerSlice.error}`);
+    }
+    wasComposerErroredRef.current = isErrored;
+  }, [composerSlice, flashFooterStatus]);
   // Folds (collapsedFolders + collapsedOverrides), layout, and composer
   // (target / body / error as one tagged-union slice) all live in the Tour-
   // session store (PRD #234 slice 3, issue #238). The webapp's three local

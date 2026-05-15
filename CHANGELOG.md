@@ -44,6 +44,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp: annotation-create failures surface as transient footer
+  status (issue #334).** The composer's `submitting → errored`
+  transition (the runtime dispatches `composer.failed` on adapter
+  rejection) now flashes the failure reason in the footer's
+  transient status slot — `Comment failed: <reason>.` for top-level
+  annotations and `Reply failed: <reason>.` for replies. The reason
+  is the server's `error` field when the response is non-2xx with a
+  JSON body, the literal `HTTP <status>` when the body is empty /
+  non-JSON, and the thrown error's message on a fetch rejection
+  (network failure, abort). Status follows the same ~2 s auto-dismiss
+  + last-write-wins contract introduced in #333. Successful creates
+  do NOT flash — the watcher-driven repaint is the confirmation, per
+  PRD #330's Out of Scope (success-case status would be noise). The
+  `aria-live="polite"` slot from #333 carries the announcement; no
+  new ARIA wiring. Third slice of PRD #330.
+
+  Drive-by: `<CardRow>` (`src/web/client/row-components.tsx`) now
+  forwards `composerBody` and `onComposerBodyChange` to its
+  `<AnnotationCard>` child. Without it the reply composer mounted via
+  the FileBlock path (the resolved-bundle case, i.e. all of normal
+  production usage) wired the textarea to a default-empty body with
+  an undefined onChange — typed replies stayed in the local DOM but
+  never reached the store, so `composer.submit` saw `body.trim() === ""`
+  and silently no-op'd. The drive-by unblocks the reply submit path
+  the issue's "Reply failed" routing covers.
+
+  Issue: #334. PRD: #330.
+
 - **Webapp: transient footer status surface for cursor-keymap miss
   reasons (issue #333).** The footer's status slot now flashes a
   one-line reason when the cursor-keymap `r` / `s` cross-axis miss
