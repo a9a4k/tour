@@ -60,6 +60,7 @@ export type KeyAction =
   | { type: "primary-action" }
   | { type: "expand-file-all" }
   | { type: "yank-file-path" }
+  | { type: "open-in-editor" }
   | { type: "noop" }
   | { type: "noop-reply-on-row" }
   | { type: "noop-send-on-row" }
@@ -137,6 +138,14 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     // The App-side handler is a labelled no-op when no file is in scope
     // (sidebar parked on a folder, null cursor on a degenerate state).
     if (key.name === "y") return { type: "yank-file-path" };
+    // PRD #349 / ADR 0032 / issue #352: `o` opens the cursor's file at
+    // its line in the configured editor. Available in both panes — the
+    // App-side handler resolves the target (slice 1 row-cursor only;
+    // permissive resolution lands in #351) and routes to
+    // `core/editor-spawn`. Bare lowercase per ADR 0030 (cursor-target
+    // action). `e` is taken by expand-file-all (#297) — convention
+    // concession recorded in ADR 0032.
+    if (key.name === "o") return { type: "open-in-editor" };
     // Row-kind-aware action dispatch (PRD #192 / ADR 0022). The unified
     // cursor routes action keys by row kind: `c` (issue #337, ADR 0029)
     // is a row-only action, `r` and `s` are card-only actions. Mismatches

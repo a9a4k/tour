@@ -471,6 +471,28 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("y", { shift: true }), diffPane).type).toBe("noop");
   });
 
+  // PRD #349 / ADR 0032 / issue #352: `o` opens the cursor's file at
+  // its line in the configured editor. Available in both panes
+  // (resolution layer surfaces null-cursor / folder hints via the
+  // footer); modifier combinations are guarded.
+  it("o dispatches open-in-editor regardless of pane focus", () => {
+    expect(dispatchKey(k("o"), sidebar).type).toBe("open-in-editor");
+    expect(dispatchKey(k("o"), diffPane).type).toBe("open-in-editor");
+    expect(dispatchKey(k("o"), sidebarFolder).type).toBe("open-in-editor");
+    expect(dispatchKey(k("o"), diffPaneOnCard).type).toBe("open-in-editor");
+    expect(dispatchKey(k("o"), sidebarOnCard).type).toBe("open-in-editor");
+  });
+
+  it("Ctrl+O is not consumed as open-in-editor (modifier guard)", () => {
+    expect(dispatchKey(k("o", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("o", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Shift+O is not consumed as open-in-editor (uppercase reserved per ADR 0030)", () => {
+    expect(dispatchKey(k("o", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("o", { shift: true }), diffPane).type).toBe("noop");
+  });
+
   it("Ctrl+T is not consumed as open-picker", () => {
     expect(dispatchKey(k("t", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("t", { ctrl: true }), diffPane).type).toBe("noop");

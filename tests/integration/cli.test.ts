@@ -700,6 +700,19 @@ describe("CLI integration", () => {
       expect(r.stdout).toMatch(/alias: annotate/);
       expect(r.stdout).not.toMatch(/tour annotate <id>/);
     });
+
+    // PRD #349 / ADR 0032 / issue #352: open-in-editor slice 1 — the
+    // `--editor <cmd>` flag is advertised on the `tour tui` line of the
+    // USAGE block. Webapp parity (`tour serve --editor`) lands in #353.
+    it("`tour --help` documents `--editor` on the `tour tui` line (issue #352)", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      const tuiLine = r.stdout
+        .split("\n")
+        .find((l) => l.trim().startsWith("tour tui "));
+      expect(tuiLine).toBeDefined();
+      expect(tuiLine).toContain("[--editor <cmd>]");
+    });
   });
 
   describe("pickup", () => {

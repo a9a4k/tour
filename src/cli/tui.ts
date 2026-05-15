@@ -7,6 +7,7 @@ import {
 import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
+import type { EditorConfig } from "../core/editor-config.js";
 import type {
   StartTuiProps,
   WriteCommentInput,
@@ -16,6 +17,7 @@ interface TuiArgs {
   tourId?: string;
   cwd: string;
   replyAgent?: string;
+  editor?: EditorConfig | null;
 }
 
 // Re-export so the single source-of-truth import path stays `src/cli/tui.js`
@@ -103,5 +105,6 @@ export async function tui(args: TuiArgs): Promise<void> {
     },
     cwd: args.cwd,
     replyAgent: args.replyAgent,
+    editor: args.editor ?? null,
   });
 }

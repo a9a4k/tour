@@ -2,6 +2,7 @@ import type { Comment, Tour } from "./types.js";
 import type { TourBundle } from "./tour-bundle.js";
 import type { ComposerTarget } from "./tour-session.js";
 import type { ReplyLock } from "./reply-lock.js";
+import type { EditorConfig } from "./editor-config.js";
 
 // The payload a TUI / CLI surface hands to its `writeComment` callback.
 // The top-level variant carries the live `bundle` so the validator inside
@@ -42,6 +43,10 @@ export interface StartTuiProps {
   writeComment: (tourId: string, input: WriteCommentInput) => Promise<Comment>;
   cwd: string;
   replyAgent?: string;
+  /** PRD #349 / ADR 0032 / issue #352: resolved editor config (null
+   *  when no flag and no env var was set). The TUI surfaces a footer
+   *  hint when this is null and the user presses `o`. */
+  editor?: EditorConfig | null;
 }
 
 export type BuildWriteCommentInputResult =

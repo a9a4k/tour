@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`o` on a TUI diff row opens the file at that line in your GUI editor
+  (issue #352, PRD #349, ADR 0032).** Tracer-bullet slice 1 of the
+  cross-surface open-in-editor feature: `tour tui --editor 'code -g'`
+  (or `$TOUR_EDITOR` / `$VISUAL` / `$EDITOR` fallbacks) configures the
+  editor; pressing bare `o` while the cursor sits on a diff row spawns
+  the editor detached at `(file, line)` and footer-flashes
+  `Opened <file>:<line>` (auto-clears after ~1200ms). ENOENT, non-zero
+  exit inside 200ms, missing config, missing working-tree file, and
+  terminal-editor configs each surface a clear footer message. Card
+  cursor / sidebar fallback / folder selection footer-fail with
+  placeholder hints (full permissive resolution lands in #351).
+  Establishes the shared `core/editor-config`, `core/editor-spawn`,
+  `core/open-target-resolver` modules that subsequent slices (#353
+  webapp parity, #354 permissive resolution, #355 terminal-editor TUI
+  support) reuse.
+
+  Issue: #352
+
 ## [3.1.1] — 2026-05-15
 
 ### Changed

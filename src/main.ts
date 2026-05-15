@@ -14,6 +14,7 @@ import { selftestSyntax } from "./cli/selftest.js";
 import { listTours } from "./core/tour-store.js";
 import { pickDefaultSurface } from "./core/surface-picker.js";
 import { isOnPath } from "./core/is-on-path.js";
+import { resolveEditor } from "./core/editor-config.js";
 
 declare const __EMBEDDED_VERSION__: string;
 const VERSION =
@@ -72,8 +73,8 @@ const USAGE = `tour — local code walkthrough tool with AI comments
 
 Usage:
   tour                                  (open the best surface for your env: webapp on a desktop with a browser, TUI otherwise)
-  tour tui [<id>] [--reply-agent <name>]   (open TUI for a specific tour)
-  tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
+  tour tui [<id>] [--reply-agent <name>] [--editor <cmd>]   (open TUI for a specific tour)
+  tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] [--editor <cmd>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
   tour create --head <ref> [--base <ref>] [--title <s>] [--json]
                                         (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^.)
   tour comment <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
@@ -193,6 +194,7 @@ async function main(): Promise<void> {
           tourId: positional[0],
           cwd,
           replyAgent: flag(flags, "reply-agent"),
+          editor: resolveEditor(flag(flags, "editor"), process.env),
         });
         break;
 

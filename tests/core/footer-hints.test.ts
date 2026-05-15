@@ -91,11 +91,35 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("e: expand all");
     expect(out).toContain("C: collapse replies");
     expect(out).toContain("y: yank path");
+    expect(out).toContain("o: open");
     expect(out).toContain("Space: page");
     expect(out).toContain("L: layout");
     expect(out).toContain("T: picker");
     expect(out).toContain("[/]: width");
     expect(out).toContain("q: quit");
+  });
+
+  // PRD #349 / ADR 0032 / issue #352: `o: open` slots adjacent to
+  // `y: yank path` — both are "side-effect on cursor's file."
+  it("diff-mode legend places `o: open` next to `y: yank path`", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
+    const y = out.indexOf("y: yank path");
+    const o = out.indexOf("o: open");
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(o).toBeGreaterThan(y);
+    // No other persistent hint between y and o.
+    const between = out.slice(y + "y: yank path".length, o);
+    expect(between).toBe("  ·  ");
+  });
+
+  it("sidebar-mode legend places `o: open` next to `y: yank`", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
+    const y = out.indexOf("y: yank");
+    const o = out.indexOf("o: open");
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(o).toBeGreaterThan(y);
+    const between = out.slice(y + "y: yank".length, o);
+    expect(between).toBe("  ·  ");
   });
 
   it("diff-mode legend inserts `s: send to {agent}` when the send hint is visible", () => {
@@ -111,7 +135,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
   it("sidebar-mode legend emits the documented pane-relevant string", () => {
     const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
     expect(out).toBe(
-      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit",
+      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit",
     );
   });
 

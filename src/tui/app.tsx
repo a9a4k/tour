@@ -124,6 +124,10 @@ import { buildRowYResolver, cursorRowDomId } from "./row-y-resolver.js";
 import { resizeReanchorTargetId } from "./resize-reanchor-target.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
+import { resolveOpenTarget } from "../core/open-target-resolver.js";
+import { spawnGuiEditor } from "../core/editor-spawn.js";
+import { existsSync as existsSyncSafe } from "node:fs";
+import { isAbsolute as isAbsolutePath, join as joinPath } from "node:path";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -369,6 +373,19 @@ function App(props: AppProps) {
   // effect can stop it. Restoration is via a functional setter at the
   // case site so a newer status (set after our flash) survives.
   const yankFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // PRD #349 / ADR 0032 / issue #352: success-flash timer for the
+  // "Opened <file>:<line>" footer status. Mirrors the yank timer (1200ms
+  // auto-clear) — fresh `o` press cancels prior pending clear; unmount
+  // effect clears as well.
+  const openFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => (): void => {
+      if (openFooterTimerRef.current !== null) {
+        clearTimeout(openFooterTimerRef.current);
+      }
+    },
+    [],
+  );
   useEffect(
     () => (): void => {
       if (yankFooterTimerRef.current !== null) {
@@ -1727,6 +1744,60 @@ function App(props: AppProps) {
           yankFooterTimerRef.current = null;
           setFooterStatus((cur) => (cur === message ? null : cur));
         }, 1200);
+        return;
+      }
+      case "open-in-editor": {
+        // PRD #349 / ADR 0032 / issue #352 — Slice 1: row-cursor only.
+        // Card cursor, sidebar fallback, folder selection, and null
+        // cursor all surface placeholder footer-hints; permissive
+        // resolution lands in #351. Terminal-classified editors footer-
+        // fail with a placeholder; full suspend/resume lifecycle lands
+        // in #355.
+        const editor = props.editor ?? null;
+        if (!editor) {
+          setFooterStatus("o: editor not configured — set $TOUR_EDITOR or pass --editor");
+          return;
+        }
+        if (editor.terminal) {
+          setFooterStatus("o: terminal editor — TUI support coming in a follow-up");
+          return;
+        }
+        const target = resolveOpenTarget(cursor);
+        if (!target) {
+          if (cursor && cursor.kind === "card") {
+            setFooterStatus("o: card cursor — j/k to land on a row first");
+          } else if (cursor && cursor.kind === "row" && cursor.interactive) {
+            setFooterStatus("o: not on a diff row — j/k to land on a line");
+          } else if (selectedRow?.kind === "folder") {
+            setFooterStatus("o: no file under cursor");
+          } else {
+            setFooterStatus("o: no file under cursor");
+          }
+          return;
+        }
+        const cwd = props.cwd;
+        if (!cwd) {
+          setFooterStatus("o: no working directory");
+          return;
+        }
+        const absPath = isAbsolutePath(target.file) ? target.file : joinPath(cwd, target.file);
+        if (!existsSyncSafe(absPath)) {
+          setFooterStatus(`o: ${target.file} not in working tree`);
+          return;
+        }
+        void spawnGuiEditor(editor, target, cwd).then((result) => {
+          setFooterStatus(result.message);
+          if (openFooterTimerRef.current !== null) {
+            clearTimeout(openFooterTimerRef.current);
+          }
+          if (result.ok) {
+            const flashed = result.message;
+            openFooterTimerRef.current = setTimeout(() => {
+              openFooterTimerRef.current = null;
+              setFooterStatus((cur) => (cur === flashed ? null : cur));
+            }, 1200);
+          }
+        });
         return;
       }
       case "noop-reply-on-row":

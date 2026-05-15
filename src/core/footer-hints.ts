@@ -43,11 +43,13 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   if (opts.surface === "tui" && paneFocus === "sidebar") {
     // Sidebar-mode legend (PRD #343 / ADR 0031 / issue #345). Shorter
     // than the diff-mode legend — only sidebar-navigable keys and the
-    // pane-agnostic Tour-wide actions (e/y/L/T/q). The send-hint
+    // pane-agnostic Tour-wide actions (e/y/o/L/T/q). The send-hint
     // conditional is gated off here: `s` is a cursor-target action
-    // that only fires when paneFocus = diff.
+    // that only fires when paneFocus = diff. PRD #349 / ADR 0032 /
+    // issue #352: `o: open` slots next to `y` since both are
+    // "side-effect on cursor's file."
     return (
-      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit`
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit`
     );
   }
   if (opts.surface === "web" && paneFocus === "sidebar") {
@@ -64,8 +66,10 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       ? `  ·  s: send to ${opts.replyAgent}`
       : "";
   if (opts.surface === "tui") {
+    // PRD #349 / ADR 0032 / issue #352: `o: open` slots next to
+    // `y: yank path` — both are "side-effect on cursor's file."
     return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
+      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  o: open  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
