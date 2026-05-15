@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Sidebar keyboard cursor is now visible on folder rows (issue #367,
+  PRD #343, ADR 0031).** Pressing `j` / `k` in sidebar mode moves the
+  `:focus-visible` accent outline across every visible row — folders
+  included. Previously folders were silently skipped because the
+  folder-row component never registered its DOM node in the App-level
+  ref map, so the focus-realisation effect's `registry.get(path)?.focus()`
+  resolved `undefined` and no row gained DOM focus. `FolderRow` now
+  accepts the same `registerRef` callback as `FileRow` and wires it
+  through its `<button>`'s `ref`, registering on mount and deregistering
+  on unmount. No change to hover styling, click semantics, roving
+  `tabIndex`, or `paneFocus` flow.
+
+  Issue: #367 · PRD: #343 · ADR: 0031
+
 - **Bare `tour --editor <cmd>` now threads the flag into the dispatched
   surface (issue #364, PRD #349).** Previously, `tour --editor 'code -g'`
   with no subcommand either errored as `Unknown command: --editor` (a
