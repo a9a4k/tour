@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, chmod, readFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  writeFile,
+  chmod,
+  readFile,
+  realpath,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -205,7 +211,12 @@ describe("bare `tour --editor` smart-default dispatch (issue #364)", () => {
     expect(data.message).toBe("Opened hello.txt:1");
     await new Promise((r) => setTimeout(r, 100));
     const argv = (await readFile(logPath, "utf8")).trim().split("\n");
-    expect(argv[argv.length - 1]).toBe(`${setup.dir}/hello.txt:1`);
+    // realpath collapses macOS's /var → /private/var symlink so the
+    // comparison holds on both platforms — the subprocess's cwd is
+    // realpath-resolved, but `setup.dir` is the unresolved tmpdir.
+    // Mirrors the issue-#365 fix in serve-open-in-editor.test.ts.
+    const expectedDir = await realpath(setup.dir);
+    expect(argv[argv.length - 1]).toBe(`${expectedDir}/hello.txt:1`);
   }, 20000);
 
   it("threads $TOUR_EDITOR env fallback through bare `tour` into the dispatched webapp", async () => {
