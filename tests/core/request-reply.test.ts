@@ -58,7 +58,7 @@ async function seedComment(
   tour: string,
   ann: Comment,
 ): Promise<void> {
-  const path = join(cwd, ".tour", tour, "annotations.jsonl");
+  const path = join(cwd, ".tour", tour, "comments.jsonl");
   await appendFile(path, JSON.stringify(ann) + "\n");
 }
 
@@ -180,7 +180,7 @@ async function makeRepo(): Promise<string> {
     join(dir, ".tour", tourId, "tour.toml"),
     stringifyTOML(mkTour()),
   );
-  await writeFile(join(dir, ".tour", tourId, "annotations.jsonl"), "");
+  await writeFile(join(dir, ".tour", tourId, "comments.jsonl"), "");
   return dir;
 }
 

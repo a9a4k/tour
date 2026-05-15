@@ -41,7 +41,7 @@ describe("TourWatcher", () => {
     dir = await mkdtemp(join(tmpdir(), "tour-watcher-"));
     tourDir = join(dir, ".tour", tourId);
     await mkdir(tourDir, { recursive: true });
-    await writeFile(join(tourDir, "annotations.jsonl"), "");
+    await writeFile(join(tourDir, "comments.jsonl"), "");
   });
 
   afterEach(() => {
@@ -56,7 +56,7 @@ describe("TourWatcher", () => {
     watcher.start();
     await armSettle();
 
-    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a1"}\n');
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"a1"}\n');
 
     const changed = await waitForEvent(events, "comment-changed");
     expect(changed).toBeDefined();
@@ -70,9 +70,9 @@ describe("TourWatcher", () => {
     watcher.start();
     await armSettle();
 
-    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a1"}\n');
-    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a2"}\n');
-    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a3"}\n');
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"a1"}\n');
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"a2"}\n');
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"a3"}\n');
 
     await new Promise((r) => setTimeout(r, 400));
     expect(events.length).toBeLessThanOrEqual(2);
@@ -85,7 +85,7 @@ describe("TourWatcher", () => {
     watcher.start();
     watcher.stop();
 
-    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a1"}\n');
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"a1"}\n');
     await new Promise((r) => setTimeout(r, 200));
     expect(events.length).toBe(0);
   });
@@ -97,7 +97,7 @@ describe("TourWatcher", () => {
     watcher.start();
     await armSettle();
 
-    await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"a1"}\n');
+    await appendFile(join(tourDir, "comments.jsonl"), '{"id":"a1"}\n');
 
     const changed = await waitForEvent(events, "comment-changed");
     expect(changed?.tourId).toBe(tourId);
@@ -144,9 +144,8 @@ describe("TourWatcher", () => {
   // (ADR 0029 addendum). The watcher must fire comment-changed for writes
   // to whichever filename the Tour folder is using at the moment.
   it("emits comment-changed when comments.jsonl is modified (post-migration shape)", async () => {
-    // Folder is freshly migrated: no annotations.jsonl, only comments.jsonl.
-    await unlink(join(tourDir, "annotations.jsonl"));
-    await writeFile(join(tourDir, "comments.jsonl"), "");
+    // beforeEach already seeds `comments.jsonl` (the post-migration primary
+    // path), so the folder is in the desired state with no extra setup.
     watcher = new TourWatcher(dir, tourId, 50);
     const events: WatchEvent[] = [];
     watcher.on((event) => events.push(event));
@@ -161,9 +160,10 @@ describe("TourWatcher", () => {
   });
 
   it("emits comment-changed when annotations.jsonl is renamed to comments.jsonl and then appended", async () => {
-    // Legacy-only folder. After the watcher arms, the writer renames the
-    // legacy file to the new name and appends. The watcher must observe
-    // the resulting change.
+    // Legacy-only folder. beforeEach seeds `comments.jsonl`; this test
+    // exercises the read-fallback path, so unwind the seed and create the
+    // legacy file in its place before arming the watcher.
+    await unlink(join(tourDir, "comments.jsonl"));
     await appendFile(join(tourDir, "annotations.jsonl"), '{"id":"legacy"}\n');
 
     watcher = new TourWatcher(dir, tourId, 50);
