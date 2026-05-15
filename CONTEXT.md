@@ -108,7 +108,7 @@ _Avoid_: status bar, hint bar, key hints, help strip
 
 - A **Tour** has exactly one **Head** and one **Base**, both stored as SHAs.
 - A **Tour** has zero or more **Comments**.
-- An **Comment** belongs to exactly one **Tour** and anchors to one file + line-range inside that Tour's **Diff**.
+- A **Comment** belongs to exactly one **Tour** and anchors to one file + line-range inside that Tour's **Diff**.
 - A **Reply** is a Comment that points at another Comment in the same Tour via `replies_to`.
 - A **Thread** is a top-level Comment plus its chain of Replies; lives entirely inside one Tour.
 - A **Working-tree snapshot** acts as a synthetic **Head** when an agent creates a Tour of uncommitted work.

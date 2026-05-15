@@ -6,7 +6,7 @@ import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hin
 // comment binding (formerly `a`, now `c` per ADR 0029 + issue #337) is
 // labelled "comment" to align with the verb every collaborative code-
 // review tool reaches for; ADR 0029 records the unit-name flip from
-// Comment to Comment, and ADR 0030 records the lowercase/capital
+// Annotation to Comment, and ADR 0030 records the lowercase/capital
 // convention that motivated the `t → T`, `c → C` rebinds shipping in
 // the same slice.
 //

@@ -152,7 +152,7 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
   // ADR 0028 / PRD #330: cross-axis misses on the webapp footer flash a
   // reason via the transient status slot. The keymap emits the message; the
   // App-side handler routes it into setFooterStatus with a ~2s auto-dismiss.
-  // PRD #335 / ADR 0029 flipped "comment" → "comment" in these strings.
+  // PRD #335 / ADR 0029 flipped "annotation" → "comment" in these strings.
 
   it("r on a diff-row cursor → status `No comment under cursor.`", () => {
     expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({
