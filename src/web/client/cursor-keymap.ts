@@ -81,6 +81,7 @@ export type CursorAction =
   | { type: "toggle-layout" }
   | { type: "open-picker" }
   | { type: "status"; message: string }
+  | { type: "yank-at-cursor" }
   | { type: "noop" }
   // Pane-focus + sidebar-mode (PRD #343 / ADR 0031 / issue #346).
   | { type: "pane-focus-toggle" }
@@ -138,6 +139,16 @@ export function dispatchCursorKey(
   // `T` (Shift+t) opens picker (ADR 0030 — capital = global). PRD #335 /
   // ADR 0029 promoted `t → T` in lockstep with the `a → c` cutover.
   if (e.shiftKey && e.key === "T") return { type: "open-picker" };
+
+  // PRD #356 / issue #358: context-aware `y` yank. Bare lowercase `y`
+  // dispatches `yank-at-cursor` in BOTH pane modes — ADR 0031's auto-
+  // flip rationale for c/r/s doesn't apply because `y` is read-only and
+  // doesn't risk losing context. The App-side handler routes through
+  // the shared `core/yank-target.ts` resolver to discriminate
+  // line / path / none. Modifier-decorated `y` (Cmd-Y / Ctrl-Y / Alt-Y
+  // → handled by the top-of-function guard) is preserved as the
+  // browser/OS shortcut; `Shift-Y` is reserved per ADR 0030.
+  if (!e.shiftKey && e.key === "y") return { type: "yank-at-cursor" };
 
   const paneFocus: PaneFocus = ctx.paneFocus ?? "diff";
 

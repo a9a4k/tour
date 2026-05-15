@@ -45,6 +45,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Issue: #357 · PRD: #356
 
+- **Webapp `y` keyboard yank (PRD #356, issue #358).** Cross-surface
+  parity with the TUI slice (#357): pressing bare lowercase `y` on the
+  webapp resolves the context-aware yank target via the shared
+  `core/yank-target.ts` resolver, writes the result to the clipboard
+  via `navigator.clipboard.writeText`, and flashes a transient footer
+  message through the existing `Footer.tsx` `aria-live="polite"` slot
+  (screen-reader-announced). Diff-row cursor → line text; card /
+  interactive / sidebar-file selection → file path; folder / null
+  state → `y: no file selected` / `y: no cursor`. `Cmd-Y` / `Ctrl-Y` /
+  `Alt-Y` keep their host shortcuts (redo / history-back); `Shift-Y`
+  is reserved per ADR 0030; `y` inside an editable / open picker is
+  absorbed by the existing suppression gates. `y` fires in BOTH pane
+  modes (read-only — ADR 0031's auto-flip rationale for c/r/s
+  doesn't apply). The existing per-file `📋` button (#317) and its
+  checkmark indicator (#319) are unchanged. Webapp footer legend now
+  reads `y: yank` in both diff and sidebar pane sections.
+
+  Issue: #358 · PRD: #356
+
 ## [3.1.1] — 2026-05-15
 
 ### Changed

@@ -78,6 +78,18 @@ import {
 import { Footer } from "./Footer.js";
 import { composeFooterHints } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
+import { resolveYankTarget } from "../../core/yank-target.js";
+
+// PRD #356 / issue #358: footer flash for `y` on a diff-row preview
+// truncates the displayed text to keep the legend strip readable while
+// the full text reaches the clipboard. ~60-char ceiling + ellipsis,
+// mirroring the TUI surface's `truncateForPreview` (src/tui/app.tsx).
+const YANK_PREVIEW_MAX = 60;
+function truncateForPreview(text: string): string {
+  return text.length <= YANK_PREVIEW_MAX
+    ? text
+    : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
+}
 
 // Escape a string for safe interpolation into a CSS attribute selector
 // (`[data-file="${cssEscapeFile(path)}"]`). Uses the platform's
@@ -1547,6 +1559,43 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             tourId,
             commentId: target.leafId,
           });
+          return;
+        }
+        case "yank-at-cursor": {
+          // PRD #356 / issue #358: context-aware yank. Symmetric to
+          // the TUI handler (#357 / src/tui/app.tsx). Resolver collapses
+          // (paneFocus, cursor, sidebar selection, comments, bundle
+          // files) into a YankTarget; this handler is the thin transport
+          // + footer-flash wrapper. Diff-row cursor → line text; card /
+          // interactive / sidebar-file → path; degenerate state →
+          // labelled none. Clipboard rejection is silent (matches #319).
+          const target = resolveYankTarget({
+            paneFocus,
+            cursor,
+            sidebarSelectedRow: selectedRow ?? null,
+            comments: view.kind === "ok" ? view.bundle.comments : [],
+            bundleFiles:
+              view.kind === "ok" ? view.bundle.filesByName : new Map(),
+          });
+          if (target.kind === "none") {
+            flashFooterStatus(
+              target.reason === "no-file-selected"
+                ? "y: no file selected"
+                : "y: no cursor",
+            );
+            return;
+          }
+          const text = target.kind === "path" ? target.path : target.text;
+          const message =
+            target.kind === "path"
+              ? `Copied ${target.path}`
+              : `Copied "${truncateForPreview(target.text)}"`;
+          const write = navigator.clipboard?.writeText?.(text);
+          if (!write) return;
+          write.then(
+            () => flashFooterStatus(message),
+            () => {},
+          );
           return;
         }
       }

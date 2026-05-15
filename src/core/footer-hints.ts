@@ -54,11 +54,13 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   }
   if (opts.surface === "web" && paneFocus === "sidebar") {
     // Sidebar-mode web legend (PRD #343 / ADR 0031 / issue #346). Mirrors
-    // the TUI's sidebar-mode subset minus the TUI-only keys (`e`, `y`,
-    // `q`): the webapp doesn't bind those today. Send-hint gated off
-    // here for the same reason as the TUI sidebar branch.
+    // the TUI's sidebar-mode subset minus the TUI-only keys (`e`, `o`,
+    // `q`): the webapp doesn't bind those today. PRD #356 / issue #358
+    // added webapp `y: yank` in BOTH pane modes (read-only — ADR 0031's
+    // auto-flip rationale doesn't apply). Send-hint gated off here for
+    // the same reason as the TUI sidebar branch.
     return (
-      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  L: layout  ·  T: picker  ·  Esc: diff`
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: diff`
     );
   }
   const send =
@@ -74,5 +76,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
   // 8-key subset + `Esc: sidebar` as the pane-toggle entry-point.
-  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
+  // PRD #356 / issue #358: `y: yank` slots next to `r: reply` in the
+  // lowercase-cursor section — symmetric to the TUI legend.
+  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
 }
