@@ -351,6 +351,19 @@ function App(props: AppProps) {
   // Footer status line that flashes after an `s` no-op so the user knows
   // why the keystroke didn't dispatch. Cleared by any subsequent key.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
+  // PRD #343 follow-up: Esc-coalesce guard. Under tmux (and any terminal
+  // where Kitty keyboard disambiguation isn't end-to-end), `\x1b` is
+  // ambiguous — it's both bare Esc and the lead byte of every CSI
+  // sequence. When paneFocus flips, OpenTUI requests a redraw; tmux may
+  // emit a focus-tracking event (`\x1b[I` / `\x1b[O`, opt-in by OpenTUI
+  // via `\x1b[?1004h`) that arrives fragmented across input chunks,
+  // surfacing as a phantom second Esc keypress. Symptom: `Esc` bounces
+  // paneFocus into the sidebar and immediately back to diff. Mitigation:
+  // drop any Esc that arrives within ESC_COALESCE_MS of the prior one.
+  // Human double-press is ≥100ms apart; terminal-level duplicates are
+  // typically <20ms. 50ms threshold keeps the user-story-6 round-trip
+  // gesture (Esc → scan → Esc back) safe while killing the phantom.
+  const lastEscAtRef = useRef<number>(0);
   // Issue #326: tracks the pending `Copied <path>` footer-flash timer so
   // a fresh `y` press cancels the prior pending clear and the unmount
   // effect can stop it. Restoration is via a functional setter at the
@@ -1265,6 +1278,15 @@ function App(props: AppProps) {
     if (key.ctrl && key.name === "d") {
       renderer.toggleDebugOverlay();
       return;
+    }
+    // Esc-coalesce guard (see `lastEscAtRef` declaration for rationale).
+    // Applies BEFORE composer/picker modal early-returns so phantom Esc
+    // can't close a modal then immediately toggle paneFocus, and BEFORE
+    // dispatchKey so the toggle itself only fires once.
+    if (key.name === "escape" && !key.ctrl && !key.shift) {
+      const now = Date.now();
+      if (now - lastEscAtRef.current < 50) return;
+      lastEscAtRef.current = now;
     }
     if (composer.kind === "open") {
       // Esc cancels; Return / typing flows through to the focused <input>.
