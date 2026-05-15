@@ -132,6 +132,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: tour-picker rows now react to mouse clicks (issue #321).**
+  When the picker was open, the keyboard branch (`j`/`k`/`Enter`/
+  `Esc`/`t`) worked but row clicks were silently swallowed — mouse
+  users had no way to commit a tour without first reaching for the
+  keyboard. The TUI picker (`src/tui/TourPicker.tsx`) is now a
+  controlled view that accepts an `onSelect(idx)` prop and wires
+  `onMouseDown` on every row to it; the host (`src/tui/app.tsx`)
+  dispatches the same `picker.move` + `picker.commit` / `picker.close`
+  sequence the keyboard's Enter branch already does: align cursor to
+  the clicked row, then close-without-commit when the clicked row is
+  the currently loaded tour, else commit. Matches the web picker's
+  click semantics (which has had `onClick` on every row since the
+  picker landed). Out of scope per the issue brief: hover-to-preview,
+  scrim / click-outside-to-dismiss, and any reducer changes.
+
+  Issue: #321
+
 - **Webapp sidebar resize: active-file fallback when no cursor is set
   (issue #327, #323 follow-up).** The preserveScreenY plumbing on web
   fired only when a cursor was present — both writers (auto-fit

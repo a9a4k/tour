@@ -1957,6 +1957,26 @@ function App(props: AppProps) {
           currentTourId={bundle.tour.id}
           cursor={sessionState.picker.cursor}
           scrollRef={pickerScrollRef}
+          onSelect={(idx) => {
+            // Mirror the Enter branch above: align cursor first (so the
+            // reducer's `picker.commit` resolves to the clicked id),
+            // then close-or-commit by whether the clicked row is the
+            // currently loaded tour. Issue #321.
+            if (sessionState.picker.kind !== "open") return;
+            const row = sessionState.picker.rows[idx];
+            if (!row) return;
+            if (idx !== sessionState.picker.cursor) {
+              store.dispatch({
+                type: "picker.move",
+                delta: idx - sessionState.picker.cursor,
+              });
+            }
+            if (row.id === bundle.tour.id) {
+              store.dispatch({ type: "picker.close" });
+              return;
+            }
+            store.dispatch({ type: "picker.commit" });
+          }}
         />
       )}
 
