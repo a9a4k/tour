@@ -1,11 +1,13 @@
 # Tour
 
-A code-walkthrough tool that pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI annotations. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
+A code-walkthrough tool that pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI comments. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
 
 ## Language
 
+> **Rename in flight (ADR 0029):** the unit term flips from `Annotation` → `Comment`. The glossary headers, CLI verb (`tour comment`, alias `tour annotate`), TUI/webapp footer legend (`c: comment`), and UI copy use the new term as of this release. Source-code identifiers (`Annotation` type, `annotations-store.ts`, `write-annotation-input.ts`) and the on-disk filename (`annotations.jsonl`) keep the old name pending the Stage B rename — references to them throughout this document still say "Annotation" because the symbols they name still do.
+
 **Tour**:
-A single guided traversal of a pinned git diff, with zero or more annotations attached. Lives in `.tour/<id>/`.
+A single guided traversal of a pinned git diff, with zero or more comments attached. Lives in `.tour/<id>/`.
 _Avoid_: review, PR, pull request, code review session, changeset
 
 **Diff**:
@@ -20,16 +22,16 @@ _Avoid_: tip, target
 The git ref the Tour's diff starts from. Resolved to a SHA at create time. Defaults to `head^` for single-commit tours.
 _Avoid_: parent, ancestor
 
-**Annotation**:
-A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `side` is `additions` or `deletions` (matching Pierre's vocabulary); line numbers are file-line-numbers in the file as it exists on that side at the pinned SHA. Authored by agents (via CLI) or humans (via UI or CLI). Persisted in the Tour's folder. The body is **GitHub Flavored Markdown** (no raw HTML); the webapp renders it as rich markdown — including ` ```mermaid ` fences as diagrams — while the TUI shows the raw source. No `kind` enum — structure lives in the markdown itself. Carries an `author_kind ∈ {agent, human}` so the system can distinguish the two without parsing the free-form `author` display string.
-_Avoid_: comment, review comment, note
+**Comment**:
+A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `side` is `additions` or `deletions` (matching Pierre's legacy vocabulary; see ADR 0001); line numbers are file-line-numbers in the file as it exists on that side at the pinned SHA. Authored by agents (via CLI) or humans (via UI or CLI). Persisted in the Tour's folder. The body is **GitHub Flavored Markdown** (no raw HTML); the webapp renders it as rich markdown — including ` ```mermaid ` fences as diagrams — while the TUI shows the raw source. No `kind` enum — structure lives in the markdown itself. Carries an `author_kind ∈ {agent, human}` so the system can distinguish the two without parsing the free-form `author` display string. The source-code type is still `Annotation` and the on-disk file is still `annotations.jsonl` pending the Stage B rename (ADR 0029).
+_Avoid_: annotation (legacy Pierre-era term; superseded by ADR 0029), review comment, note
 
 **Reply**:
-An Annotation whose `replies_to` field points at another Annotation in the same Tour. Inherits the parent's `(file, side, line_start, line_end)` anchor — replies don't have independent positions. Renders inside the parent's card as part of a Thread.
-_Avoid_: comment-on-comment, sub-annotation, response
+A Comment whose `replies_to` field points at another Comment in the same Tour. Inherits the parent's `(file, side, line_start, line_end)` anchor — replies don't have independent positions. Renders inside the parent's card as part of a Thread.
+_Avoid_: comment-on-comment, sub-comment, response
 
 **Thread**:
-A top-level Annotation plus the chain of Replies attached to it. Lives entirely inside one Tour — Threads do not carry across Tours in v1 (preserves ADR 0003's "no re-anchoring" stance). When a Tour closes, its Threads close with it. Continuity across Tours is the agent's job (it re-references prior concerns in prose when reviewing the new SHA), not Tour's data model.
+A top-level Comment plus the chain of Replies attached to it. Lives entirely inside one Tour — Threads do not carry across Tours in v1 (preserves ADR 0003's "no re-anchoring" stance). When a Tour closes, its Threads close with it. Continuity across Tours is the agent's job (it re-references prior concerns in prose when reviewing the new SHA), not Tour's data model.
 _Avoid_: conversation, discussion, exchange
 
 **Reply-agent**:
