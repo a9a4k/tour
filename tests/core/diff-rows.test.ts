@@ -69,8 +69,9 @@ describe("planRows", () => {
     const file = parseFile(SIMPLE_DIFF);
     const rows = planRows(file, [], "split");
     expect(rows.some((r) => r.kind === "comment")).toBe(false);
-    expect(rows.some((r) => r.kind === "hunk-header")).toBe(true);
     expect(rows.some((r) => r.kind === "diff-row")).toBe(true);
+    // SIMPLE_DIFF's first (only) hunk starts at line 1 → gapAbove=0 →
+    // no hunk-header banner emitted (issue #359).
   });
 
   it("inserts a single-line comment on additions directly after its anchor row", () => {
@@ -687,11 +688,13 @@ index 1..2 100644
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers.length).toBe(2);
-    // First hunk starts at line 1 → no file-top gap.
-    expect(headers[0].gapAbove).toBe(0);
-    // Second hunk's preceding gap: lines 4..13 = 10 hidden lines.
-    expect(headers[1].gapAbove).toBe(10);
+    // Issue #359: hunk 0 starts at line 1 (file-top gap === 0) → no
+    // banner emitted. Only the mid-file hunk-header survives.
+    expect(headers.length).toBe(1);
+    // Surviving banner is for hunk 1; its preceding gap is lines 4..13
+    // = 10 hidden lines.
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].gapAbove).toBe(10);
   });
 
   // PRD #151: boundary-top no longer emitted; first hunk's hunk-header absorbs it.
@@ -768,11 +771,15 @@ index 1..2 100644
     );
     expect(down).toBeDefined();
     if (down?.kind === "interactive") expect(down.gapAbove).toBe(48);
+    // Issue #359: hunk 0 starts at line 1 → no banner for it. Only the
+    // mid-file hunk's banner survives, now at index 0.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].primaryExpand).toBe("up");
-    expect(headers[1].gapAbove).toBe(48);
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].primaryExpand).toBe("up");
+    expect(headers[0].gapAbove).toBe(48);
   });
 
   it("does NOT emit a file-bottom expand-down row when newContent is missing", () => {
@@ -919,8 +926,12 @@ index 1..2 100644
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    // gap was 10; revealed 4 + 4 = 8; remaining = 2.
-    expect(headers[1].gapAbove).toBe(2);
+    // Issue #359: hunk 0's file-top gap is 0 (banner skipped). The only
+    // banner is hunk 1's, whose gap was 10 with 4 + 4 = 8 revealed →
+    // remaining = 2.
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].gapAbove).toBe(2);
   });
 
   it("renamed file uses prevName content for deletion-side expansion via oldContent", () => {
@@ -994,7 +1005,9 @@ index 1..2 100644
         expansion,
       });
       expect(rows.some((r) => r.kind === "diff-row")).toBe(true);
-      expect(rows.some((r) => r.kind === "hunk-header")).toBe(true);
+      // SIMPLE_DIFF's first (only) hunk starts at line 1 → no banner
+      // emitted (issue #359); the diff body is just the diff rows.
+      expect(rows.some((r) => r.kind === "hunk-header")).toBe(false);
       expect(
         rows.some(
           (r) => r.kind === "interactive" && r.subKind === "collapsed-file",
@@ -1057,10 +1070,13 @@ index 1..2 100644
     for (const expected of ["g4", "g5", "g6", "g7", "g8", "g9", "g10", "g11", "g12", "g13"]) {
       expect(ctxLines).toContain(expected);
     }
+    // Issue #359: full expansion drives gapAbove to 0 for both hunks;
+    // neither banner is emitted. The two hunks read as one continuous
+    // stream of diff/context rows.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(0);
+    expect(headers.length).toBe(0);
   });
 });
 
@@ -1123,7 +1139,7 @@ index 1..2 100644
     return patches[0].files[0];
   }
 
-  it("first hunk at line 1 → first hunk-header is inert (gapAbove === 0); no boundary-top emitted", () => {
+  it("first hunk at line 1 → planner emits NO hunk-header (issue #359; gapAbove === 0); no boundary-top emitted", () => {
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
 --- a/x.txt
@@ -1135,13 +1151,20 @@ index 1..2 100644
 `;
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
+    // Issue #359: a file whose first hunk starts at line 1 has nothing
+    // to expand above the first content row; the planner emits no
+    // hunk-header banner. The first emitted row is the first content
+    // row of the hunk.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers.length).toBe(1);
-    expect(headers[0].hunkIndex).toBe(0);
-    expect(headers[0].gapAbove).toBe(0);
+    expect(headers.length).toBe(0);
     expect(rows.some((r) => r.kind === "interactive" && r.subKind === "boundary-top")).toBe(false);
+    // First emitted row is the first content row of the hunk (ctx1).
+    expect(rows[0].kind).toBe("diff-row");
+    if (rows[0].kind === "diff-row") {
+      expect(rows[0].rightLineNumber).toBe(1);
+    }
   });
 
   it("first hunk at line > 1 → first hunk-header.gapAbove === firstHunkStart - 1; primaryExpand 'all' (small gap)", () => {
@@ -1201,22 +1224,30 @@ index 1..2 100644
       (r): r is Extract<PlannedRow, { kind: "interactive" }> => r.kind === "interactive",
     );
     expect(interactives.some((r) => r.subKind === "expand-down")).toBe(true);
+    // Issue #359: hunk 0 starts at line 1 → no banner. Mid-file hunk's
+    // banner is the only one emitted.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(40);
-    expect(headers[1].primaryExpand).toBe("up");
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].gapAbove).toBe(40);
+    expect(headers[0].primaryExpand).toBe("up");
   });
 
   it("mid-file gap of 41 (>= 40) → standalone expand-down immediately above hunk-header[primaryExpand 'up'] (issue #280)", () => {
     const { diff } = buildLargeGapDiff(41);
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
+    // Issue #359: hunk 0 starts at line 1 → no banner. The mid-file
+    // hunk's banner is the only one emitted.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(41);
-    expect(headers[1].primaryExpand).toBe("up");
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].gapAbove).toBe(41);
+    expect(headers[0].primaryExpand).toBe("up");
     // One interactive row above the second hunk-header: expand-down.
     const headerIdx = rows.findIndex(
       (r) => r.kind === "hunk-header" && r.hunkIndex === 1,
@@ -1245,14 +1276,18 @@ index 1..2 100644
     );
     // No standalone interactive rows for a sub-threshold mid-file gap.
     expect(interactives.length).toBe(0);
+    // Issue #359: hunk 0 starts at line 1 → no banner. The mid-file
+    // hunk's banner is the only one emitted.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(39);
-    expect(headers[1].primaryExpand).toBe("all");
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].gapAbove).toBe(39);
+    expect(headers[0].primaryExpand).toBe("all");
   });
 
-  it("hunk with gapAbove === 0 (adjacent hunks, no hidden context) → ONE inert hunk-header (primaryExpand null)", () => {
+  it("adjacent hunks with no hidden context (gapAbove === 0) → planner emits NO hunk-header between them (issue #359)", () => {
     // Two adjacent hunks: hunk 1 ends at line 3, hunk 2 starts at line 4.
     const diff = `diff --git a/x.txt b/x.txt
 index 1..2 100644
@@ -1269,14 +1304,22 @@ index 1..2 100644
 `;
     const file = parseLocal(diff);
     const rows = planRows(file, [], "split");
+    // Issue #359: hunk 0 starts at line 1 (file-top gap === 0) and the
+    // mid-file gap between hunks is also 0. The planner emits no
+    // banner for either gap — the two hunks render as one continuous
+    // stream of diff rows.
     const headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers.length).toBe(2);
-    expect(headers[1].gapAbove).toBe(0);
-    expect(headers[1].primaryExpand).toBe(null);
-    // No standalone interactive rows for an adjacent-hunks gap of 0.
+    expect(headers.length).toBe(0);
+    // No standalone interactive rows either.
     expect(rows.some((r) => r.kind === "interactive")).toBe(false);
+    // The diff-row stream is contiguous: hunk 1's content (ctx1, old1,
+    // new1, ctx2) is immediately followed by hunk 2's content
+    // (old4/new4) with no banner separating them.
+    const diffRows = rows.filter((r) => r.kind === "diff-row");
+    expect(diffRows.length).toBeGreaterThan(0);
+    expect(rows.length).toBe(diffRows.length);
   });
 
   it("progressive expand: large → small → zero downgrades expand-down+banner → banner only → inert (issue #280)", () => {
@@ -1287,13 +1330,19 @@ index 1..2 100644
       down: rows.filter((r) => r.kind === "interactive" && r.subKind === "expand-down").length,
     });
 
+    // Issue #359: hunk 0 starts at line 1 (file-top gap === 0) so its
+    // banner is skipped on every stage. The mid-file hunk's banner is
+    // the only one to track; in stages 1–3 it sits at `headers[0]`.
+
     // STAGE 1: no expansion → standalone expand-down + hunk-header(primaryExpand 'up').
     let rows = planRows(file, [], "split", { oldContent, newContent });
     let headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(50);
-    expect(headers[1].primaryExpand).toBe("up");
+    expect(headers.length).toBe(1);
+    expect(headers[0].hunkIndex).toBe(1);
+    expect(headers[0].gapAbove).toBe(50);
+    expect(headers[0].primaryExpand).toBe("up");
     expect(counts(rows)).toMatchObject({ down: 1 });
 
     // STAGE 2: partial expansion brings remaining to 45 (still >= 40) — same shape.
@@ -1310,8 +1359,9 @@ index 1..2 100644
     headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(45);
-    expect(headers[1].primaryExpand).toBe("up");
+    expect(headers.length).toBe(1);
+    expect(headers[0].gapAbove).toBe(45);
+    expect(headers[0].primaryExpand).toBe("up");
     expect(counts(rows)).toMatchObject({ down: 1 });
 
     // STAGE 3: bring remaining to 39 (< 40) — expand-down drops out;
@@ -1329,11 +1379,13 @@ index 1..2 100644
     headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(39);
-    expect(headers[1].primaryExpand).toBe("all");
+    expect(headers.length).toBe(1);
+    expect(headers[0].gapAbove).toBe(39);
+    expect(headers[0].primaryExpand).toBe("all");
     expect(counts(rows)).toMatchObject({ down: 0 });
 
-    // STAGE 4: full expansion → no interactive rows; banner inert (primaryExpand null).
+    // STAGE 4: full expansion → no interactive rows; planner emits no
+    // hunk-header banner at all between the two hunks (issue #359).
     const stage4 = new Map([
       [
         "x.txt",
@@ -1347,8 +1399,9 @@ index 1..2 100644
     headers = rows.filter(
       (r): r is Extract<PlannedRow, { kind: "hunk-header" }> => r.kind === "hunk-header",
     );
-    expect(headers[1].gapAbove).toBe(0);
-    expect(headers[1].primaryExpand).toBe(null);
+    // Both hunks have gapAbove 0 now (hunk 0 starts at line 1, hunk 1
+    // is fully expanded above) — neither banner survives.
+    expect(headers.length).toBe(0);
     expect(counts(rows)).toMatchObject({ down: 0 });
   });
 });

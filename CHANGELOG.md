@@ -8,6 +8,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Collapse the hunk-header banner when there's nothing to expand
+  (issue #359, ADR 0025 amendment).** The planner no longer emits a
+  hunk-header row at gaps where the helper reports `primaryExpand:
+  null`. Two cases converge: a file whose first hunk starts at line 1
+  drops the top-of-file banner (the file-header chrome already names
+  the file, the gutter conveys position); and once a reviewer fully
+  expands a mid-file gap, the two adjacent hunks render as one
+  continuous stream of diff/context rows with no inert `…` banner
+  between them. The pure helper `hunkHeaderExpandPlan` keeps its
+  current signature and `primaryExpand: null` return value — only the
+  planner's downstream interpretation flips. The defensive
+  null-`primaryExpand` guards in `flat-rows.ts` and both renderers
+  remain as belt-and-braces but are now unreachable from real planner
+  output.
+
+  Issue: #359 · ADR: 0025
+
 - **Bare `tour --editor <cmd>` now threads the flag into the dispatched
   surface (issue #364, PRD #349).** Previously, `tour --editor 'code -g'`
   with no subcommand either errored as `Unknown command: --editor` (a

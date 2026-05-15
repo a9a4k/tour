@@ -267,24 +267,36 @@ function walkHunks(
     // encodes per-edge × gap-size rules; emit the leading expand-down
     // when the plan requires it, then the hunk-header carrying its
     // primaryExpand affordance.
+    //
+    // Issue #359: when the plan reports nothing left to expand
+    // (`primaryExpand === null`, i.e. gapAbove === 0), skip the
+    // hunk-header banner AND the leading expand-down entirely.
+    // Adjacent fully-expanded hunks read as one continuous stream of
+    // diff/context rows; files whose first hunk starts at line 1
+    // have no top-of-file banner above the first content row. The
+    // helper's return contract is unchanged — only the planner's
+    // interpretation of `primaryExpand: null` flips from "emit an
+    // inert banner" to "emit nothing".
     const plan = hunkHeaderExpandPlan(gapAbove, isFirst);
-    if (plan.emitLeadingExpandDown) {
+    if (plan.primaryExpand !== null) {
+      if (plan.emitLeadingExpandDown) {
+        rows.push({
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: hunkIndex,
+          text: expandDownRowText(),
+          gapAbove,
+        });
+      }
+
       rows.push({
-        kind: "interactive",
-        subKind: "expand-down",
-        boundaryRef: hunkIndex,
-        text: expandDownRowText(),
+        kind: "hunk-header",
+        header: hunk.hunkSpecs ?? "",
+        hunkIndex,
         gapAbove,
+        primaryExpand: plan.primaryExpand,
       });
     }
-
-    rows.push({
-      kind: "hunk-header",
-      header: hunk.hunkSpecs ?? "",
-      hunkIndex,
-      gapAbove,
-      primaryExpand: plan.primaryExpand,
-    });
 
     // Down-side context rows: lines just before this hunk's start.
     if (sep.down > 0) {
