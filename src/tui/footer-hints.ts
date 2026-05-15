@@ -73,8 +73,8 @@ export interface FooterPreviewOptions {
  *   on a card                : `r: reply to "<title>"`
  *   on a card (off-screen up): `r: reply to "<title>"  (cursor ↑ above viewport)`
  *   on a card (off-screen dn): `r: reply to "<title>"  (cursor ↓ below viewport)`
- *   on a row                 : `r: — (no annotation under cursor)`
- *   null cursor              : `r: — (no annotation under cursor)`
+ *   on a row                 : `r: — (no comment under cursor)`
+ *   null cursor              : `r: — (no comment under cursor)`
  *
  * The off-screen suffix never applies to a row cursor — `r` on a row is
  * already a labelled no-op so the user knows nothing will happen.
@@ -82,10 +82,10 @@ export interface FooterPreviewOptions {
 export function composeFooterPreview(opts: FooterPreviewOptions): string {
   const { cursor, annotations, cardViewportPosition } = opts;
   if (!cursor || cursor.kind !== "card") {
-    return `r: — (no annotation under cursor)`;
+    return `r: — (no comment under cursor)`;
   }
   const ann = annotations.find((a) => a.id === cursor.annotationId);
-  if (!ann) return `r: — (no annotation under cursor)`;
+  if (!ann) return `r: — (no comment under cursor)`;
   const title = truncateTitle(ann.body);
   const base = `r: reply to "${title}"`;
   if (cardViewportPosition === "above") return `${base}  (cursor ↑ above viewport)`;

@@ -26,7 +26,7 @@ export async function list(args: ListArgs): Promise<void> {
     const annotCount = annotations.length;
     const status = t.status === "open" ? "●" : "○";
     const title = t.title || "(untitled)";
-    const annLabel = annotCount > 0 ? ` [${annotCount} annotations]` : "";
+    const annLabel = annotCount > 0 ? ` [${annotCount} comments]` : "";
     console.log(`${status} ${t.id}  ${title}${annLabel}`);
   }
 }

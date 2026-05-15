@@ -1216,7 +1216,7 @@ function App(props: AppProps) {
     // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
     // row case to a footer-hint no-op; this defends in depth.
     if (!cursorCardAnnotation) {
-      setFooterStatus("no annotation under cursor — n/p to navigate");
+      setFooterStatus("no comment under cursor — n/p to navigate");
       return;
     }
     if (!sendHintVerdict.enabled) {
@@ -1646,13 +1646,13 @@ function App(props: AppProps) {
         return;
       }
       case "noop-reply-on-row":
-        setFooterStatus("r: no annotation under cursor — n/p to navigate");
+        setFooterStatus("r: no comment under cursor — n/p to navigate");
         return;
       case "noop-send-on-row":
-        setFooterStatus("s: no annotation under cursor — n/p to navigate");
+        setFooterStatus("s: no comment under cursor — n/p to navigate");
         return;
       case "noop-comment-on-card":
-        setFooterStatus("a: on a card — j/k to land on a row first");
+        setFooterStatus("c: on a card — j/k to land on a row first");
         return;
     }
   });

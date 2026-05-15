@@ -26,7 +26,7 @@ export async function show(args: ShowArgs): Promise<void> {
   console.log(`Created: ${tour.created_at}`);
   if (tour.closed_at) console.log(`Closed:  ${tour.closed_at}`);
   console.log(`WIP snapshot: ${tour.wip_snapshot}`);
-  console.log(`\nAnnotations (${annotations.length}):`);
+  console.log(`\nComments (${annotations.length}):`);
   for (const a of annotations) {
     const range =
       a.line_start === a.line_end

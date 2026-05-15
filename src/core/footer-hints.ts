@@ -15,11 +15,10 @@
 // `showSendHint: true`). See ADR 0022 / issue #184 for the TUI side;
 // ADR 0028 / issue #330 for the webapp parity.
 //
-// Issue #337 / ADR 0029 + ADR 0030: the TUI legend now reads
-// `c: comment`, `C: collapse replies`, `T: picker` (replacing
-// `a: comment`, `c: collapse`, `t: picker`). The webapp legend keeps
-// its slice-1 form (`a: comment`, `t: picker`) until the Stage A
-// webapp slice lands.
+// Issues #337 (TUI) + #338 (webapp) / ADR 0029 + ADR 0030: both
+// legends now read `c: comment` / `T: picker`; the TUI also adds
+// `C: collapse replies`. The pre-cutover form (`a: comment`,
+// `c: collapse`, `t: picker`) is fully retired.
 
 export type FooterSurface = "tui" | "web";
 

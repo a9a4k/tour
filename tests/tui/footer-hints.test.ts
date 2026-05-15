@@ -114,17 +114,17 @@ describe("composeFooterHints (issue #184)", () => {
 
 // PRD #192 / ADR 0022: the bottom-bar footer always renders the cursor's
 // `r` action target — a card title (truncated) when the cursor is on a
-// card, a no-annotation placeholder otherwise. An off-screen suffix
+// card, a no-comment placeholder otherwise. An off-screen suffix
 // hints the cursor's direction relative to the viewport so a wheel-
 // scrolled-away cursor doesn't surprise the user.
 describe("composeFooterPreview (PRD #192)", () => {
-  it("renders the no-annotation placeholder when the cursor is null", () => {
+  it("renders the no-comment placeholder when the cursor is null", () => {
     expect(composeFooterPreview({ cursor: null, annotations: [] })).toBe(
-      "r: — (no annotation under cursor)",
+      "r: — (no comment under cursor)",
     );
   });
 
-  it("renders the no-annotation placeholder when the cursor is on a row", () => {
+  it("renders the no-comment placeholder when the cursor is on a row", () => {
     const cursor: Cursor = {
       kind: "row",
       file: "x.txt",
@@ -133,7 +133,7 @@ describe("composeFooterPreview (PRD #192)", () => {
       preferredSide: "additions",
     };
     expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
-      "r: — (no annotation under cursor)",
+      "r: — (no comment under cursor)",
     );
   });
 
@@ -145,10 +145,10 @@ describe("composeFooterPreview (PRD #192)", () => {
     );
   });
 
-  it("renders no-annotation placeholder when the CardAnchor's id is gone (stale)", () => {
+  it("renders no-comment placeholder when the CardAnchor's id is gone (stale)", () => {
     const cursor: Cursor = { kind: "card", annotationId: "ghost", preferredSide: "additions" };
     expect(composeFooterPreview({ cursor, annotations: [] })).toBe(
-      "r: — (no annotation under cursor)",
+      "r: — (no comment under cursor)",
     );
   });
 
