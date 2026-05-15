@@ -1020,14 +1020,6 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
   });
 });
 
-// Issue #334: annotation-create failure status. The composer's
-// `submitting → errored` transition (the runtime dispatches
-// `composer.failed` on adapter rejection) flashes the failure reason
-// in the footer's transient status slot. Prefix is `Comment failed`
-// for top-level annotations and `Reply failed` for replies. Successful
-// creates do NOT flash a status (the watcher-driven repaint is the
-// confirmation — per PRD #330 Out of Scope).
-
 const failTourId = "2026-05-15-000000-footer-fail-status";
 
 const failTourSummary = {
