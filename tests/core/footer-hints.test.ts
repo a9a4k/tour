@@ -61,6 +61,96 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
   });
 });
 
+// PRD #343 / ADR 0031 / issue #345: the TUI legend is now pane-aware.
+// Sidebar mode swaps to a shorter sidebar-relevant string; diff mode
+// drops the retired `Tab: pane` and adds `Esc: sidebar`. The
+// `paneFocus` parameter already lives on the signature (slice 1); this
+// slice cashes it in.
+describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #343)", () => {
+  it("paneFocus 'diff' is the default — no paneFocus emits the diff-mode legend", () => {
+    expect(composeFooterHints({ surface: "tui" })).toBe(
+      composeFooterHints({ surface: "tui", paneFocus: "diff" }),
+    );
+  });
+
+  it("diff-mode legend drops `Tab: pane` and adds `Esc: sidebar`", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
+    expect(out).not.toContain("Tab: pane");
+    expect(out).not.toContain("Tab:");
+    expect(out).toContain("Esc: sidebar");
+  });
+
+  it("diff-mode legend retains today's other persistent hints", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
+    expect(out).toContain("j/k: move");
+    expect(out).toContain("h/l: side");
+    expect(out).toContain("n/p: nav");
+    expect(out).toContain("c: comment");
+    expect(out).toContain("r: reply");
+    expect(out).toContain("Enter: expand");
+    expect(out).toContain("e: expand all");
+    expect(out).toContain("C: collapse replies");
+    expect(out).toContain("y: yank path");
+    expect(out).toContain("Space: page");
+    expect(out).toContain("L: layout");
+    expect(out).toContain("T: picker");
+    expect(out).toContain("[/]: width");
+    expect(out).toContain("q: quit");
+  });
+
+  it("diff-mode legend inserts `s: send to {agent}` when the send hint is visible", () => {
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    expect(out).toContain("s: send to claude");
+  });
+
+  it("sidebar-mode legend emits the documented pane-relevant string", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
+    expect(out).toBe(
+      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit",
+    );
+  });
+
+  it("sidebar-mode legend omits diff-only keys (`n/p`, `c`, `r`, `s`, `C`, `Enter: expand`, `Tab`, `Space`, `[/]`)", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
+    expect(out).not.toContain("n/p:");
+    expect(out).not.toContain("c: comment");
+    expect(out).not.toContain("r: reply");
+    expect(out).not.toContain("s: send to");
+    expect(out).not.toContain("C: collapse replies");
+    expect(out).not.toContain("Enter: expand");
+    expect(out).not.toContain("Tab:");
+    expect(out).not.toContain("Space: page");
+    expect(out).not.toContain("[/]: width");
+  });
+
+  it("sidebar-mode legend gates the send-hint conditional off (s: send only appears in diff mode)", () => {
+    const sidebarWithSend = composeFooterHints({
+      surface: "tui",
+      paneFocus: "sidebar",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    expect(sidebarWithSend).not.toContain("s: send to");
+    const diffWithSend = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      replyAgent: "claude",
+      showSendHint: true,
+    });
+    expect(diffWithSend).toContain("s: send to claude");
+  });
+
+  it("sidebar-mode legend includes `Esc: diff` as the pane-toggle hint", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
+    expect(out).toContain("Esc: diff");
+  });
+});
+
 describe("composeFooterHints (core, surface: web)", () => {
   it("emits exactly the 8-key webapp subset when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(

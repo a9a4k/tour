@@ -750,6 +750,10 @@ function App(props: AppProps) {
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
     showSendHint: sendHintVerdict.visible,
+    // PRD #343 / ADR 0031 / issue #345: pane-aware legend. Sidebar mode
+    // emits a shorter sidebar-relevant string; diff mode shows the full
+    // legend with `Esc: sidebar` replacing the retired `Tab: pane`.
+    paneFocus,
   });
   // Action-target preview line (PRD #192 / ADR 0022). Renders the
   // cursor's `r` target so the user knows what `r` will do before
@@ -1371,6 +1375,14 @@ function App(props: AppProps) {
         selectedRowKind: selectedRow?.kind ?? null,
         cursorOnInteractive: cursorSlice?.onInteractive ?? false,
         cursorOnCard: cursorSlice?.onCard ?? false,
+        // PRD #343 / ADR 0031 / issue #345: the keymap routes Esc per
+        // modal state (close-modal vs pane-focus-toggle). In practice
+        // the App-level modal early-returns above intercept Esc before
+        // we get here, so both flags are false at this point — but the
+        // keymap's contract is documented and unit-tested via these
+        // fields, so pass them for completeness / defense-in-depth.
+        composerOpen: composer.kind !== "closed",
+        pickerOpen: sessionState.picker.kind === "open",
       },
     );
 
@@ -1394,11 +1406,26 @@ function App(props: AppProps) {
       case "quit":
         renderer.destroy();
         return;
-      case "toggle-pane":
+      case "pane-focus-toggle":
+        // PRD #343 / ADR 0031 / issue #345: Esc toggles paneFocus with
+        // modal-unwind taking precedence (the App-shell's modal
+        // early-returns above already intercept Esc when composer /
+        // picker is open). Tab / Shift-Tab and their prior actions
+        // (`toggle-pane`, `focus-sidebar`) are retired.
         store.dispatch({ type: "paneFocus.toggle" });
         return;
-      case "focus-sidebar":
-        store.dispatch({ type: "paneFocus.setSidebar" });
+      case "close-modal":
+        // Defense in depth: in production the App-shell's modal
+        // early-returns intercept Esc before dispatchKey is called, so
+        // this case is unreachable. Kept so the keymap's documented
+        // contract (Esc with composer/picker open returns close-modal)
+        // is honoured if a future refactor routes Esc through the
+        // dispatchKey path in modal contexts.
+        if (composer.kind !== "closed") {
+          store.dispatch({ type: "composer.close" });
+        } else if (sessionState.picker.kind === "open") {
+          store.dispatch({ type: "picker.close" });
+        }
         return;
       case "move-file-down":
         setSelectedRowIdx((i) => Math.min(i + 1, (treeSlice?.visibleRows.length ?? 0) - 1));
@@ -1423,6 +1450,16 @@ function App(props: AppProps) {
         const path = selectedRow.path;
         if (!collapsedFolders.has(path)) return;
         store.dispatch({ type: "folds.toggleFolder", path });
+        return;
+      }
+      case "toggle-folder": {
+        // PRD #343 / ADR 0031 / issue #345: folder-row Enter toggles
+        // the folder (aligns with the W3C ARIA tree-widget convention).
+        // Unconditional — fills the prior no-op for folder-row Enter.
+        // paneFocus stays on sidebar (folder toggle is sidebar-internal
+        // per the auto-flip matrix).
+        if (selectedRow?.kind !== "folder") return;
+        store.dispatch({ type: "folds.toggleFolder", path: selectedRow.path });
         return;
       }
       case "collapse-folder": {

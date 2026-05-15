@@ -45,7 +45,8 @@ describe("TUI_FOOTER_HINTS", () => {
 
   // Issue #312: `[`/`]` resize the sidebar by ±2 cols within
   // `[SIDEBAR_MIN_WIDTH, floor(termW * 0.4)]`. The hint sits next to
-  // `Tab: pane` — both are pane-affecting global actions.
+  // `Esc: sidebar` (formerly next to `Tab: pane`; both pane-affecting
+  // global actions — Tab was retired in issue #345 / PRD #343).
   it("surfaces `[/]: width` as a persistent hint", () => {
     expect(TUI_FOOTER_HINTS).toContain("[/]: width");
   });

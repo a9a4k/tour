@@ -28,23 +28,37 @@ export interface ComposeFooterHintsOptions {
   surface: FooterSurface;
   replyAgent?: string;
   showSendHint?: boolean;
-  // PRD #343 / ADR 0031 / issue #344: signature gains `paneFocus` so
-  // call sites (TUI footer-hints delegate, webapp Footer.tsx) are
-  // forward-compatible. Slice 2/3 will branch on `paneFocus === "sidebar"`
-  // to emit the shorter sidebar legend; this slice keeps the output
-  // byte-identical regardless of the field's value.
+  // PRD #343 / ADR 0031 / issue #345: pane-aware legend. The TUI swaps
+  // between a sidebar-relevant subset and the full diff-mode legend per
+  // `paneFocus`. Sidebar mode drops diff-only keys (`n/p`, `c`, `r`,
+  // `s`, `C`, `Enter: expand`, `Space: page`, `[/]: width`) and adds
+  // `Esc: diff` as the pane-toggle hint; diff mode drops the retired
+  // `Tab: pane` and adds `Esc: sidebar`. Default is `"diff"` so call
+  // sites that don't pass `paneFocus` still get a sensible legend.
+  // Webapp keeps today's slice-1 form regardless of `paneFocus` —
+  // slice 3 (issue #346) cashes in the webapp half.
   paneFocus?: PaneFocus;
 }
 
 export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
+  const paneFocus: PaneFocus = opts.paneFocus ?? "diff";
+  if (opts.surface === "tui" && paneFocus === "sidebar") {
+    // Sidebar-mode legend (PRD #343 / ADR 0031 / issue #345). Shorter
+    // than the diff-mode legend — only sidebar-navigable keys and the
+    // pane-agnostic Tour-wide actions (e/y/L/T/q). The send-hint
+    // conditional is gated off here: `s` is a cursor-target action
+    // that only fires when paneFocus = diff.
+    return (
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit`
+    );
+  }
   const send =
     opts.showSendHint && opts.replyAgent
       ? `  ·  s: send to ${opts.replyAgent}`
       : "";
-  void opts.paneFocus;
   if (opts.surface === "tui") {
     return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  Space: page  ·  L: layout  ·  T: picker  ·  Tab: pane  ·  [/]: width  ·  q: quit`
+      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank path  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
   return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  L: layout  ·  T: picker`;

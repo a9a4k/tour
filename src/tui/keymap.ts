@@ -19,15 +19,23 @@ export interface KeymapContext {
    *  an interactive row either). On a card / row mismatch the action is
    *  a labelled no-op the App shell surfaces via the footer hint. */
   cursorOnCard: boolean;
+  /** Whether the comment composer is open (any non-closed kind). Routes
+   *  Esc to `close-modal` instead of `pane-focus-toggle` per the
+   *  modal-unwind precedence rule (PRD #343 / ADR 0031). */
+  composerOpen: boolean;
+  /** Whether the Tour picker is open. Same modal-unwind precedence as
+   *  `composerOpen`. */
+  pickerOpen: boolean;
 }
 
 export type KeyAction =
   | { type: "quit" }
-  | { type: "toggle-pane" }
-  | { type: "focus-sidebar" }
+  | { type: "pane-focus-toggle" }
+  | { type: "close-modal" }
   | { type: "move-file-down" }
   | { type: "move-file-up" }
   | { type: "select-file" }
+  | { type: "toggle-folder" }
   | { type: "expand-folder" }
   | { type: "collapse-folder" }
   | { type: "collapse-parent" }
@@ -62,8 +70,17 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     return { type: "quit" };
   }
 
-  if (key.name === "tab") {
-    return key.shift ? { type: "focus-sidebar" } : { type: "toggle-pane" };
+  // PRD #343 / ADR 0031 / issue #345: Esc replaces Tab/Shift-Tab as the
+  // pane-focus toggle, with modal-unwind taking precedence. When a
+  // composer or picker is open the keymap returns `close-modal` so the
+  // App-shell closes the modal; otherwise the keymap returns
+  // `pane-focus-toggle` and the App dispatches `paneFocus.toggle`. Tab
+  // and Shift-Tab are hard-removed from the keymap (pre-1.0 semver
+  // covers the break; the prior toggle-pane / focus-sidebar actions
+  // are also retired).
+  if (!key.ctrl && !key.shift && key.name === "escape") {
+    if (ctx.composerOpen || ctx.pickerOpen) return { type: "close-modal" };
+    return { type: "pane-focus-toggle" };
   }
 
   // Half-page paging on Space / Shift+Space / `b` (PRD #138, issue #139).
@@ -159,7 +176,18 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (ctx.sidebarFocused && ctx.rowCount > 0) {
     if (key.name === "j" || key.name === "down") return { type: "move-file-down" };
     if (key.name === "k" || key.name === "up") return { type: "move-file-up" };
-    if (key.name === "return") return { type: "select-file" };
+    if (key.name === "return") {
+      // PRD #343 / ADR 0031 / issue #345: folder-row Enter toggles the
+      // folder (aligns with the W3C ARIA tree-widget convention —
+      // "Enter on a parent node toggles expand"). File-row Enter keeps
+      // its existing select-file semantic; the new branch fills the
+      // prior no-op (folder Enter was a silent miss). Empty
+      // `selectedRowKind` falls through to the unconditional
+      // select-file (preserves today's behavior for the degenerate
+      // case where row-kind is unknown).
+      if (ctx.selectedRowKind === "folder") return { type: "toggle-folder" };
+      return { type: "select-file" };
+    }
     if ((key.name === "right" || key.name === "l") && ctx.selectedRowKind === "folder") {
       return { type: "expand-folder" };
     }

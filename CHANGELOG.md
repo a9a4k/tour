@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **TUI keybinding: `Tab` / `Shift-Tab` removed; `Esc` now toggles
+  between sidebar and diff (modal-unwind takes precedence). Folder-row
+  `Enter` toggles the folder (issue #345, PRD #343, ADR 0031).** The
+  TUI's two-year-old pane-focus model (`Tab` = toggle, `Shift-Tab` =
+  force sidebar) is retired. `Esc` replaces both — pressing it with no
+  modal open flips paneFocus between sidebar and diff; pressing it
+  with the comment composer or Tour picker open closes the modal
+  (existing behavior, unchanged). Folder-row `Enter` now dispatches
+  `toggle-folder` (aligns with the W3C ARIA tree-widget convention);
+  file-row `Enter` keeps its existing `select-file` semantic. The
+  footer legend becomes pane-aware: sidebar mode shows `j/k: file ·
+  h/l: fold · Enter: activate · e: expand all · y: yank · L: layout ·
+  T: picker · Esc: diff · q: quit`; diff mode drops `Tab: pane` and
+  adds `Esc: sidebar`. The cursor and sidebar-row selection are
+  preserved across paneFocus flips — Esc-toggle-Esc returns the user
+  to the exact prior state. Pre-1.0 semver license (CONTEXT.md
+  packaging: "minor=breaking") covers the binding break. Webapp
+  half-slice and ARIA tree-widget pattern land in issue #346.
+
+  Issue: #345
+
 - **Wire-format change (envelope only): `tour show --json` and `tour
   pickup --json` envelope key renamed from `annotations` to `comments`
   (PRD #335, ADR 0029).** Downstream agent scripts that parse the

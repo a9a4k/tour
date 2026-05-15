@@ -13,6 +13,8 @@ const sidebar: KeymapContext = {
   selectedRowKind: "file",
   cursorOnInteractive: false,
   cursorOnCard: false,
+  composerOpen: false,
+  pickerOpen: false,
 };
 const sidebarFolder: KeymapContext = {
   sidebarFocused: true,
@@ -20,6 +22,8 @@ const sidebarFolder: KeymapContext = {
   selectedRowKind: "folder",
   cursorOnInteractive: false,
   cursorOnCard: false,
+  composerOpen: false,
+  pickerOpen: false,
 };
 const diffPane: KeymapContext = {
   sidebarFocused: false,
@@ -27,6 +31,8 @@ const diffPane: KeymapContext = {
   selectedRowKind: "file",
   cursorOnInteractive: false,
   cursorOnCard: false,
+  composerOpen: false,
+  pickerOpen: false,
 };
 const diffPaneInteractive: KeymapContext = {
   sidebarFocused: false,
@@ -34,6 +40,8 @@ const diffPaneInteractive: KeymapContext = {
   selectedRowKind: "file",
   cursorOnInteractive: true,
   cursorOnCard: false,
+  composerOpen: false,
+  pickerOpen: false,
 };
 const diffPaneOnCard: KeymapContext = {
   sidebarFocused: false,
@@ -41,6 +49,8 @@ const diffPaneOnCard: KeymapContext = {
   selectedRowKind: "file",
   cursorOnInteractive: false,
   cursorOnCard: true,
+  composerOpen: false,
+  pickerOpen: false,
 };
 const sidebarOnCard: KeymapContext = {
   sidebarFocused: true,
@@ -48,6 +58,8 @@ const sidebarOnCard: KeymapContext = {
   selectedRowKind: "file",
   cursorOnInteractive: false,
   cursorOnCard: true,
+  composerOpen: false,
+  pickerOpen: false,
 };
 
 describe("dispatchKey", () => {
@@ -67,12 +79,67 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c", { shift: true }), sidebar).type).not.toBe("quit");
   });
 
-  it("Tab toggles pane", () => {
-    expect(dispatchKey(k("tab"), sidebar).type).toBe("toggle-pane");
+  // PRD #343 / ADR 0031 / issue #345: Tab and Shift-Tab are hard-removed
+  // from the TUI keymap on pre-1.0 semver. Esc replaces them as the
+  // pane-focus toggle, with modal-unwind taking precedence (composer /
+  // picker close first). Folder-row Enter dispatches toggle-folder
+  // (aligns with the W3C ARIA tree-widget convention).
+  it("Tab is no longer recognized (returns noop after #345)", () => {
+    expect(dispatchKey(k("tab"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("tab"), diffPane).type).toBe("noop");
   });
 
-  it("Shift+Tab focuses sidebar", () => {
-    expect(dispatchKey(k("tab", { shift: true }), diffPane).type).toBe("focus-sidebar");
+  it("Shift+Tab is no longer recognized (returns noop after #345)", () => {
+    expect(dispatchKey(k("tab", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("tab", { shift: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Esc with no modal toggles pane focus (PRD #343)", () => {
+    expect(dispatchKey(k("escape"), sidebar).type).toBe("pane-focus-toggle");
+    expect(dispatchKey(k("escape"), sidebarFolder).type).toBe("pane-focus-toggle");
+    expect(dispatchKey(k("escape"), diffPane).type).toBe("pane-focus-toggle");
+    expect(dispatchKey(k("escape"), diffPaneOnCard).type).toBe("pane-focus-toggle");
+  });
+
+  it("Esc with composer open returns close-modal (modal-unwind precedence)", () => {
+    expect(dispatchKey(k("escape"), { ...diffPane, composerOpen: true }).type).toBe(
+      "close-modal",
+    );
+    expect(dispatchKey(k("escape"), { ...sidebar, composerOpen: true }).type).toBe(
+      "close-modal",
+    );
+  });
+
+  it("Esc with picker open returns close-modal (modal-unwind precedence)", () => {
+    expect(dispatchKey(k("escape"), { ...diffPane, pickerOpen: true }).type).toBe(
+      "close-modal",
+    );
+    expect(dispatchKey(k("escape"), { ...sidebar, pickerOpen: true }).type).toBe(
+      "close-modal",
+    );
+  });
+
+  it("Esc with both composer and picker open returns close-modal (single modal axis)", () => {
+    // Defence in depth: both modals can never co-exist in production
+    // (composer is suppressed while picker is open and vice versa), but
+    // the keymap doesn't depend on that invariant — it simply routes
+    // Esc to the modal-close action when either flag is set.
+    expect(
+      dispatchKey(k("escape"), { ...diffPane, composerOpen: true, pickerOpen: true }).type,
+    ).toBe("close-modal");
+  });
+
+  it("Ctrl+Esc is not consumed as pane-focus-toggle (modifier guard)", () => {
+    expect(dispatchKey(k("escape", { ctrl: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("escape", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("Enter on a folder row in sidebar dispatches toggle-folder (PRD #343)", () => {
+    expect(dispatchKey(k("return"), sidebarFolder).type).toBe("toggle-folder");
+  });
+
+  it("Enter on a file row in sidebar still dispatches select-file (regression guard)", () => {
+    expect(dispatchKey(k("return"), sidebar).type).toBe("select-file");
   });
 
   it("j and ArrowDown both move down when sidebar focused", () => {
@@ -96,6 +163,9 @@ describe("dispatchKey", () => {
         rowCount: 0,
         selectedRowKind: null,
         cursorOnInteractive: false,
+        cursorOnCard: false,
+        composerOpen: false,
+        pickerOpen: false,
       }).type,
     ).toBe("noop");
   });
@@ -147,6 +217,8 @@ describe("dispatchKey", () => {
         selectedRowKind: null,
         cursorOnInteractive: false,
         cursorOnCard: false,
+        composerOpen: false,
+        pickerOpen: false,
       }).type,
     ).toBe("noop");
   });
