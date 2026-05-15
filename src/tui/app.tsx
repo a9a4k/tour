@@ -1625,21 +1625,28 @@ function App(props: AppProps) {
         return;
       }
       case "yank-file-path": {
-        // Issue #326: pane focus picks the source — sidebar focus uses
-        // the selected file row, diff focus uses the cursor's file. No
-        // file in scope is a silent no-op per brief (no clipboard write,
-        // no footer hint).
+        // Issue #326: resolve the focused file with the same permissive
+        // policy as expand-file-all (#297) — cursor first, sidebar's
+        // selected file as fallback. The original strict pane-gate
+        // (sidebarFocused → selection; else → cursor) silently no-op'd
+        // whenever the user was focused in one pane but the file was
+        // in the other, which gave zero feedback. On null resolution
+        // surface a footer hint so `y` is never invisibly inert.
         let targetFile: string | null = null;
-        if (sidebarFocused) {
-          if (selectedRow?.kind === "file") targetFile = selectedRow.path;
-        } else if (cursor) {
+        if (cursor) {
           if (cursor.kind === "row") targetFile = cursor.file;
           else {
             const ann = annotations.find((a) => a.id === cursor.annotationId);
             targetFile = ann?.file ?? null;
           }
         }
-        if (targetFile === null) return;
+        if (targetFile === null && selectedRow?.kind === "file") {
+          targetFile = selectedRow.path;
+        }
+        if (targetFile === null) {
+          setFooterStatus("y: no file under cursor");
+          return;
+        }
         yankToClipboard(targetFile, renderer);
         const message = `Copied ${targetFile}`;
         setFooterStatus(message);

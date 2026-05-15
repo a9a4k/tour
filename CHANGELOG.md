@@ -47,20 +47,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **TUI: `y` yanks the focused file's repo-relative path to the system
   clipboard (issue #326).** Webapp parity for the copy-path affordance
   added by issues #16 / #225 / #317 / #319. Pressing `y` resolves the
-  source from the focused pane — diff focus uses the file under the
-  row / card cursor, sidebar focus uses the selected file row — and
-  emits the OSC 52 escape sequence (`ESC ] 52 ; c ; <base64> BEL`)
-  on `process.stdout`. No `pbcopy` / `xclip` / `wl-copy` shell-out,
-  no new dependency; modern terminals (alacritty, kitty, iTerm2,
-  WezTerm, ghostty, foot) accept the sequence directly, and tmux
-  needs `set -s set-clipboard on`. Feedback is a one-line footer
-  hint reading `Copied <path>` that auto-clears after ~1.2 s (same
-  duration as the webapp's checkmark window in #319). Sidebar-
-  focused folder rows / null cursor / cursor pointing at a missing
-  annotation are silent labelled no-ops — no clipboard write, no
-  footer hint, no error. Failure of the OSC 52 write itself is
-  unobservable from the app and silently dropped, matching the
-  webapp's `navigator.clipboard.writeText` decision from #319.
+  focused file with the same permissive policy as `e`'s expand-all —
+  the row / card cursor first, then the sidebar's selected file row as
+  a fallback — and writes the path to the clipboard. Primary transport
+  is the platform clipboard binary (`pbcopy` on macOS, `wl-copy` /
+  `xclip` / `xsel` on Linux, `clip` on Windows), shelled out via
+  `spawnSync`; falls back to opentui's OSC 52 renderer API when the
+  binary isn't on PATH (e.g. SSH sessions). Feedback is a one-line
+  footer hint reading `Copied <path>` that auto-clears after ~1.2 s
+  (same duration as the webapp's checkmark window in #319). When no
+  file resolves (empty tour, no cursor, sidebar parked on a folder)
+  the footer surfaces `y: no file under cursor` instead of going
+  silent.
 
   Issue: #326
 
