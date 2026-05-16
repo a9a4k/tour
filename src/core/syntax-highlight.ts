@@ -290,7 +290,14 @@ async function ensureHighlighter(): Promise<Highlighter> {
   return highlighter;
 }
 
-async function ensureLang(lang: string): Promise<void> {
+/**
+ * Loads `lang`'s Shiki grammar (if not already loaded) and resolves once
+ * `isReady(lang)` returns true. Unknown lang ids resolve immediately and
+ * are marked ready so subsequent calls take the plain-text fallback path
+ * synchronously. Concurrent callers for the same lang share one in-flight
+ * load.
+ */
+export async function ensureLang(lang: string): Promise<void> {
   if (loadedLangs.has(lang)) return;
   if (!BUNDLED_LANG_IDS.has(lang)) {
     // Unknown lang: treat as plaintext-ready so subsequent calls memoise

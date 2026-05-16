@@ -16,14 +16,14 @@
 
 import {
   detectLang as coreDetectLang,
+  ensureLang as coreEnsureLang,
   isBundledLang,
   isReady as coreIsReady,
   resetForTests as coreResetForTests,
   subscribe as coreSubscribe,
-  tokenize as coreTokenize,
   tokenizeSync as coreTokenizeSync,
 } from "../../core/syntax-highlight.js";
-import { paintHtml } from "./syntax-paint.js";
+import { escapeHtml, paintHtml } from "./syntax-paint.js";
 
 export type TokenLines = Map<number, string>;
 
@@ -64,11 +64,7 @@ export function isSupportedLang(lang: string): boolean {
  * existing pre-warm tests (loads typescript as the default).
  */
 export async function ensureHighlighter(lang: string = "typescript"): Promise<void> {
-  if (coreIsReady(lang)) return;
-  // Triggering core's tokenize on a no-op input loads the lang without
-  // computing tokens. Empty content short-circuits before reaching
-  // Shiki, so the only side effect is the lang-load.
-  await coreTokenize("dummy", lang);
+  await coreEnsureLang(lang);
 }
 
 export function tokenize(content: string, lang: string): TokenLines {
@@ -115,13 +111,4 @@ function plainTextLines(content: string): TokenLines {
     out.set(i + 1, escapeHtml(lines[i] ?? ""));
   }
   return out;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
