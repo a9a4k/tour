@@ -8,7 +8,7 @@ The webapp and the TUI converge on one tokeniser in `core/syntax-highlight.ts` �
 
 ADR 0009 chose OpenTUI's `<code>` renderable + its bundled `tree-sitter` grammars to recover the syntax-highlighting consequence ADR 0007 had accepted as a v1 loss. ADR 0024 then independently picked Shiki on the webapp because Pierre's worker-pool highlighter retired with the renderer. The result was two engines, two grammar sets, two palettes, two ready-state semantics:
 
-- **Webapp:** Shiki (`shiki/bundle/web`) covering 13 langs — TypeScript, JavaScript, JSON, Markdown, bash, YAML, CSS, HTML, Python, Rust, Go.
+- **Webapp:** Shiki (`shiki/bundle/web`) covering 13 langs — TypeScript, TSX, JavaScript, JSX, JSON, Markdown, bash, YAML, CSS, HTML, Python, Rust, Go.
 - **TUI:** OpenTUI's tree-sitter assets covering 5 langs — TypeScript, TSX, JavaScript, JSX, Markdown.
 
 Everything outside those sets — `.proto`, `.rb`, `.kt`, `.swift`, `.java`, `.php`, `.c`/`.cpp`, `.cs`, `.sql`, `.toml`, `.dockerfile`, `.lua`, `.zig`, the long tail — painted plain on both surfaces. A reviewer touring a polyglot service mesh hit unhighlighted files within minutes. The split also created a hidden asymmetry: the webapp covered Rust / Python / Go where the TUI didn't. CONTEXT.md had already pinned Tour's stance that cross-surface concerns live in `core/`; Highlighting was the last meaningful one still implemented twice.
