@@ -230,6 +230,28 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     [stats.additions, stats.deletions],
   );
 
+  // Issue #382 / ADR 0034: per-file gutter min-width for the unified
+  // two-column gutter. Both gutter cells use `min-width: calc(var(--tour-
+  // gutter-ch) * 1ch + 16px)` (see file-grid-css.ts), so the deletions and
+  // additions columns end up the same width even when the old / new files
+  // have different line-count digit budgets. Computed once per file from
+  // the planned rows; harmless in split layout (the gutter rule keys off
+  // `[data-layout="unified"]`).
+  const gutterDigits = useMemo(() => {
+    let maxOld = 0;
+    let maxNew = 0;
+    for (const row of rows) {
+      if (row.kind !== "diff-row") continue;
+      if (row.leftLineNumber !== null && row.leftLineNumber > maxOld) {
+        maxOld = row.leftLineNumber;
+      }
+      if (row.rightLineNumber !== null && row.rightLineNumber > maxNew) {
+        maxNew = row.rightLineNumber;
+      }
+    }
+    return Math.max(String(maxOld).length, String(maxNew).length, 1);
+  }, [rows]);
+
   // Issue #319: success indicator on the copy-path button. A successful
   // clipboard write flips the icon to a checkmark for 1.2 s, then reverts.
   // Restores the cue originally implemented in #16 (dropped during the #225
@@ -321,6 +343,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           ref={blockRef}
           className="tour-file-block"
           data-layout={layout}
+          style={{ "--tour-gutter-ch": gutterDigits } as React.CSSProperties}
         >
           {rows.flatMap((row, idx) => {
             if (row.kind === "diff-row") {

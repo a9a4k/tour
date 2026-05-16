@@ -86,8 +86,13 @@ export const FILE_GRID_CSS = `
     grid-template-columns: auto auto 1fr auto auto 1fr;
   }
 
+  /* Issue 382 / ADR 0034: unified layout renders four cells per row —
+     gutter-old + gutter-new + sign + code, matching the TUI's
+     unifiedGutter and GitHub's unified-view convention. The two gutter
+     tracks each get their own auto width; the per-file gutter min-width
+     rule lives next to the base .tour-row-gutter declaration below. */
   .tour-file-block[data-layout="unified"] {
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: auto auto auto 1fr;
   }
 
   /* Sticky file header: GitHub-style flex row with a left disclosure /
@@ -285,6 +290,18 @@ export const FILE_GRID_CSS = `
     font-family: ${MONO_STACK};
     font-size: 12px;
     line-height: 20px;
+  }
+
+  /* Issue 382 / ADR 0034: per-file gutter min-width for the unified
+     two-column gutter. Both gutter cells size to the same width derived
+     from max(maxOldDigits, maxNewDigits), so old + new line numbers stay
+     visually symmetric across files with mismatched line counts. The
+     value is plumbed in via the --tour-gutter-ch custom property set on
+     .tour-file-block (see FileBlock.tsx). 16px = 8px padding x 2 matches
+     the base .tour-row-gutter padding so the digits stay right-aligned
+     against the column edge. */
+  .tour-file-block[data-layout="unified"] .tour-row-gutter {
+    min-width: calc(var(--tour-gutter-ch, 1) * 1ch + 16px);
   }
 
   /* Symbol column: single +/-/blank glyph, monospace, centered.

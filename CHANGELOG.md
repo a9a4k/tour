@@ -91,6 +91,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Webapp unified diff renders a two-column gutter — old | new —
+  matching the TUI's `unifiedGutter` and GitHub's unified-view
+  convention (issue #382 / ADR 0034).** Pre-fix, the unified-layout row
+  rendered one gutter that swapped meaning across row kinds: addition
+  rows showed `new#`, deletion rows showed `old#`, context rows showed
+  `new#` (the old line number was dropped entirely). Side-of-anchor
+  read from the `+/-` glyph; the click-to-seed-cursor handler defaulted
+  to additions on context rows regardless of where the reviewer
+  pointed. The row now emits four cells in DOM order — `gutter-old`,
+  `gutter-new`, `sign`, `code` — with both numbers populated on
+  context rows, the old column blank on pure-addition rows, and the
+  new column blank on pure-deletion rows. Each gutter cell carries its
+  own `data-side` (`"deletions"` on the old column, `"additions"` on
+  the new column) and `data-line-number`. Click-to-seed-cursor reads
+  `side` from the clicked column instead of from row kind — a context
+  row's old gutter seeds `deletions`; its new gutter or code cell
+  seeds `additions`. The `+` annotate button renders on every gutter
+  cell that carries a number and dispatches `onAnnotate(side,
+  lineNumber)` with that gutter's side. Per-file gutter min-width
+  derives once from `max(maxOldDigits, maxNewDigits)` and plumbs in
+  via the `--tour-gutter-ch` custom property on `.tour-file-block`, so
+  both columns stay visually symmetric across files with mismatched
+  old/new line counts. Each unified row exposes a single `aria-label`
+  summarising the row (e.g. "Added line 13: return bar();"); the two
+  gutter cells and the symbol cell are `aria-hidden="true"` so screen
+  readers don't utter the redundant numbers + sign + code. Split
+  layout is unchanged.
+
+  Issue: #382 · ADR: 0034
+
 - **Sidebar `y` on a folder row now copies the folder's repo-relative
   path (issue #371, extends PRD #356).** Pressing `y` with the sidebar
   focused and a folder selected used to flash `y: no file selected` and

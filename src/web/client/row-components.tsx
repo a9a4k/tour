@@ -273,17 +273,24 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
     );
   }
 
-  // Unified — a single gutter + symbol + code column. The side echoed back
-  // to `onClick` is determined by `kind` (an addition row is unambiguous);
-  // for context rows the caller's `preferredSide` wins, defaulting to
-  // additions (same fallback rule as the TUI's context-row pairing).
+  // Unified — two-column gutter (old | new) + sign + code (issue #382 /
+  // ADR 0034). Cells in DOM order: `[gutter-old] [gutter-new] [sign] [code]`,
+  // matching the TUI's `unifiedGutter` and GitHub's unified-view convention.
+  // Side reads from the column under the pointer: clicking the deletions
+  // (old) gutter seeds the deletions side; clicking the additions (new)
+  // gutter or the code cell seeds additions. The pre-#382 single-column
+  // collapse + `preferredSide` fallback is gone.
   const impliedSide = impliedSideFromKind(kind);
-  const sideForClick: Side = impliedSide ?? preferredSide ?? "additions";
-  const lineNumber = rightLineNumber ?? leftLineNumber;
-  const text = impliedSide === "deletions" ? leftText : rightText;
-  const tokens = impliedSide === "deletions" ? tokensLeft : tokensRight;
-  // Unified collapses sides; either tinted flag lights the single column,
-  // and the stripe sits at the (only) gutter's left edge.
+  // Code cell reads from the kind-implied side; context rows have no
+  // implied side, so the code cell anchors to additions (the new file is
+  // the canonical reference for context).
+  const codeSide: Side = impliedSide ?? "additions";
+  const codeText = impliedSide === "deletions" ? leftText : rightText;
+  const codeTokens = impliedSide === "deletions" ? tokensLeft : tokensRight;
+  const codeLineNumber =
+    impliedSide === "deletions" ? leftLineNumber : rightLineNumber;
+  // Either tinted flag lights the row; the 3px stripe sits on the leftmost
+  // (deletions) gutter — same rule as split layout's leftmost-edge stripe.
   const unifiedInRange = range.left || range.right;
   return (
     <div
@@ -291,21 +298,165 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
       data-line-type={kind}
       data-row-id={rowDataId}
       style={ROW_STYLE}
+      aria-label={unifiedRowAriaLabel(kind, codeText, codeLineNumber)}
       onMouseEnter={onMouseEnter}
     >
-      <Column
-        side={sideForClick}
-        lineNumber={lineNumber}
-        text={text}
-        tokens={tokens}
-        symbol={symbolForColumn(kind, sideForClick, lineNumber)}
-        isCursor={isCursor}
+      <Gutter
+        side="deletions"
+        lineNumber={leftLineNumber}
         isInRange={unifiedInRange}
         hasStripe={unifiedInRange}
-        onClick={onClick ? handleColumnClick(sideForClick) : undefined}
+        onClick={onClick ? handleColumnClick("deletions") : undefined}
         onAnnotate={onAnnotate}
       />
+      <Gutter
+        side="additions"
+        lineNumber={rightLineNumber}
+        isInRange={unifiedInRange}
+        hasStripe={false}
+        onClick={onClick ? handleColumnClick("additions") : undefined}
+        onAnnotate={onAnnotate}
+      />
+      <span
+        className={
+          unifiedInRange
+            ? "tour-row-symbol in-range"
+            : "tour-row-symbol"
+        }
+        aria-hidden="true"
+      >
+        {unifiedSignGlyph(kind)}
+      </span>
+      <CodeCell
+        side={codeSide}
+        text={codeText}
+        tokens={codeTokens}
+        lineNumber={codeLineNumber}
+        isCursor={isCursor}
+        isInRange={unifiedInRange}
+        onClick={onClick ? handleColumnClick(codeSide) : undefined}
+      />
     </div>
+  );
+}
+
+// Single-glyph sign cell content for unified rows. Matches the TUI's
+// `unifiedSign` rule: `+` on addition / change-addition, `-` on
+// deletion / change-deletion, blank on context.
+function unifiedSignGlyph(kind: DiffRowKind): string {
+  if (kind === "addition" || kind === "change-addition") return "+";
+  if (kind === "deletion" || kind === "change-deletion") return "-";
+  return "";
+}
+
+// One-line aria-label per ADR 0034's A11y section: "Added line 13: return
+// bar()" / "Deleted line 7: foo()" / "Context line 12: function foo() {".
+// Gutter and symbol cells carry `aria-hidden="true"` so the screen reader
+// reads this label instead of the redundant numbers + sign + code.
+function unifiedRowAriaLabel(
+  kind: DiffRowKind,
+  text: string,
+  lineNumber: number | null,
+): string | undefined {
+  if (lineNumber === null) return undefined;
+  if (kind === "addition" || kind === "change-addition") {
+    return `Added line ${lineNumber}: ${text}`;
+  }
+  if (kind === "deletion" || kind === "change-deletion") {
+    return `Deleted line ${lineNumber}: ${text}`;
+  }
+  return `Context line ${lineNumber}: ${text}`;
+}
+
+// Gutter cell for the unified two-column layout (issue #382). Renders the
+// line-number text + optional annotate `+` button; `aria-hidden` so the
+// row-level aria-label is the only thing a screen reader reads.
+interface GutterProps {
+  side: Side;
+  lineNumber: number | null;
+  isInRange: boolean;
+  hasStripe: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+  onAnnotate?: (side: Side, lineNumber: number) => void;
+}
+
+function Gutter({
+  side,
+  lineNumber,
+  isInRange,
+  hasStripe,
+  onClick,
+  onAnnotate,
+}: GutterProps): React.JSX.Element {
+  const classes = ["tour-row-gutter"];
+  if (isInRange) classes.push("in-range");
+  if (hasStripe) classes.push("in-range-stripe");
+  const showAnnotateButton = onAnnotate !== undefined && lineNumber != null;
+  const handleAnnotateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onAnnotate && lineNumber != null) onAnnotate(side, lineNumber);
+  };
+  return (
+    <span
+      className={classes.join(" ")}
+      data-side={side}
+      data-line-number={lineNumber ?? ""}
+      aria-hidden="true"
+      onClick={onClick}
+    >
+      {lineNumber ?? ""}
+      {showAnnotateButton ? (
+        <button
+          type="button"
+          className="tour-row-annotate-btn"
+          tabIndex={-1}
+          aria-label={`Add comment on line ${lineNumber}`}
+          onClick={handleAnnotateClick}
+        >
+          +
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+// Code cell for the unified two-column layout. Mirrors `Column`'s code
+// branch — token-painted span when tokens are available, plain text fallback
+// otherwise.
+interface CodeCellProps {
+  side: Side;
+  text: string;
+  tokens?: TokenLines | null;
+  lineNumber: number | null;
+  isCursor: boolean;
+  isInRange: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+}
+
+function CodeCell({
+  side,
+  text,
+  tokens,
+  lineNumber,
+  isCursor,
+  isInRange,
+  onClick,
+}: CodeCellProps): React.JSX.Element {
+  const html = lineNumber != null ? tokens?.get(lineNumber) : undefined;
+  const classes = ["tour-row-cell"];
+  if (isCursor) classes.push("is-cursor");
+  if (isInRange) classes.push("in-range");
+  return (
+    <span className={classes.join(" ")} data-side={side} onClick={onClick}>
+      {html !== undefined ? (
+        <span
+          className="tour-row-code"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        <span className="tour-row-code">{text}</span>
+      )}
+    </span>
   );
 }
 

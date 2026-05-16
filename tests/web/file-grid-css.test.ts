@@ -24,9 +24,24 @@ describe("FILE_GRID_CSS — file-level grid", () => {
     );
   });
 
-  it("unified layout uses 3 column tracks (gutter symbol code, #221)", () => {
+  // Issue #382 / ADR 0034: unified-layout grid template gains one auto
+  // track — `[gutter-old] [gutter-new] [sign] [code]` mirrors the TUI's
+  // `unifiedGutter` and GitHub's unified-view convention.
+  it("unified layout uses 4 column tracks: gutter-old gutter-new symbol code (issue #382)", () => {
     expect(FILE_GRID_CSS).toMatch(
-      /\[data-layout="unified"\][^{]*\{[^}]*grid-template-columns:\s*auto auto 1fr;/,
+      /\[data-layout="unified"\][^{]*\{[^}]*grid-template-columns:\s*auto auto auto 1fr;/,
+    );
+  });
+
+  // Issue #382: per-file gutter width — both columns share the same min-
+  // width computed from `max(maxOldDigits, maxNewDigits)` so they stay
+  // visually symmetric across old/new files with different line counts.
+  // The width plumbs in via the `--tour-gutter-ch` custom property set on
+  // `.tour-file-block` (see FileBlock.tsx); the rule below applies it to
+  // every gutter cell in unified layout.
+  it("unified layout pins per-gutter min-width via --tour-gutter-ch (issue #382)", () => {
+    expect(FILE_GRID_CSS).toMatch(
+      /\[data-layout="unified"\]\s+\.tour-row-gutter\s*\{[^}]*min-width:\s*calc\(\s*var\(\s*--tour-gutter-ch[^)]*\)\s*\*\s*1ch[^}]*\}/,
     );
   });
 });

@@ -111,7 +111,10 @@ describe("<DiffRow>", () => {
     expect(gutters[1]!.textContent).toBe("9");
   });
 
-  it("renders a single line number in unified layout", () => {
+  // Issue #382 / ADR 0034: unified layout renders TWO gutter cells
+  // (old | new). Pure-addition rows blank the old (deletions) column;
+  // the new (additions) column carries the row's line number.
+  it("renders two gutter cells in unified layout — old (deletions) blank, new (additions) populated for addition rows (issue #382)", () => {
     const c = mount(
       createElement(DiffRow, {
         kind: "addition",
@@ -124,8 +127,17 @@ describe("<DiffRow>", () => {
       }),
     );
     const gutters = c.querySelectorAll(".tour-row [data-line-number]");
-    expect(gutters.length).toBe(1);
-    expect(gutters[0]!.textContent).toBe("99");
+    expect(gutters.length).toBe(2);
+    const deletions = c.querySelector(
+      '.tour-row-gutter[data-side="deletions"]',
+    ) as HTMLElement;
+    const additions = c.querySelector(
+      '.tour-row-gutter[data-side="additions"]',
+    ) as HTMLElement;
+    expect(deletions.getAttribute("data-line-number")).toBe("");
+    expect(deletions.textContent).toBe("");
+    expect(additions.getAttribute("data-line-number")).toBe("99");
+    expect(additions.textContent).toBe("99");
   });
 
   // Issue #303 follow-up: `data-row-id` is the layout-invariant hook
@@ -203,6 +215,398 @@ describe("<DiffRow>", () => {
       expect(c.querySelector(".tour-row")!.getAttribute("data-row-id")).toBe(
         "deletions-15",
       );
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Issue #382 / ADR 0034: unified layout — two-column gutter (old | new)
+  // --------------------------------------------------------------------------
+  //
+  // Pre-#382, the unified branch collapsed both line numbers to one gutter,
+  // swapping which file the number indexed into based on row kind. The new
+  // shape renders four cells per row — `[gutter-old] [gutter-new] [sign]
+  // [code]` — matching the TUI's `unifiedGutter` and GitHub's convention.
+  // Side reads from the column under the pointer; the redundant single-
+  // column / preferredSide fallback is gone.
+  describe("unified two-column gutter (issue #382 / ADR 0034)", () => {
+    it("context row renders four cells: two gutters + symbol + code", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "foo",
+          rightText: "foo",
+          isCursor: false,
+        }),
+      );
+      expect(c.querySelectorAll(".tour-row-gutter").length).toBe(2);
+      expect(c.querySelectorAll(".tour-row-symbol").length).toBe(1);
+      expect(c.querySelectorAll(".tour-row-cell").length).toBe(1);
+    });
+
+    it("context row populates BOTH number columns (left=old, right=new)", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "foo",
+          rightText: "foo",
+          isCursor: false,
+        }),
+      );
+      const deletions = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"]',
+      ) as HTMLElement;
+      const additions = c.querySelector(
+        '.tour-row-gutter[data-side="additions"]',
+      ) as HTMLElement;
+      expect(deletions.getAttribute("data-line-number")).toBe("7");
+      expect(deletions.textContent).toBe("7");
+      expect(additions.getAttribute("data-line-number")).toBe("9");
+      expect(additions.textContent).toBe("9");
+    });
+
+    it("pure-deletion row populates the old column and blanks the new column", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "unified",
+          leftLineNumber: 12,
+          rightLineNumber: null,
+          leftText: "x",
+          rightText: "",
+          isCursor: false,
+        }),
+      );
+      const deletions = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"]',
+      ) as HTMLElement;
+      const additions = c.querySelector(
+        '.tour-row-gutter[data-side="additions"]',
+      ) as HTMLElement;
+      expect(deletions.getAttribute("data-line-number")).toBe("12");
+      expect(deletions.textContent).toBe("12");
+      expect(additions.getAttribute("data-line-number")).toBe("");
+      expect(additions.textContent).toBe("");
+    });
+
+    it("emits the cells in DOM order [gutter-old] [gutter-new] [sign] [code]", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 1,
+          rightLineNumber: 1,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+        }),
+      );
+      const row = c.querySelector(".tour-row") as HTMLElement;
+      const children = Array.from(row.children) as HTMLElement[];
+      expect(children).toHaveLength(4);
+      expect(children[0]!.className).toContain("tour-row-gutter");
+      expect(children[0]!.dataset.side).toBe("deletions");
+      expect(children[1]!.className).toContain("tour-row-gutter");
+      expect(children[1]!.dataset.side).toBe("additions");
+      expect(children[2]!.className).toContain("tour-row-symbol");
+      expect(children[3]!.className).toContain("tour-row-cell");
+    });
+
+    it("renders a single `+` symbol cell on addition rows (between the gutters and the code)", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 5,
+          leftText: "",
+          rightText: "x",
+          isCursor: false,
+        }),
+      );
+      const symbols = c.querySelectorAll(".tour-row-symbol");
+      expect(symbols.length).toBe(1);
+      expect(symbols[0]!.textContent).toBe("+");
+    });
+
+    it("renders a single `-` symbol cell on deletion rows", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "unified",
+          leftLineNumber: 5,
+          rightLineNumber: null,
+          leftText: "x",
+          rightText: "",
+          isCursor: false,
+        }),
+      );
+      const symbols = c.querySelectorAll(".tour-row-symbol");
+      expect(symbols.length).toBe(1);
+      expect(symbols[0]!.textContent).toBe("-");
+    });
+
+    it("renders a blank symbol cell on context rows", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 1,
+          rightLineNumber: 1,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+        }),
+      );
+      const symbols = c.querySelectorAll(".tour-row-symbol");
+      expect(symbols.length).toBe(1);
+      expect(symbols[0]!.textContent).toBe("");
+    });
+
+    it("clicking the old (deletions) gutter seeds the cursor on the deletions side, even on a context row", () => {
+      const sides: string[] = [];
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          onClick: (side) => sides.push(side),
+        }),
+      );
+      const deletionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"]',
+      ) as HTMLElement;
+      act(() => {
+        deletionsGutter.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+      });
+      expect(sides).toEqual(["deletions"]);
+    });
+
+    it("clicking the new (additions) gutter seeds the cursor on the additions side, even on a context row", () => {
+      const sides: string[] = [];
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          onClick: (side) => sides.push(side),
+        }),
+      );
+      const additionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="additions"]',
+      ) as HTMLElement;
+      act(() => {
+        additionsGutter.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+      });
+      expect(sides).toEqual(["additions"]);
+    });
+
+    it("clicking the code cell on a context row seeds the additions side (no preferredSide fallback)", () => {
+      const sides: string[] = [];
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          // preferredSide is ignored in the unified two-column gutter —
+          // code-cell click reads "additions" regardless.
+          preferredSide: "deletions",
+          onClick: (side) => sides.push(side),
+        }),
+      );
+      const code = c.querySelector(".tour-row-cell") as HTMLElement;
+      act(() => {
+        code.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(sides).toEqual(["additions"]);
+    });
+
+    it("clicking the code cell on a deletion row seeds the deletions side", () => {
+      const sides: string[] = [];
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "unified",
+          leftLineNumber: 12,
+          rightLineNumber: null,
+          leftText: "x",
+          rightText: "",
+          isCursor: false,
+          onClick: (side) => sides.push(side),
+        }),
+      );
+      const code = c.querySelector(".tour-row-cell") as HTMLElement;
+      act(() => {
+        code.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(sides).toEqual(["deletions"]);
+    });
+
+    it("renders an annotate `+` button on each populated gutter and dispatches with the gutter's side", () => {
+      const calls: Array<{ side: string; line: number }> = [];
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: 9,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          onAnnotate: (side, line) => calls.push({ side, line }),
+        }),
+      );
+      const buttons = c.querySelectorAll(".tour-row-annotate-btn");
+      expect(buttons.length).toBe(2);
+      const deletionsBtn = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"] .tour-row-annotate-btn',
+      ) as HTMLElement;
+      const additionsBtn = c.querySelector(
+        '.tour-row-gutter[data-side="additions"] .tour-row-annotate-btn',
+      ) as HTMLElement;
+      act(() => {
+        deletionsBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      act(() => {
+        additionsBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(calls).toEqual([
+        { side: "deletions", line: 7 },
+        { side: "additions", line: 9 },
+      ]);
+    });
+
+    it("omits the annotate button on the blank gutter (deletions column on an addition row)", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 42,
+          leftText: "",
+          rightText: "x",
+          isCursor: false,
+          onAnnotate: () => {},
+        }),
+      );
+      const deletionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"]',
+      ) as HTMLElement;
+      const additionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="additions"]',
+      ) as HTMLElement;
+      expect(
+        deletionsGutter.querySelector(".tour-row-annotate-btn"),
+      ).toBeNull();
+      expect(
+        additionsGutter.querySelector(".tour-row-annotate-btn"),
+      ).not.toBeNull();
+    });
+
+    it("aria-label summarises the row; gutters and symbol are aria-hidden", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 12,
+          rightLineNumber: 12,
+          leftText: "function foo() {",
+          rightText: "function foo() {",
+          isCursor: false,
+        }),
+      );
+      const row = c.querySelector(".tour-row") as HTMLElement;
+      expect(row.getAttribute("aria-label")).toBe(
+        "Context line 12: function foo() {",
+      );
+      const gutters = c.querySelectorAll(".tour-row-gutter");
+      for (const g of Array.from(gutters)) {
+        expect(g.getAttribute("aria-hidden")).toBe("true");
+      }
+      const symbol = c.querySelector(".tour-row-symbol") as HTMLElement;
+      expect(symbol.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("aria-label reads `Added line N: <text>` on addition rows", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 13,
+          leftText: "",
+          rightText: "return bar();",
+          isCursor: false,
+        }),
+      );
+      const row = c.querySelector(".tour-row") as HTMLElement;
+      expect(row.getAttribute("aria-label")).toBe(
+        "Added line 13: return bar();",
+      );
+    });
+
+    it("aria-label reads `Deleted line N: <text>` on deletion rows", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "unified",
+          leftLineNumber: 7,
+          rightLineNumber: null,
+          leftText: "return foo();",
+          rightText: "",
+          isCursor: false,
+        }),
+      );
+      const row = c.querySelector(".tour-row") as HTMLElement;
+      expect(row.getAttribute("aria-label")).toBe(
+        "Deleted line 7: return foo();",
+      );
+    });
+
+    it("range tint paints both gutters; stripe stays on the leftmost (deletions) gutter", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 1,
+          rightLineNumber: 1,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+          rightInRange: true,
+        }),
+      );
+      const deletionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="deletions"]',
+      ) as HTMLElement;
+      const additionsGutter = c.querySelector(
+        '.tour-row-gutter[data-side="additions"]',
+      ) as HTMLElement;
+      expect(deletionsGutter.classList.contains("in-range")).toBe(true);
+      expect(additionsGutter.classList.contains("in-range")).toBe(true);
+      expect(deletionsGutter.classList.contains("in-range-stripe")).toBe(true);
+      expect(additionsGutter.classList.contains("in-range-stripe")).toBe(false);
     });
   });
 
@@ -378,7 +782,9 @@ describe("<DiffRow>", () => {
     expect(gutter.classList.contains("in-range")).toBe(true);
     expect(symbol.classList.contains("in-range")).toBe(true);
     expect(cell.classList.contains("in-range")).toBe(true);
-    // Stripe sits on the single gutter — leftmost edge of the row.
+    // Issue #382: querySelector returns the first gutter — the
+    // deletions (old) column, which sits at the row's leftmost edge
+    // and wears the stripe.
     expect(gutter.classList.contains("in-range-stripe")).toBe(true);
     // Row container itself does NOT carry .in-range — the cue is per-cell now.
     const row = c.querySelector(".tour-row") as HTMLElement;
