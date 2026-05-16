@@ -12,7 +12,7 @@
 //                      branch and closes the corresponding issues.
 //
 // Usage:
-//   npx tsx .sandcastle/main.mts
+//   bun .sandcastle/main.mts
 
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
@@ -108,7 +108,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
           hooks: {
             sandbox: {
-              onSandboxReady: [{ command: "npm install" }],
+              onSandboxReady: [{ command: "bun install" }],
             },
           },
         });
