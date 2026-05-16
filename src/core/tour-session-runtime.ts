@@ -40,6 +40,10 @@ export interface TourSessionAdapter {
   fetchBundle(id: string): Promise<TourBundle>;
   fetchReplyLock(id: string): Promise<ReplyLock | null>;
   writeComment(tourId: string, input: WriteCommentInput): Promise<Comment>;
+  /** ADR 0036 Slice D / issue #388. Appends a `comment.deleted` event via
+   *  the `createDelete` write seam. Humans-only enforced at the seam — the
+   *  TUI / webapp only ever call this for human deletes. */
+  deleteComment(args: { tourId: string; targetId: string }): Promise<void>;
   requestReply(args: { tourId: string; commentId: string }): Promise<void>;
   subscribeTourEvents(tourId: string, handler: TourEventHandler): () => void;
   scrollToCard(id: string, placement: ScrollPlacement, behavior: ScrollMotion): void;
@@ -149,6 +153,16 @@ export class TourSessionRuntime {
               // transient — the watcher's reload surfaces any state change
             });
           return;
+        case "deleteComment":
+          // ADR 0036 Slice D / issue #388. Realises the `deleteComment`
+          // intent by calling the adapter's `deleteComment` seam (which
+          // wraps `createDelete`). On success dispatches
+          // `deleteConfirm.succeeded`; on rejection dispatches
+          // `deleteConfirm.failed` so the modal flips to errored and the
+          // user can retry. The watcher's `comment-changed` event drives
+          // the bundle refresh that surfaces the C4-cascaded projection.
+          void this.handleDeleteComment(intent.tourId, intent.targetId);
+          return;
       }
     });
 
@@ -251,6 +265,25 @@ export class TourSessionRuntime {
       return;
     }
     this.store.dispatch({ type: "composer.submitted", comment: created });
+  }
+
+  // ADR 0036 Slice D / issue #388. Realises `deleteComment` via the
+  // adapter; success dispatches `deleteConfirm.succeeded`, failure
+  // dispatches `deleteConfirm.failed` (modal flips to errored — Enter
+  // retries, Esc dismisses). The watcher's `comment-changed` event
+  // drives the projected (cascaded) bundle refresh.
+  private async handleDeleteComment(
+    tourId: string,
+    targetId: string,
+  ): Promise<void> {
+    try {
+      await this.adapter.deleteComment({ tourId, targetId });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.store.dispatch({ type: "deleteConfirm.failed", error });
+      return;
+    }
+    this.store.dispatch({ type: "deleteConfirm.succeeded", targetId });
   }
 
   // Realises the `revalidateCursor` intent (PRD #278 slice 5). Fires

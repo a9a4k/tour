@@ -100,6 +100,7 @@ interface FakeAdapter extends TourSessionAdapter {
   bundleCalls: string[];
   lockCalls: string[];
   writeCalls: Array<{ tourId: string; input: WriteCommentInput }>;
+  deleteCalls: Array<{ tourId: string; targetId: string }>;
   requestReplyCalls: Array<{ tourId: string; commentId: string }>;
   scrollCardCalls: Array<{ id: string; mode: ScrollPlacement; behavior: ScrollMotion }>;
   scrollRowCalls: Array<{
@@ -123,6 +124,7 @@ interface FakeAdapterOptions {
   fetchReplyLockError?: boolean;
   writeCommentError?: string;
   writeCommentResult?: Comment;
+  deleteCommentError?: string;
   requestReplyError?: string;
 }
 
@@ -130,6 +132,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const bundleCalls: string[] = [];
   const lockCalls: string[] = [];
   const writeCalls: FakeAdapter["writeCalls"] = [];
+  const deleteCalls: FakeAdapter["deleteCalls"] = [];
   const requestReplyCalls: FakeAdapter["requestReplyCalls"] = [];
   const scrollCardCalls: FakeAdapter["scrollCardCalls"] = [];
   const scrollRowCalls: FakeAdapter["scrollRowCalls"] = [];
@@ -144,6 +147,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     bundleCalls,
     lockCalls,
     writeCalls,
+    deleteCalls,
     requestReplyCalls,
     scrollCardCalls,
     scrollRowCalls,
@@ -178,6 +182,10 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         created_at: "2026-05-14T00:00:00Z",
         ...(input.kind === "reply" ? { replies_to: input.parent.id } : {}),
       };
+    },
+    deleteComment: async ({ tourId, targetId }) => {
+      deleteCalls.push({ tourId, targetId });
+      if (opts.deleteCommentError) throw new Error(opts.deleteCommentError);
     },
     requestReply: async ({ tourId, commentId }) => {
       requestReplyCalls.push({ tourId, commentId });
@@ -1489,6 +1497,43 @@ describe("TourSessionRuntime", () => {
       // Override is preserved at its pre-cursor.set value (true) — the
       // intent no longer overwrites it to false.
       expect(store.getState().collapsedOverrides["src/a.ts"]).toBe(true);
+      stop();
+    });
+  });
+
+  // ADR 0036 Slice D / issue #388 — deleteComment intent realisation.
+  describe("deleteComment intent (ADR 0036 Slice D / issue #388)", () => {
+    it("forwards deleteComment to adapter.deleteComment and dispatches deleteConfirm.succeeded on resolve", async () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "deleteConfirm.open", targetId: "ann-1" });
+      store.dispatch({ type: "deleteConfirm.confirm" });
+      expect(store.getState().deleteConfirm.kind).toBe("submitting");
+      expect(adapter.deleteCalls).toEqual([{ tourId: "tour-a", targetId: "ann-1" }]);
+
+      await flush();
+      expect(store.getState().deleteConfirm).toEqual({ kind: "closed" });
+      stop();
+    });
+
+    it("forwards deleteComment to adapter.deleteComment and dispatches deleteConfirm.failed on rejection", async () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter({ deleteCommentError: "no comment with id" });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "deleteConfirm.open", targetId: "ghost" });
+      store.dispatch({ type: "deleteConfirm.confirm" });
+      await flush();
+
+      expect(store.getState().deleteConfirm).toEqual({
+        kind: "errored",
+        targetId: "ghost",
+        error: "no comment with id",
+      });
       stop();
     });
   });

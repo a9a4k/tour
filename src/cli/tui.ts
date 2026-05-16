@@ -1,6 +1,7 @@
 import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
   createComment,
+  createDelete,
   createReply,
   readComments,
 } from "../core/comments-store.js";
@@ -87,6 +88,16 @@ export async function tui(args: TuiArgs): Promise<void> {
         },
         input.bundle,
       );
+    },
+    deleteComment: async (id, targetId) => {
+      // ADR 0036 Slice D / issue #388. TUI delete is implicitly human —
+      // `createDelete` rejects non-human authorship at the seam. The
+      // adapter awaits this promise; the runtime translates resolve into
+      // `deleteConfirm.succeeded` and rejection into `deleteConfirm.failed`.
+      await createDelete(args.cwd, id, {
+        target_id: targetId,
+        by_kind: "human",
+      });
     },
     loadTours: async () => {
       const tours = await listTours(args.cwd, { status: "all" });

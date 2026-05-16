@@ -87,6 +87,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("n/p: nav");
     expect(out).toContain("c: comment");
     expect(out).toContain("r: reply");
+    expect(out).toContain("d: delete");
     expect(out).toContain("Enter: expand");
     expect(out).toContain("e: expand all");
     expect(out).toContain("C: collapse replies");
@@ -97,6 +98,22 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("T: picker");
     expect(out).toContain("[/]: width");
     expect(out).toContain("q: quit");
+  });
+
+  // ADR 0036 Slice D / issue #388: `d: delete` slots into the lowercase-
+  // cursor cluster between `r: reply` and the conditional `s: send to`
+  // when present.
+  it("`d: delete` slots after `r: reply` in the diff-mode TUI legend", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
+    const r = out.indexOf("r: reply");
+    const d = out.indexOf("d: delete");
+    expect(r).toBeGreaterThanOrEqual(0);
+    expect(d).toBeGreaterThan(r);
+  });
+
+  it("`d: delete` is absent in the sidebar-mode TUI legend (verb is card-only)", () => {
+    const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
+    expect(out).not.toContain("d: delete");
   });
 
   // PRD #349 / ADR 0032 / issue #352: `o: open` slots adjacent to
