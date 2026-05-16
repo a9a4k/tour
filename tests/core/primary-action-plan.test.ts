@@ -119,7 +119,13 @@ describe("planPrimaryAction (issue #372)", () => {
       expect(plan.landing?.lineNumber).toBe(30);
     });
 
-    it("large mid-file gap → expand 'up' with no orphan-landing", () => {
+    it("large mid-file gap → expand 'down' (bottom of gap) with no orphan-landing (issue #381)", () => {
+      // Issue #381: user-facing `↑` on the banner reveals lines that
+      // render immediately above the banner — those are at the bottom
+      // edge of the gap (line numbers approaching `currentStart - 1`),
+      // which the reducer grows via `direction: "down"`. The planner
+      // translates the banner's `primaryExpand: "up"` (user-facing
+      // direction) into gap-edge `direction: "down"` for the reducer.
       const rows: FlatRow[] = [
         pairedFlat("x.txt", 1),
         interactiveFlat({ file: "x.txt", subKind: "hunk-separator", boundaryRef: 1 }),
@@ -136,7 +142,7 @@ describe("planPrimaryAction (issue #372)", () => {
         type: "expansion.expand",
         file: "x.txt",
         ref: 1,
-        direction: "up",
+        direction: "down",
         mode: "symmetric-20",
         gapSize: 50,
       });
@@ -161,7 +167,14 @@ describe("planPrimaryAction (issue #372)", () => {
   });
 
   describe("expand-down (mid-file)", () => {
-    it("large remaining gap → expand 'down' with no orphan-landing (row survives)", () => {
+    it("large remaining gap → expand 'up' (top of gap) with no orphan-landing (row survives) (issue #381)", () => {
+      // Issue #381: user-facing `↓` on the standalone row reveals lines
+      // that grow the visible context from the previous hunk's end
+      // downward — those are at the top edge of the gap (line numbers
+      // starting at `prevEnd + 1`), which the reducer grows via
+      // `direction: "up"`. The planner translates the standalone row's
+      // `subKind: "expand-down"` (user-facing direction ↓) into
+      // gap-edge `direction: "up"` for the reducer.
       const rows: FlatRow[] = [
         pairedFlat("x.txt", 1),
         interactiveFlat({ file: "x.txt", subKind: "expand-down", boundaryRef: 1 }),
@@ -179,16 +192,18 @@ describe("planPrimaryAction (issue #372)", () => {
         type: "expansion.expand",
         file: "x.txt",
         ref: 1,
-        direction: "down",
+        direction: "up",
         mode: "symmetric-20",
         gapSize: 100,
       });
       expect(plan.landing).toBeNull();
     });
 
-    it("post-dispatch remaining gap drops below GAP_TWO_ROW_THRESHOLD → orphan-landing on next diff row", () => {
+    it("post-dispatch remaining gap drops below GAP_TWO_ROW_THRESHOLD → orphan-landing on next diff row (issue #381)", () => {
       // gap=50, no prior expansion → addition=min(20, 50)=20 → newRemaining=30
       // 30 < 40 (GAP_TWO_ROW_THRESHOLD) → expand-down-mid orphan.
+      // Issue #381: direction is now gap-edge "up" (top of gap = lines
+      // just after prevEnd), translated from user-facing ↓.
       const rows: FlatRow[] = [
         pairedFlat("x.txt", 1),
         interactiveFlat({ file: "x.txt", subKind: "expand-down", boundaryRef: 1 }),
@@ -206,7 +221,7 @@ describe("planPrimaryAction (issue #372)", () => {
         type: "expansion.expand",
         file: "x.txt",
         ref: 1,
-        direction: "down",
+        direction: "up",
         mode: "symmetric-20",
         gapSize: 50,
       });

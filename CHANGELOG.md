@@ -110,6 +110,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI + web: hunk-header `↑` and standalone `↓` no longer reveal
+  lines on the wrong edge of a hidden gap (issue #381).** Pre-fix,
+  clicking the mid-file banner's `↑` revealed context lines at the
+  **top** of the hidden gap (just below the previous hunk's end —
+  far above the banner) instead of immediately above the banner
+  where GitHub users expect them. The standalone `↓` (Expand Down)
+  row mirrored the inversion — clicks revealed lines just above the
+  current hunk (far below the standalone row) instead of immediately
+  below it. Root cause: the producer-side mapping from user-facing
+  direction (banner ↑ = "up", standalone ↓ = "down") to the
+  reducer's gap-edge direction (`up` = top of gap = near `prevEnd`;
+  `down` = bottom of gap = near `currentStart - 1`) was the
+  identity, not an inversion. The reducer's `up` / `down` field
+  names are correct from a gap-edge perspective and unchanged; only
+  the producer's translation flips. Fixed in two canonical hand-off
+  points — `core/primary-action-plan.ts` (TUI's
+  `planPrimaryAction`) and `web/client/App.tsx`'s `dispatchExpand`
+  (web's mouse-click + keyboard-Enter path). `boundary-top` /
+  file-bottom (`expandTop` / `expandBottom`) are unilateral and
+  unaffected; `primaryExpand: "all"` (the `↕` glyph) is symmetric
+  and unaffected.
+
+  Issue: #381
+
 - **TUI: hunk-header / expand-down button cell widens to the gutter
   footprint so `@@` aligns with diff code (issue #380).** The banner's
   button cell was a fixed `paddingLeft=2 + 1 glyph + paddingRight=2 = 5`

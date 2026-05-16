@@ -130,6 +130,14 @@ export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan 
         orphanKind === null
           ? null
           : pickLanding(synthetic, flatRowsBefore, orphanKind);
+      // Issue #381: producer-side translation from the standalone row's
+      // user-facing `↓` glyph to the reducer's gap-edge direction. The
+      // user expects ↓ to grow the visible context downward from the
+      // previous hunk's end (line numbers `prevEnd + 1, ...`), which
+      // sits at the *top edge* of the gap — that's `direction: "up"`
+      // in the reducer's gap-edge vocabulary. The file-bottom case
+      // (boundaryRef === "bottom") is unilateral and unaffected; the
+      // reducer's `expandBottom` always grows `down` regardless.
       const expansion: ExpansionAction =
         boundaryRef === "bottom"
           ? {
@@ -142,7 +150,7 @@ export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan 
               type: "expansion.expand",
               file,
               ref: boundaryRef as number,
-              direction: "down",
+              direction: "up",
               mode: "symmetric-20",
               gapSize,
             };
@@ -156,6 +164,15 @@ export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan 
         return { expansion: null, landing: null };
       }
       if (plan.primaryExpand === "up") {
+        // Issue #381: producer-side translation from the banner's
+        // user-facing `↑` glyph to the reducer's gap-edge direction.
+        // The user expects ↑ to reveal lines that render immediately
+        // above the banner (line numbers approaching `currentStart - 1`
+        // from below), which sits at the *bottom edge* of the gap —
+        // that's `direction: "down"` in the reducer's gap-edge
+        // vocabulary. The file-top case (boundaryRef === "top") is
+        // unilateral and unaffected; the reducer's `expandTop` always
+        // grows `up` regardless.
         const expansion: ExpansionAction =
           boundaryRef === "top"
             ? {
@@ -168,7 +185,7 @@ export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan 
                 type: "expansion.expand",
                 file,
                 ref: boundaryRef as number,
-                direction: "up",
+                direction: "down",
                 mode: "symmetric-20",
                 gapSize,
               };
