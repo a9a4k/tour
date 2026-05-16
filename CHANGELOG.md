@@ -35,6 +35,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp mouse paths to open-in-editor — annotation filename link,
+  file-header `↗` icon (issue #383, ADR 0035).** ADR 0032 wired the
+  keyboard `o` to `POST /api/tours/<id>/open-in-editor` and deferred
+  mouse on purpose. This slice unblocks discoverability for mouse-first
+  users: the annotation card's `{comment.file}:{range}` header becomes a
+  hover-underlined location-stamp link (matches Sentry / devtools /
+  Sourcegraph), and the file header gains an unconditional `↗` icon in
+  the right cell next to the conditional `↕` expand-all. Annotation
+  click moves the cursor onto the card before dispatching at
+  `line_end`; file-header click dispatches at line 1 without moving
+  the cursor (file-level affordance, no cursor contract to inherit).
+  Both reuse ADR 0032's endpoint, resolution chain, terminal-editor
+  refusal (409 → footer), and success-message footer flash via the new
+  `dispatchOpenInEditor` helper — the keyboard `o` keymap now also
+  routes through the helper. `event.stopPropagation()` on both click
+  sites prevents the surrounding `onCardClick` / `onToggleCollapse`
+  semantics from double-firing.
+
+  Issue: #383 · ADR: 0035
+
 - **TUI paints every Shiki-supported language via
   `core/syntax-highlight.ts` (issue #376, PRD #374, slice 2).** Pre-fix
   the TUI's OpenTUI `<code>` path covered 5 grammars

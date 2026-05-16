@@ -267,6 +267,37 @@ export const FILE_GRID_CSS = `
     outline-offset: 1px;
   }
 
+  /* Issue 383 / ADR 0035: file-header open-in-editor button (up-right
+     arrow glyph). Mirrors the expand-all button's visual treatment so
+     the two header-right buttons read as a single chrome family.
+     Always-rendered (unlike expand-all which is gap-gated) — the open
+     action is always available. stopPropagation in the handler defends
+     against the header-level collapse-toggle. */
+  .tour-file-open-in-editor-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: ${theme.fg.muted};
+    padding: 4px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font: inherit;
+    line-height: 1;
+  }
+
+  .tour-file-open-in-editor-button:hover {
+    background-color: ${theme.bg.neutralSubtle.web};
+    color: ${theme.fg.default};
+  }
+
+  .tour-file-open-in-editor-button:focus-visible {
+    outline: 1px solid ${theme.border.accent};
+    outline-offset: 1px;
+  }
+
   /* Row subgrid: inherits the file's column tracks; spans the full width. */
   .tour-row {
     display: grid;

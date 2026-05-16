@@ -708,3 +708,130 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
     expect(replyBlock?.querySelector(".ann-reply-composer")).not.toBeNull();
   });
 });
+
+// Issue #383 / ADR 0035: the annotation card filename becomes a clickable
+// location-stamp link. Click moves the cursor onto the card AND
+// dispatches open-in-editor at line_end; `stopPropagation` keeps the
+// surrounding card-onClick (cursor-on-card) from double-firing. The link
+// renders as an interactive element with an aria-label so the affordance
+// is announced to assistive tech.
+describe("CommentCard annotation filename link (issue #383)", () => {
+  it("renders the filename as an interactive button with an aria-label naming the file:range", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: { ...baseComment, line_start: 42, line_end: 48 },
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onFileClick: () => {},
+      }),
+    );
+    const link = container.querySelector(
+      ".ann-filename-link",
+    ) as HTMLButtonElement | null;
+    expect(link).not.toBeNull();
+    expect(link!.tagName).toBe("BUTTON");
+    expect(link!.textContent).toBe("x.txt:42-48");
+    expect(link!.getAttribute("aria-label")).toBe(
+      "Open x.txt:42-48 in editor",
+    );
+  });
+
+  it("uses a single line number (no range) when line_start === line_end", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onFileClick: () => {},
+      }),
+    );
+    const link = container.querySelector(".ann-filename-link");
+    expect(link?.textContent).toBe("x.txt:1");
+  });
+
+  it("falls back to inert text (no button) when onFileClick is not supplied", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+      }),
+    );
+    expect(container.querySelector(".ann-filename-link")).toBeNull();
+    const header = container.querySelector(".ann-header");
+    expect(header?.textContent).toContain("x.txt:1");
+  });
+
+  it("clicking the link fires onFileClick with (commentId, file, line_end)", () => {
+    const calls: Array<[string, string, number]> = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: { ...baseComment, line_start: 42, line_end: 48 },
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onFileClick: (id: string, file: string, lineEnd: number) => {
+          calls.push([id, file, lineEnd]);
+        },
+      }),
+    );
+    const link = container.querySelector(
+      ".ann-filename-link",
+    ) as HTMLButtonElement;
+    act(() => {
+      link.click();
+    });
+    expect(calls).toEqual([["ann-1", "x.txt", 48]]);
+  });
+
+  it("clicking the link does NOT also fire the surrounding onCardClick (stopPropagation)", () => {
+    let cardClicks = 0;
+    let fileClicks = 0;
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: () => {
+          cardClicks += 1;
+        },
+        onFileClick: () => {
+          fileClicks += 1;
+        },
+      }),
+    );
+    const link = container.querySelector(
+      ".ann-filename-link",
+    ) as HTMLButtonElement;
+    act(() => {
+      link.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(fileClicks).toBe(1);
+    expect(cardClicks).toBe(0);
+  });
+
+  it("clicking elsewhere on the card still fires onCardClick (link does not steal the card click)", () => {
+    let cardClicks = 0;
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: () => {
+          cardClicks += 1;
+        },
+        onFileClick: () => {},
+      }),
+    );
+    const body = container.querySelector(".ann-body") as HTMLElement;
+    act(() => {
+      body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(cardClicks).toBe(1);
+  });
+});

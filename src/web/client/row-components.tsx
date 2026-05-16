@@ -590,6 +590,10 @@ export interface CardRowProps {
   replyAgent?: string | null;
   onSendToAgent?: (commentId: string) => void;
   onCardClick?: (commentId: string) => void;
+  // Issue #383 / ADR 0035: pass-through for the annotation filename
+  // link. Mouse path to open-in-editor — moves the cursor onto the
+  // card first, then dispatches the open at line_end.
+  onFileClick?: (commentId: string, file: string, lineEnd: number) => void;
 }
 
 // `grid-column` is set inline so a card's positioning is visible on the
@@ -624,6 +628,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     replyAgent,
     onSendToAgent,
     onCardClick,
+    onFileClick,
   } = props;
   return (
     <div
@@ -649,6 +654,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         replyAgent={replyAgent}
         onSendToAgent={onSendToAgent}
         onCardClick={onCardClick}
+        onFileClick={onFileClick}
       />
     </div>
   );

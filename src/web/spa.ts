@@ -340,6 +340,29 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', monospace;
   }
+  /* Issue 383 / ADR 0035: annotation filename location-stamp link.
+     Renders as an inline button — strip the button chrome so the text
+     stays in-flow with the rest of the header, then re-add a hover
+     underline + pointer cursor. No link-blue: the affordance reads as
+     a subtle location reference, matching Sentry / devtools / Sourcegraph. */
+  .comment-block .ann-filename-link {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .comment-block .ann-filename-link:hover {
+    text-decoration: underline;
+  }
+  .comment-block .ann-filename-link:focus-visible {
+    outline: 1px solid var(--border-accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
   .comment-block .author-kind {
     text-transform: lowercase;
     font-weight: 700;

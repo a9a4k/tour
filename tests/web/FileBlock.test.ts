@@ -752,6 +752,174 @@ describe("<FileBlock> — per-file Expand-all-hidden button (#274 / #298 / #317)
 });
 
 // ---------------------------------------------------------------------------
+// Per-file open-in-editor `↗` button (issue #383 / ADR 0035)
+// ---------------------------------------------------------------------------
+
+describe("<FileBlock> — file-header open-in-editor `↗` button (#383)", () => {
+  it("renders unconditionally in the right region with an aria-label", () => {
+    // Issue #383: unlike the `↕` expand-all (gap-gated), the `↗` button
+    // is always available — the open action is always meaningful.
+    const c = mount(
+      createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: false })),
+    );
+    const right = c.querySelector(".tour-file-header-right") as HTMLElement;
+    expect(right).not.toBeNull();
+    const button = right.querySelector(
+      ".tour-file-open-in-editor-button",
+    ) as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+    expect(button!.tagName).toBe("BUTTON");
+    expect(button!.getAttribute("aria-label")).toBe("Open file in editor");
+  });
+
+  it("dispatches onOpenInEditor with (file.name, 1, 'additions') on click", () => {
+    const calls: Array<[string, number, string]> = [];
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({
+          onOpenInEditor: (file: string, line: number, side: string) => {
+            calls.push([file, line, side]);
+          },
+        }),
+      ),
+    );
+    const button = c.querySelector(
+      ".tour-file-open-in-editor-button",
+    ) as HTMLButtonElement;
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([["x.ts", 1, "additions"]]);
+  });
+
+  it("does NOT toggle file collapse when the button is clicked (stopPropagation)", () => {
+    let toggled = 0;
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({
+          onOpenInEditor: () => {},
+          onToggleCollapse: () => {
+            toggled += 1;
+          },
+        }),
+      ),
+    );
+    const button = c.querySelector(
+      ".tour-file-open-in-editor-button",
+    ) as HTMLButtonElement;
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(toggled).toBe(0);
+  });
+
+  it("sits after the `↕` expand-all button when both render (per ADR 0035 grouping: `↕` then `↗`)", () => {
+    const c = mount(
+      createElement(FileBlock, defaultProps({ hasMultipleHiddenGaps: true })),
+    );
+    const right = c.querySelector(".tour-file-header-right") as HTMLElement;
+    const children = Array.from(right.children);
+    const expandIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-expand-all-button"),
+    );
+    const openIdx = children.findIndex((el) =>
+      el.classList.contains("tour-file-open-in-editor-button"),
+    );
+    expect(expandIdx).toBeGreaterThanOrEqual(0);
+    expect(openIdx).toBeGreaterThan(expandIdx);
+  });
+
+  it("renders some glyph content inside the button (visual cue, ASCII v1)", () => {
+    const c = mount(createElement(FileBlock, defaultProps()));
+    const button = c.querySelector(
+      ".tour-file-open-in-editor-button",
+    ) as HTMLButtonElement;
+    expect((button.textContent ?? "").trim().length).toBeGreaterThan(0);
+  });
+
+  it("filename text remains inert — no pointer cursor, no click handler attached to .tour-file-name", () => {
+    // PRD #383: "The filename text in the file header itself stays inert
+    // (it's a section title, not a location reference, and is surrounded
+    // by competing click targets)."
+    const c = mount(
+      createElement(FileBlock, defaultProps({ onOpenInEditor: () => {} })),
+    );
+    const name = c.querySelector(".tour-file-name") as HTMLElement;
+    expect(name).not.toBeNull();
+    // No inline onclick handler, and no aria-label / role marking it as
+    // interactive.
+    expect(name.getAttribute("role")).toBeNull();
+    expect(name.getAttribute("aria-label")).toBeNull();
+    expect(name.tagName).toBe("SPAN");
+  });
+
+  it("clicking the button when onOpenInEditor is unset is a silent no-op (no throw, no collapse)", () => {
+    // Defensive — App's openInEditor is unset when tourId is null; the
+    // button still renders but the click does nothing.
+    let toggled = 0;
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({
+          onToggleCollapse: () => {
+            toggled += 1;
+          },
+        }),
+      ),
+    );
+    const button = c.querySelector(
+      ".tour-file-open-in-editor-button",
+    ) as HTMLButtonElement;
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(toggled).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-annotation filename link (issue #383 / ADR 0035) — FileBlock pass-through
+// ---------------------------------------------------------------------------
+
+describe("<FileBlock> — annotation filename link pass-through (#383)", () => {
+  it("threads onAnnotationFileClick through to the CardRow's CommentCard", () => {
+    const calls: Array<[string, string, number]> = [];
+    const rows: PlannedRow[] = withComment(rowsCanonical(), {
+      ...ann1,
+      line_start: 2,
+      line_end: 2,
+    });
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({
+          rows,
+          onAnnotationFileClick: (id: string, file: string, lineEnd: number) => {
+            calls.push([id, file, lineEnd]);
+          },
+        }),
+      ),
+    );
+    const link = c.querySelector(
+      ".ann-filename-link",
+    ) as HTMLButtonElement | null;
+    expect(link).not.toBeNull();
+    act(() => {
+      link!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([["ann-1", "x.ts", 2]]);
+  });
+
+  it("falls back to inert filename text when onAnnotationFileClick is undefined", () => {
+    const rows: PlannedRow[] = withComment(rowsCanonical(), ann1);
+    const c = mount(createElement(FileBlock, defaultProps({ rows })));
+    expect(c.querySelector(".ann-filename-link")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GitHub-style file diff-stats indicator (#228)
 // ---------------------------------------------------------------------------
 

@@ -101,6 +101,24 @@ export interface FileBlockProps {
    *  driven via `[data-composer-open]` on `<html>`). */
   onAnnotate?: (anchor: RowClickAnchor) => void;
   onCardClick: (commentId: string) => void;
+  /** Issue #383 / ADR 0035: clicking the filename in an annotation card
+   *  moves the cursor onto the card AND dispatches the file-open at
+   *  line_end. Threaded to <CardRow> → <CommentCard>. Unset → filename
+   *  renders as inert text (legacy behaviour). */
+  onAnnotationFileClick?: (
+    commentId: string,
+    file: string,
+    lineEnd: number,
+  ) => void;
+  /** Issue #383 / ADR 0035: clicking the `↗` icon in the file header
+   *  dispatches the file-open at line 1 without moving the cursor. Unset
+   *  → button still renders but the click is a no-op (matches App's
+   *  unseeded-tourId guard). */
+  onOpenInEditor?: (
+    file: string,
+    line: number,
+    side: Side,
+  ) => void;
   commentProps?: CommentProps;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -196,6 +214,8 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     onRowClick,
     onAnnotate,
     onCardClick,
+    onAnnotationFileClick,
+    onOpenInEditor,
     commentProps,
     isCollapsed,
     onToggleCollapse,
@@ -298,6 +318,16 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     onDispatchExpand({ kind: "expand-file-all", file: file.name });
   };
 
+  // Issue #383 / ADR 0035: file-header `↗` icon. Dispatches a file-open
+  // at line 1, side=additions — mirrors the keyboard `o`'s sidebar-file
+  // payload. `stopPropagation` keeps the surrounding header's
+  // collapse-toggle from also firing. No cursor move (file-level
+  // affordance has no cursor-move contract to inherit).
+  const handleOpenInEditor = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (onOpenInEditor) onOpenInEditor(file.name, 1, "additions");
+  };
+
   return (
     <div className="tour-file-outer" data-file={file.name}>
       <div className="tour-file-header" onClick={onToggleCollapse}>
@@ -336,6 +366,18 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
               ↕
             </button>
           ) : null}
+          {/* Issue #383 / ADR 0035: file-header `↗` icon — mouse path to
+              open-in-editor at line 1. Renders unconditionally (unlike
+              `↕`, which is gated on multiple hidden gaps) because the
+              open action is always available. */}
+          <button
+            type="button"
+            className="tour-file-open-in-editor-button"
+            aria-label="Open file in editor"
+            onClick={handleOpenInEditor}
+          >
+            ↗
+          </button>
         </div>
       </div>
       {isCollapsed ? null : (
@@ -381,6 +423,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
                 layout,
                 cursorCardId,
                 onCardClick,
+                onAnnotationFileClick,
                 commentProps,
                 navIndexById,
                 navTotal,
@@ -638,6 +681,9 @@ function renderComment(
   layout: Layout,
   cursorCardId: string | null,
   onCardClick: (commentId: string) => void,
+  onAnnotationFileClick:
+    | ((commentId: string, file: string, lineEnd: number) => void)
+    | undefined,
   commentProps: CommentProps | undefined,
   navIndexById: ReadonlyMap<string, number> | undefined,
   navTotal: number,
@@ -667,6 +713,7 @@ function renderComment(
       replyAgent={commentProps?.replyAgent ?? null}
       onSendToAgent={commentProps?.onSendToAgent}
       onCardClick={onCardClick}
+      onFileClick={onAnnotationFileClick}
     />
   );
 }

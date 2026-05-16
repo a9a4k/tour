@@ -80,6 +80,7 @@ import { Footer } from "./Footer.js";
 import { composeFooterHints } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
 import { resolveYankTarget } from "../../core/yank-target.js";
+import { dispatchOpenInEditor } from "./dispatch-open-in-editor.js";
 
 // PRD #356 / issue #358: footer flash for `y` on a diff-row preview
 // truncates the displayed text to keep the legend strip readable while
@@ -1639,26 +1640,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             return;
           }
           if (!tourId) return;
-          void fetch(`/api/tours/${tourId}/open-in-editor`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              file: target.file,
-              line: target.line,
-              side: cursor && cursor.kind === "row" ? cursor.side : "additions",
-            }),
-          }).then(
-            async (res) => {
-              const data = (await res
-                .json()
-                .catch(() => ({ message: "o: server error" }))) as {
-                message?: string;
-              };
-              flashFooterStatus(data.message ?? "o: server error");
-            },
-            () => {
-              flashFooterStatus("o: server unreachable");
-            },
+          void dispatchOpenInEditor(
+            tourId,
+            target.file,
+            target.line,
+            cursor && cursor.kind === "row" ? cursor.side : "additions",
+            flashFooterStatus,
           );
           return;
         }
@@ -1792,6 +1779,28 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       });
     },
     [store],
+  );
+
+  // Issue #383 / ADR 0035: mouse paths to open-in-editor. Two callers:
+  // the annotation card filename link (cursor moves first, then dispatch
+  // at line_end) and the file-header `↗` icon (no cursor move, dispatch
+  // at line 1). Both reuse the keyboard `o` server contract via the
+  // dispatchOpenInEditor helper. The callback is null when tourId is
+  // unseeded so the click sites can render but the dispatch is a no-op.
+  const openInEditor = useCallback(
+    (file: string, line: number, side: "additions" | "deletions") => {
+      if (!tourId) return;
+      void dispatchOpenInEditor(tourId, file, line, side, flashFooterStatus);
+    },
+    [tourId, flashFooterStatus],
+  );
+
+  const onAnnotationFileClick = useCallback(
+    (commentId: string, file: string, lineEnd: number) => {
+      setCursorFromCardClick(commentId);
+      openInEditor(file, lineEnd, "additions");
+    },
+    [setCursorFromCardClick, openInEditor],
   );
 
   // Explicit reply-agent dispatch (issue #184, ADR 0021). Fired by the
@@ -1963,6 +1972,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 replyAgent={replyAgent}
                 onSendToAgent={sendToAgent}
                 onCardClick={setCursorFromCardClick}
+                onAnnotationFileClick={onAnnotationFileClick}
               />
             </main>
           </>
@@ -2068,6 +2078,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                     }
                     onAnnotate={openComposerOnRow}
                     onCardClick={setCursorFromCardClick}
+                    onAnnotationFileClick={onAnnotationFileClick}
+                    onOpenInEditor={openInEditor}
                     commentProps={{
                       registerRef: registerCommentRef,
                       composerBody,
@@ -2336,6 +2348,13 @@ interface CommentCardProps {
   // subsequent keyboard `r` / `s` then targets the same card. Receives the
   // top-level comment id (the cursor stop), not any clicked Reply id.
   onCardClick?: (commentId: string) => void;
+  // Issue #383 / ADR 0035: clicking the filename in the header is a
+  // distinct affordance — moves the cursor onto the card AND opens the
+  // file at line_end in the configured editor. Receives the top-level
+  // comment id (so the click can seed the cursor) plus the file + line
+  // so App can dispatch open-in-editor without recovering them. Optional
+  // — when unset the filename renders as inert text (legacy behaviour).
+  onFileClick?: (commentId: string, file: string, lineEnd: number) => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -2397,6 +2416,7 @@ export function CommentCard({
   replyAgent,
   onSendToAgent,
   onCardClick,
+  onFileClick,
 }: CommentCardProps): React.JSX.Element {
   const range =
     comment.line_start === comment.line_end
@@ -2455,7 +2475,28 @@ export function CommentCard({
         {comment.author !== comment.author_kind ? (
           <>{comment.author} · </>
         ) : null}
-        {comment.file}:{range}
+        {onFileClick ? (
+          // Issue #383 / ADR 0035: location-stamp linkification. Hover-
+          // underlined button (no link-blue) so the affordance stays
+          // visually restrained but the click contract is announced via
+          // role=button + aria-label. stopPropagation prevents the
+          // surrounding `.comment-block onClick` (cursor-on-card) from
+          // double-firing — onFileClick already moves the cursor first
+          // before dispatching the open.
+          <button
+            type="button"
+            className="ann-filename-link"
+            aria-label={`Open ${comment.file}:${range} in editor`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFileClick(comment.id, comment.file, comment.line_end);
+            }}
+          >
+            {comment.file}:{range}
+          </button>
+        ) : (
+          <>{comment.file}:{range}</>
+        )}
       </div>
       <div className="ann-body">
         <CommentMarkdown body={comment.body} />
@@ -2649,6 +2690,13 @@ interface CommentListSnapshotLostProps {
   replyAgent?: string | null;
   onSendToAgent: (commentId: string) => void;
   onCardClick: (commentId: string) => void;
+  // Issue #383 / ADR 0035: clicking the annotation filename moves the
+  // cursor onto the card AND dispatches the file-open at line_end.
+  onAnnotationFileClick?: (
+    commentId: string,
+    file: string,
+    lineEnd: number,
+  ) => void;
 }
 
 // Renders comments when the bundle is `snapshot-lost`. Reads `view.nav`
@@ -2669,6 +2717,7 @@ function CommentListSnapshotLost({
   replyAgent,
   onSendToAgent,
   onCardClick,
+  onAnnotationFileClick,
 }: CommentListSnapshotLostProps): React.JSX.Element {
   const { topLevel, repliesByRoot, navIndexById, navTotal } = nav;
   if (topLevel.length === 0) return <div className="empty">No comments</div>;
@@ -2704,6 +2753,7 @@ function CommentListSnapshotLost({
             replyAgent={replyAgent}
             onSendToAgent={onSendToAgent}
             onCardClick={onCardClick}
+            onFileClick={onAnnotationFileClick}
           />
         );
       })}
