@@ -138,6 +138,7 @@ export type Action =
   | { type: "picker.commit" }
   | { type: "bundle.loading"; tourId: string }
   | { type: "bundle.refreshed"; bundle: TourBundle }
+  | { type: "bundle.commentInserted"; comment: Comment }
   | { type: "bundle.failed"; tourId: string; error: string }
   | { type: "tour.switched"; tourId: string; bundle: TourBundle }
   | { type: "replyLock.loaded"; replyLock: ReplyLock | null }
@@ -232,6 +233,7 @@ export type Intent =
   | { type: "selectSidebarFile"; file: string }
   | { type: "mirrorAnnUrl"; commentId: string | null }
   | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
+  | { type: "optimisticInsertComment"; comment: Comment }
   | { type: "scrollToComment"; commentId: string }
   | { type: "scrollToComposer"; target: ComposerTarget }
   | { type: "requestReply"; tourId: string; commentId: string }
@@ -542,35 +544,48 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // created comment card scrolls into view (replaces the TUI's
       // `pendingScrollCommentId` useState per PRD #234).
       //
-      // Issue #322: also fold the freshly-created comment into the
-      // resolved bundle's comments array on the same dispatch — the
-      // new card renders in the same React commit as the textarea
-      // removal, instead of waiting for the SSE → bundle-refetch round-
-      // trip (~500-600 ms on large tours). The server-driven
-      // `bundle.refreshed` will replace the whole array later; that
-      // refresh naturally de-dupes by overwrite (id collision on the
-      // same dispatch is also guarded below). No-op on the bundle slice
-      // when the bundle isn't resolved (defence in depth — the runtime
-      // gates composer.submit on a resolved bundle).
+      // Issue #322 (preserved by issue #392): the freshly-created
+      // Comment must land in the bundle before the SSE-driven
+      // `bundle.refreshed` round-trip (~500-600 ms on large tours).
+      // Issue #392 splits *how*: this branch no longer folds the
+      // comment inline. It emits `optimisticInsertComment` instead,
+      // which the runtime queues via `queueMicrotask` as a separate
+      // `bundle.commentInserted` dispatch. Two React commits, ordered:
+      // (1) composer overlay unmounts here; (2) one microtask later,
+      // the bundle gains the new CommentRow. The TUI's opentui yoga
+      // layout pass crashed when both happened in the same commit —
+      // see the issue for the diff-pane-blank-after-submit symptom.
       if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
-      const intents: Intent[] = [
-        { type: "scrollToComment", commentId: action.comment.id },
-      ];
-      if (state.bundle.kind !== "ok") {
-        return { state: { ...state, composer: { kind: "closed" } }, intents };
-      }
-      const inner = state.bundle.value;
-      const already = inner.comments.some((a) => a.id === action.comment.id);
-      const nextBundle: TourBundle = already
-        ? inner
-        : { ...inner, comments: [...inner.comments, action.comment] };
       return {
-        state: {
-          ...state,
-          composer: { kind: "closed" },
-          bundle: { kind: "ok", value: nextBundle },
-        },
-        intents,
+        state: { ...state, composer: { kind: "closed" } },
+        intents: [
+          { type: "scrollToComment", commentId: action.comment.id },
+          { type: "optimisticInsertComment", comment: action.comment },
+        ],
+      };
+    }
+
+    case "bundle.commentInserted": {
+      // Issue #392: the deferred optimistic fold. Append the freshly-
+      // created Comment to the resolved bundle's comments array,
+      // idempotent on id collision (a `bundle.refreshed` may have
+      // already carried the id, or a duplicate `composer.submitted`
+      // landed via the runtime). No-op on a non-resolved bundle slice
+      // (defence in depth — the runtime already swallowed any case
+      // where the bundle dropped out mid-submit, and the reducer must
+      // not crash on a late microtask).
+      if (state.bundle.kind !== "ok") return { state, intents: NO_INTENTS };
+      const inner = state.bundle.value;
+      if (inner.comments.some((a) => a.id === action.comment.id)) {
+        return { state, intents: NO_INTENTS };
+      }
+      const nextBundle: TourBundle = {
+        ...inner,
+        comments: [...inner.comments, action.comment],
+      };
+      return {
+        state: { ...state, bundle: { kind: "ok", value: nextBundle } },
+        intents: NO_INTENTS,
       };
     }
 

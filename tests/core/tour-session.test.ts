@@ -1404,7 +1404,11 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r3.intents).toEqual([]);
   });
 
-  it("composer.submitted on submitting → closed; emits scrollToComment { commentId }", () => {
+  it("composer.submitted on submitting → closed; emits scrollToComment + optimisticInsertComment", () => {
+    // Issue #392: the bundle fold no longer happens inline. The reducer
+    // emits `optimisticInsertComment` so the runtime queues a separate
+    // `bundle.commentInserted` dispatch on the next microtask — two React
+    // commits, decoupled from the composer-overlay unmount.
     let s = stateWithTourLoaded();
     s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
     s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
@@ -1412,7 +1416,10 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     const ann = mkComment({ id: "fresh-ann-1" });
     const r = reduce(s, { type: "composer.submitted", comment: ann });
     expect(r.state.composer).toEqual({ kind: "closed" });
-    expect(r.intents).toEqual([{ type: "scrollToComment", commentId: "fresh-ann-1" }]);
+    expect(r.intents).toEqual([
+      { type: "scrollToComment", commentId: "fresh-ann-1" },
+      { type: "optimisticInsertComment", comment: ann },
+    ]);
   });
 
   it("composer.submitted on non-submitting states is a no-op (same state ref, no intents)", () => {
@@ -1429,25 +1436,30 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r2.intents).toEqual([]);
   });
 
-  // Issue #322: optimistic comment insert. The freshly-created Comment
-  // must be folded into the resolved bundle's comments array on the same
-  // dispatch that closes the composer, so the new card renders in the same
-  // React commit as the textarea removal — no visible gap while the SSE-
-  // driven bundle.refreshed round-trips (~500-600ms on large tours).
-  describe("composer.submitted optimistic bundle comments insert (issue #322)", () => {
+  // Issue #322: optimistic comment insert — the freshly-created Comment
+  // must materialise into the resolved bundle's comments array before the
+  // SSE-driven `bundle.refreshed` round-trip (~500-600ms on large tours).
+  //
+  // Issue #392: the fold no longer happens inline in `composer.submitted`
+  // — it ships via a separate `bundle.commentInserted` action that the
+  // runtime dispatches one microtask after `composer.submitted`, so the
+  // composer-overlay unmount and the height-changing CommentRow add land
+  // in two distinct React commits (opentui's yoga layout pass crashed
+  // when both happened in the same commit). The fold's *semantics* —
+  // append-if-absent on a resolved bundle, leave the bundle untouched on
+  // any other slice variant — are owned by `bundle.commentInserted`.
+  describe("bundle.commentInserted optimistic fold (issue #322 + #392)", () => {
     it("appends the new comment to a resolved snapshot-lost bundle's comments array", () => {
       let s = stateWithTourLoaded();
-      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
-      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
-      s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "fresh-ann-1" });
-      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         expect(r.state.bundle.value.comments.map((a) => a.id)).toContain("fresh-ann-1");
         // Variant is preserved across the optimistic fold.
         expect(r.state.bundle.value.kind).toBe("snapshot-lost");
       }
+      expect(r.intents).toEqual([]);
     });
 
     it("appends the new comment to a resolved ok-bundle's comments array (preserves diff + files)", () => {
@@ -1457,11 +1469,8 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         tourId: "tour-a",
         bundle: b,
       }).state;
-      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
-      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
-      s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "fresh-ann-ok" });
-      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         expect(r.state.bundle.value.kind).toBe("ok");
@@ -1474,7 +1483,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       }
     });
 
-    it("reply submission path produces the same optimistic insertion", () => {
+    it("reply path produces the same fold (parent retained, reply appended)", () => {
       const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
         kind: "snapshot-lost",
@@ -1486,11 +1495,8 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         tourId: "tour-a",
         bundle: b,
       }).state;
-      s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
-      s = reduce(s, { type: "composer.setBody", body: "a reply" }).state;
-      s = reduce(s, { type: "composer.submit" }).state;
       const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
-      const r = reduce(s, { type: "composer.submitted", comment: reply });
+      const r = reduce(s, { type: "bundle.commentInserted", comment: reply });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         const ids = r.state.bundle.value.comments.map((a) => a.id);
@@ -1498,13 +1504,24 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       }
     });
 
+    it("is idempotent: a second commentInserted for the same id is a no-op (no duplicate)", () => {
+      let s = stateWithTourLoaded();
+      const ann = mkComment({ id: "dedup-1" });
+      s = reduce(s, { type: "bundle.commentInserted", comment: ann }).state;
+      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
+      // Same-ref short-circuit on dedup so listeners don't churn.
+      expect(r.state).toBe(s);
+      expect(r.intents).toEqual([]);
+      if (r.state.bundle.kind === "ok") {
+        const matching = r.state.bundle.value.comments.filter((a) => a.id === "dedup-1");
+        expect(matching).toHaveLength(1);
+      }
+    });
+
     it("subsequent bundle.refreshed carrying the same id results in exactly one occurrence (no duplicate)", () => {
       let s = stateWithTourLoaded();
-      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
-      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
-      s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "dedup-1" });
-      s = reduce(s, { type: "composer.submitted", comment: ann }).state;
+      s = reduce(s, { type: "bundle.commentInserted", comment: ann }).state;
       // Server bundle from the SSE-triggered refetch — also carries the
       // same comment. The refresh must overwrite the optimistic copy,
       // not double-insert.
@@ -1523,11 +1540,8 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
 
     it("subsequent bundle.refreshed NOT carrying the id overwrites the optimistic insert (server wins on divergence)", () => {
       let s = stateWithTourLoaded();
-      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
-      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
-      s = reduce(s, { type: "composer.submit" }).state;
       const optimistic = mkComment({ id: "optimistic-1" });
-      s = reduce(s, { type: "composer.submitted", comment: optimistic }).state;
+      s = reduce(s, { type: "bundle.commentInserted", comment: optimistic }).state;
       // Multi-client scenario: another writer concurrently created a
       // different comment; ours never reached disk. The refreshed
       // bundle carries someone else's comment but not ours.
@@ -1546,10 +1560,61 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       }
     });
 
-    it("is a no-op on the bundle slice when the bundle isn't resolved; composer still transitions to closed", () => {
-      // Hand-construct a state in submitting with a non-ok bundle slice
-      // (defence-in-depth path — the runtime guards against this but the
-      // reducer must still close the composer cleanly).
+    it("is a no-op when the bundle isn't resolved (defence in depth; state ref-equal)", () => {
+      // Hand-construct a state with a non-ok bundle slice — the runtime
+      // already gates `composer.submit` on a resolved bundle, but the
+      // reducer must defensively no-op so a late microtask dispatch
+      // after the bundle dropped out doesn't crash.
+      const base = initialTourSessionState();
+      const s: TourSessionState = {
+        ...base,
+        currentTourId: "tour-a",
+        bundle: { kind: "loading" },
+      };
+      const ann = mkComment({ id: "fresh-but-bundleless" });
+      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
+      expect(r.state).toBe(s);
+      expect(r.intents).toEqual([]);
+    });
+  });
+
+  describe("composer.submitted decouples the bundle fold (issue #392)", () => {
+    it("does NOT mutate bundle.comments inline — bundle slice ref-equal across the dispatch", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const bundleBefore = s.bundle;
+      const ann = mkComment({ id: "fresh-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      // Bundle slice unchanged — the fold ships on a separate dispatch
+      // that the runtime queues for the next microtask, so the composer-
+      // overlay unmount and the height-changing CommentRow add land in
+      // two distinct React commits.
+      expect(r.state.bundle).toBe(bundleBefore);
+      // Composer still transitions to closed in the same commit.
+      expect(r.state.composer).toEqual({ kind: "closed" });
+    });
+
+    it("emits optimisticInsertComment in addition to scrollToComment so the runtime can defer the fold", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkComment({ id: "fresh-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      expect(r.intents).toEqual([
+        { type: "scrollToComment", commentId: "fresh-1" },
+        { type: "optimisticInsertComment", comment: ann },
+      ]);
+    });
+
+    it("emits the same intent pair regardless of bundle slice state (runtime owns the bundle guard)", () => {
+      // The reducer no longer peeks at the bundle. The `bundle.commentInserted`
+      // dispatch the runtime schedules is the home of the bundle-resolved
+      // check. This keeps the reducer's branch shape uniform across
+      // bundle states and lets the failure-recovery path (composer.submit
+      // while bundle is loading) close cleanly.
       const base = initialTourSessionState();
       const s: TourSessionState = {
         ...base,
@@ -1567,6 +1632,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       expect(r.state.bundle).toEqual({ kind: "loading" });
       expect(r.intents).toEqual([
         { type: "scrollToComment", commentId: "fresh-but-bundleless" },
+        { type: "optimisticInsertComment", comment: ann },
       ]);
     });
   });
