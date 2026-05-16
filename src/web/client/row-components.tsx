@@ -323,6 +323,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
             ? "tour-row-symbol in-range"
             : "tour-row-symbol"
         }
+        data-side={codeSide}
         aria-hidden="true"
       >
         {unifiedSignGlyph(kind)}

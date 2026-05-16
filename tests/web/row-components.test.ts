@@ -368,6 +368,60 @@ describe("<DiffRow>", () => {
       expect(symbols[0]!.textContent).toBe("");
     });
 
+    // The `+` annotate-button hover-reveal rule keys on
+    // `.tour-row-{gutter,symbol,cell}[data-side="X"]:hover`. Without
+    // `data-side` on the unified symbol cell, the button briefly
+    // disappeared as the pointer crossed the symbol column between the
+    // new-gutter and the code cell. The symbol cell now carries the same
+    // `data-side` as the code cell (kind-implied side; additions on
+    // context) so lateral pointer motion stays continuous.
+    it("symbol cell carries the code-cell's data-side so `+` hover-reveal stays continuous across the row", () => {
+      const additionRow = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 5,
+          leftText: "",
+          rightText: "x",
+          isCursor: false,
+        }),
+      );
+      expect(
+        additionRow.querySelector(".tour-row-symbol")!.getAttribute("data-side"),
+      ).toBe("additions");
+
+      const deletionRow = mount(
+        createElement(DiffRow, {
+          kind: "deletion",
+          layout: "unified",
+          leftLineNumber: 5,
+          rightLineNumber: null,
+          leftText: "x",
+          rightText: "",
+          isCursor: false,
+        }),
+      );
+      expect(
+        deletionRow.querySelector(".tour-row-symbol")!.getAttribute("data-side"),
+      ).toBe("deletions");
+
+      const contextRow = mount(
+        createElement(DiffRow, {
+          kind: "context",
+          layout: "unified",
+          leftLineNumber: 1,
+          rightLineNumber: 1,
+          leftText: "x",
+          rightText: "x",
+          isCursor: false,
+        }),
+      );
+      expect(
+        contextRow.querySelector(".tour-row-symbol")!.getAttribute("data-side"),
+      ).toBe("additions");
+    });
+
     it("clicking the old (deletions) gutter seeds the cursor on the deletions side, even on a context row", () => {
       const sides: string[] = [];
       const c = mount(
