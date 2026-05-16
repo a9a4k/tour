@@ -110,6 +110,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: hunk-header / expand-down button cell widens to the gutter
+  footprint so `@@` aligns with diff code (issue #380).** The banner's
+  button cell was a fixed `paddingLeft=2 + 1 glyph + paddingRight=2 = 5`
+  cells wide, while the adjacent diff rows reserved `1 (accent stripe) +
+  8 (split gutter) = 9` cells (or `1 + 14 = 15` in unified) before the
+  content column. Result: the `@@` text in the right cell started ~3
+  columns left of code in split layout (~9 columns left in unified),
+  and the standalone `expand-down` row's empty right cell drifted by
+  the same amount. Widened the button cell to `1 + LINE_NUMBER_WIDTH +
+  3 = 9` cells in split and `1 + LINE_NUMBER_WIDTH * 2 + 4 = 15` cells
+  in unified — derived from the same `LINE_NUMBER_WIDTH` constant the
+  gutter helpers use so alignment stays correct if the gutter format
+  ever changes. Glyph centers horizontally inside the button cell via
+  `alignItems="center"` (no hand-tuned paddings). Right cell drops its
+  `paddingLeft=1` so `@@` (banner) / empty fill (`expand-down`) starts
+  exactly at the same column as the diff code below. Applies
+  identically to `↑` / `↕` (hunk-header banner) and `↓`
+  (`expand-down`). Button bg stays `accentEmphasis`; the focus tint on
+  the right cell from #379 is unchanged.
+
+  Issue: #380
+
 - **TUI: hunk-header and `expand-down` buttons no longer dim on cursor
   (issue #379).** The two-cell banner painted its focus tint on the
   saturated `accentEmphasis` button cell, so landing the diff cursor

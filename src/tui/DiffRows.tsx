@@ -145,6 +145,25 @@ function hunkHeaderRowId(
 // column on its right.
 const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 3);
 
+// Issue #380: the hunk-header banner + standalone expand-down button
+// cell widens from a fixed 5-cell footprint to the gutter-aligned
+// footprint of the adjacent diff rows. The button cell occupies the
+// pre-content column block — 1-cell accent stripe + gutter text —
+// so the right cell starts at the same column as the diff code in
+// the surrounding DiffLine rows.
+//
+//   split   = 1 (stripe) + LINE_NUMBER_WIDTH + " " + sign + " "  = 9
+//   unified = 1 (stripe) + LINE_NUMBER_WIDTH + " " + LINE_NUMBER_WIDTH
+//             + " " + sign + " "                                  = 15
+//
+// Expressed in terms of LINE_NUMBER_WIDTH so the alignment stays
+// correct if the gutter format ever changes.
+function buttonCellWidth(layout: "split" | "unified"): number {
+  return layout === "split"
+    ? 1 + LINE_NUMBER_WIDTH + 3
+    : 1 + LINE_NUMBER_WIDTH * 2 + 4;
+}
+
 // Issue #280: hunk-header banner left-cell glyph. `↑` for `primaryExpand`
 // = "up", `↕` for "all".
 function hunkHeaderGlyph(primaryExpand: "up" | "all"): string {
@@ -283,15 +302,15 @@ export function DiffRows({
             >
               <box
                 flexShrink={0}
-                paddingLeft={2}
-                paddingRight={2}
+                width={buttonCellWidth(layout)}
+                alignItems="center"
                 backgroundColor={buttonBg}
               >
                 <text height={1} fg={theme.fg.onEmphasis}>
                   {hunkHeaderGlyph(row.primaryExpand)}
                 </text>
               </box>
-              <box flexGrow={1} backgroundColor={textBg} paddingLeft={1}>
+              <box flexGrow={1} backgroundColor={textBg}>
                 <text height={1} fg={theme.fg.muted}>{row.header}</text>
               </box>
             </box>
@@ -309,10 +328,13 @@ export function DiffRows({
             ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
             : undefined;
           // Issue #292: standalone `expand-down` row mirrors the
-          // hunk-header banner's two-cell layout — 44px saturated
-          // button cell carrying `↓` + empty right cell. `height={1}`
-          // on the inner `<text>` glyph defensively pins the cell to
-          // 1 grid row — same shape as the hunk-header banner above;
+          // hunk-header banner's two-cell layout — saturated button
+          // cell carrying `↓` + empty right cell. Issue #380 widened
+          // the button cell to the gutter footprint (split = 9,
+          // unified = 15) so the right cell starts at the same
+          // column as the diff code in adjacent rows. `height={1}` on
+          // the inner `<text>` glyph defensively pins the cell to 1
+          // grid row — same shape as the hunk-header banner above;
           // see that comment. The right cell is empty so wrap can't
           // fire here, but matching the banner keeps the pattern
           // consistent if someone later puts text in this cell.
@@ -335,8 +357,8 @@ export function DiffRows({
               >
                 <box
                   flexShrink={0}
-                  paddingLeft={2}
-                  paddingRight={2}
+                  width={buttonCellWidth(layout)}
+                  alignItems="center"
                   backgroundColor={buttonBg}
                 >
                   <text height={1} fg={theme.fg.onEmphasis}>↓</text>

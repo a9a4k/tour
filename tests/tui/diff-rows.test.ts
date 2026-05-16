@@ -1928,6 +1928,179 @@ index 1..2 100644
     });
   });
 
+  // Issue #380 — hunk-header banner + standalone expand-down button
+  // cell widens from a fixed 5-cell footprint to the gutter-aligned
+  // footprint of adjacent diff rows. The button cell width depends on
+  // the layout (split = 1 stripe + 5 numWidth + " " + sign + " " = 9;
+  // unified = 1 stripe + 5 numWidth + " " + 5 numWidth + " " + sign +
+  // " " = 15). The right cell's `paddingLeft` drops to 0 so the `@@`
+  // text (banner) starts exactly at the same column as the diff code
+  // in adjacent rows.
+  describe("hunk-header + expand-down button cell width matches gutter footprint (issue #380)", () => {
+    function buttonCellOf(tree: unknown): AnyElement | undefined {
+      return flatten(tree).find(
+        (el) => el.props["backgroundColor"] === theme.bg.accentEmphasis,
+      );
+    }
+
+    function rightCellOf(tree: unknown): AnyElement | undefined {
+      // The right cell is the one with flexGrow=1 sitting next to the
+      // saturated button cell.
+      return flatten(tree).find((el) => el.props["flexGrow"] === 1);
+    }
+
+    it("hunk-header banner button cell is 9 cells wide in split layout (1 stripe + 8 gutter footprint)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const buttonCell = buttonCellOf(tree);
+      expect(buttonCell).toBeDefined();
+      expect(buttonCell!.props["width"]).toBe(9);
+    });
+
+    it("hunk-header banner button cell is 15 cells wide in unified layout (1 stripe + 14 gutter footprint)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "unified" });
+      const buttonCell = buttonCellOf(tree);
+      expect(buttonCell).toBeDefined();
+      expect(buttonCell!.props["width"]).toBe(15);
+    });
+
+    it("standalone expand-down row button cell is 9 cells wide in split layout", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: 2,
+          text: "↓ Expand Down",
+          gapAbove: 80,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const buttonCell = buttonCellOf(tree);
+      expect(buttonCell).toBeDefined();
+      expect(buttonCell!.props["width"]).toBe(9);
+    });
+
+    it("standalone expand-down row button cell is 15 cells wide in unified layout", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: 2,
+          text: "↓ Expand Down",
+          gapAbove: 80,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "unified" });
+      const buttonCell = buttonCellOf(tree);
+      expect(buttonCell).toBeDefined();
+      expect(buttonCell!.props["width"]).toBe(15);
+    });
+
+    it("hunk-header banner glyph is horizontally centered in the button cell (alignItems=center)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "up",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const buttonCell = buttonCellOf(tree);
+      expect(buttonCell).toBeDefined();
+      expect(buttonCell!.props["alignItems"]).toBe("center");
+    });
+
+    it("expand-down button glyph is horizontally centered in the button cell (alignItems=center)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: 2,
+          text: "↓",
+          gapAbove: 5,
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const buttonCell = buttonCellOf(tree);
+      expect(buttonCell).toBeDefined();
+      expect(buttonCell!.props["alignItems"]).toBe("center");
+    });
+
+    it("hunk-header banner right cell has no paddingLeft (`@@` text starts at the content column)", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const rightCell = rightCellOf(tree);
+      expect(rightCell).toBeDefined();
+      // The previous layout had `paddingLeft={1}` to inset the `@@` text.
+      // Issue #380 drops that so the text starts exactly at the same
+      // column as the diff code in the adjacent rows.
+      expect(rightCell!.props["paddingLeft"]).toBeFalsy();
+    });
+
+    it("button cell width is independent of glyph (`↑` / `↕` / `↓` all yield the same width per layout)", () => {
+      const upRows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -100,3 +100,3 @@",
+          hunkIndex: 1,
+          gapAbove: 80,
+          primaryExpand: "up",
+        },
+      ];
+      const allRows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const downRows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "expand-down",
+          boundaryRef: 2,
+          text: "↓ Expand Down",
+          gapAbove: 80,
+        },
+      ];
+      const upButton = buttonCellOf(callDiffRows({ rows: upRows, layout: "split" }));
+      const allButton = buttonCellOf(callDiffRows({ rows: allRows, layout: "split" }));
+      const downButton = buttonCellOf(callDiffRows({ rows: downRows, layout: "split" }));
+      expect(upButton!.props["width"]).toBe(9);
+      expect(allButton!.props["width"]).toBe(9);
+      expect(downButton!.props["width"]).toBe(9);
+    });
+  });
+
   it("uses semantic diff-bg props sourced from the theme (no hard-coded hex passed to DiffLine)", () => {
     // The DiffRows wrapper passes the semantic "addition"/"deletion" tag;
     // the actual color is resolved inside DiffLine from the theme. Assert
