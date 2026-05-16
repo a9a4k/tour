@@ -156,15 +156,9 @@ export function moveCursor(
           preferredSide: cursor.preferredSide,
         };
       }
-      // Exit the Card — resolve against the root's card row in the
-      // flat stream and step from there.
-      const exitAnchor: CardAnchor = { ...cursor, commentId: found.thread.root.id };
-      const idx = resolveCursorRowIdx(exitAnchor, flatRows);
-      if (idx === -1) return cursor;
-      const step = direction === "down" ? 1 : -1;
-      const next = idx + step;
-      if (next < 0 || next >= flatRows.length) return cursor;
-      return cursorFromRow(flatRows[next], preferredSideOf(cursor));
+      // Out of in-Card range — fall through to the row-walk below.
+      // `resolveCursorRowIdx` maps a reply's id through `threads` to
+      // the root's card row, so a step from there exits the Card.
     }
   }
   const idx = resolveCursorRowIdx(cursor, flatRows, threads);
