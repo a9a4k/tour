@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- **OpenTUI tree-sitter machinery retired (issue #377, PRD #374, slice 3).**
+  After #376 ported the TUI to Shiki, the OpenTUI tree-sitter path was
+  dead code that still shipped in the binary. Deleted `src/tui/syntax.ts`
+  (whitelist + hand-tuned `getSyntaxStyle()` palette), `src/tui/parser-
+  worker-bundle.js` (bespoke pre-bundled OpenTUI tree-sitter worker), and
+  `src/tui/otui-worker-shim.ts` (the `OTUI_TREE_SITTER_WORKER_PATH` env-
+  var indirection — the shim's only purpose). The hidden `tour selftest-
+  syntax` verb (and `src/tui/selftest-runner.ts` / `src/cli/selftest.ts`)
+  retire with it — the verb tested the tree-sitter worker boot; Shiki
+  runs synchronously and has no equivalent worker. The binary build
+  pipeline simplifies: `scripts/build-client.ts` no longer pre-bundles
+  the OpenTUI parser worker (only the embedded webapp client string
+  remains as a pre-build artefact), `scripts/build-binary.ts` invokes
+  `bun build --compile` with only `src/main.ts` as an entrypoint (no
+  second worker entrypoint), and the `otuiWorkerStub` snapshot/restore
+  branch retires (issue #204's stub-restore state machine halves —
+  only the embedded webapp client string still uses snapshot/restore).
+  `scripts/smoke-binary.sh` drops the `selftest-syntax` invocation.
+  Measured binary size delta on bun target (Linux x64):
+  130,590,864 → 130,328,720 bytes (~256 KB reduction; smaller than
+  the ~1–2 MB the PRD projected — the tree-sitter machinery
+  minified down further than expected post-bundle).
+
+  Issue: #377 · PRD: #374
+
 ### Added
 
 - **TUI paints every Shiki-supported language via

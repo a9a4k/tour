@@ -114,20 +114,5 @@ if grep -E "Cannot find module|ResolveMessage" tui.err >/dev/null; then
 fi
 echo "OK: tui lazy import resolved"
 
-# Syntax-highlight worker smoke. Greppping the TUI's own stderr is not
-# enough: opentui's TerminalConsole captures `console.error` into an
-# in-memory buffer once the renderer mounts, and the parser worker is
-# spawned lazily AFTER mount — so any worker errors logged from that
-# point on never reach the parent's stderr. `tour selftest-syntax` runs
-# the worker outside the TUI renderer and exits non-zero if tokens
-# don't come back. See src/tui/selftest-runner.ts.
-echo "==> syntax-highlight selftest"
-if ! "$BIN" selftest-syntax 2>selftest.err; then
-  echo "ERROR: syntax-highlight selftest failed:" >&2
-  cat selftest.err >&2
-  exit 1
-fi
-cat selftest.err
-
 echo ""
 echo "smoke passed."

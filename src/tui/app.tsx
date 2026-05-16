@@ -1,10 +1,3 @@
-// See src/tui/otui-worker-shim.ts — pre-bundles opentui's parser.worker.js
-// (with its `web-tree-sitter` dep) and points opentui's startWorker at the
-// embedded copy in the compiled binary. Without this the released binary
-// can't boot the syntax-highlighter worker and TS/TSX/JS/MD diffs render
-// unstyled.
-import "./otui-worker-shim.js";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";

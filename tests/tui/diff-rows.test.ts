@@ -1,15 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 
 // @opentui/core eagerly loads tree-sitter highlights `.scm` assets at
-// module-init, which esbuild can't transform under vitest. The TUI only
-// needs RGBA / SyntaxStyle / pathToFiletype from this module at runtime;
-// stub them here so importing DiffRows (which transitively pulls in
-// `./syntax.js`) doesn't hit the .scm loader.
-vi.mock("@opentui/core", () => ({
-  RGBA: { fromHex: () => ({}) },
-  SyntaxStyle: { fromStyles: () => ({ tokens: {} }) },
-  pathToFiletype: () => undefined,
-}));
+// module-init, which esbuild can't transform under vitest. DiffRows /
+// DiffLine only `import type` from @opentui/core (the type is erased at
+// compile time), but stubbing keeps the module from loading at all in
+// case sibling imports pull it in transitively.
+vi.mock("@opentui/core", () => ({}));
 
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { DiffRows } from "../../src/tui/DiffRows.js";
