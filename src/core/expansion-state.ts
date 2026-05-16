@@ -55,7 +55,13 @@ export interface OrphanWindow {
   fromEnd: number;
 }
 
-const SYMMETRIC_STEP = 10;
+/** Per-side step in `symmetric-20` mode. A single-direction press
+ *  (`"up"` / `"down"`) reveals `SYMMETRIC_STEP * 2` lines total; a
+ *  `"both"` press reveals `SYMMETRIC_STEP` lines on each side. Exported
+ *  so the per-press total is computable from one source — see
+ *  `core/primary-action-plan.ts`, which uses `SYMMETRIC_STEP * 2` to
+ *  predict orphan-landings against the same reducer math. */
+export const SYMMETRIC_STEP = 10;
 
 export function emptyExpansion(): ExpansionState {
   return new Map();

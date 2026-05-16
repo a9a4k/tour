@@ -25,7 +25,7 @@ import {
 } from "./cursor-state.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 import { GAP_TWO_ROW_THRESHOLD, hunkHeaderExpandPlan } from "./diff-rows.js";
-import type { BoundaryExpansion } from "./expansion-state.js";
+import { SYMMETRIC_STEP, type BoundaryExpansion } from "./expansion-state.js";
 import type { FlatRow } from "./flat-rows.js";
 
 /**
@@ -90,9 +90,11 @@ export interface PrimaryActionContext {
   boundaryExpansion: BoundaryExpansion;
 }
 
-/** Step size for the `↓ Expand Down` / `↑ Expand Up` symmetric ladder.
- *  Mirrors the reducer's `addDown` / `addUp` calculation. */
-const SYMMETRIC_STEP_TOTAL = 20;
+/** Per-press total for a single-direction `symmetric-20` press
+ *  (`"up"` or `"down"`). Mirrors the reducer's `Math.min(SYMMETRIC_STEP *
+ *  2, remaining)` for those directions; importing `SYMMETRIC_STEP` keeps
+ *  the planner's orphan prediction in lockstep with the reducer math. */
+const SYMMETRIC_STEP_TOTAL = SYMMETRIC_STEP * 2;
 
 export function planPrimaryAction(ctx: PrimaryActionContext): PrimaryActionPlan {
   const { target, preferredSide, flatRowsBefore, gapSize, boundaryExpansion } =
