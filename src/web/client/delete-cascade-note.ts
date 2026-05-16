@@ -11,27 +11,21 @@
 //      this Reply leaves the projection.
 //   3. The target is a parent with ≥1 surviving Reply — the parent
 //      collapses to a `[deleted]` stub and the Replies stay under it.
-//
-// Input is the projected `Comment[]` from the bundle; downstream consumers
-// optionally carry the `deleted?: { at }` marker (the bundle's `Comment`
-// is structurally compatible with `CommentState`).
 
 import type { Comment } from "./types.js";
-
-type WithDeleted = Comment & { deleted?: { at: string } };
 
 export type DeleteCascadeNote =
   | { kind: "reply-only" }
   | { kind: "parent-stub"; surviving: number }
   | { kind: "thread-vanishes" };
 
-function isLive(c: WithDeleted): boolean {
+function isLive(c: Comment): boolean {
   return c.deleted === undefined;
 }
 
 export function computeDeleteCascadeNote(
-  target: WithDeleted,
-  comments: ReadonlyArray<WithDeleted>,
+  target: Comment,
+  comments: ReadonlyArray<Comment>,
 ): DeleteCascadeNote {
   if (target.replies_to !== undefined) {
     const parent = comments.find((c) => c.id === target.replies_to);
