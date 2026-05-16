@@ -1093,6 +1093,35 @@ describe("<DiffRow>", () => {
     expect(calls).toEqual(["deletions", "additions"]);
   });
 
+  it("clicking the gutter cell in split layout seeds the cursor on the gutter's side", () => {
+    const calls: Array<"additions" | "deletions"> = [];
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "x",
+        rightText: "x",
+        isCursor: false,
+        onClick: (side: "additions" | "deletions") => calls.push(side),
+      }),
+    );
+    const leftGutter = c.querySelector('.tour-row-gutter[data-side="deletions"]') as HTMLElement;
+    const rightGutter = c.querySelector('.tour-row-gutter[data-side="additions"]') as HTMLElement;
+    expect(leftGutter).not.toBeNull();
+    expect(rightGutter).not.toBeNull();
+
+    act(() => {
+      leftGutter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    act(() => {
+      rightGutter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(calls).toEqual(["deletions", "additions"]);
+  });
+
   it("calls onClick with preferredSide for addition rows in split layout", () => {
     // An `addition` row in split has no deletion content — the deletion
     // column may not even be clickable. The clicker still gets a useful

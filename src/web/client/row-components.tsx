@@ -510,6 +510,7 @@ function Column({
         className={gutterClasses.join(" ")}
         data-side={side}
         data-line-number={lineNumber ?? ""}
+        onClick={onClick}
       >
         {lineNumber ?? ""}
         {showAnnotateButton ? (
