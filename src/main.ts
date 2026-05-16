@@ -82,24 +82,29 @@ function firstRunBanner(): string {
 }
 
 async function main(): Promise<void> {
-  const { command, positional, flags } = parseArgs(process.argv);
-  // Issue #369. Every subcommand reads/writes `.tour/` at a single
-  // "tour root" — the nearest `.git` ancestor, the nearest `.tour/`
-  // ancestor outside a git repo, or cwd as a last-resort fallback. The
-  // resolved path is threaded through as `cwd` to all command handlers
-  // so two shells in different sub-directories of the same repo see the
-  // same store. Strays (sub-directory `.tour/` left over from before
-  // this change) surface as a one-line stderr warning so the user can
-  // see what's being ignored without losing data.
-  const { root: cwd, strayTourDirs } = await resolveTourRoot(process.cwd());
-  for (const stray of strayTourDirs) {
-    console.error(
-      `tour: warning: ignoring stray .tour/ below resolved root at ${stray} (issue #369). Move its contents to ${cwd}/.tour/ to keep them.`,
-    );
-  }
-  const json = boolFlag(flags, "json");
-
+  // `json` is declared outside the try so the catch can still pick the
+  // right error format when `parseArgs` itself throws (e.g. `--flag=`
+  // with an empty value, issue #393) — before `flags` has been read.
+  let json = false;
   try {
+    const { command, positional, flags } = parseArgs(process.argv);
+    json = boolFlag(flags, "json");
+    // Issue #369. Every subcommand reads/writes `.tour/` at a single
+    // "tour root" — the nearest `.git` ancestor, the nearest `.tour/`
+    // ancestor outside a git repo, or cwd as a last-resort fallback.
+    // The resolved path is threaded through as `cwd` to all command
+    // handlers so two shells in different sub-directories of the same
+    // repo see the same store. Strays (sub-directory `.tour/` left
+    // over from before this change) surface as a one-line stderr
+    // warning so the user can see what's being ignored without losing
+    // data.
+    const { root: cwd, strayTourDirs } = await resolveTourRoot(process.cwd());
+    for (const stray of strayTourDirs) {
+      console.error(
+        `tour: warning: ignoring stray .tour/ below resolved root at ${stray} (issue #369). Move its contents to ${cwd}/.tour/ to keep them.`,
+      );
+    }
+
     switch (command) {
       case "create": {
         const head = flag(flags, "head");
