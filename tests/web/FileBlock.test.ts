@@ -920,6 +920,42 @@ describe("<FileBlock> — annotation filename link pass-through (#383)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-card 🗑 trash icon (issue #389 / ADR 0036) — FileBlock pass-through
+// ---------------------------------------------------------------------------
+
+describe("<FileBlock> — trash icon pass-through (#389)", () => {
+  it("threads onDeleteClick through to the CardRow's CommentCard", () => {
+    const calls: string[] = [];
+    const rows: PlannedRow[] = withComment(rowsCanonical(), ann1);
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({
+          rows,
+          onDeleteClick: (id: string) => {
+            calls.push(id);
+          },
+        }),
+      ),
+    );
+    const trash = c.querySelector(
+      ".comment-block > .ann-header .ann-trash-button",
+    ) as HTMLButtonElement | null;
+    expect(trash).not.toBeNull();
+    act(() => {
+      trash!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual(["ann-1"]);
+  });
+
+  it("renders no trash button when onDeleteClick is undefined", () => {
+    const rows: PlannedRow[] = withComment(rowsCanonical(), ann1);
+    const c = mount(createElement(FileBlock, defaultProps({ rows })));
+    expect(c.querySelector(".ann-trash-button")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GitHub-style file diff-stats indicator (#228)
 // ---------------------------------------------------------------------------
 

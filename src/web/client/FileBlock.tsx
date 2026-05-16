@@ -119,6 +119,10 @@ export interface FileBlockProps {
     line: number,
     side: Side,
   ) => void;
+  /** Issue #389 / ADR 0036 (Slice E): per-card 🗑 button callback.
+   *  Threaded to <CardRow> → <CommentCard>. Unset → trash button is
+   *  suppressed (matches snapshot-lost branch's older signature). */
+  onDeleteClick?: (commentId: string) => void;
   commentProps?: CommentProps;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -216,6 +220,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     onCardClick,
     onAnnotationFileClick,
     onOpenInEditor,
+    onDeleteClick,
     commentProps,
     isCollapsed,
     onToggleCollapse,
@@ -424,6 +429,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
                 cursorCardId,
                 onCardClick,
                 onAnnotationFileClick,
+                onDeleteClick,
                 commentProps,
                 navIndexById,
                 navTotal,
@@ -684,6 +690,7 @@ function renderComment(
   onAnnotationFileClick:
     | ((commentId: string, file: string, lineEnd: number) => void)
     | undefined,
+  onDeleteClick: ((commentId: string) => void) | undefined,
   commentProps: CommentProps | undefined,
   navIndexById: ReadonlyMap<string, number> | undefined,
   navTotal: number,
@@ -714,6 +721,7 @@ function renderComment(
       onSendToAgent={commentProps?.onSendToAgent}
       onCardClick={onCardClick}
       onFileClick={onAnnotationFileClick}
+      onDeleteClick={onDeleteClick}
     />
   );
 }

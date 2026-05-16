@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Webapp delete (trash icon + confirm modal) (issue #389, ADR 0036,
+  PRD #384, Slice E).** Every Comment card in the webapp gains a 🗑
+  affordance — on the parent header and on each inline Reply. Hover
+  (or focus) reveals the icon; clicking opens a confirmation modal
+  that previews the target Comment (author kind, optional author
+  token, file location, relative age, body excerpt) and surfaces the
+  C4 cascade: "this reply will be removed from the thread.", "N
+  replies will remain under [deleted].", or "the thread will vanish."
+  Cancel dismisses; Delete dispatches a `DELETE
+  /api/tours/<id>/comments/<comment-id>` request that wraps the
+  shared `createDelete` seam with `by_kind: "human"` — the same path
+  the CLI's `--delete` flag uses (Slice C). The watcher / SSE flow
+  refreshes the projection in place; deleted leaf Replies vanish,
+  deleted parents with surviving Replies render as a muted italic
+  `[deleted]` stub Card with the Replies underneath, and
+  fully-deleted Threads disappear entirely. The modal traps Tab
+  inside its two buttons, autofocuses Delete so Enter confirms by
+  default, and dismisses on Esc, scrim mousedown, or Cancel click.
+  The bridge never asserts `--as-agent` — the webapp's delete is
+  implicitly human by design.
+
 - **CLI delete verb + humans-only permission predicate (issue #387, ADR
   0036, PRD #384, Slice C).** `tour comment <tour-id> --delete
   <comment-id>` appends a `comment.deleted` event via the new

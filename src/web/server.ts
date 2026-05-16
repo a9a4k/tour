@@ -2,6 +2,7 @@ import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import { pickAutoTour } from "../core/tour-list.js";
 import {
   createComment,
+  createDelete,
   createReply,
 } from "../core/comments-store.js";
 import { TourWatcher } from "../core/watcher.js";
@@ -336,6 +337,30 @@ export async function startServer(args: ServeArgs): Promise<void> {
               bundle,
             );
             return Response.json(ann, { status: 201 });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 400 });
+          }
+        }
+
+        // Issue #389 / ADR 0036 (Slice E): webapp delete bridge. DELETE
+        // `/api/tours/<id>/comments/<comment-id>` writes a humans-only
+        // `comment.deleted` event via the shared `createDelete` seam — the
+        // same path the CLI's `--delete` flag uses (Slice C). The webapp's
+        // delete is implicitly human; agents have no surface here.
+        const deleteCommentMatch = url.pathname.match(
+          /^\/api\/tours\/([^/]+)\/comments\/([^/]+)$/,
+        );
+        if (deleteCommentMatch && req.method === "DELETE") {
+          const idOrPrefix = deleteCommentMatch[1];
+          const commentId = deleteCommentMatch[2];
+          try {
+            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const result = await createDelete(cwd, resolvedId, {
+              target_id: commentId,
+              by_kind: "human",
+            });
+            return Response.json(result, { status: 200 });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             return Response.json({ error: message }, { status: 400 });

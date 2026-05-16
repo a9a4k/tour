@@ -13,6 +13,13 @@ export interface Comment {
   author_kind: AuthorKind;
   replies_to?: string;
   created_at: string;
+  // Issue #389 / ADR 0036 (Slice E): the C4 cascade stamps `deleted`
+  // on a parent comment when its body is gone but ≥1 reply survives.
+  // The bundle's `comments` array carries the field through verbatim
+  // from `readComments`'s `CommentState[]` projection. Fully-deleted
+  // threads and leaf-deleted replies are absent from the array
+  // entirely; this field only appears on `[deleted]` parent stubs.
+  deleted?: { at: string };
 }
 
 export interface FileClassification {

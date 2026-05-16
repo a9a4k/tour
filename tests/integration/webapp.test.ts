@@ -242,6 +242,51 @@ describe("Webapp integration", () => {
     expect(reply.body).toBe("Webapp reply body");
   });
 
+  it("DELETE /api/tours/:id/comments/:commentId writes a humans-only comment.deleted event (Issue #389 / ADR 0036)", async () => {
+    // Create a fresh comment to delete (the seeded one in
+    // createTempRepoWithTour is used by other tests in the same suite,
+    // which may run before/after this one — adding a tombstone there
+    // would affect their observed projection).
+    const createRes = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: "hello.txt",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "doomed comment",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const ann = await createRes.json() as { id: string };
+    const delRes = await fetch(
+      `${baseUrl}/api/tours/${tourId}/comments/${ann.id}`,
+      { method: "DELETE" },
+    );
+    expect(delRes.status).toBe(200);
+    const body = await delRes.json() as { target_id?: string; at?: string };
+    expect(body.target_id).toBe(ann.id);
+    expect(typeof body.at).toBe("string");
+    // Subsequent GET projects the comment out (C4 cascade — leaf with no
+    // replies vanishes).
+    const tourRes = await fetch(`${baseUrl}/api/tours/${tourId}`);
+    const data = await tourRes.json() as {
+      comments: Array<{ id: string }>;
+    };
+    expect(data.comments.find((c) => c.id === ann.id)).toBeUndefined();
+  });
+
+  it("DELETE /api/tours/:id/comments/:commentId returns 400 for an unknown comment id (Issue #389)", async () => {
+    const res = await fetch(
+      `${baseUrl}/api/tours/${tourId}/comments/no-such-id`,
+      { method: "DELETE" },
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json() as { error?: string };
+    expect(data.error).toContain("no-such-id");
+  });
+
   it("POST /api/tours/:id/comments rejects an empty body with 400 (Issue #77)", async () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
       method: "POST",
