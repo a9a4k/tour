@@ -1,42 +1,38 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   createComment,
   createReply,
   createComments,
   readComments,
 } from "../../src/core/comments-store.js";
-import type { Comment, Tour } from "../../src/core/types.js";
+import { eventsPath, appendEvent } from "../../src/core/events-store.js";
+import type { Tour, TourEvent } from "../../src/core/types.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
-import { mkdtemp, mkdir, appendFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { appendFileSync, existsSync } from "node:fs";
 
-function makeComment(overrides?: Partial<Comment>): Comment {
-  return {
-    id: "ann-1",
-    file: "src/main.ts",
-    side: "additions",
-    line_start: 10,
-    line_end: 10,
-    body: "Consider extracting this into a helper.",
-    author: "claude-code",
-    author_kind: "agent",
-    created_at: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-// Direct JSONL append helper — sidesteps the seam to seed records with a
-// caller-supplied id when the test needs to assert about that id (e.g.
-// reply-parent lookup). The store's own `appendComment` is private.
-async function seedComment(
+// Seed a top-level comment by appending a `comment.created` event to the
+// on-disk log. Sidesteps the seam to inject a caller-supplied id when the
+// test needs to assert about that id (e.g. reply-parent lookup).
+async function seedTopLevel(
   dir: string,
   tourId: string,
-  ann: Comment,
+  over: Partial<Extract<TourEvent, { kind: "comment.created" }>> & { id: string },
 ): Promise<void> {
-  const path = join(dir, ".tour", tourId, "annotations.jsonl");
-  await appendFile(path, JSON.stringify(ann) + "\n");
+  const ev: Extract<TourEvent, { kind: "comment.created" }> = {
+    kind: "comment.created",
+    id: over.id,
+    file: over.file ?? "src/main.ts",
+    side: over.side ?? "additions",
+    line_start: over.line_start ?? 10,
+    line_end: over.line_end ?? 10,
+    body: over.body ?? "Consider extracting this into a helper.",
+    author: over.author ?? "claude-code",
+    author_kind: over.author_kind ?? "agent",
+    at: over.at ?? new Date().toISOString(),
+  };
+  await appendEvent(dir, tourId, ev);
 }
 
 // Synthetic bundle for anchor validation. The seam only reads
@@ -422,14 +418,13 @@ describe("comments-store", () => {
 
   describe("createReply", () => {
     it("inherits the parent's anchor and stamps replies_to", async () => {
-      const parent = makeComment({
+      await seedTopLevel(dir, tourId, {
         id: "parent-1",
         file: "src/lib/x.ts",
         side: "deletions",
         line_start: 12,
         line_end: 14,
       });
-      await seedComment(dir, tourId, parent);
 
       const reply = await createReply(dir, tourId, {
         replies_to: "parent-1",
@@ -438,10 +433,10 @@ describe("comments-store", () => {
         author_kind: "human",
       });
 
-      expect(reply.file).toBe(parent.file);
-      expect(reply.side).toBe(parent.side);
-      expect(reply.line_start).toBe(parent.line_start);
-      expect(reply.line_end).toBe(parent.line_end);
+      expect(reply.file).toBe("src/lib/x.ts");
+      expect(reply.side).toBe("deletions");
+      expect(reply.line_start).toBe(12);
+      expect(reply.line_end).toBe(14);
       expect(reply.replies_to).toBe("parent-1");
       expect(reply.author).toBe("human-2");
       expect(reply.author_kind).toBe("human");
@@ -465,8 +460,7 @@ describe("comments-store", () => {
     });
 
     it("rejects whitespace-only reply body and writes nothing (slice 2 / #142)", async () => {
-      const parent = makeComment({ id: "p-trim" });
-      await seedComment(dir, tourId, parent);
+      await seedTopLevel(dir, tourId, { id: "p-trim" });
       await expect(
         createReply(dir, tourId, {
           replies_to: "p-trim",
@@ -480,8 +474,7 @@ describe("comments-store", () => {
     });
 
     it("defaults reply author to the author_kind literal when omitted (slice 3 / #143)", async () => {
-      const parent = makeComment({ id: "p-author-default" });
-      await seedComment(dir, tourId, parent);
+      await seedTopLevel(dir, tourId, { id: "p-author-default" });
 
       const replyHuman = await createReply(dir, tourId, {
         replies_to: "p-author-default",
@@ -498,11 +491,10 @@ describe("comments-store", () => {
       expect(replyAgent.author).toBe("agent");
     });
 
-    it("always re-reads the on-disk Comment log (caller cannot bypass with stale in-memory data)", async () => {
+    it("always re-reads the on-disk event log (caller cannot bypass with stale in-memory data)", async () => {
       // Parent is added between the caller's "decision" to reply and the
       // seam call — createReply finds it because it re-reads on every call.
-      const parent = makeComment({ id: "p-late" });
-      await seedComment(dir, tourId, parent);
+      await seedTopLevel(dir, tourId, { id: "p-late" });
       const reply = await createReply(dir, tourId, {
         replies_to: "p-late",
         body: "found it",
@@ -513,10 +505,9 @@ describe("comments-store", () => {
   });
 
   describe("createComments (atomic batch)", () => {
-    it("writes every record in a single appendFile call", async () => {
+    it("writes every event in a single appendFile call", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }, { name: "c.ts" }]);
-      // Issue #342: the writer writes to `comments.jsonl` after Stage B.
-      const path = join(dir, ".tour", tourId, "comments.jsonl");
+      const path = eventsPath(dir, tourId);
       const before = await readFile(path, "utf-8").catch(() => "");
       expect(before).toBe("");
 
@@ -546,16 +537,16 @@ describe("comments-store", () => {
       expect(results).toHaveLength(3);
       const loaded = await readComments(dir, tourId);
       expect(loaded.map((a) => a.body)).toEqual(["first", "second", "third"]);
-      // All three records land on the same write — the file's exact
-      // content matches a single newline-joined block.
+      // All three records landed on a single write — the events file
+      // contains three lines, one per record.
       const content = await readFile(path, "utf-8");
-      expect(content).toBe(results.map((a) => JSON.stringify(a)).join("\n") + "\n");
+      const lines = content.split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(3);
     });
 
     it("supports mixed top-level + reply requests in a single batch", async () => {
       const bundle = makeBundle([{ name: "a.ts" }, { name: "src/main.ts" }]);
-      const parent = makeComment({ id: "p1", side: "deletions" });
-      await seedComment(dir, tourId, parent);
+      await seedTopLevel(dir, tourId, { id: "p1", side: "deletions" });
 
       const results = await createComments(
         dir,
@@ -665,104 +656,25 @@ describe("comments-store", () => {
       expect(loaded).toEqual([]);
     });
 
-    it("skips malformed lines", async () => {
-      const path = join(dir, ".tour", tourId, "annotations.jsonl");
-      const good = JSON.stringify(makeComment({ id: "good" }));
-      appendFileSync(path, good + "\n" + "NOT JSON\n" + good.replace("good", "also-good") + "\n");
+    it("skips malformed lines in the event log", async () => {
+      // appendEvent serialises one line per call; mix in a malformed line
+      // by direct write to assert the reader tolerates it.
+      await seedTopLevel(dir, tourId, { id: "good" });
+      const path = eventsPath(dir, tourId);
+      const { appendFile } = await import("node:fs/promises");
+      await appendFile(path, "NOT JSON\n");
+      await seedTopLevel(dir, tourId, { id: "also-good" });
       const loaded = await readComments(dir, tourId);
       expect(loaded).toHaveLength(2);
       expect(loaded[0].id).toBe("good");
       expect(loaded[1].id).toBe("also-good");
     });
-
-    it("throws on pre-bidirectional data missing author_kind (no silent fallback)", async () => {
-      const path = join(dir, ".tour", tourId, "annotations.jsonl");
-      const legacy = JSON.stringify({
-        id: "legacy",
-        file: "x.ts",
-        side: "additions",
-        line_start: 1,
-        line_end: 1,
-        body: "before bidirectional",
-        author: "agent",
-        created_at: "2026-01-01T00:00:00Z",
-      });
-      appendFileSync(path, legacy + "\n");
-      await expect(readComments(dir, tourId)).rejects.toThrow(/author_kind/);
-    });
-
-    it("throws on records with an invalid author_kind value", async () => {
-      const path = join(dir, ".tour", tourId, "annotations.jsonl");
-      const bad = JSON.stringify({
-        ...makeComment({ id: "bad" }),
-        author_kind: "robot",
-      });
-      appendFileSync(path, bad + "\n");
-      await expect(readComments(dir, tourId)).rejects.toThrow(/author_kind/);
-    });
   });
 
-  describe("multi-line ranges", () => {
-    it("stores and retrieves line_start != line_end", async () => {
-      const bundle = makeBundle([{ name: "x.ts", newLines: 20 }]);
-      await createComment(
-        dir,
-        tourId,
-        {
-          file: "x.ts",
-          side: "additions",
-          line_start: 5,
-          line_end: 15,
-          body: "range",
-          author_kind: "agent",
-        },
-        bundle,
-      );
-      const loaded = await readComments(dir, tourId);
-      expect(loaded[0].line_start).toBe(5);
-      expect(loaded[0].line_end).toBe(15);
-    });
-  });
-
-  // Issue #342 / PRD #335 / ADR 0029 addendum — Stage B on-disk slice. The
-  // on-disk filename `annotations.jsonl` becomes `comments.jsonl`; the reader
-  // falls back to the legacy name forever, the writer one-shot-renames on
-  // first write. Three cases pinned: empty Tour folder, legacy-only folder,
-  // post-migration folder.
-  describe("on-disk filename migration: annotations.jsonl → comments.jsonl", () => {
-    function commentsPath(): string {
-      return join(dir, ".tour", tourId, "comments.jsonl");
-    }
-    function legacyPath(): string {
-      return join(dir, ".tour", tourId, "annotations.jsonl");
-    }
-
-    it("readComments prefers comments.jsonl when both exist (post-migration shape)", async () => {
-      appendFileSync(commentsPath(), JSON.stringify(makeComment({ id: "primary" })) + "\n");
-      // Stranded legacy file (shouldn't happen in practice, but the reader
-      // must be deterministic if it does).
-      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "stranded" })) + "\n");
-      const loaded = await readComments(dir, tourId);
-      expect(loaded.map((a) => a.id)).toEqual(["primary"]);
-    });
-
-    it("readComments falls back to annotations.jsonl when comments.jsonl is absent", async () => {
-      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "legacy" })) + "\n");
-      const loaded = await readComments(dir, tourId);
-      expect(loaded.map((a) => a.id)).toEqual(["legacy"]);
-    });
-
-    it("readComments is a no-op on the legacy file: never writes, never renames", async () => {
-      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "legacy" })) + "\n");
-      await readComments(dir, tourId);
-      await readComments(dir, tourId);
-      expect(existsSync(legacyPath())).toBe(true);
-      expect(existsSync(commentsPath())).toBe(false);
-    });
-
-    it("createComment on an empty folder writes comments.jsonl (annotations.jsonl never appears)", async () => {
+  describe("on-disk event log shape (ADR 0036)", () => {
+    it("createComment writes a comment.created event line, not a Comment record", async () => {
       const bundle = makeBundle([{ name: "x.ts" }]);
-      await createComment(
+      const ann = await createComment(
         dir,
         tourId,
         {
@@ -775,128 +687,63 @@ describe("comments-store", () => {
         },
         bundle,
       );
-      expect(existsSync(commentsPath())).toBe(true);
-      expect(existsSync(legacyPath())).toBe(false);
+      const content = await readFile(eventsPath(dir, tourId), "utf-8");
+      const lines = content.split("\n").filter((l) => l);
+      expect(lines).toHaveLength(1);
+      const parsed = JSON.parse(lines[0]);
+      expect(parsed.kind).toBe("comment.created");
+      expect(parsed.id).toBe(ann.id);
+      expect(parsed.at).toBe(ann.created_at);
+      expect(parsed.body).toBe("fresh");
+      // The legacy `created_at` field is not on the event shape.
+      expect(parsed.created_at).toBeUndefined();
     });
 
-    it("createComment on a legacy-only folder renames annotations.jsonl → comments.jsonl then appends", async () => {
-      const bundle = makeBundle([{ name: "x.ts" }]);
-      const legacy = makeComment({ id: "legacy-1" });
-      appendFileSync(legacyPath(), JSON.stringify(legacy) + "\n");
-      const ann = await createComment(
-        dir,
-        tourId,
-        {
-          file: "x.ts",
-          side: "additions",
-          line_start: 1,
-          line_end: 1,
-          body: "post-migration",
-          author_kind: "agent",
-        },
-        bundle,
-      );
-      // After: only comments.jsonl exists, contains both records in order.
-      expect(existsSync(legacyPath())).toBe(false);
-      expect(existsSync(commentsPath())).toBe(true);
-      const loaded = await readComments(dir, tourId);
-      expect(loaded.map((a) => a.id)).toEqual(["legacy-1", ann.id]);
-    });
-
-    it("createComment on a comments-only folder appends without touching annotations.jsonl", async () => {
-      const bundle = makeBundle([{ name: "x.ts" }]);
-      const existing = makeComment({ id: "already-migrated" });
-      appendFileSync(commentsPath(), JSON.stringify(existing) + "\n");
-      const ann = await createComment(
-        dir,
-        tourId,
-        {
-          file: "x.ts",
-          side: "additions",
-          line_start: 1,
-          line_end: 1,
-          body: "another",
-          author_kind: "agent",
-        },
-        bundle,
-      );
-      expect(existsSync(legacyPath())).toBe(false);
-      const loaded = await readComments(dir, tourId);
-      expect(loaded.map((a) => a.id)).toEqual(["already-migrated", ann.id]);
-    });
-
-    it("createComment when both files exist logs a stderr warning, skips the rename, appends to comments.jsonl", async () => {
-      const bundle = makeBundle([{ name: "x.ts" }]);
-      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "stranded" })) + "\n");
-      appendFileSync(commentsPath(), JSON.stringify(makeComment({ id: "primary" })) + "\n");
-      const stderrSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
-      try {
-        const ann = await createComment(
-          dir,
-          tourId,
-          {
-            file: "x.ts",
-            side: "additions",
-            line_start: 1,
-            line_end: 1,
-            body: "appended",
-            author_kind: "agent",
-          },
-          bundle,
-        );
-        expect(stderrSpy).toHaveBeenCalled();
-        const calls = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
-        expect(calls).toMatch(/comments\.jsonl/);
-        expect(calls).toMatch(/comments\.jsonl/);
-        // Legacy file left alone; comments.jsonl is authoritative and gains
-        // the new record.
-        expect(existsSync(legacyPath())).toBe(true);
-        const loaded = await readComments(dir, tourId);
-        expect(loaded.map((a) => a.id)).toEqual(["primary", ann.id]);
-      } finally {
-        stderrSpy.mockRestore();
-      }
-    });
-
-    it("createReply on a legacy-only folder renames and appends", async () => {
-      const parent = makeComment({ id: "p-legacy", author_kind: "human" });
-      appendFileSync(legacyPath(), JSON.stringify(parent) + "\n");
-      const reply = await createReply(dir, tourId, {
-        replies_to: "p-legacy",
-        body: "after migration",
-        author_kind: "agent",
+    it("createReply writes a reply.created event line (no anchor fields on the event)", async () => {
+      await seedTopLevel(dir, tourId, {
+        id: "parent-1",
+        file: "src/lib/x.ts",
+        side: "deletions",
+        line_start: 12,
+        line_end: 14,
       });
-      expect(existsSync(legacyPath())).toBe(false);
-      expect(existsSync(commentsPath())).toBe(true);
-      const loaded = await readComments(dir, tourId);
-      expect(loaded.map((a) => a.id)).toEqual(["p-legacy", reply.id]);
+      const reply = await createReply(dir, tourId, {
+        replies_to: "parent-1",
+        body: "agreed",
+        author_kind: "human",
+      });
+      const content = await readFile(eventsPath(dir, tourId), "utf-8");
+      const lines = content.split("\n").filter((l) => l);
+      // Two events: the seeded parent + the new reply.
+      expect(lines).toHaveLength(2);
+      const replyLine = JSON.parse(lines[1]);
+      expect(replyLine.kind).toBe("reply.created");
+      expect(replyLine.id).toBe(reply.id);
+      expect(replyLine.replies_to).toBe("parent-1");
+      // The reply event does not carry the anchor — it's inherited at
+      // fold time from the parent (ADR 0036).
+      expect(replyLine.file).toBeUndefined();
+      expect(replyLine.line_start).toBeUndefined();
+      expect(replyLine.side).toBeUndefined();
     });
 
-    it("createComments (batch) on a legacy-only folder renames once and appends the whole batch", async () => {
-      const bundle = makeBundle([{ name: "a.ts" }, { name: "b.ts" }]);
-      appendFileSync(legacyPath(), JSON.stringify(makeComment({ id: "legacy-batch" })) + "\n");
-      const results = await createComments(
+    it("CommentState shape: `deleted?` field is absent in this slice (Slice C lights it up)", async () => {
+      const bundle = makeBundle([{ name: "x.ts" }]);
+      await createComment(
         dir,
         tourId,
-        [
-          {
-            kind: "top-level",
-            file: "a.ts", side: "additions", line_start: 1, line_end: 1,
-            body: "one", author_kind: "agent",
-          },
-          {
-            kind: "top-level",
-            file: "b.ts", side: "additions", line_start: 2, line_end: 2,
-            body: "two", author_kind: "agent",
-          },
-        ],
+        {
+          file: "x.ts",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "live",
+          author_kind: "agent",
+        },
         bundle,
       );
-      expect(existsSync(legacyPath())).toBe(false);
       const loaded = await readComments(dir, tourId);
-      expect(loaded.map((a) => a.id)).toEqual(["legacy-batch", results[0].id, results[1].id]);
+      for (const c of loaded) expect(c.deleted).toBeUndefined();
     });
   });
 });

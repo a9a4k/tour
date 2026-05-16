@@ -58,8 +58,34 @@ async function seedComment(
   tour: string,
   ann: Comment,
 ): Promise<void> {
-  const path = join(cwd, ".tour", tour, "comments.jsonl");
-  await appendFile(path, JSON.stringify(ann) + "\n");
+  // ADR 0036 — the on-disk shape is the `tour-events.jsonl` event log,
+  // not a homogeneous Comment record log. Seed a `comment.created`
+  // (or `reply.created` for an Annotation with `replies_to`) event so
+  // `readComments` (which folds events) projects this Comment back.
+  const path = join(cwd, ".tour", tour, "tour-events.jsonl");
+  const ev = ann.replies_to !== undefined
+    ? {
+        kind: "reply.created" as const,
+        id: ann.id,
+        replies_to: ann.replies_to,
+        body: ann.body,
+        author: ann.author,
+        author_kind: ann.author_kind,
+        at: ann.created_at,
+      }
+    : {
+        kind: "comment.created" as const,
+        id: ann.id,
+        file: ann.file,
+        side: ann.side,
+        line_start: ann.line_start,
+        line_end: ann.line_end,
+        body: ann.body,
+        author: ann.author,
+        author_kind: ann.author_kind,
+        at: ann.created_at,
+      };
+  await appendFile(path, JSON.stringify(ev) + "\n");
 }
 
 interface FixtureAdapter extends ShippedAdapter {
@@ -180,7 +206,7 @@ async function makeRepo(): Promise<string> {
     join(dir, ".tour", tourId, "tour.toml"),
     stringifyTOML(mkTour()),
   );
-  await writeFile(join(dir, ".tour", tourId, "comments.jsonl"), "");
+  await writeFile(join(dir, ".tour", tourId, "tour-events.jsonl"), "");
   return dir;
 }
 

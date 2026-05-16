@@ -602,7 +602,8 @@ describe("CLI integration", () => {
       // Top-level (no `replies_to`) — the on-disk shape never carried a
       // `kind` field; the discriminator is presence/absence of `replies_to`.
       expect(ann.replies_to).toBeUndefined();
-      // On-disk file is `comments.jsonl` after Stage B (issue #342).
+      // On-disk file is `tour-events.jsonl` after ADR 0036 (the event log
+      // replaces the Stage B `comments.jsonl` snapshot log).
       const showR = await run(["show", tour.id, "--json"], repo);
       const data = JSON.parse(showR.stdout);
       expect(data.comments).toHaveLength(1);
