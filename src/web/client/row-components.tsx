@@ -352,21 +352,32 @@ function unifiedSignGlyph(kind: DiffRowKind): string {
 
 // One-line aria-label per ADR 0034's A11y section: "Added line 13: return
 // bar()" / "Deleted line 7: foo()" / "Context line 12: function foo() {".
-// Gutter and symbol cells carry `aria-hidden="true"` so the screen reader
-// reads this label instead of the redundant numbers + sign + code.
+// Gutter, symbol, and code cells all carry `aria-hidden="true"` so the
+// screen reader reads this label instead of the redundant numbers + sign
+// + code text. The code text is truncated at ARIA_LABEL_TEXT_MAX so
+// minified bundles / base64 blobs / long template literals don't produce
+// thousand-character row utterances during row-by-row SR navigation.
+const ARIA_LABEL_TEXT_MAX = 120;
+
+function truncateForAriaLabel(text: string): string {
+  if (text.length <= ARIA_LABEL_TEXT_MAX) return text;
+  return text.slice(0, ARIA_LABEL_TEXT_MAX) + "…";
+}
+
 function unifiedRowAriaLabel(
   kind: DiffRowKind,
   text: string,
   lineNumber: number | null,
 ): string | undefined {
   if (lineNumber === null) return undefined;
+  const t = truncateForAriaLabel(text);
   if (kind === "addition" || kind === "change-addition") {
-    return `Added line ${lineNumber}: ${text}`;
+    return `Added line ${lineNumber}: ${t}`;
   }
   if (kind === "deletion" || kind === "change-deletion") {
-    return `Deleted line ${lineNumber}: ${text}`;
+    return `Deleted line ${lineNumber}: ${t}`;
   }
-  return `Context line ${lineNumber}: ${text}`;
+  return `Context line ${lineNumber}: ${t}`;
 }
 
 // Gutter cell for the unified two-column layout (issue #382). Renders the
@@ -447,8 +458,17 @@ function CodeCell({
   const classes = ["tour-row-cell"];
   if (isCursor) classes.push("is-cursor");
   if (isInRange) classes.push("in-range");
+  // `aria-hidden` so the row-level aria-label is the sole utterance per
+  // ADR 0034's A11y section. The code cell carries no `tabIndex`, so
+  // hiding it from the a11y tree doesn't remove any keyboard-reachable
+  // control — SR users still reach the row via the j/k cursor model.
   return (
-    <span className={classes.join(" ")} data-side={side} onClick={onClick}>
+    <span
+      className={classes.join(" ")}
+      data-side={side}
+      aria-hidden="true"
+      onClick={onClick}
+    >
       {html !== undefined ? (
         <span
           className="tour-row-code"

@@ -578,7 +578,7 @@ describe("<DiffRow>", () => {
       ).not.toBeNull();
     });
 
-    it("aria-label summarises the row; gutters and symbol are aria-hidden", () => {
+    it("aria-label summarises the row; gutters, symbol, and code cell are aria-hidden", () => {
       const c = mount(
         createElement(DiffRow, {
           kind: "context",
@@ -600,6 +600,54 @@ describe("<DiffRow>", () => {
       }
       const symbol = c.querySelector(".tour-row-symbol") as HTMLElement;
       expect(symbol.getAttribute("aria-hidden")).toBe("true");
+      // Code cell is aria-hidden too so the row's aria-label is the sole
+      // utterance — otherwise SR users hear "Context line 12: function foo()
+      // {" from the row, then "function foo() {" again from the un-hidden
+      // code cell.
+      const cell = c.querySelector(".tour-row-cell") as HTMLElement;
+      expect(cell.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("aria-label truncates the code text at 120 chars with an ellipsis so minified lines don't blow up the SR utterance", () => {
+      // 200-char fixture — well past the 120 cap.
+      const longLine = "x".repeat(200);
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 13,
+          leftText: "",
+          rightText: longLine,
+          isCursor: false,
+        }),
+      );
+      const row = c.querySelector(".tour-row") as HTMLElement;
+      const label = row.getAttribute("aria-label")!;
+      expect(label.startsWith("Added line 13: ")).toBe(true);
+      expect(label.endsWith("…")).toBe(true);
+      // Prefix length = "Added line 13: ".length = 15; +120 chars +1
+      // ellipsis = 136 total.
+      expect(label.length).toBe(15 + 120 + 1);
+    });
+
+    it("aria-label leaves text untouched when it fits inside the 120-char cap", () => {
+      const c = mount(
+        createElement(DiffRow, {
+          kind: "addition",
+          layout: "unified",
+          leftLineNumber: null,
+          rightLineNumber: 13,
+          leftText: "",
+          rightText: "return bar();",
+          isCursor: false,
+        }),
+      );
+      const row = c.querySelector(".tour-row") as HTMLElement;
+      expect(row.getAttribute("aria-label")).toBe(
+        "Added line 13: return bar();",
+      );
+      expect(row.getAttribute("aria-label")).not.toContain("…");
     });
 
     it("aria-label reads `Added line N: <text>` on addition rows", () => {
