@@ -20,6 +20,15 @@ export interface KeymapContext {
    *  row either). On a card / row mismatch the action is a labelled
    *  no-op the App shell surfaces via the footer hint. */
   cursorOnCard: boolean;
+  /** Whether the cursor sits on a `[deleted]` stub (ADR 0036's C4
+   *  cascade: a deleted parent kept in the projection because ≥1 reply
+   *  survives). Routes `d` on a stub to a labelled no-op instead of
+   *  opening the delete-confirm modal — the `createDelete` seam would
+   *  reject the write at submit time, so refusing earlier is the cleaner
+   *  UX. Reply-level cursor stops (ADR 0037) never sit on a stub
+   *  themselves — deleted leaf replies are filtered from the projection
+   *  by the fold — so this flag is only ever true on a parent stub. */
+  cursorOnDeletedStub: boolean;
   /** Whether the comment composer is open (any non-closed kind). Routes
    *  Esc to `close-modal` instead of `pane-focus-toggle` per the
    *  modal-unwind precedence rule (PRD #343 / ADR 0031). */
@@ -70,7 +79,8 @@ export type KeyAction =
   | { type: "noop-reply-on-row" }
   | { type: "noop-send-on-row" }
   | { type: "noop-comment-on-card" }
-  | { type: "noop-delete-on-row" };
+  | { type: "noop-delete-on-row" }
+  | { type: "noop-delete-on-stub" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (key.name === "q" || (key.ctrl && key.name === "c")) {
@@ -194,6 +204,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     // both parents and Replies uniformly.
     if (!ctx.sidebarFocused && key.name === "d") {
       if (!ctx.cursorOnCard) return { type: "noop-delete-on-row" };
+      if (ctx.cursorOnDeletedStub) return { type: "noop-delete-on-stub" };
       return { type: "open-delete-confirm" };
     }
   }

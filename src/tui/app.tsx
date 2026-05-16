@@ -1464,6 +1464,13 @@ function App(props: AppProps) {
         selectedRowKind: selectedRow?.kind ?? null,
         cursorOnInteractive: cursorSlice?.onInteractive ?? false,
         cursorOnCard: cursorSlice?.onCard ?? false,
+        // ADR 0036 — `d` on a `[deleted]` stub routes to a labelled no-op
+        // instead of opening the modal. The cursored comment may be a
+        // post-fold stub (parent retained because ≥1 reply survives); the
+        // `createDelete` seam refuses already-deleted targets, so refuse
+        // earlier and tell the user what's going on.
+        cursorOnDeletedStub:
+          (cursorSlice?.cardComment?.deleted ?? undefined) !== undefined,
         // PRD #343 / ADR 0031 / issue #345: the keymap routes Esc per
         // modal state (close-modal vs pane-focus-toggle). In practice
         // the App-level modal early-returns above intercept Esc before
@@ -1873,6 +1880,14 @@ function App(props: AppProps) {
         // ADR 0036 Slice D / issue #388. `d` is card-only — labelled
         // no-op when the cursor isn't on a Comment card.
         setFooterStatus("d: no comment under cursor — n/p to navigate");
+        return;
+      case "noop-delete-on-stub":
+        // ADR 0036 — the cursored card is a `[deleted]` stub (parent
+        // kept in the projection because ≥1 reply survives). The delete
+        // write seam refuses already-deleted targets; surface that as
+        // a labelled no-op instead of opening a modal that's going to
+        // error on confirm.
+        setFooterStatus("d: comment already deleted");
         return;
       case "open-delete-confirm": {
         // ADR 0036 Slice D / issue #388. The cursor's CardAnchor.commentId

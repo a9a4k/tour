@@ -39,7 +39,7 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
     const r2 = comment({ id: "r2", replies_to: "p" });
     expect(computeDeleteCascadeNote(parent, [parent, r1, r2])).toEqual({
       kind: "parent-stub",
-      surviving: 2,
+      survivorCount: 2,
     });
   });
 
@@ -53,7 +53,7 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
     });
     expect(computeDeleteCascadeNote(parent, [parent, live, dead])).toEqual({
       kind: "parent-stub",
-      surviving: 1,
+      survivorCount: 1,
     });
   });
 
@@ -131,13 +131,13 @@ describe("renderDeleteCascadeNote (issue #389)", () => {
 
   it("pluralises 'reply' for the parent-stub message", () => {
     expect(
-      renderDeleteCascadeNote({ kind: "parent-stub", surviving: 1 }),
+      renderDeleteCascadeNote({ kind: "parent-stub", survivorCount: 1 }),
     ).toBe("1 reply will remain under [deleted].");
     expect(
-      renderDeleteCascadeNote({ kind: "parent-stub", surviving: 2 }),
+      renderDeleteCascadeNote({ kind: "parent-stub", survivorCount: 2 }),
     ).toBe("2 replies will remain under [deleted].");
     expect(
-      renderDeleteCascadeNote({ kind: "parent-stub", surviving: 7 }),
+      renderDeleteCascadeNote({ kind: "parent-stub", survivorCount: 7 }),
     ).toBe("7 replies will remain under [deleted].");
   });
 });

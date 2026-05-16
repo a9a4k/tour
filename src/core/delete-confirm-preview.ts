@@ -1,20 +1,16 @@
 import type { Comment, CommentState } from "./types.js";
 import type { Thread } from "./threads.js";
+import type { DeleteCascade } from "./delete-cascade.js";
+export { renderDeleteCascade as cascadeNote } from "./delete-cascade.js";
+export type { DeleteCascade } from "./delete-cascade.js";
 
 // Pure projection from `(targetId, threads)` to the data the delete-confirm
 // modal renders (ADR 0036 Slice D / issue #388). Decoupled from the
 // renderer so the cascade rules — the only piece with real product logic
-// — can be unit-tested without an OpenTUI fixture.
-
-export type DeleteCascade =
-  // The target is a Reply; deleting it shrinks the Thread by one.
-  | { kind: "reply" }
-  // The target is a parent with ≥1 surviving Reply; the parent will be
-  // projected as a `[deleted]` stub with N replies under it.
-  | { kind: "parent-with-survivors"; survivorCount: number }
-  // The target is the last live node in its Thread — deleting it makes
-  // the Thread vanish from the projection entirely.
-  | { kind: "last-node-in-thread" };
+// — can be unit-tested without an OpenTUI fixture. The outcome union and
+// the rendered string both live in `core/delete-cascade.ts` so the TUI
+// and webapp share wording verbatim; only the input-shape adapter — this
+// `cascadeFor` over `Thread[]` — is TUI-local.
 
 // `cascadeFor` classifies the delete's downstream effect on the C4
 // projection. The rules mirror `events-fold.ts`:
@@ -33,23 +29,23 @@ export function cascadeFor(
     // Reply target. Find its parent Thread. If the parent is deleted
     // AND no other live reply survives the removal, the Thread vanishes.
     const thread = threads.find((t) => t.root.id === target.replies_to);
-    if (!thread) return { kind: "reply" };
+    if (!thread) return { kind: "reply-only" };
     // The fold removes a deleted leaf Reply from the projection, but the
     // modal previews the *next* projection — `target` is still in
     // `thread.replies` here. Count siblings excluding `target` itself.
     const otherLiveReplies = thread.replies.filter((r) => r.id !== target.id);
     const parentIsLive = !isDeletedStub(thread.root);
     if (otherLiveReplies.length === 0 && !parentIsLive) {
-      return { kind: "last-node-in-thread" };
+      return { kind: "thread-vanishes" };
     }
-    return { kind: "reply" };
+    return { kind: "reply-only" };
   }
   // Parent target. Live replies under this parent surface as `[deleted]`
   // stub + N replies; zero live replies retracts the Thread.
   const thread = threads.find((t) => t.root.id === target.id);
   const liveReplies = thread ? thread.replies : [];
-  if (liveReplies.length === 0) return { kind: "last-node-in-thread" };
-  return { kind: "parent-with-survivors", survivorCount: liveReplies.length };
+  if (liveReplies.length === 0) return { kind: "thread-vanishes" };
+  return { kind: "parent-stub", survivorCount: liveReplies.length };
 }
 
 // The projection's `[deleted]` stub: a parent comment with an empty body
@@ -59,19 +55,6 @@ export function cascadeFor(
 // the projected shape) — the cast just narrows to the projection field.
 function isDeletedStub(c: Comment): boolean {
   return (c as CommentState).deleted !== undefined;
-}
-
-// Human-readable cascade note for the modal's footer line.
-export function cascadeNote(cascade: DeleteCascade): string {
-  if (cascade.kind === "reply") {
-    return "this reply will be removed from the thread.";
-  }
-  if (cascade.kind === "parent-with-survivors") {
-    const n = cascade.survivorCount;
-    const noun = n === 1 ? "reply" : "replies";
-    return `${n} ${noun} will remain under [deleted].`;
-  }
-  return "the thread will vanish.";
 }
 
 // Truncate the body to a reasonable fixed length for the modal preview.

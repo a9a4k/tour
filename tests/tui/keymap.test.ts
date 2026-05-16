@@ -16,6 +16,7 @@ const sidebar: KeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
 };
 const sidebarFolder: KeymapContext = {
   sidebarFocused: true,
@@ -26,6 +27,7 @@ const sidebarFolder: KeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
 };
 const diffPane: KeymapContext = {
   sidebarFocused: false,
@@ -36,6 +38,7 @@ const diffPane: KeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
 };
 const diffPaneInteractive: KeymapContext = {
   sidebarFocused: false,
@@ -46,6 +49,7 @@ const diffPaneInteractive: KeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
 };
 const diffPaneOnCard: KeymapContext = {
   sidebarFocused: false,
@@ -56,6 +60,7 @@ const diffPaneOnCard: KeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
 };
 const sidebarOnCard: KeymapContext = {
   sidebarFocused: true,
@@ -66,6 +71,7 @@ const sidebarOnCard: KeymapContext = {
   composerOpen: false,
   pickerOpen: false,
   deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
 };
 
 describe("dispatchKey", () => {
@@ -182,6 +188,7 @@ describe("dispatchKey", () => {
         composerOpen: false,
         pickerOpen: false,
         deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
       }).type,
     ).toBe("noop");
   });
@@ -236,6 +243,7 @@ describe("dispatchKey", () => {
         composerOpen: false,
         pickerOpen: false,
         deleteConfirmOpen: false,
+  cursorOnDeletedStub: false,
       }).type,
     ).toBe("noop");
   });
@@ -596,6 +604,11 @@ describe("dispatchKey", () => {
 
   it("d in the diff pane on a row returns noop-delete-on-row", () => {
     expect(dispatchKey(k("d"), diffPane).type).toBe("noop-delete-on-row");
+  });
+
+  it("d on a `[deleted]` stub returns noop-delete-on-stub (the write seam refuses already-deleted targets)", () => {
+    const stub: KeymapContext = { ...diffPaneOnCard, cursorOnDeletedStub: true };
+    expect(dispatchKey(k("d"), stub).type).toBe("noop-delete-on-stub");
   });
 
   it("d in the sidebar is a plain noop (no Comment cursor in the sidebar)", () => {
