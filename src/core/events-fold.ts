@@ -80,15 +80,14 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
     c.deleted = { at };
   }
 
-  // Count surviving replies per top-level parent so the cascade can
-  // decide whether a deleted parent emits a `[deleted]` stub or vanishes
-  // with its (now-empty) Thread.
-  const survivingRepliesByParent: Map<string, number> = new Map();
+  // Parents with at least one surviving reply — the cascade emits a
+  // `[deleted]` stub for these on parent-deletion; parents with no
+  // surviving replies vanish with their (now-empty) Thread.
+  const parentsWithSurvivingReplies = new Set<string>();
   for (const id of order) {
     const c = created.get(id);
     if (!c || c.replies_to === undefined || c.deleted) continue;
-    const count = survivingRepliesByParent.get(c.replies_to) ?? 0;
-    survivingRepliesByParent.set(c.replies_to, count + 1);
+    parentsWithSurvivingReplies.add(c.replies_to);
   }
 
   const out: CommentState[] = [];
@@ -103,8 +102,7 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
       // Top-level: emit as-is, or as a `[deleted]` stub, or skip when
       // the whole Thread has been retracted.
       if (c.deleted) {
-        const survivors = survivingRepliesByParent.get(c.id) ?? 0;
-        if (survivors === 0) continue;
+        if (!parentsWithSurvivingReplies.has(c.id)) continue;
         out.push({ ...c, body: "" });
       } else {
         out.push(c);
