@@ -43,11 +43,13 @@ export interface HunkHeaderRow {
    *  (issue #280). GitHub's `@@` row is two cells: a ~44px button cell +
    *  the range/context text. `primaryExpand` says which directional
    *  glyph + dispatch the left cell carries — `"up"` reveals upward
-   *  (EXPANSION_STEP), `"all"` reveals the entire remaining gap, `null`
-   *  paints an inert `…` placeholder (cursor skips the row). When non-
-   *  null the row is cursor-walkable via the existing `boundary-top` /
-   *  `hunk-separator` interactive subkinds. */
-  primaryExpand: "up" | "all" | null;
+   *  (EXPANSION_STEP) or `"all"` reveals the entire remaining gap. The
+   *  row is always cursor-walkable via the existing `boundary-top` /
+   *  `hunk-separator` interactive subkinds; the planner skips emission
+   *  entirely at `gapAbove === 0` (issue #359), so an emitted row never
+   *  carries a `null` affordance. The helper's `null` return signals
+   *  the planner to skip emission — see `HunkHeaderExpandPlan`. */
+  primaryExpand: "up" | "all";
 }
 
 export interface CommentRow {

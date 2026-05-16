@@ -1137,32 +1137,6 @@ describe("<FileBlock> — interactive row activation", () => {
     });
   });
 
-  it("hunk-header with primaryExpand null renders an inert `…` placeholder; clicking does nothing", () => {
-    const actions: ExpandAction[] = [];
-    const rows: PlannedRow[] = [
-      {
-        kind: "hunk-header",
-        header: "@@ -1,3 +1,3 @@",
-        hunkIndex: 0,
-        gapAbove: 0,
-        primaryExpand: null,
-      },
-    ];
-    const c = mount(
-      createElement(
-        FileBlock,
-        defaultProps({ rows, onDispatchExpand: (a) => actions.push(a) }),
-      ),
-    );
-    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
-    expect(btn.textContent).toBe("…");
-    expect(btn.getAttribute("role")).toBeNull();
-    act(() => {
-      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(actions).toEqual([]);
-  });
-
   it("renders hunk-header rows through <HunkHeaderBanner> with parsed range + context (#223)", () => {
     const rows: PlannedRow[] = [
       {

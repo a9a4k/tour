@@ -28,10 +28,10 @@ import { sendTarget, type SendTarget } from "./send-target.js";
 /** Surface-controlled view options.
  *
  *  - `hunkHeaderCursorStop` (PRD #270 / issue #273, Slice 3): vestigial.
- *    Issue #280 brought the banner back as a cursor stop when
- *    `primaryExpand !== null` on both surfaces. Kept for caller-side
- *    compatibility (TUI passes `false`); the value is now ignored
- *    downstream. */
+ *    Issue #280 brought the banner back as a cursor stop on both
+ *    surfaces, and issue #359 made every emitted banner cursor-walkable.
+ *    Kept for caller-side compatibility (TUI passes `false`); the value
+ *    is now ignored downstream. */
 export interface ViewOptions {
   hunkHeaderCursorStop?: boolean;
 }

@@ -568,23 +568,22 @@ export interface HunkHeaderBannerProps {
   header: string;
   boundaryRef: BoundaryRef;
   direction: "up" | "both";
-  /** Issue #280: when set the banner's left cell is an interactive
-   *  expand button. `"up"` paints `↑` and dispatches `direction: "up"`
-   *  with `count = EXPANSION_STEP`; `"all"` paints `↕` and dispatches
-   *  `direction: "both"` with `count = gapAbove`. `null` paints an inert
-   *  `…` placeholder; the row is not cursor-walkable. */
-  primaryExpand: "up" | "all" | null;
+  /** Issue #280: the banner's left cell is an interactive expand button.
+   *  `"up"` paints `↑` and dispatches `direction: "up"` with
+   *  `count = EXPANSION_STEP`; `"all"` paints `↕` and dispatches
+   *  `direction: "both"` with `count = gapAbove`. Issue #359: the planner
+   *  skips emission at `gapAbove === 0`, so an emitted banner always
+   *  carries a non-null affordance. */
+  primaryExpand: "up" | "all";
   /** Remaining hidden gap above this hunk-header. Threaded so the `all`
    *  dispatch can carry `count = gapAbove` (single-Enter full reveal). */
   gapAbove: number;
-  /** `.is-cursor` outline applies when the cursor lands on this banner —
-   *  reachable iff `primaryExpand !== null` (`flat-rows` skips banners
-   *  with a null primaryExpand). */
+  /** `.is-cursor` outline applies when the cursor lands on this banner. */
   isCursor: boolean;
   /** Dispatches the expand action when the left cell is clicked or
    *  Enter is pressed while cursored. Called with `direction` (matching
    *  `primaryExpand`) and `count` (`EXPANSION_STEP` for "up", `gapAbove`
-   *  for "all"). No-op when `primaryExpand === null`. */
+   *  for "all"). */
   onActivate?: (direction: "up" | "both", count: number) => void;
 }
 
@@ -599,17 +598,14 @@ function hunkHeaderSubKind(
 }
 
 // Issue #280: two-cell banner matching GitHub's `@@` row structure.
-//   Left cell  — ~44px, saturated `bg.accentEmphasis` background.
-//                Carries the `↑` / `↕` glyph when `primaryExpand !== null`
-//                AND `role="button"` / `tabIndex={0}` for click + Enter
-//                dispatch. When `primaryExpand === null` paints an inert
-//                `…` placeholder; no click target, no cursor walk.
+//   Left cell  — ~44px, saturated `bg.accentEmphasis` background. Carries
+//                the `↑` / `↕` glyph AND `role="button"` / `tabIndex={0}`
+//                for click + Enter dispatch.
 //   Right cell — accent-subtle wash, range + function-context spans.
 //                Always display-only (matches GitHub: clicking the `@@`
 //                text does nothing).
-// `.is-cursor` outlines the whole row when set (cursored hunk-headers
-// only reach this branch when `primaryExpand !== null`; flat-rows skips
-// banners with a null primaryExpand).
+// Issue #359: every emitted banner is interactive — the planner skips
+// emission at `gapAbove === 0`, so no inert state exists here.
 function HunkHeaderBannerImpl(
   props: HunkHeaderBannerProps,
 ): React.JSX.Element {
@@ -617,11 +613,9 @@ function HunkHeaderBannerImpl(
   const classes = ["tour-row", "tour-hunk-header"];
   if (isCursor) classes.push("is-cursor");
   const { range, context } = parseHunkHeader(header);
-  const interactive = primaryExpand !== null;
-  const buttonGlyph =
-    primaryExpand === "up" ? "↑" : primaryExpand === "all" ? "↕" : "…";
+  const buttonGlyph = primaryExpand === "up" ? "↑" : "↕";
   const dispatch = () => {
-    if (!interactive || !onActivate) return;
+    if (!onActivate) return;
     if (primaryExpand === "up") onActivate("up", EXPANSION_STEP);
     else onActivate("both", gapAbove);
   };
@@ -634,31 +628,25 @@ function HunkHeaderBannerImpl(
     e.preventDefault();
     dispatch();
   };
-  const buttonClasses = ["tour-hunk-header-button"];
-  if (!interactive) buttonClasses.push("is-placeholder");
   return (
     <div
       className={classes.join(" ")}
       data-subkind={hunkHeaderSubKind(boundaryRef)}
       data-direction={direction}
       data-boundary-ref={String(boundaryRef)}
-      data-primary-expand={primaryExpand ?? "none"}
+      data-primary-expand={primaryExpand}
       style={BANNER_STYLE}
     >
       <span
-        className={buttonClasses.join(" ")}
-        data-primary-expand={primaryExpand ?? "none"}
-        role={interactive ? "button" : undefined}
-        tabIndex={interactive ? 0 : undefined}
+        className="tour-hunk-header-button"
+        data-primary-expand={primaryExpand}
+        role="button"
+        tabIndex={0}
         aria-label={
-          primaryExpand === "up"
-            ? "Expand Up"
-            : primaryExpand === "all"
-              ? `Expand All ${gapAbove} lines`
-              : undefined
+          primaryExpand === "up" ? "Expand Up" : `Expand All ${gapAbove} lines`
         }
-        onClick={interactive ? onButtonClick : undefined}
-        onKeyDown={interactive ? onButtonKeyDown : undefined}
+        onClick={onButtonClick}
+        onKeyDown={onButtonKeyDown}
       >
         {buttonGlyph}
       </span>

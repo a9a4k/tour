@@ -1648,24 +1648,6 @@ index 1..2 100644
       expect(node!.props.fg).toBe(theme.fg.muted);
     });
 
-    it("renders the header text + inert `…` left cell when primaryExpand === null", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -1,3 +1,3 @@",
-          hunkIndex: 0,
-          gapAbove: 0,
-          primaryExpand: null,
-        },
-      ];
-      const tree = callDiffRows({ rows, layout: "split" });
-      expect(diffLineCellsOf(tree).length).toBe(0);
-      const node = findText(tree, (s) => s.includes("@@ -1,3 +1,3 @@"));
-      expect(node).toBeDefined();
-      expect(node!.props.fg).toBe(theme.fg.muted);
-      expect(findGlyph(tree, "…")).toBeDefined();
-    });
-
     it("renders `↑` in the left cell when primaryExpand === 'up'", () => {
       const rows: PlannedRow[] = [
         {
@@ -1722,30 +1704,6 @@ index 1..2 100644
       expect(handler).toBeDefined();
       handler!();
       expect(onInteractiveClick).toHaveBeenCalledWith("x.ts", "hunk-separator", 2);
-    });
-
-    it("does NOT attach onMouseDown when primaryExpand === null", () => {
-      const rows: PlannedRow[] = [
-        {
-          kind: "hunk-header",
-          header: "@@ -1,3 +1,3 @@",
-          hunkIndex: 0,
-          gapAbove: 0,
-          primaryExpand: null,
-        },
-      ];
-      const onInteractiveClick = vi.fn();
-      const tree = DiffRows({
-        fileName: "x.ts",
-        rows,
-        layout: "split",
-        cursorCardId: null,
-        cursor: null,
-        onInteractiveClick,
-      });
-      for (const el of flatten(tree)) {
-        expect(el.props["onMouseDown"]).toBeUndefined();
-      }
     });
 
     it("file-top hunk dispatches onInteractiveClick with boundary-top + 'top'", () => {

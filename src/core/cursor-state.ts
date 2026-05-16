@@ -323,12 +323,13 @@ function rowMatchesAnchor(
  * Predict the cursor's landing after an Enter-press orphans the current
  * interactive cursor (issue #306). Pressing Enter on a gap-row that
  * consumes its entire remaining gap leaves the cursor anchored to a row
- * the next render drops from the walkable stream (banner with
- * `primaryExpand === null`, expand-down with gap < emit threshold, or
- * the collapsed-file row replaced by the file body). Both surfaces call
- * this helper with the pre-dispatch `flatRows` and the orphan kind to
- * compute a landing on a row that survives the expansion; the caller
- * then dispatches `cursor.set` alongside the `expansion.*` action.
+ * the next render drops from the walkable stream (banner dropped by the
+ * planner when `gapAbove === 0` per issue #359, expand-down with gap <
+ * emit threshold, or the collapsed-file row replaced by the file body).
+ * Both surfaces call this helper with the pre-dispatch `flatRows` and
+ * the orphan kind to compute a landing on a row that survives the
+ * expansion; the caller then dispatches `cursor.set` alongside the
+ * `expansion.*` action.
  *
  * Landing rules (per issue #306 brief):
  *
@@ -344,8 +345,8 @@ function rowMatchesAnchor(
  *
  * - `collapsed-file` consumed → a synthetic `boundary-top` anchor on
  *   the file. After the file body materialises the banner resolves
- *   directly when walkable (`primaryExpand !== null` — the common
- *   case); otherwise `validateCursor` snaps the cursor to the file's
+ *   directly when emitted (planner emits at `gapAbove > 0` per issue
+ *   #359); otherwise `validateCursor` snaps the cursor to the file's
  *   first emitted row.
  */
 export type ExpandOrphanKind =

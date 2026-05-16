@@ -115,9 +115,9 @@ function interactiveRowId(
   return `interactive-row-${file}-${subKind}-${boundaryRef}`;
 }
 
-// Issue #280: hunk-header banner is interactive when primaryExpand is
-// non-null. Its cursor id mirrors the flat-rows projection — file-top
-// banner uses `boundary-top`, mid-file uses `hunk-separator`.
+// Issue #280: hunk-header banner cursor id mirrors the flat-rows
+// projection — file-top banner uses `boundary-top`, mid-file uses
+// `hunk-separator`.
 function hunkHeaderRowId(
   file: string,
   hunkIndex: number,
@@ -134,12 +134,9 @@ function hunkHeaderRowId(
 const INTERACTIVE_PAD_GUTTER = " ".repeat(LINE_NUMBER_WIDTH + 3);
 
 // Issue #280: hunk-header banner left-cell glyph. `↑` for `primaryExpand`
-// = "up", `↕` for "all", `…` for the inert placeholder. The cell is
-// cursor-walkable + Enter-dispatches when primaryExpand !== null.
-function hunkHeaderGlyph(primaryExpand: "up" | "all" | null): string {
-  if (primaryExpand === "up") return "↑";
-  if (primaryExpand === "all") return "↕";
-  return "…";
+// = "up", `↕` for "all".
+function hunkHeaderGlyph(primaryExpand: "up" | "all"): string {
+  return primaryExpand === "up" ? "↑" : "↕";
 }
 
 function splitClickTarget(
@@ -201,12 +198,13 @@ export function DiffRows({
         const key = `r-${idx}`;
         if (row.kind === "hunk-header") {
           // Issue #280: two-cell banner mirroring the webapp. Left cell
-          // hosts the primary expand affordance (`↑` / `↕` / inert `…`)
-          // with saturated `bg.accentEmphasis` background; right cell
-          // hosts the muted `@@` text. The whole row is cursor-walkable
-          // iff `primaryExpand !== null` (flat-rows projects to
-          // `boundary-top` / `hunk-separator`); cursor outline paints
-          // on the left cell.
+          // hosts the primary expand affordance (`↑` / `↕`) with
+          // saturated `bg.accentEmphasis` background; right cell hosts
+          // the muted `@@` text. The whole row is cursor-walkable
+          // (flat-rows projects to `boundary-top` / `hunk-separator`);
+          // cursor outline paints on the left cell. Issue #359: the
+          // planner skips emission at `gapAbove === 0`, so every
+          // hunk-header row reaching this renderer is interactive.
           //
           // `height={1}` on the inner `<text>` glyph + `<text>` header
           // defends against wrap-induced sibling stretch. The right cell
@@ -225,9 +223,7 @@ export function DiffRows({
           // Repro verified in-session: a banner with a ~95-char `@@`
           // header inside a single-bordered file card at 100-col
           // viewport wraps to 2 rows by default; either fix pins it.
-          const interactive = row.primaryExpand !== null;
           const cursorActive =
-            interactive &&
             rowCursor != null &&
             rowCursor.file === fileName &&
             rowCursor.interactive != null &&
@@ -236,21 +232,20 @@ export function DiffRows({
             rowCursor.interactive.boundaryRef ===
               (row.hunkIndex === 0 ? "top" : row.hunkIndex);
           const id = hunkHeaderRowId(fileName, row.hunkIndex);
-          const onMouseDown =
-            interactive && onInteractiveClick
-              ? () =>
-                  onInteractiveClick(
-                    fileName,
-                    row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
-                    row.hunkIndex === 0 ? "top" : row.hunkIndex,
-                  )
-              : undefined;
+          const onMouseDown = onInteractiveClick
+            ? () =>
+                onInteractiveClick(
+                  fileName,
+                  row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
+                  row.hunkIndex === 0 ? "top" : row.hunkIndex,
+                )
+            : undefined;
           // Issue #305: cursor's button-cell bg flips with focus —
           // bright `cursorRow.tui` when the diff pane is focused, dim
           // `accentCursor.tui` when parked (sidebar holds focus). No
           // gutter column on the banner, so the `❯` glyph rule does not
           // apply here — the focus signal is bg-intensity only, layered
-          // on top of the existing `↑` / `↕` / `…` button glyph.
+          // on top of the existing `↑` / `↕` button glyph.
           const buttonBg = cursorActive
             ? (paneFocused ? theme.bg.cursorRow.tui : theme.bg.accentCursor.tui)
             : theme.bg.accentEmphasis;

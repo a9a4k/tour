@@ -513,11 +513,11 @@ function renderDiffRow(
 }
 
 // Issue #280: the hunk-header banner's leftmost cell hosts the primary
-// expand affordance (`primaryExpand: "up" | "all" | null`). When non-null
-// the cell is interactive (click + Enter dispatch) and the cursor walks
-// the row via the existing `boundary-top` / `hunk-separator` identity.
-// When null the cell paints an inert `…` placeholder; flat-rows skips
-// the banner from the cursor stream.
+// expand affordance (`primaryExpand: "up" | "all"`). The cell is
+// interactive (click + Enter dispatch) and the cursor walks the row via
+// the existing `boundary-top` / `hunk-separator` identity. Issue #359:
+// the planner skips emission at `gapAbove === 0`, so every banner
+// reaching this renderer is interactive.
 function renderHunkHeader(
   row: HunkHeaderRow,
   idx: number,

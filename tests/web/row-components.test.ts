@@ -1640,25 +1640,6 @@ describe("<HunkHeaderBanner> (#223; two-cell layout per issue #280)", () => {
     expect(row.classList.contains("is-cursor")).toBe(true);
   });
 
-  it("renders the inert `…` placeholder + no role/tabindex on the button cell when primaryExpand === null", () => {
-    const c = mount(
-      createElement(HunkHeaderBanner, {
-        header: "@@ -1,4 +1,4 @@",
-        boundaryRef: "top",
-        direction: "up",
-        primaryExpand: null,
-        gapAbove: 0,
-        isCursor: false,
-      }),
-    );
-    const btn = c.querySelector(".tour-hunk-header-button") as HTMLElement;
-    expect(btn).not.toBeNull();
-    expect(btn.textContent).toBe("…");
-    expect(btn.classList.contains("is-placeholder")).toBe(true);
-    expect(btn.getAttribute("role")).toBeNull();
-    expect(btn.getAttribute("tabindex")).toBeNull();
-  });
-
   it("renders an interactive `↑` button cell when primaryExpand === 'up'", () => {
     const c = mount(
       createElement(HunkHeaderBanner, {

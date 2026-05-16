@@ -72,8 +72,8 @@ export type FlatRow = DiffFlatRow | InteractiveFlatRow | CardFlatRow;
 /** Options for `flatRows`. */
 export interface FlatRowsOptions {
   /** Vestigial. Issue #280 brought the hunk-header banner back as a
-   *  cursor stop when `primaryExpand !== null`, with both surfaces
-   *  following the same rule. The option is kept for caller-side
+   *  cursor stop on both surfaces, and issue #359 made every emitted
+   *  banner cursor-walkable. The option is kept for caller-side
    *  compatibility (TUI passes `false`); the value is now ignored. */
   hunkHeaderCursorStop?: boolean;
 }
@@ -138,13 +138,12 @@ export function flatRows(
       if (row.kind === "hunk-header") {
         // Issue #280: the banner's left cell hosts the primary expand
         // affordance (`primaryExpand: "up" | "all"`); the cursor walks
-        // the row whenever the cell is interactive. Identity uses the
-        // existing `boundary-top` (file-top, hunkIndex 0) /
-        // `hunk-separator` (mid-file) subkinds so existing matching
-        // logic in FileBlock + TUI cursor visuals composes unchanged.
-        // When `primaryExpand === null` the cell paints an inert `…`
-        // placeholder and the row stays out of the cursor stream.
-        if (row.primaryExpand === null) continue;
+        // the row. Identity uses the existing `boundary-top` (file-top,
+        // hunkIndex 0) / `hunk-separator` (mid-file) subkinds so existing
+        // matching logic in FileBlock + TUI cursor visuals composes
+        // unchanged. Issue #359: the planner skips emission entirely
+        // when `gapAbove === 0`, so every hunk-header row reaching this
+        // branch is cursor-walkable.
         const subKind: InteractiveSubKind =
           row.hunkIndex === 0 ? "boundary-top" : "hunk-separator";
         const boundaryRef: BoundaryRef =

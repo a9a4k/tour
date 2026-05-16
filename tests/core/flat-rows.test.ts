@@ -75,11 +75,10 @@ describe("flatRows", () => {
     expect(rows[rows.length - 1].file).toBe("z.txt");
   });
 
-  it("emits cursor-walkable rows for diff-row + comment cards, skips inert hunk-header rows (PRD #192)", () => {
-    // Issue #280: hunk-headers are cursor-addressable iff
-    // `primaryExpand !== null` (i.e. `gapAbove > 0`). SIMPLE_DIFF's
-    // first hunk starts at line 1, so its hunk-header is inert
-    // (primaryExpand null) and excluded from the flat stream.
+  it("emits cursor-walkable rows for diff-row + comment cards, skips empty-gap hunk-header rows (PRD #192)", () => {
+    // Issue #359: when `gapAbove === 0` the planner skips emitting the
+    // hunk-header entirely. SIMPLE_DIFF's first hunk starts at line 1,
+    // so no hunk-header is emitted and none reaches the flat stream.
     // PRD #192: comment rows ARE cursor-addressable now (as card
     // rows), so they contribute one card flat row each.
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
@@ -388,26 +387,12 @@ describe("flatRows interactive rows (PRD #107)", () => {
 });
 
 // Issue #280: the hunk-header banner's leftmost cell hosts the primary
-// expand affordance. The cursor walks the banner whenever
-// `primaryExpand !== null` (identity: `boundary-top` for file-top,
-// `hunk-separator` for mid-file). When `primaryExpand === null` the cell
-// paints an inert `…` placeholder and the cursor skips the row.
+// expand affordance. The cursor walks the banner via `boundary-top`
+// (file-top) / `hunk-separator` (mid-file) subkinds. Issue #359: the
+// planner skips emission at `gapAbove === 0`, so every emitted banner
+// reaches flat-rows with a non-null `primaryExpand` and projects to a
+// cursor stop.
 describe("flatRows hunk-header banner (issue #280)", () => {
-  it("skips a hunk-header with primaryExpand === null", () => {
-    const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
-    const rows: PlannedRow[] = [
-      {
-        kind: "hunk-header",
-        header: "@@ -1,3 +1,3 @@",
-        hunkIndex: 0,
-        gapAbove: 0,
-        primaryExpand: null,
-      },
-    ];
-    const flat = flatRows([f], new Map([["x.txt", rows]]), () => false);
-    expect(flat.length).toBe(0);
-  });
-
   it("emits a boundary-top cursor stop for a first-hunk banner with primaryExpand !== null", () => {
     const f = fileFromDiff(SIMPLE_DIFF, "x.txt");
     const rows: PlannedRow[] = [
