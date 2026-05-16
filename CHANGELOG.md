@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Event-sourced Tour persistence (issue #386, ADR 0036, PRD #384, Slice B).**
+  Per-Tour on-disk persistence moves from a homogeneous Comment-snapshot
+  log (`comments.jsonl`) to an append-only event log at
+  `.tour/<id>/tour-events.jsonl`. Initial event union: `comment.created`
+  + `reply.created` (this slice emits both) and `comment.deleted` (the
+  fold implements the C4 cascade so it's testable now; the write verb
+  lands in Slice C). Reads project events through a pure fold
+  (`foldEventsToComments`) into `CommentState[]` — the new projected
+  Comment shape gains an optional `deleted?: { at }` field (absent in
+  this slice). Every existing consumer (CLI / TUI / webapp / `tour
+  pickup` / reply-runner) is unchanged at its API; only the storage
+  seam moves. The watcher collapses its dual-fingerprint
+  (`comments.jsonl` → `annotations.jsonl`) logic to a single fingerprint
+  of `tour-events.jsonl`. ADR 0029's Stage B addendum decision that
+  predecessor read paths "stay forever" is superseded for the storage
+  shape — pre-1.0 status makes the migration cost-free. Existing
+  `.tour/<id>/` directories on disk become unreadable; affected
+  contributors re-create their Tours.
+
 ### Removed
 
 - **OpenTUI tree-sitter machinery retired (issue #377, PRD #374, slice 3).**
