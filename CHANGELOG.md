@@ -51,6 +51,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: hunk-header and `expand-down` buttons no longer dim on cursor
+  (issue #379).** The two-cell banner painted its focus tint on the
+  saturated `accentEmphasis` button cell, so landing the diff cursor
+  flipped the bg to `cursorRow.tui` (focused) or `accentCursor.tui`
+  (parked) — both darker than `accentEmphasis`, producing a brightness
+  ordering of **default > focused > parked** that reads as "focus
+  removes prominence". Moved the focus tint to the right (text) cell,
+  matching the webapp's "row lights up on the right; button stays
+  bright" decision. Button cell now stays `accentEmphasis` in every
+  cursor state; right cell flips from its uncursored `accentSubtle.tui`
+  to `cursorRow.tui` / `accentCursor.tui` on cursor + focus. Applies
+  to both the hunk-header banner (`↑` / `↕`) and the standalone
+  `expand-down` row (`↓`). No theme or layout changes.
+
+  Issue: #379
+
 - **`tour serve --port 0` asks the OS for any free port (issue #373).**
   Five integration test files used to pick a port via `Math.floor(
   Math.random() * RANGE)` then pass it to `tour serve --port N`. The

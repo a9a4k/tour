@@ -1582,7 +1582,7 @@ index 1..2 100644
       expect(onInteractiveClick).toHaveBeenCalledWith("x.txt", "expand-down", 2);
     });
 
-    it("lights up cursor on an expand-down row when the cursor's interactive anchor matches (button cell bg flips to cursorRow)", () => {
+    it("lights up cursor on an expand-down row when the cursor's interactive anchor matches (right cell bg flips to cursorRow; button cell stays accentEmphasis)", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
@@ -1604,7 +1604,13 @@ index 1..2 100644
       const bgs = flatten(tree)
         .map((el) => el.props["backgroundColor"])
         .filter((b): b is string => typeof b === "string");
+      // Issue #379: focus tint lives on the right cell, not the button.
+      // The button cell stays `accentEmphasis` so it does not visually
+      // dim on cursor; the right cell carries `cursorRow.tui` instead
+      // of its uncursored `accentSubtle.tui`.
+      expect(bgs).toContain(theme.bg.accentEmphasis);
       expect(bgs).toContain(theme.bg.cursorRow.tui);
+      expect(bgs).not.toContain(theme.bg.accentSubtle.tui);
     });
   });
 
@@ -1740,10 +1746,11 @@ index 1..2 100644
   // flows from the App shell (`!sidebarFocused`) through DiffRows to:
   //   - DiffLine (content rows + interactive rows) — drives bg intensity
   //     and the `❯` glyph (asserted directly in diff-line.test.ts);
-  //   - the hunk-header banner button cell — bright `cursorRow.tui` when
-  //     diff pane is focused, dim `accentCursor.tui` when parked;
-  //   - the standalone `expand-down` button cell — same rule.
-  // The button-cell tests here pin the focus-aware bg flip; the cursor
+  //   - the hunk-header banner right cell — bright `cursorRow.tui` when
+  //     diff pane is focused, dim `accentCursor.tui` when parked
+  //     (button cell stays `accentEmphasis` per issue #379);
+  //   - the standalone `expand-down` right cell — same rule.
+  // The right-cell tests here pin the focus-aware bg flip; the cursor
   // glyph rule for content rows is pinned in diff-line.test.ts via the
   // forwarded `paneFocused` prop.
   describe("paneFocused (issue #305)", () => {
@@ -1785,7 +1792,14 @@ index 1..2 100644
       expect(cells[0].props["paneFocused"]).toBe(false);
     });
 
-    it("hunk-header banner button cell paints bright cursorRow.tui when paneFocused=true (default) and cursor matches", () => {
+    // Issue #379 — focus tint lives on the right cell of the
+    // hunk-header banner and the standalone expand-down row, not the
+    // saturated button cell. The button keeps `accentEmphasis` in
+    // every cursor state so it does not visually dim on focus; the
+    // right cell flips from `accentSubtle.tui` (uncursored) to
+    // `cursorRow.tui` (cursored + diff pane focused) or
+    // `accentCursor.tui` (cursored + sidebar parked).
+    it("hunk-header banner right cell paints bright cursorRow.tui when paneFocused=true (default) and cursor matches; button cell stays accentEmphasis", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
@@ -1807,11 +1821,13 @@ index 1..2 100644
       const bgs = flatten(tree)
         .map((el) => el.props["backgroundColor"])
         .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentEmphasis);
       expect(bgs).toContain(theme.bg.cursorRow.tui);
       expect(bgs).not.toContain(theme.bg.accentCursor.tui);
+      expect(bgs).not.toContain(theme.bg.accentSubtle.tui);
     });
 
-    it("hunk-header banner button cell paints dim accentCursor.tui when paneFocused=false and cursor matches", () => {
+    it("hunk-header banner right cell paints dim accentCursor.tui when paneFocused=false and cursor matches; button cell stays accentEmphasis", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
@@ -1833,11 +1849,13 @@ index 1..2 100644
       const bgs = flatten(tree)
         .map((el) => el.props["backgroundColor"])
         .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentEmphasis);
       expect(bgs).toContain(theme.bg.accentCursor.tui);
       expect(bgs).not.toContain(theme.bg.cursorRow.tui);
+      expect(bgs).not.toContain(theme.bg.accentSubtle.tui);
     });
 
-    it("hunk-header banner button cell stays accentEmphasis when no cursor (paneFocused irrelevant)", () => {
+    it("hunk-header banner button cell stays accentEmphasis when no cursor; right cell stays accentSubtle.tui (paneFocused irrelevant)", () => {
       const rows: PlannedRow[] = [
         {
           kind: "hunk-header",
@@ -1852,11 +1870,12 @@ index 1..2 100644
         .map((el) => el.props["backgroundColor"])
         .filter((b): b is string => typeof b === "string");
       expect(bgs).toContain(theme.bg.accentEmphasis);
+      expect(bgs).toContain(theme.bg.accentSubtle.tui);
       expect(bgs).not.toContain(theme.bg.cursorRow.tui);
       expect(bgs).not.toContain(theme.bg.accentCursor.tui);
     });
 
-    it("expand-down button cell paints bright cursorRow.tui when paneFocused=true (default) and cursor matches", () => {
+    it("expand-down right cell paints bright cursorRow.tui when paneFocused=true (default) and cursor matches; button cell stays accentEmphasis", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
@@ -1878,11 +1897,13 @@ index 1..2 100644
       const bgs = flatten(tree)
         .map((el) => el.props["backgroundColor"])
         .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentEmphasis);
       expect(bgs).toContain(theme.bg.cursorRow.tui);
       expect(bgs).not.toContain(theme.bg.accentCursor.tui);
+      expect(bgs).not.toContain(theme.bg.accentSubtle.tui);
     });
 
-    it("expand-down button cell paints dim accentCursor.tui when paneFocused=false and cursor matches", () => {
+    it("expand-down right cell paints dim accentCursor.tui when paneFocused=false and cursor matches; button cell stays accentEmphasis", () => {
       const rows: PlannedRow[] = [
         {
           kind: "interactive",
@@ -1904,8 +1925,10 @@ index 1..2 100644
       const bgs = flatten(tree)
         .map((el) => el.props["backgroundColor"])
         .filter((b): b is string => typeof b === "string");
+      expect(bgs).toContain(theme.bg.accentEmphasis);
       expect(bgs).toContain(theme.bg.accentCursor.tui);
       expect(bgs).not.toContain(theme.bg.cursorRow.tui);
+      expect(bgs).not.toContain(theme.bg.accentSubtle.tui);
     });
   });
 
