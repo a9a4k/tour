@@ -35,8 +35,6 @@ function render(props: Partial<Parameters<typeof DiffLine>[0]> = {}): AnyElement
     gutterTinted: false,
     contentTinted: false,
     gutterAccent: false,
-    filetype: "ts",
-    syntaxStyle: { tokens: {} } as never,
     width: "50%",
     ...props,
   } as Parameters<typeof DiffLine>[0]);
@@ -398,7 +396,10 @@ describe("DiffLine emptySide (issue #260)", () => {
 // `.tour-hunk-header` paints the whole line in fg.muted; the TUI matches
 // by passing `mutedText` to DiffLine. The flag forces the plain <text>
 // branch (so the syntax highlighter does not paint `import` red, etc.)
-// and tints the content text in theme.fg.muted.
+// and tints the content text in theme.fg.muted. Issue #376 swapped the
+// styled branch from `<code filetype=...>` to `<text content={styledLine}>`
+// — the flag still forces the plain branch, just gated by `styledLine`
+// presence instead of `filetype`.
 describe("DiffLine mutedText (issue #259)", () => {
   function contentInnerOf(root: AnyElement): AnyElement[] {
     const kids = childrenOf(root).filter(isElement);
@@ -406,15 +407,25 @@ describe("DiffLine mutedText (issue #259)", () => {
     return childrenOf(wrap).filter(isElement);
   }
 
-  it("forces the plain <text> branch (skips <code>) even when filetype is supplied", () => {
-    const root = render({ mutedText: true, filetype: "ts" } as never);
+  // Stub StyledText for the `mutedText` tests below — DiffLine doesn't
+  // inspect the value, only its presence. The styled branch would
+  // otherwise be unreachable from the plain-text test inputs.
+  const STUB_STYLED = { chunks: [] } as never;
+
+  it("forces the plain <text> branch (skips styled <text>) even when styledLine is supplied", () => {
+    const root = render({ mutedText: true, styledLine: STUB_STYLED } as never);
     const inner = contentInnerOf(root);
-    expect(inner.some((c) => c.type === "code")).toBe(false);
-    expect(inner.some((c) => c.type === "text")).toBe(true);
+    // The styled branch's <text> carries a `content` prop; the plain
+    // branch's <text> renders its body via children. Assert exactly one
+    // <text> child and that it's the plain (children-based) one.
+    const textChildren = inner.filter((c) => c.type === "text");
+    expect(textChildren).toHaveLength(1);
+    expect(textChildren[0]!.props["content"]).toBeUndefined();
+    expect(textChildren[0]!.props["children"]).toBeDefined();
   });
 
   it("paints the content text in theme.fg.muted", () => {
-    const root = render({ mutedText: true, filetype: "ts" } as never);
+    const root = render({ mutedText: true, styledLine: STUB_STYLED } as never);
     const inner = contentInnerOf(root);
     const textNode = inner.find((c) => c.type === "text");
     expect(textNode).toBeDefined();
@@ -422,10 +433,10 @@ describe("DiffLine mutedText (issue #259)", () => {
   });
 
   it("leaves the content text un-tinted when mutedText is not set (default behaviour unchanged)", () => {
-    // Empty side of a pure +/- row in split: filetype is supplied but
-    // text is empty, so showCode is false and the plain <text> renders
-    // with no fg override. Pre-#259 behaviour.
-    const root = render({ filetype: "ts", text: "" } as never);
+    // Empty side of a pure +/- row in split: styledLine could be present
+    // but text is empty, so showStyled is false and the plain <text>
+    // renders with no fg override. Pre-#259 behaviour.
+    const root = render({ styledLine: STUB_STYLED, text: "" } as never);
     const inner = contentInnerOf(root);
     const textNode = inner.find((c) => c.type === "text");
     expect(textNode).toBeDefined();
@@ -531,5 +542,48 @@ describe("DiffLine gutter fg by row kind (issue #268)", () => {
   it("emptySide context row still uses the muted gutter-fg rule (no number to paint, but rule is consistent)", () => {
     const root = render({ emptySide: true, diffBg: undefined } as never);
     expect(gutterNumberTextOf(root).props["fg"]).toBe(theme.fg.muted);
+  });
+});
+
+// Issue #376: the styled (Shiki-tokenised) branch. When `styledLine` is
+// passed and text is non-empty, the content cell renders a `<text>`
+// with the `content` prop set to the styled line, in `wrapMode="word"`.
+// When `styledLine` is absent (lang unsupported / not-yet-loaded /
+// non-truecolor terminal / empty side), the cell falls through to the
+// plain `<text>{text}</text>` branch.
+describe("DiffLine styledLine (issue #376)", () => {
+  const STUB_STYLED = { chunks: [{ __isChunk: true, text: "x" }] } as never;
+
+  function contentInnerOf(root: AnyElement): AnyElement[] {
+    const kids = childrenOf(root).filter(isElement);
+    const wrap = kids[kids.length - 1]!;
+    return childrenOf(wrap).filter(isElement);
+  }
+
+  it("renders the styled branch via <text content=styledLine> when styledLine is present", () => {
+    const root = render({ styledLine: STUB_STYLED } as never);
+    const inner = contentInnerOf(root);
+    const textNode = inner.find((c) => c.type === "text");
+    expect(textNode).toBeDefined();
+    expect(textNode!.props["content"]).toBe(STUB_STYLED);
+    expect(textNode!.props["wrapMode"]).toBe("word");
+  });
+
+  it("falls through to the plain-text branch when styledLine is absent", () => {
+    const root = render({ styledLine: undefined } as never);
+    const inner = contentInnerOf(root);
+    const textNode = inner.find((c) => c.type === "text");
+    expect(textNode).toBeDefined();
+    // Plain branch renders text via children, not content.
+    expect(textNode!.props["content"]).toBeUndefined();
+    expect(textNode!.props["children"]).toBe("const x = 1;");
+  });
+
+  it("falls through to the plain-text branch when text is empty even if styledLine is present", () => {
+    const root = render({ styledLine: STUB_STYLED, text: "" } as never);
+    const inner = contentInnerOf(root);
+    const textNode = inner.find((c) => c.type === "text");
+    expect(textNode).toBeDefined();
+    expect(textNode!.props["content"]).toBeUndefined();
   });
 });

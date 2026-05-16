@@ -8,6 +8,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI paints every Shiki-supported language via
+  `core/syntax-highlight.ts` (issue #376, PRD #374, slice 2).** Pre-fix
+  the TUI's OpenTUI `<code>` path covered 5 grammars
+  (TS/TSX/JS/JSX/Markdown) inherited from `@opentui/core`'s tree-sitter
+  asset directory; anything else painted plain. Opening a `.proto`,
+  `.rb`, `.kt`, `.swift`, `.java`, `.toml`, `.c`/`.cpp`, `.php`, `.sql`,
+  `.lua`, `.zig`, etc. file in the TUI now paints with GitHub-Dark token
+  colours, matching the webapp's coverage from #375. Comments paint
+  italic via the cross-surface overlay. Implementation: the new
+  `src/tui/syntax-paint.ts` adapter walks the surface-agnostic
+  `TokenLine[]` from `core/syntax-highlight.ts` and builds OpenTUI
+  `StyledText` via `fg(color)(text)` composed through `bold` / `italic`
+  / `underline` from `@opentui/core`. The `useTuiHighlight(content,
+  lang) → StyledText[] | null` hook (in `src/tui/use-tui-highlight.ts`)
+  mirrors the webapp's `useLazyHighlight` shape — returns null until
+  the per-lang grammar resolves, then one `StyledText` per source line.
+  `DiffLine.tsx` drops the `filetype` / `syntaxStyle` props and accepts
+  `styledLine?: StyledText`; the styled branch renders via `<text
+  content={styledLine} wrapMode="word">` when present and falls
+  through to the existing plain-text branch otherwise. The diff-pane
+  assembly site (`app.tsx`'s new `<DiffPaneFile>` component) wires the
+  hook per file and threads per-line `StyledText` through `DiffRows`'s
+  new `stylesLeft` / `stylesRight` props. Non-truecolor terminals
+  (`COLORTERM` unset or non-truecolor value) short-circuit to plain
+  text — wrongly-mapped colour beats missing highlight only in the
+  negative direction (PRD #374). `src/tui/syntax.ts`, the bespoke
+  OpenTUI parser-worker pre-bundle, and the worker shim still ship in
+  the binary; their retirement is scoped out of this slice (no new
+  references to any of them).
+
+  Issue: #376 · PRD: #374
+
 - **Webapp paints every Shiki-supported language via the new
   `core/syntax-highlight.ts` module (issue #375, PRD #374, slice 1).**
   Pre-fix the webapp eagerly bundled 13 grammars (TS/TSX/JS/JSX/JSON/MD/

@@ -1,4 +1,4 @@
-import type { SyntaxStyle } from "@opentui/core";
+import type { StyledText } from "@opentui/core";
 import { theme } from "../core/theme.js";
 
 // Comment accent stripe — 128 repeats of ▌ (U+258C LEFT HALF BLOCK)
@@ -71,15 +71,20 @@ interface DiffLineProps {
   // width does not shift across focus transitions. Defaults to `true` so
   // pre-#305 callers (and most tests) get the historic bright treatment.
   paneFocused?: boolean;
-  filetype: string | undefined;
-  syntaxStyle: SyntaxStyle;
+  // Per-line styled token output from `core/syntax-highlight.ts` via
+  // `paintStyledText` (issue #376). When present the row paints via
+  // `<text content={styledLine}>` instead of plain `<text>{text}</text>`,
+  // giving the row Shiki-driven syntax colours. When absent (lang
+  // unsupported, hook still resolving, non-truecolor terminal, or
+  // empty side) the row falls through to the plain-text branch.
+  styledLine?: StyledText;
   // Hunk-header / metadata text (issue #259). When true, skip the
-  // <code> syntax-highlight branch regardless of filetype and paint
-  // the plain <text> in theme.fg.muted. GitHub renders the entire
-  // `@@ ... @@ <function-context>` line in continuous fg.muted grey —
-  // the banner is metadata, not code, and the syntax pipeline would
-  // otherwise paint keywords in the function-context tail (e.g.
-  // `import` red, `function` red) breaking the muted continuity.
+  // styled paint branch regardless of `styledLine` and paint the plain
+  // <text> in theme.fg.muted. GitHub renders the entire `@@ ... @@
+  // <function-context>` line in continuous fg.muted grey — the banner
+  // is metadata, not code, and the syntax pipeline would otherwise
+  // paint keywords in the function-context tail (e.g. `import` red,
+  // `function` red) breaking the muted continuity.
   mutedText?: boolean;
   // Empty side of a single-side split-layout row (issue #260). When
   // true, paint both gutter and content cells in theme.canvas.inset so
@@ -115,8 +120,7 @@ export function DiffLine({
   diffBg,
   cursorActive,
   paneFocused = true,
-  filetype,
-  syntaxStyle,
+  styledLine,
   mutedText,
   emptySide,
   width,
@@ -147,7 +151,7 @@ export function DiffLine({
     : contentTinted
       ? TINT_BG
       : (diffTones.content ?? emptySideBg);
-  const showCode = !!filetype && text.length > 0 && !mutedText;
+  const showStyled = !!styledLine && text.length > 0 && !mutedText;
   // Drop one leading char so the total gutter width is preserved when the
   // cursor glyph rides in front of the line number. When the glyph is
   // suppressed (issue #305: parked cursor in the unfocused pane) we keep
@@ -190,32 +194,20 @@ export function DiffLine({
         )}
         <text height={1} flexShrink={0} fg={gutterFg}>{gutterText}</text>
       </box>
-      {showCode ? (
-        // <code> as a direct flex child reports a measure that includes a
-        // phantom extra row, doubling the diff row's terminal height. Wrap
-        // it in a <box> so flex sizing comes from the box and <code> just
-        // fills it. Same pattern as anomalyco/opentui#621's
-        // DiffLineRenderable._contentBox.
-        // bg lives on the wrapper, not <code>: <code> only paints behind
-        // characters, so a bg passed to it leaves the trailing whitespace
-        // unhighlighted. Painting on the flex-grown box fills the full row.
-        // alignSelf="stretch" escapes the parent's `alignItems="flex-start"`
-        // so the content cell extends to the row's full wrapped height when
-        // the SIBLING half drives the wrap — without it, the empty-side
-        // / context-paired / comment-tinted content cell stayed 1 row
-        // tall, leaving the wrap-continuation rows unpainted and showing
-        // the terminal canvas as visible stripes through the empty-side
-        // inset fill, the comment tint, and the diff +/- bg. Sibling
-        // fix to #267 (which stretched the wrapper one level up).
+      {showStyled ? (
+        // Same wrapping rationale as the plain-text branch below: bg
+        // lives on the flex-grown box (paints the full row including
+        // trailing whitespace, not just behind characters), and
+        // `alignSelf="stretch"` escapes the row's `alignItems="flex-
+        // start"` so the cell extends across wrapped visual rows when
+        // the sibling half drives the wrap. The styled `<text>` is
+        // keyed so OpenTUI's `setStyledText` setter remounts cleanly
+        // when toggling between styled and plain branches —
+        // OpenTUI's spike-validated React-prop edge case (issue #376):
+        // setStyledText runs on every prop update and crashes inside
+        // `text.chunks` on an `undefined` mid-transition value.
         <box flexGrow={1} minHeight={1} alignSelf="stretch" backgroundColor={contentBg}>
-          <code
-            content={text}
-            filetype={filetype}
-            syntaxStyle={syntaxStyle}
-            drawUnstyledText
-            wrapMode="word"
-            width="100%"
-          />
+          <text key="shiki" content={styledLine} wrapMode="word" />
         </box>
       ) : (
         // Same reason as above: wrap so the bg fills the row, not just the

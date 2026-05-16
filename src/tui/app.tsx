@@ -33,6 +33,8 @@ import { resolveYankTarget } from "../core/yank-target.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
 import { CURSOR_FG, CURSOR_GLYPH } from "./DiffLine.js";
+import { useTuiHighlight } from "./use-tui-highlight.js";
+import { detectLang } from "../core/syntax-highlight.js";
 import { FileHeader } from "./FileHeader.js";
 import { collectFileCardOffsets, deriveActiveFile } from "./active-file.js";
 import {
@@ -181,38 +183,68 @@ function truncateForPreview(text: string): string {
     : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
 }
 
-function fileCardBody(
-  fileName: string,
-  collapsed: boolean,
-  hasHunks: boolean,
-  reason: string | undefined,
-  rows: ReadonlyArray<PlannedRow>,
-  layout: "split" | "unified",
-  cursorCardId: string | null,
-  cursor: Cursor | null,
+interface DiffPaneFileProps {
+  file: BundleFile;
+  collapsed: boolean;
+  reason: string | undefined;
+  rows: ReadonlyArray<PlannedRow>;
+  layout: "split" | "unified";
+  cursorCardId: string | null;
+  cursor: Cursor | null;
   onCursorClick: (
     file: string,
     side: "additions" | "deletions",
     lineNumber: number,
-  ) => void,
+  ) => void;
   onInteractiveClick: (
     file: string,
     subKind: InteractiveSubKind,
     boundaryRef: BoundaryRef,
-  ) => void,
-  onCardClick: (commentId: string) => void,
-  repliesCollapsed: boolean,
-  replyLock: ReplyLock | null,
-  now: number,
-  navIndexById: ReadonlyMap<string, number>,
-  navTotal: number,
-  paneFocused: boolean,
-) {
-  const placeholder = fileCardPlaceholder(collapsed, hasHunks, reason);
+  ) => void;
+  onCardClick: (commentId: string) => void;
+  repliesCollapsed: boolean;
+  replyLock: ReplyLock | null;
+  now: number;
+  navIndexById: ReadonlyMap<string, number>;
+  navTotal: number;
+  paneFocused: boolean;
+}
+
+// Issue #376: row-assembly site wires `useTuiHighlight` per file and
+// passes per-line `StyledText` down to `DiffRows`. Two calls per file
+// — one for the additions side (new content + name), one for the
+// deletions side (old content + prevName, in case of rename). On
+// non-truecolor terminals and during the per-lang lazy load both
+// calls return `null` and `DiffRows` falls through to the plain-text
+// branch in `DiffLine`. Mirrors the webapp's `FileBlock` (one
+// `useLazyHighlight` per side).
+function DiffPaneFile({
+  file,
+  collapsed,
+  reason,
+  rows,
+  layout,
+  cursorCardId,
+  cursor,
+  onCursorClick,
+  onInteractiveClick,
+  onCardClick,
+  repliesCollapsed,
+  replyLock,
+  now,
+  navIndexById,
+  navTotal,
+  paneFocused,
+}: DiffPaneFileProps) {
+  const additionsLang = detectLang(file.name);
+  const deletionsLang = detectLang(file.prevName ?? file.name);
+  const stylesRight = useTuiHighlight(file.newContent ?? "", additionsLang);
+  const stylesLeft = useTuiHighlight(file.oldContent ?? "", deletionsLang);
+  const placeholder = fileCardPlaceholder(collapsed, file.hunks.length > 0, reason);
   if (placeholder !== null) return <text fg={theme.fg.muted}>{placeholder}</text>;
   return (
     <DiffRows
-      fileName={fileName}
+      fileName={file.name}
       rows={rows}
       layout={layout}
       cursorCardId={cursorCardId}
@@ -226,6 +258,8 @@ function fileCardBody(
       navIndexById={navIndexById}
       navTotal={navTotal}
       paneFocused={paneFocused}
+      stylesLeft={stylesLeft}
+      stylesRight={stylesRight}
     />
   );
 }
@@ -2054,25 +2088,24 @@ function App(props: AppProps) {
                         flexDirection="column"
                         marginBottom={1}
                       >
-                        {fileCardBody(
-                          file.name,
-                          collapsed,
-                          file.hunks.length > 0,
-                          reason,
-                          rows,
-                          layout,
-                          cursorCardId,
-                          cursor,
-                          onCursorClick,
-                          onInteractiveClick,
-                          onCardClick,
-                          repliesCollapsed,
-                          replyLock,
-                          now,
-                          nav.navIndexById,
-                          nav.navTotal,
-                          !sidebarFocused,
-                        )}
+                        <DiffPaneFile
+                          file={file}
+                          collapsed={collapsed}
+                          reason={reason}
+                          rows={rows}
+                          layout={layout}
+                          cursorCardId={cursorCardId}
+                          cursor={cursor}
+                          onCursorClick={onCursorClick}
+                          onInteractiveClick={onInteractiveClick}
+                          onCardClick={onCardClick}
+                          repliesCollapsed={repliesCollapsed}
+                          replyLock={replyLock}
+                          now={now}
+                          navIndexById={nav.navIndexById}
+                          navTotal={nav.navTotal}
+                          paneFocused={!sidebarFocused}
+                        />
                       </box>
                     );
                   })}

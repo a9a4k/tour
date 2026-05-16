@@ -1,3 +1,4 @@
+import type { StyledText } from "@opentui/core";
 import type {
   PlannedRow,
   DiffRow,
@@ -8,7 +9,6 @@ import { theme } from "../core/theme.js";
 import { CommentCard } from "./CommentCard.js";
 import { commentCardSlot } from "./comment-placement.js";
 import { DiffLine } from "./DiffLine.js";
-import { getSyntaxStyle, inferFiletype } from "./syntax.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import type { Cursor } from "../core/cursor-state.js";
 
@@ -65,6 +65,16 @@ interface DiffRowsProps {
    *  Defaults to `true` so test callers and pre-#305 fixtures see the
    *  historic bright treatment. */
   paneFocused?: boolean;
+  /** Issue #376: per-source-line styled output from
+   *  `useTuiHighlight(oldContent, deletionsLang)`. One `StyledText`
+   *  per source line (1-indexed via `leftLineNumber`). `null` until
+   *  tokenisation resolves, then a complete array. Looked up by the
+   *  row's `leftLineNumber` and passed down as `styledLine` on
+   *  the deletions-side `DiffLine`. */
+  stylesLeft?: ReadonlyArray<StyledText> | null;
+  /** Companion to `stylesLeft` for the additions side. Looked up by
+   *  the row's `rightLineNumber`. */
+  stylesRight?: ReadonlyArray<StyledText> | null;
 }
 
 const LINE_NUMBER_WIDTH = 5;
@@ -186,13 +196,21 @@ export function DiffRows({
   navIndexById,
   navTotal,
   paneFocused = true,
+  stylesLeft,
+  stylesRight,
 }: DiffRowsProps) {
   // Narrow once: row-shaped cursor is the only kind that drives the per-
   // row outline. A CardAnchor's per-card outline is handled by
   // `cursorCardId` on the CommentCard side.
   const rowCursor = cursor && cursor.kind === "row" ? cursor : null;
-  const filetype = inferFiletype(fileName);
-  const syntaxStyle = getSyntaxStyle();
+
+  function styledFor(
+    styles: ReadonlyArray<StyledText> | null | undefined,
+    lineNumber: number | null,
+  ): StyledText | undefined {
+    if (!styles || lineNumber === null) return undefined;
+    return styles[lineNumber - 1];
+  }
 
   return (
     <>
@@ -341,8 +359,6 @@ export function DiffRows({
                 gutterAccent={false}
                 cursorActive={cursorActive}
                 paneFocused={paneFocused}
-                filetype={filetype}
-                syntaxStyle={syntaxStyle}
                 width="100%"
               />
             </box>
@@ -472,8 +488,7 @@ export function DiffRows({
                   emptySide={leftEmptySide}
                   cursorActive={leftCursorActive}
                   paneFocused={paneFocused}
-                  filetype={filetype}
-                  syntaxStyle={syntaxStyle}
+                  styledLine={styledFor(stylesLeft, row.leftLineNumber)}
                   width="100%"
                 />
               </box>
@@ -513,8 +528,7 @@ export function DiffRows({
                   emptySide={rightEmptySide}
                   cursorActive={rightCursorActive}
                   paneFocused={paneFocused}
-                  filetype={filetype}
-                  syntaxStyle={syntaxStyle}
+                  styledLine={styledFor(stylesRight, row.rightLineNumber)}
                   width="100%"
                 />
               </box>
@@ -525,6 +539,13 @@ export function DiffRows({
         const text = row.type === "deletion" ? row.leftText : row.rightText;
         const isPlusMinus = row.type === "addition" || row.type === "deletion";
         const unifiedDiffBg = isPlusMinus ? row.type : undefined;
+        // Unified rows show one source-of-truth line per row: the
+        // deletion row pulls from the old (left) content; addition and
+        // context rows pull from the new (right) content. Mirror the
+        // text-selection logic to pick the right styled line.
+        const unifiedStyledLine = row.type === "deletion"
+          ? styledFor(stylesLeft, row.leftLineNumber)
+          : styledFor(stylesRight, row.rightLineNumber);
         // Unified rows have one DiffLine; the cursor visual lights up
         // whenever the cursor matches either side (a unified context row
         // can be addressed from either side; pure +/- rows force their
@@ -549,8 +570,7 @@ export function DiffRows({
               diffBg={unifiedDiffBg}
               cursorActive={unifiedCursorActive}
               paneFocused={paneFocused}
-              filetype={filetype}
-              syntaxStyle={syntaxStyle}
+              styledLine={unifiedStyledLine}
               width="100%"
             />
           </box>
