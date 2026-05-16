@@ -18,7 +18,7 @@ export type ResolveServePortResult<T> =
   | { kind: "reuse"; port: number }
   | { kind: "bound"; resource: T; port: number; preferredWasBusy: boolean };
 
-export interface ResolveServePortArgs<T> {
+export interface ResolveServePortArgs<T extends { port: number }> {
   preferred: number;
   explicit: boolean;
   cwd: string;
@@ -37,7 +37,13 @@ export interface ResolveServePortArgs<T> {
 //                     or surface `port N is in use` (explicit)
 // Explicit `--port N` keeps single-port semantics: at most one probe +
 // one bind attempt; never falls through to the next port.
-export async function resolveServePort<T>(
+//
+// `preferred === 0` is the OS-assigned-port path (issue #373). The
+// probe + fallback walk are irrelevant — there's nothing to probe at
+// port 0, and the OS picks any free port on the bind, so a single
+// attempt always succeeds. The bound port is read back from the
+// resource (Bun.serve returns the actual port on its server handle).
+export async function resolveServePort<T extends { port: number }>(
   args: ResolveServePortArgs<T>,
 ): Promise<ResolveServePortResult<T>> {
   const {
@@ -48,6 +54,11 @@ export async function resolveServePort<T>(
     probe = (port) => probeTour(port, fetch, DEFAULT_PROBE_TIMEOUT_MS),
     budget = PORT_FALLBACK_BUDGET,
   } = args;
+
+  if (preferred === 0) {
+    const resource = await tryBind(0);
+    return { kind: "bound", resource, port: resource.port, preferredWasBusy: false };
+  }
 
   const attempts = explicit ? 1 : budget;
   for (let i = 0; i < attempts; i++) {
@@ -62,7 +73,7 @@ export async function resolveServePort<T>(
 
     try {
       const resource = await tryBind(port);
-      return { kind: "bound", resource, port, preferredWasBusy: i > 0 };
+      return { kind: "bound", resource, port: resource.port, preferredWasBusy: i > 0 };
     } catch (err) {
       if (!isAddrInUseError(err)) throw err;
       if (explicit) throw new Error(`port ${preferred} is in use`);

@@ -41,23 +41,29 @@ async function createTempRepoWithTour(bunPath: string): Promise<{ dir: string; t
 interface SpawnResult {
   stdout: string;
   proc: ChildProcess;
+  port: number;
 }
 
+// Issue #373: `--port 0` lets the OS pick a free port; the bound port
+// is read back from the startup banner so parallel test files can't
+// collide on a guessed value.
 function spawnServeUntilReady(
   bunPath: string,
   cwd: string,
   args: string[],
-  port: number,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(bunPath, [CLI, "serve", "--port", String(port), ...args], { cwd });
+    const proc = spawn(bunPath, [CLI, "serve", "--port", "0", ...args], { cwd });
     let stdout = "";
     let done = false;
     proc.stdout?.on("data", (chunk: Buffer | string) => {
       stdout += chunk.toString();
-      if (!done && stdout.includes("Tour server")) {
+      if (done) return;
+      const m = stdout.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+      if (m && stdout.includes("Tour server")) {
         done = true;
-        setTimeout(() => resolve({ stdout, proc }), 100);
+        const port = parseInt(m[1], 10);
+        setTimeout(() => resolve({ stdout, proc, port }), 100);
       }
     });
     proc.on("exit", (code) => {
@@ -80,7 +86,6 @@ describe("tour serve — deep URL on tour-id (issue #179)", () => {
   let tourId: string;
   let bunPath: string;
   let activeProc: ChildProcess | null = null;
-  const basePort = 19900;
 
   beforeAll(async () => {
     bunPath = await resolveBunPath();
@@ -97,23 +102,21 @@ describe("tour serve — deep URL on tour-id (issue #179)", () => {
   });
 
   it("appends /<id> to the printed URL when invoked with a positional tour-id", async () => {
-    const port = basePort + Math.floor(Math.random() * 100);
-    const result = await spawnServeUntilReady(bunPath, dir, [tourId], port);
+    const result = await spawnServeUntilReady(bunPath, dir, [tourId]);
     activeProc = result.proc;
     expect(result.stdout).toContain(
-      `Tour server running at http://127.0.0.1:${port}/${tourId}`,
+      `Tour server running at http://127.0.0.1:${result.port}/${tourId}`,
     );
   }, 30000);
 
   it("auto-picks the most-recent open tour when invoked without a tour-id (issue #187)", async () => {
-    const port = basePort + 200 + Math.floor(Math.random() * 100);
-    const result = await spawnServeUntilReady(bunPath, dir, [], port);
+    const result = await spawnServeUntilReady(bunPath, dir, []);
     activeProc = result.proc;
     // The fixture has exactly one open tour, so the pre-pick resolves to
     // it and the printed URL ends in `/<tour-id>` — the same id the SPA's
     // auto-select would land on at bare `/`.
     expect(result.stdout).toContain(
-      `Tour server running at http://127.0.0.1:${port}/${tourId}`,
+      `Tour server running at http://127.0.0.1:${result.port}/${tourId}`,
     );
   }, 30000);
 });
