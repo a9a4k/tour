@@ -422,6 +422,152 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     padding-left: 12px;
     border-left: 2px solid var(--border-muted);
   }
+  /* Issue #389 / ADR 0036 (Slice E): trash icon on every comment card.
+     Hover-revealed on the parent header and on each inline Reply; the
+     focus-visible outline keeps the affordance reachable via keyboard
+     tab from any caret position inside the card. */
+  .comment-block .ann-header {
+    position: relative;
+  }
+  .comment-block .ann-trash-button,
+  .comment-block .ann-reply .ann-trash-button {
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+    margin-left: 6px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 80ms ease-in;
+    vertical-align: middle;
+  }
+  .comment-block:hover .ann-trash-button,
+  .comment-block .ann-reply:hover .ann-trash-button,
+  .comment-block .ann-trash-button:focus-visible {
+    opacity: 1;
+  }
+  .comment-block .ann-trash-button:hover {
+    color: var(--fg-danger);
+  }
+  .comment-block .ann-trash-button:focus-visible {
+    outline: 1px solid var(--border-accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+  /* Issue #389: [deleted] stub rendering for parents whose body is
+     gone but whose surviving replies still appear underneath. The card
+     keeps its anchor + chrome but the body slot is replaced by a muted
+     italic placeholder; the trash icon is suppressed on stubs (nothing
+     to delete a second time). */
+  .comment-block.deleted-stub .ann-body {
+    color: var(--fg-muted);
+    font-style: italic;
+  }
+  .comment-block.deleted-stub .ann-trash-button,
+  .comment-block .ann-reply.deleted-stub .ann-trash-button {
+    display: none;
+  }
+  /* Issue #389: delete-confirm modal — mirrors the picker-card chrome
+     so the two modals read as one family. */
+  .delete-modal-scrim {
+    position: fixed;
+    inset: 0;
+    background: var(--shadow-scrim);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 12vh;
+    z-index: 40;
+  }
+  .delete-modal-card {
+    width: min(480px, 90vw);
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px var(--shadow-large);
+    padding: 16px 20px;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .delete-modal-card:focus { outline: none; }
+  .delete-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--fg-default);
+    margin: 0;
+  }
+  .delete-modal-preview {
+    border: 1px solid var(--border-muted);
+    border-radius: 4px;
+    padding: 8px 10px;
+    background: var(--canvas-default);
+  }
+  .delete-modal-preview-header {
+    color: var(--fg-accent);
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .delete-modal-preview-header .author-kind {
+    text-transform: lowercase;
+    font-weight: 700;
+  }
+  .delete-modal-preview-header .author-kind.agent { color: var(--fg-muted); }
+  .delete-modal-preview-header .author-kind.human { color: var(--fg-accent); }
+  .delete-modal-preview-header .delete-modal-location {
+    color: var(--fg-default);
+    font-weight: 500;
+  }
+  .delete-modal-preview-header .delete-modal-age {
+    color: var(--fg-muted);
+    font-weight: 400;
+  }
+  .delete-modal-preview-body {
+    color: var(--fg-default);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    max-height: 12em;
+    overflow-y: auto;
+  }
+  .delete-modal-cascade {
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
+  .delete-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .delete-modal-cancel,
+  .delete-modal-confirm {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--fg-default);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 14px;
+  }
+  .delete-modal-cancel:hover { background: var(--canvas-subtle); }
+  .delete-modal-confirm {
+    background: var(--fg-danger);
+    color: var(--fg-on-emphasis);
+    border-color: transparent;
+  }
+  .delete-modal-confirm:hover { filter: brightness(1.1); }
+  .delete-modal-confirm:focus-visible,
+  .delete-modal-cancel:focus-visible {
+    outline: 2px solid var(--border-accent);
+    outline-offset: 1px;
+  }
   .composer {
     margin: 4px 16px 4px 0;
     border: 1px solid var(--border-default);

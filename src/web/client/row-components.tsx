@@ -594,6 +594,10 @@ export interface CardRowProps {
   // link. Mouse path to open-in-editor — moves the cursor onto the
   // card first, then dispatches the open at line_end.
   onFileClick?: (commentId: string, file: string, lineEnd: number) => void;
+  // Issue #389 / ADR 0036 (Slice E): pass-through for the per-node
+  // trash icon. Fires with the targeted comment id — parent or Reply.
+  // The host opens the delete-confirm modal in response.
+  onDeleteClick?: (commentId: string) => void;
 }
 
 // `grid-column` is set inline so a card's positioning is visible on the
@@ -629,6 +633,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     onSendToAgent,
     onCardClick,
     onFileClick,
+    onDeleteClick,
   } = props;
   return (
     <div
@@ -655,6 +660,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         onSendToAgent={onSendToAgent}
         onCardClick={onCardClick}
         onFileClick={onFileClick}
+        onDeleteClick={onDeleteClick}
       />
     </div>
   );

@@ -835,3 +835,219 @@ describe("CommentCard annotation filename link (issue #383)", () => {
     expect(cardClicks).toBe(1);
   });
 });
+
+describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", () => {
+  it("renders a trash button on the parent header when onDeleteClick is supplied", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+      }),
+    );
+    const trash = container.querySelector(
+      ".comment-block > .ann-header .ann-trash-button",
+    ) as HTMLButtonElement | null;
+    expect(trash).not.toBeNull();
+    expect(trash!.getAttribute("aria-label")).toBe("Delete comment");
+  });
+
+  it("omits the trash button when onDeleteClick is not supplied", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+      }),
+    );
+    expect(container.querySelector(".ann-trash-button")).toBeNull();
+  });
+
+  it("clicking the parent trash button fires onDeleteClick with the parent's id", () => {
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: (id: string) => {
+          calls.push(id);
+        },
+      }),
+    );
+    const trash = container.querySelector(
+      ".comment-block > .ann-header .ann-trash-button",
+    ) as HTMLButtonElement;
+    act(() => {
+      trash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual(["ann-1"]);
+  });
+
+  it("clicking the parent trash button does NOT also fire onCardClick (stopPropagation)", () => {
+    let cardClicks = 0;
+    let deleteClicks = 0;
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: () => {
+          cardClicks += 1;
+        },
+        onDeleteClick: () => {
+          deleteClicks += 1;
+        },
+      }),
+    );
+    const trash = container.querySelector(
+      ".comment-block > .ann-header .ann-trash-button",
+    ) as HTMLButtonElement;
+    act(() => {
+      trash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(deleteClicks).toBe(1);
+    expect(cardClicks).toBe(0);
+  });
+
+  it("renders a trash button on each inline Reply header", () => {
+    const parent = { ...baseComment, id: "p", author: "alice" };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "reply 1",
+      replies_to: parent.id,
+    };
+    const r2: Comment = {
+      ...baseComment,
+      id: "r2",
+      body: "reply 2",
+      replies_to: parent.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+      }),
+    );
+    const replyTrashes = container.querySelectorAll(
+      ".ann-reply .ann-trash-button",
+    );
+    expect(replyTrashes.length).toBe(2);
+    expect(replyTrashes[0].getAttribute("aria-label")).toBe("Delete reply");
+  });
+
+  it("clicking a reply's trash button fires onDeleteClick with the reply's id (not the parent's)", () => {
+    const parent = { ...baseComment, id: "p" };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "reply 1",
+      replies_to: parent.id,
+    };
+    const r2: Comment = {
+      ...baseComment,
+      id: "r2",
+      body: "reply 2",
+      replies_to: parent.id,
+    };
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: (id: string) => {
+          calls.push(id);
+        },
+      }),
+    );
+    const replyTrashes = container.querySelectorAll(
+      ".ann-reply .ann-trash-button",
+    ) as NodeListOf<HTMLButtonElement>;
+    act(() => {
+      replyTrashes[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual(["r2"]);
+  });
+
+  it("renders the parent card as a `[deleted]` stub when comment.deleted is set", () => {
+    const stubbed: Comment = {
+      ...baseComment,
+      body: "",
+      deleted: { at: "2026-05-16T00:00:00Z" },
+    };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "I survived",
+      replies_to: stubbed.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: stubbed,
+        replies: [r1],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+      }),
+    );
+    const block = container.querySelector(
+      ".comment-block",
+    ) as HTMLElement;
+    expect(block.classList.contains("deleted-stub")).toBe(true);
+    // The body slot shows the [deleted] placeholder rather than the
+    // (empty) markdown-rendered body.
+    const body = block.querySelector(".ann-body") as HTMLElement;
+    expect(body.textContent).toBe("[deleted]");
+    // The reply text still renders under the stub.
+    expect(container.textContent).toContain("I survived");
+  });
+
+  it("suppresses the trash button on the parent header when the card is a `[deleted]` stub", () => {
+    const stubbed: Comment = {
+      ...baseComment,
+      body: "",
+      deleted: { at: "2026-05-16T00:00:00Z" },
+    };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "alive",
+      replies_to: stubbed.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: stubbed,
+        replies: [r1],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+      }),
+    );
+    // The parent header has no trash button (CSS suppresses .deleted-stub
+    // > .ann-trash-button; the markup omits it).
+    const block = container.querySelector(".comment-block") as HTMLElement;
+    expect(
+      block.querySelector(":scope > .ann-header .ann-trash-button"),
+    ).toBeNull();
+    // The reply still carries its own trash button (the stub doesn't
+    // strip the per-reply affordance).
+    expect(
+      block.querySelector(".ann-reply .ann-trash-button"),
+    ).not.toBeNull();
+  });
+});

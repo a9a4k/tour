@@ -24,16 +24,23 @@ export interface Comment {
   author_kind: AuthorKind;
   replies_to?: string;
   created_at: string;
-}
-
-// Projected Comment shape. Extends today's `Comment` with an optional
-// `deleted?: { at }` marker stamped at fold time when a `comment.deleted`
-// event targets this comment. The field is shaped now (ADR 0036) even
-// though Slice B never emits delete events — Slice C lights it up. Every
-// surface consumes the projection; nothing parses the event log directly.
-export interface CommentState extends Comment {
+  // Issue #389 / ADR 0036 (Slice E): C4 cascade marker. Stamped at
+  // fold time when a `comment.deleted` event targets this comment AND
+  // ≥1 reply survives (parent-stub case). Leaf-deleted replies and
+  // fully-deleted threads are absent from the projection entirely;
+  // this field only appears on `[deleted]` parent stubs. The fold lives
+  // in `events-fold.ts`; the surfaces consuming projections (CLI / TUI
+  // / webapp / pickup / reply-runner) switch on it to render the stub.
   deleted?: { at: string };
 }
+
+// Slice B compatibility alias. The fold-emitted projection used to be
+// modelled as `CommentState extends Comment` while the disk-shape
+// `Comment` stayed narrow; with the `deleted` field now living on
+// `Comment` itself (issue #389), the two are structurally identical.
+// Existing consumers (`readComments` return, pickup) keep importing
+// `CommentState` for documentary intent.
+export type CommentState = Comment;
 
 // On-disk event union for `.tour/<id>/tour-events.jsonl` (ADR 0036).
 // Append-only JSONL — one event per line, kind-discriminated. Future

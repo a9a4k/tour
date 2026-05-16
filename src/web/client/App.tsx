@@ -81,6 +81,8 @@ import { composeFooterHints } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
 import { resolveYankTarget } from "../../core/yank-target.js";
 import { dispatchOpenInEditor } from "./dispatch-open-in-editor.js";
+import { dispatchDeleteComment } from "./dispatch-delete-comment.js";
+import { DeleteConfirmModal } from "./DeleteConfirmModal.js";
 
 // PRD #356 / issue #358: footer flash for `y` on a diff-row preview
 // truncates the displayed text to keep the legend strip readable while
@@ -1844,6 +1846,34 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [store],
   );
 
+  // Issue #389 / ADR 0036 (Slice E): delete-confirm modal state. Trash
+  // clicks open the modal targeting a comment id; confirm dispatches
+  // the DELETE through the existing webapp-to-CLI bridge (the same
+  // path that handles create/reply today) via `dispatchDeleteComment`.
+  // Cancel / scrim / Esc all close without writing. SSE
+  // `comment-changed` brings the cascade-projected state back to the
+  // surface — no manual re-render needed.
+  const [deleteModalTargetId, setDeleteModalTargetId] = useState<string | null>(
+    null,
+  );
+  const openDeleteModal = useCallback((commentId: string) => {
+    setDeleteModalTargetId(commentId);
+  }, []);
+  const closeDeleteModal = useCallback(() => {
+    setDeleteModalTargetId(null);
+  }, []);
+  const confirmDeleteModal = useCallback(() => {
+    if (!tourId || deleteModalTargetId === null) {
+      setDeleteModalTargetId(null);
+      return;
+    }
+    const target = deleteModalTargetId;
+    setDeleteModalTargetId(null);
+    void dispatchDeleteComment(tourId, target).then((res) => {
+      if (!res.ok && res.message) flashFooterStatus(res.message);
+    });
+  }, [tourId, deleteModalTargetId, flashFooterStatus]);
+
   const setLayoutChoice = useCallback(
     (next: Layout) => {
       // Issue #303: capture the cursor row's pre-toggle viewport-y so the
@@ -1973,6 +2003,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 onSendToAgent={sendToAgent}
                 onCardClick={setCursorFromCardClick}
                 onAnnotationFileClick={onAnnotationFileClick}
+                onDeleteClick={openDeleteModal}
               />
             </main>
           </>
@@ -2080,6 +2111,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                     onCardClick={setCursorFromCardClick}
                     onAnnotationFileClick={onAnnotationFileClick}
                     onOpenInEditor={openInEditor}
+                    onDeleteClick={openDeleteModal}
                     commentProps={{
                       registerRef: registerCommentRef,
                       composerBody,
@@ -2136,6 +2168,20 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           onClose={closePicker}
         />
       ) : null}
+      {deleteModalTargetId !== null && bundle ? (() => {
+        const target = bundle.comments.find(
+          (c) => c.id === deleteModalTargetId,
+        );
+        if (!target) return null;
+        return (
+          <DeleteConfirmModal
+            target={target}
+            comments={bundle.comments}
+            onConfirm={confirmDeleteModal}
+            onCancel={closeDeleteModal}
+          />
+        );
+      })() : null}
     </>
   );
 }
@@ -2355,6 +2401,14 @@ interface CommentCardProps {
   // so App can dispatch open-in-editor without recovering them. Optional
   // — when unset the filename renders as inert text (legacy behaviour).
   onFileClick?: (commentId: string, file: string, lineEnd: number) => void;
+  // Issue #389 / ADR 0036 (Slice E): trash icon callback. Fired when
+  // the user clicks the per-node 🗑 button on either the parent
+  // header or any inline Reply. Receives the targeted comment id —
+  // never the top-level's id when the click was on a Reply. The host
+  // (App.tsx) opens the delete-confirm modal in response. Optional
+  // so call sites that haven't wired the modal (snapshot-lost branch,
+  // unit-test mounts) keep their existing behaviour.
+  onDeleteClick?: (commentId: string) => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -2417,7 +2471,9 @@ export function CommentCard({
   onSendToAgent,
   onCardClick,
   onFileClick,
+  onDeleteClick,
 }: CommentCardProps): React.JSX.Element {
+  const isDeletedStub = !!comment.deleted;
   const range =
     comment.line_start === comment.line_end
       ? `${comment.line_start}`
@@ -2455,9 +2511,16 @@ export function CommentCard({
   const composerOpen = replyTargetId != null;
   const showReplyButton = !!onOpenReply;
   const showSendButton = sendVerdict.visible && !!onSendToAgent && !!sendLeafId;
+  const blockClass = [
+    "comment-block",
+    isCurrent ? "current" : "",
+    isDeletedStub ? "deleted-stub" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <div
-      className={isCurrent ? "comment-block current" : "comment-block"}
+      className={blockClass}
       ref={(el) => registerRef?.(comment.id, el)}
       data-comment-id={comment.id}
       onClick={() => onCardClick?.(comment.id)}
@@ -2497,9 +2560,27 @@ export function CommentCard({
         ) : (
           <>{comment.file}:{range}</>
         )}
+        {onDeleteClick && !isDeletedStub ? (
+          <button
+            type="button"
+            className="ann-trash-button"
+            aria-label="Delete comment"
+            title="Delete comment"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDeleteClick(comment.id);
+            }}
+          >
+            🗑
+          </button>
+        ) : null}
       </div>
       <div className="ann-body">
-        <CommentMarkdown body={comment.body} />
+        {isDeletedStub ? (
+          <span aria-label="Deleted comment placeholder">[deleted]</span>
+        ) : (
+          <CommentMarkdown body={comment.body} />
+        )}
       </div>
       {replies && replies.length > 0 ? (
         <div className="ann-replies">
@@ -2515,6 +2596,20 @@ export function CommentCard({
                   [{r.author_kind}]
                 </span>
                 {r.author !== r.author_kind ? <> {r.author}</> : null}
+                {onDeleteClick ? (
+                  <button
+                    type="button"
+                    className="ann-trash-button"
+                    aria-label="Delete reply"
+                    title="Delete reply"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteClick(r.id);
+                    }}
+                  >
+                    🗑
+                  </button>
+                ) : null}
               </div>
               <div className="ann-body">
                 <CommentMarkdown body={r.body} />
@@ -2697,6 +2792,9 @@ interface CommentListSnapshotLostProps {
     file: string,
     lineEnd: number,
   ) => void;
+  // Issue #389 / ADR 0036 (Slice E): per-card 🗑 click. Targets the
+  // clicked node id (parent or Reply) — used to open the confirm modal.
+  onDeleteClick?: (commentId: string) => void;
 }
 
 // Renders comments when the bundle is `snapshot-lost`. Reads `view.nav`
@@ -2718,6 +2816,7 @@ function CommentListSnapshotLost({
   onSendToAgent,
   onCardClick,
   onAnnotationFileClick,
+  onDeleteClick,
 }: CommentListSnapshotLostProps): React.JSX.Element {
   const { topLevel, repliesByRoot, navIndexById, navTotal } = nav;
   if (topLevel.length === 0) return <div className="empty">No comments</div>;
@@ -2754,6 +2853,7 @@ function CommentListSnapshotLost({
             onSendToAgent={onSendToAgent}
             onCardClick={onCardClick}
             onFileClick={onAnnotationFileClick}
+            onDeleteClick={onDeleteClick}
           />
         );
       })}
