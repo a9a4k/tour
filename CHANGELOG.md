@@ -27,6 +27,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tour serve --port 0` asks the OS for any free port (issue #373).**
+  Five integration test files used to pick a port via `Math.floor(
+  Math.random() * RANGE)` then pass it to `tour serve --port N`. The
+  ranges overlapped across files (12000–52000, 18000–58000, 19500–
+  20500, …); under vitest's concurrent scheduler two files could
+  simultaneously target the same N, producing assertion failures that
+  read as flakes ("expected 404 to be 400" when the wrong server
+  answered a fetch). `--port 0` now flows through `resolveServePort`'s
+  fast-path — probe + fallback walk are bypassed, `Bun.serve` binds an
+  OS-assigned port, and the existing `Tour server running at
+  http://127.0.0.1:PORT` banner carries the actual port back to the
+  caller. `serve-open-in-editor.test.ts`, `serve-deep-url.test.ts`,
+  `serve-tip.test.ts`, and the two non-blocker tests in
+  `serve-reuse.test.ts` switched over. The deliberate-busy-port tests
+  in `serve-port-collision.test.ts` and `serve-reuse.test.ts`'s
+  busy-fallback AC cases keep their random-port pattern — they need a
+  *known-busy* port, not any free port. Production behavior for
+  non-zero `--port N` is unchanged.
+
+  Issue: #373
+
 - **TUI: clicking an expand button fires the expansion in one click
   (issue #372).** Pre-fix the TUI's `onInteractiveClick` only moved
   pane focus and the cursor — the row's primary action did not fire,

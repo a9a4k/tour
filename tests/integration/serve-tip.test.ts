@@ -55,15 +55,17 @@ interface SpawnResult {
   proc: ChildProcess;
 }
 
+// Issue #373: `--port 0` lets the OS pick a free port; the actual port
+// is discovered from the startup banner so parallel test files can't
+// collide on a guessed port.
 function spawnServeUntilReady(
   bunPath: string,
   cwd: string,
   args: string[],
   env: NodeJS.ProcessEnv,
-  port: number,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(bunPath, [CLI, "serve", "--port", String(port), ...args], {
+    const proc = spawn(bunPath, [CLI, "serve", "--port", "0", ...args], {
       cwd,
       env,
     });
@@ -101,7 +103,6 @@ describe("tour serve — reply-agent discovery tip (issue #174)", () => {
   let dir: string;
   let bunPath: string;
   let activeProc: ChildProcess | null = null;
-  const basePort = 19500;
 
   beforeAll(async () => {
     bunPath = await resolveBunPath();
@@ -117,8 +118,7 @@ describe("tour serve — reply-agent discovery tip (issue #174)", () => {
 
   it("emits a tip when exactly one shipped agent is on PATH", async () => {
     const stubDir = await makePathWithStubs(["claude"]);
-    const port = basePort + Math.floor(Math.random() * 200);
-    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir }, port);
+    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir });
     activeProc = result.proc;
     expect(result.stdout).toContain("Tip: detected 'claude' on PATH");
     expect(result.stdout).toContain("--reply-agent claude");
@@ -126,29 +126,25 @@ describe("tour serve — reply-agent discovery tip (issue #174)", () => {
 
   it("is silent when zero shipped agents are on PATH", async () => {
     const stubDir = await makePathWithStubs([]);
-    const port = basePort + 300 + Math.floor(Math.random() * 200);
-    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir }, port);
+    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir });
     activeProc = result.proc;
     expect(result.stdout).not.toContain("Tip:");
   }, 30000);
 
   it("is silent when multiple shipped agents are on PATH", async () => {
     const stubDir = await makePathWithStubs(["claude", "codex"]);
-    const port = basePort + 600 + Math.floor(Math.random() * 200);
-    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir }, port);
+    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir });
     activeProc = result.proc;
     expect(result.stdout).not.toContain("Tip:");
   }, 30000);
 
   it("is silent when --reply-agent is explicitly passed", async () => {
     const stubDir = await makePathWithStubs(["claude"]);
-    const port = basePort + 900 + Math.floor(Math.random() * 200);
     const result = await spawnServeUntilReady(
       bunPath,
       dir,
       ["--reply-agent", "claude"],
       { PATH: stubDir },
-      port,
     );
     activeProc = result.proc;
     expect(result.stdout).not.toContain("Tip:");

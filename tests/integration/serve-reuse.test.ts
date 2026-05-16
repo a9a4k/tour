@@ -40,20 +40,28 @@ async function createTempRepoWithTour(bunPath: string): Promise<string> {
   return dir;
 }
 
+// Spawn `tour serve --port <port>` and resolve once the startup banner
+// is printed. Pass 0 to ask the OS for any free port (issue #373); the
+// bound port is parsed back from the banner. Passing a non-zero port
+// pins the server to that exact port (used by the busy-fallback AC
+// tests where the test deliberately wants a known port).
 function spawnServeUntilReady(
   bunPath: string,
   cwd: string,
   port: number,
-): Promise<{ stdout: string; proc: ChildProcess }> {
+): Promise<{ stdout: string; proc: ChildProcess; boundPort: number }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(bunPath, [CLI, "serve", "--port", String(port)], { cwd });
     let stdout = "";
     let done = false;
     proc.stdout?.on("data", (chunk: Buffer | string) => {
       stdout += chunk.toString();
-      if (!done && stdout.includes("Tour server")) {
+      if (done) return;
+      const m = stdout.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+      if (m && stdout.includes("Tour server")) {
         done = true;
-        setTimeout(() => resolve({ stdout, proc }), 100);
+        const boundPort = parseInt(m[1], 10);
+        setTimeout(() => resolve({ stdout, proc, boundPort }), 100);
       }
     });
     proc.on("exit", (code) => {
@@ -149,32 +157,39 @@ describe("tour serve — reuse if running (issue #178)", () => {
   });
 
   it("a second invocation in the same cwd exits 0 with 'already running'", async () => {
-    const port = basePort + Math.floor(Math.random() * 200);
-    const first = await spawnServeUntilReady(bunPath, dir, port);
+    // OS-assigned port for the first server (issue #373) — the second
+    // invocation targets the same port that the OS handed us, so
+    // parallel test files can't accidentally collide on a guess.
+    const first = await spawnServeUntilReady(bunPath, dir, 0);
     bound = first.proc;
 
-    const second = await execP(bunPath, [CLI, "serve", "--port", String(port)], {
-      cwd: dir,
-    });
-    expect(second.stdout).toContain(`Tour already running at http://127.0.0.1:${port}`);
+    const second = await execP(
+      bunPath,
+      [CLI, "serve", "--port", String(first.boundPort)],
+      { cwd: dir },
+    );
+    expect(second.stdout).toContain(
+      `Tour already running at http://127.0.0.1:${first.boundPort}`,
+    );
     // First server is still up — second exited cleanly without killing it.
     expect(first.proc.exitCode).toBeNull();
   }, 30000);
 
   it("a second invocation in a DIFFERENT cwd does not reuse, errors on explicit port", async () => {
-    const port = basePort + 300 + Math.floor(Math.random() * 200);
-    const first = await spawnServeUntilReady(bunPath, dir, port);
+    const first = await spawnServeUntilReady(bunPath, dir, 0);
     bound = first.proc;
 
     const otherDir = await createTempRepoWithTour(bunPath);
     // Explicit port: resolveServePort does not walk; we expect the
     // "port in use" error because the probe correctly classifies the
     // running server as not-our-cwd and falls through to bind.
-    const result = await execP(bunPath, [CLI, "serve", "--port", String(port)], {
-      cwd: otherDir,
-    }).catch((err: { code: number; stderr: string }) => err);
+    const result = await execP(
+      bunPath,
+      [CLI, "serve", "--port", String(first.boundPort)],
+      { cwd: otherDir },
+    ).catch((err: { code: number; stderr: string }) => err);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain(`port ${port} is in use`);
+    expect(result.stderr).toContain(`port ${first.boundPort} is in use`);
   }, 30000);
 
   // Issue #195: a same-cwd Tour on a FALLBACK port is now reused too.

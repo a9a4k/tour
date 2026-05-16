@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { execFile, type ChildProcess, exec } from "node:child_process";
+import { execFile, type ChildProcess, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import {
   mkdtemp,
@@ -17,6 +17,10 @@ import { waitForLog } from "../_helpers/wait-for-file.js";
 const execP = promisify(execFile);
 const BUN = "bun";
 const CLI = join(import.meta.dirname, "../../src/main.ts");
+// Issue #373: parse the OS-assigned port from server.ts's startup banner
+// so each test gets a guaranteed-unique port and parallel test files
+// never collide.
+const SERVER_BANNER = /Tour server running at http:\/\/127\.0\.0\.1:(\d+)/;
 
 // PRD #349 / ADR 0032 / issue #353 — webapp parity for `o`. End-to-end
 // coverage of POST /api/tours/<id>/open-in-editor: happy path, file
@@ -38,19 +42,6 @@ exit 0
 async function gitCmd(args: string[], cwd: string): Promise<string> {
   const { stdout } = await execP("git", args, { cwd });
   return stdout.trimEnd();
-}
-
-async function waitForServer(url: string, maxAttempts = 30): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // server not ready yet
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`Server not ready at ${url}`);
 }
 
 interface ServerHandle {
@@ -98,9 +89,7 @@ async function startServerWithEditor(
   fakeBin: string,
   editorOverride?: string,
 ): Promise<ServerHandle> {
-  const port = 12000 + Math.floor(Math.random() * 40000);
-  const baseUrl = `http://127.0.0.1:${port}`;
-  const logPath = join(dir, `argv-${port}.log`);
+  const logPath = join(dir, "argv.log");
   const editorArg = editorOverride ?? fakeBin;
   // Sentinel "<NONE>" disables --editor; the resolver then falls back
   // to environment, which we strip below.
@@ -114,11 +103,31 @@ async function startServerWithEditor(
     delete env.VISUAL;
     delete env.EDITOR;
   }
-  const proc = exec(
-    `${BUN} ${CLI} serve --port ${port}${editorFlag.length ? " " + editorFlag.map((a) => JSON.stringify(a)).join(" ") : ""}`,
-    { cwd: dir, env },
-  );
-  await waitForServer(`${baseUrl}/api/tours`);
+  // Issue #373: `--port 0` asks the OS to pick a free port. The bound
+  // port is read back from the startup banner; tests can't collide on
+  // a guess any more.
+  const proc = spawn(BUN, [CLI, "serve", "--port", "0", ...editorFlag], {
+    cwd: dir,
+    env,
+  });
+  const port = await new Promise<number>((resolve, reject) => {
+    let stdout = "";
+    let done = false;
+    proc.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+      if (done) return;
+      const m = stdout.match(SERVER_BANNER);
+      if (m) {
+        done = true;
+        resolve(parseInt(m[1], 10));
+      }
+    });
+    proc.once("exit", (code) => {
+      if (!done) reject(new Error(`serve exited early code=${code}\n${stdout}`));
+    });
+    proc.once("error", reject);
+  });
+  const baseUrl = `http://127.0.0.1:${port}`;
   return {
     dir,
     tourId,

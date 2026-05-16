@@ -294,3 +294,35 @@ describe("resolveServePort — explicit --port", () => {
     expect(bound).toEqual([8800]);
   });
 });
+
+// Issue #373: `--port 0` requests an OS-assigned port. resolveServePort
+// must bypass the probe + fallback walk (irrelevant for port 0) and
+// report the actual bound port from the resource, not the requested 0.
+describe("resolveServePort — port 0 (OS-assigned)", () => {
+  it("bypasses probe + walk and reports the actual bound port", async () => {
+    const probed: number[] = [];
+    const bound: number[] = [];
+    const result = await resolveServePort({
+      preferred: 0,
+      explicit: true,
+      cwd: "/repo-A",
+      tryBind: (port) => {
+        bound.push(port);
+        // OS picks a real port; tryBind reports it on the resource.
+        return { port: 54321 };
+      },
+      probe: async (port) => {
+        probed.push(port);
+        return { kind: "free" };
+      },
+    });
+    expect(result).toEqual({
+      kind: "bound",
+      resource: { port: 54321 },
+      port: 54321,
+      preferredWasBusy: false,
+    });
+    expect(probed).toEqual([]);
+    expect(bound).toEqual([0]);
+  });
+});
