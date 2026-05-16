@@ -12,14 +12,8 @@ export function paintStyledText(line: TokenLine): StyledText {
   const chunks: TextChunk[] = new Array(line.chunks.length);
   for (let i = 0; i < line.chunks.length; i++) {
     const c = line.chunks[i]!;
-    let chunk: TextChunk;
-    if (c.color) {
-      chunk = fg(c.color)(c.text);
-    } else {
-      // Plain chunk — wrap text in a TextChunk via fg(...) on a sentinel
-      // colour would force a paint; instead emit a TextChunk directly.
-      chunk = { __isChunk: true, text: c.text };
-    }
+    let chunk: TextChunk = { __isChunk: true, text: c.text };
+    if (c.color) chunk = fg(c.color)(chunk);
     if (c.bold) chunk = bold(chunk);
     if (c.italic) chunk = italic(chunk);
     if (c.underline) chunk = underline(chunk);

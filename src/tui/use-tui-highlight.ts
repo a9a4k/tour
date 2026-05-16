@@ -17,7 +17,7 @@
 // this out explicitly.
 
 import { useEffect, useMemo, useState } from "react";
-import { StyledText } from "@opentui/core";
+import type { StyledText } from "@opentui/core";
 import {
   ensureLang,
   isReady,
