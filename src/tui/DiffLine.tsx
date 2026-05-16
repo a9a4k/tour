@@ -200,12 +200,14 @@ export function DiffLine({
         // trailing whitespace, not just behind characters), and
         // `alignSelf="stretch"` escapes the row's `alignItems="flex-
         // start"` so the cell extends across wrapped visual rows when
-        // the sibling half drives the wrap. The styled `<text>` is
-        // keyed so OpenTUI's `setStyledText` setter remounts cleanly
-        // when toggling between styled and plain branches —
-        // OpenTUI's spike-validated React-prop edge case (issue #376):
-        // setStyledText runs on every prop update and crashes inside
-        // `text.chunks` on an `undefined` mid-transition value.
+        // the sibling half drives the wrap. Both `<text>` branches are
+        // keyed and both pass the value via `content={...}` (never via
+        // children) so OpenTUI's `setStyledText` setter sees a fresh
+        // remount on every styled ↔ plain toggle — OpenTUI's spike-
+        // validated React-prop edge case (issue #376): `setStyledText`
+        // runs on every prop update and crashes inside `text.chunks`
+        // on an `undefined` mid-transition value if the same `<text>`
+        // host is reused across the branch swap.
         <box flexGrow={1} minHeight={1} alignSelf="stretch" backgroundColor={contentBg}>
           <text key="shiki" content={styledLine} wrapMode="word" />
         </box>
@@ -215,7 +217,12 @@ export function DiffLine({
         // reason; without it the empty side of pure +/- rows (#260 inset
         // fill) showed a canvas-default stripe on wrap continuations.
         <box flexGrow={1} minHeight={1} alignSelf="stretch" backgroundColor={contentBg}>
-          <text wrapMode="word" fg={mutedText ? theme.fg.muted : undefined}>{text}</text>
+          <text
+            key="plain"
+            content={text}
+            wrapMode="word"
+            fg={mutedText ? theme.fg.muted : undefined}
+          />
         </box>
       )}
     </box>

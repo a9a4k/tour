@@ -415,13 +415,16 @@ describe("DiffLine mutedText (issue #259)", () => {
   it("forces the plain <text> branch (skips styled <text>) even when styledLine is supplied", () => {
     const root = render({ mutedText: true, styledLine: STUB_STYLED } as never);
     const inner = contentInnerOf(root);
-    // The styled branch's <text> carries a `content` prop; the plain
-    // branch's <text> renders its body via children. Assert exactly one
-    // <text> child and that it's the plain (children-based) one.
+    // Both branches now carry a `content` prop (both keyed) so the
+    // toggle stays remount-safe — see DiffLine's per-cell comment block
+    // tracing the spike-validated React-prop edge case. Disambiguate by
+    // React key: the plain branch is keyed "plain" and the styled
+    // branch "shiki"; under mutedText the only <text> rendered is the
+    // plain one.
     const textChildren = inner.filter((c) => c.type === "text");
     expect(textChildren).toHaveLength(1);
-    expect(textChildren[0]!.props["content"]).toBeUndefined();
-    expect(textChildren[0]!.props["children"]).toBeDefined();
+    expect(textChildren[0]!.key).toBe("plain");
+    expect(textChildren[0]!.props["content"]).toBe("const x = 1;");
   });
 
   it("paints the content text in theme.fg.muted", () => {
@@ -574,9 +577,10 @@ describe("DiffLine styledLine (issue #376)", () => {
     const inner = contentInnerOf(root);
     const textNode = inner.find((c) => c.type === "text");
     expect(textNode).toBeDefined();
-    // Plain branch renders text via children, not content.
-    expect(textNode!.props["content"]).toBeUndefined();
-    expect(textNode!.props["children"]).toBe("const x = 1;");
+    // Both branches carry a `content` prop now (see DiffLine's per-cell
+    // comment); the React key disambiguates which branch rendered.
+    expect(textNode!.key).toBe("plain");
+    expect(textNode!.props["content"]).toBe("const x = 1;");
   });
 
   it("falls through to the plain-text branch when text is empty even if styledLine is present", () => {
@@ -584,6 +588,7 @@ describe("DiffLine styledLine (issue #376)", () => {
     const inner = contentInnerOf(root);
     const textNode = inner.find((c) => c.type === "text");
     expect(textNode).toBeDefined();
-    expect(textNode!.props["content"]).toBeUndefined();
+    expect(textNode!.key).toBe("plain");
+    expect(textNode!.props["content"]).toBe("");
   });
 });
