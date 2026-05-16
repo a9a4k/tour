@@ -58,10 +58,12 @@ interface DiffRowsProps {
   navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
   /** Issue #305: focus-aware cursor. `true` when the diff pane holds focus
-   *  → cursored row + interactive button cells paint the bright
-   *  `cursorRow.tui` + `❯` glyph; `false` when the sidebar has focus →
-   *  dim `accentCursor.tui` + no glyph. Defaults to `true` so test
-   *  callers and pre-#305 fixtures see the historic bright treatment. */
+   *  → cursored rows paint the bright `cursorRow.tui` + `❯` glyph; for
+   *  hunk-header / `expand-down` banners the focus tint paints on the
+   *  right cell (issue #379), not the saturated button cell. `false`
+   *  when the sidebar has focus → dim `accentCursor.tui` + no glyph.
+   *  Defaults to `true` so test callers and pre-#305 fixtures see the
+   *  historic bright treatment. */
   paneFocused?: boolean;
 }
 
@@ -202,9 +204,9 @@ export function DiffRows({
           // saturated `bg.accentEmphasis` background; right cell hosts
           // the muted `@@` text. The whole row is cursor-walkable
           // (flat-rows projects to `boundary-top` / `hunk-separator`);
-          // cursor outline paints on the left cell. Issue #359: the
-          // planner skips emission at `gapAbove === 0`, so every
-          // hunk-header row reaching this renderer is interactive.
+          // cursor signal paints on the right cell (issue #379). Issue
+          // #359: the planner skips emission at `gapAbove === 0`, so
+          // every hunk-header row reaching this renderer is interactive.
           //
           // `height={1}` on the inner `<text>` glyph + `<text>` header
           // defends against wrap-induced sibling stretch. The right cell
@@ -290,21 +292,17 @@ export function DiffRows({
             : undefined;
           // Issue #292: standalone `expand-down` row mirrors the
           // hunk-header banner's two-cell layout — 44px saturated
-          // button cell carrying `↓` + empty `bg.accentSubtle` right
-          // cell. The button cell's bg flips to `bg.cursorRow` when
-          // cursored, matching the hunk-header banner's left-cell
-          // cursor treatment from #280. `height={1}` on the inner
-          // `<text>` glyph defensively pins the cell to 1 grid row —
-          // same shape as the hunk-header banner above; see that
-          // comment. The right cell is empty so wrap can't fire here,
-          // but matching the banner keeps the pattern consistent if
-          // someone later puts text in this cell.
+          // button cell carrying `↓` + empty right cell. `height={1}`
+          // on the inner `<text>` glyph defensively pins the cell to
+          // 1 grid row — same shape as the hunk-header banner above;
+          // see that comment. The right cell is empty so wrap can't
+          // fire here, but matching the banner keeps the pattern
+          // consistent if someone later puts text in this cell.
           if (row.subKind === "expand-down") {
             // Issue #379: focus tint lives on the (empty) right cell,
             // not the button. Button stays `accentEmphasis` always; the
             // right cell flips to `cursorRow.tui` / `accentCursor.tui`
             // on cursor + focus, mirroring the hunk-header banner.
-            // Same rationale as the banner above — see #379 comment.
             const buttonBg = theme.bg.accentEmphasis;
             const textBg = cursorActive
               ? (paneFocused ? theme.bg.cursorRow.tui : theme.bg.accentCursor.tui)

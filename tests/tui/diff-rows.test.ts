@@ -1746,10 +1746,11 @@ index 1..2 100644
   // flows from the App shell (`!sidebarFocused`) through DiffRows to:
   //   - DiffLine (content rows + interactive rows) — drives bg intensity
   //     and the `❯` glyph (asserted directly in diff-line.test.ts);
-  //   - the hunk-header banner button cell — bright `cursorRow.tui` when
-  //     diff pane is focused, dim `accentCursor.tui` when parked;
-  //   - the standalone `expand-down` button cell — same rule.
-  // The button-cell tests here pin the focus-aware bg flip; the cursor
+  //   - the hunk-header banner right cell — bright `cursorRow.tui` when
+  //     diff pane is focused, dim `accentCursor.tui` when parked
+  //     (button cell stays `accentEmphasis` per issue #379);
+  //   - the standalone `expand-down` right cell — same rule.
+  // The right-cell tests here pin the focus-aware bg flip; the cursor
   // glyph rule for content rows is pinned in diff-line.test.ts via the
   // forwarded `paneFocused` prop.
   describe("paneFocused (issue #305)", () => {
