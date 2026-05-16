@@ -119,6 +119,22 @@ export class TourSessionRuntime {
           // (PRD #348 — same shape as cursor.materialize).
           this.adapter.scrollToCard(intent.commentId, "center", "instant");
           return;
+        case "optimisticInsertComment":
+          // Issue #392: split the optimistic bundle fold off the same
+          // React commit that closes the composer overlay. Queueing
+          // the `bundle.commentInserted` dispatch on the next microtask
+          // lets the composer's overlay unmount commit first (commit
+          // 1), and the heightful CommentRow add lands on its own
+          // commit (commit 2) — opentui's yoga layout pass no longer
+          // sees an absolute-positioned overlay unmount + a sibling
+          // height change in a single commit and leave the file's
+          // subtree empty. Issue #322's goal (no SSE-roundtrip latency
+          // before the new card appears) is preserved: a microtask
+          // hop is sub-frame, well under the watcher's ~500-600 ms.
+          queueMicrotask(() => {
+            this.store.dispatch({ type: "bundle.commentInserted", comment: intent.comment });
+          });
+          return;
         case "scrollToComposer":
           this.adapter.scrollToComposer(intent.target);
           return;
