@@ -588,7 +588,7 @@ describe("dispatchKey", () => {
 
   // ADR 0036 Slice D / issue #388: `d` opens the delete-confirm modal on
   // the cursored Comment. Card-only in the diff pane; off-card / sidebar
-  // surfaces a labelled no-op, mirroring `r` / `s`. Reply-level cursor
+  // surfaces a labelled no-op, mirroring `r` / `R`. Reply-level cursor
   // stops (ADR 0037) let this verb target parents and Replies uniformly.
   it("d in the diff pane on a card opens the delete-confirm modal", () => {
     expect(dispatchKey(k("d"), diffPaneOnCard).type).toBe("open-delete-confirm");

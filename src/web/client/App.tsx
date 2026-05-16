@@ -189,7 +189,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // updates this; Enter on a file row syncs selectedFile to match.
   const [sidebarSelectedPath, setSidebarSelectedPath] = useState<string | null>(null);
   // PRD #330 / ADR 0028: transient footer status surface. The cursor-keymap's
-  // `r` / `s` miss branches flash a reason here; the timer auto-dismisses
+  // `r` / `R` miss branches flash a reason here; the timer auto-dismisses
   // after ~2s. Last-write-wins — replacement clears the prior pending
   // timer; unmount clears any pending timer.
   const [footerStatus, setFooterStatus] = useState<string | null>(null);
@@ -998,7 +998,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return seeded;
   }, [store, view]);
 
-  // Auto-recall (PRD #192 / ADR 0022). When `r` or `s` fires and the cursor's
+  // Auto-recall (PRD #192 / ADR 0022). When `r` or `R` fires and the cursor's
   // card is not in the viewport, smooth-scroll it to centre BEFORE mounting
   // the composer / dispatching the agent. The pure logic lives in
   // `./auto-recall.ts` so it can be unit-tested without mounting <App />.
@@ -1552,10 +1552,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           return;
         }
         case "send-on-card": {
-          // PRD #192 / ADR 0022. `s` on a card dispatches the latest human
-          // leaf in that thread to the configured reply-agent. The latest-
-          // human-leaf rule is consumed from `view.nav.sendTarget` (PRD
-          // #242), shared with the TUI's `s` dispatch. Hidden / disabled
+          // PRD #192 / ADR 0022. `R` (shift-r, post issue #390) on a card
+          // dispatches the latest human leaf in that thread to the
+          // configured reply-agent. The latest-human-leaf rule is consumed
+          // from `view.nav.sendTarget` (PRD #242), shared with the TUI's
+          // `R` dispatch. Hidden / disabled
           // cases (agent-card, already-replied, lock-held, no agent
           // configured) are silently skipped — the verdict gate is the
           // existing per-card `canSendToAgent` predicate.
@@ -2404,7 +2405,7 @@ interface CommentCardProps {
   onSendToAgent?: (commentId: string) => void;
   // Cursor-landing callback (PRD #192 / ADR 0022 slice 2). Fires when the
   // user clicks anywhere on the card so the cursor follows the click — a
-  // subsequent keyboard `r` / `s` then targets the same card. Receives the
+  // subsequent keyboard `r` / `R` then targets the same card. Receives the
   // top-level comment id (the cursor stop), not any clicked Reply id.
   onCardClick?: (commentId: string) => void;
   // Issue #383 / ADR 0035: clicking the filename in the header is a
@@ -2690,7 +2691,7 @@ export function CommentCard({
               onClick={(e) => {
                 e.stopPropagation();
                 // Land the cursor on this card so a follow-up keyboard `r`
-                // / `s` targets it (PRD #192 / ADR 0022 slice 2).
+                // / `R` targets it (PRD #192 / ADR 0022 slice 2).
                 onCardClick?.(comment.id);
                 onOpenReply(replyTargetForOpen);
               }}

@@ -20,8 +20,8 @@ export type { InteractiveSubKind, BoundaryRef };
  *   file-bottom boundaries, and classifier-collapsed-file indicators.
  *   Pressing Enter routes to a row-kind-specific handler.
  * - `card` rows (PRD #192) are Comment cards — addressed by
- *   `commentId`. `r` / `s` dispatch only when the cursor sits on a
- *   card; `a` is suppressed on a card.
+ *   `commentId`. `r` / `R` dispatch only when the cursor sits on a
+ *   card; `c` is suppressed on a card.
  *
  * For paired diff rows (both line numbers populated) the cursor's
  * effective side is whichever side `preferredSide` selects. For single-

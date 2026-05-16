@@ -204,7 +204,7 @@ export type ScrollCursorTarget =
 //   step motion and click (spatial gestures).
 //   `center`: always frame the target mid-viewport — used for `n`/`p`
 //   comment-walking and fresh landings (cursor materialize, URL `?ann=`
-//   restore, `r`/`s` auto-recall).
+//   restore, `r`/`R` auto-recall).
 //
 // Motion — *how* the frame gets there.
 //   `instant`: write the scroll position in one frame — used for fresh

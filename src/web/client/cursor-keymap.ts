@@ -152,7 +152,7 @@ export function dispatchCursorKey(
 
   // PRD #356 / issue #358: context-aware `y` yank. Bare lowercase `y`
   // dispatches `yank-at-cursor` in BOTH pane modes — ADR 0031's auto-
-  // flip rationale for c/r/s doesn't apply because `y` is read-only and
+  // flip rationale for c/r/R doesn't apply because `y` is read-only and
   // doesn't risk losing context. The App-side handler routes through
   // the shared `core/yank-target.ts` resolver to discriminate
   // line / path / none. Modifier-decorated `y` (Cmd-Y / Ctrl-Y / Alt-Y
@@ -179,8 +179,8 @@ export function dispatchCursorKey(
   // activate the selected row. `c`/`r`/`R` are silent no-ops here
   // (the user must Esc back to diff first; auto-flipping would lose
   // track of where the resulting action lands).
-  if (paneFocus === "sidebar") {
-    if (e.shiftKey && e.key === "R") return { type: "noop" };
+  if (paneFocus === "sidebar" && e.shiftKey && e.key === "R") {
+    return { type: "noop" };
   }
   if (paneFocus === "sidebar" && !e.shiftKey) {
     if (e.key === "j" || e.key === "ArrowDown") return { type: "move-file-down" };

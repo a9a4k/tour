@@ -23,8 +23,8 @@ import type { Thread } from "./threads.js";
  * landing honours the user's last side preference (PRD US 18 / issue
  * #200 AC for preferredSide preservation).
  *
- * Action keys (`r`/`s`/`a`/`Enter`) dispatch by the cursor's row kind —
- * `r` and `s` are no-ops on a row, `a` is a no-op on a card (PRD #192
+ * Action keys (`r`/`R`/`c`/`Enter`) dispatch by the cursor's row kind —
+ * `r` and `R` are no-ops on a row, `c` is a no-op on a card (PRD #192
  * stories 6-12).
  */
 export interface RowAnchor {
