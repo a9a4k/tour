@@ -43,8 +43,12 @@ function textBodies(tree: unknown): string[] {
     });
 }
 
-function hasInputBox(tree: unknown): boolean {
-  return flatten(tree).some((el) => el.type === "input");
+function findTextarea(tree: unknown): AnyElement | undefined {
+  return flatten(tree).find((el) => el.type === "textarea");
+}
+
+function hasEditor(tree: unknown): boolean {
+  return flatten(tree).some((el) => el.type === "textarea" || el.type === "input");
 }
 
 const topLevelTarget = {
@@ -64,26 +68,52 @@ function render(state: Exclude<ComposerSlice, { kind: "closed" }>) {
   });
 }
 
-describe("Composer render gate (issue #254)", () => {
-  it("open state shows an editable <input> and the submit hint", () => {
+describe("Composer render gate (issue #254 + issue #391)", () => {
+  // Issue #391: the open composer must use a multi-line editor, not the
+  // single-line <input>. <input>'s default `scrollMargin` reserves ~15
+  // cols of right-edge space before scrolling and binds Enter to submit,
+  // making multi-paragraph notes impossible.
+  it("open state shows an editable <textarea> seeded from the slice body", () => {
     const tree = render({ kind: "open", target: topLevelTarget, body: "draft" });
-    expect(hasInputBox(tree)).toBe(true);
+    const ta = findTextarea(tree);
+    expect(ta).toBeDefined();
+    // No legacy <input> renderable — those defaults are exactly what we're
+    // trying to escape.
+    expect(flatten(tree).some((el) => el.type === "input")).toBe(false);
+    // The slice's body seeds `initialValue` so re-mounts after errored →
+    // open restore the preserved draft. The textarea reports edits back
+    // via onContentChange (wired in app.tsx via a ref).
+    expect(ta?.props.initialValue).toBe("draft");
+    // Multi-line is the whole point — char/word wrap and scrollMargin: 0
+    // are the two settings that fix the visible-text-stops-15-cols-early
+    // bug. Pin them so a future refactor can't silently regress.
+    expect(ta?.props.wrapMode === "word" || ta?.props.wrapMode === "char").toBe(true);
+    expect(ta?.props.scrollMargin).toBe(0);
+  });
+
+  it("open state's hint row documents the submit / newline / cancel chord", () => {
+    const tree = render({ kind: "open", target: topLevelTarget, body: "draft" });
     const texts = textBodies(tree).join(" ");
-    expect(texts).toContain("Enter: submit");
+    // Submit chord is surfaced — Enter alone no longer submits.
+    expect(texts).toContain("Ctrl+S: submit");
+    expect(texts).toContain("Enter: newline");
     expect(texts).toContain("Esc: cancel");
+    // Negative: the old single-line copy is gone so users don't expect
+    // bare Enter to submit any more.
+    expect(texts).not.toContain("Enter: submit");
   });
 
   // The pre-fix UI rendered nothing when the slice was `submitting`, so a
   // successful-but-slow disk write looked like the composer silently
   // vanished. The submitting state must surface a "submitting…" hint so
   // the user knows the keystroke landed.
-  it("submitting state shows the in-flight hint and no editable input", () => {
+  it("submitting state shows the in-flight hint and no editable editor", () => {
     const tree = render({
       kind: "submitting",
       target: topLevelTarget,
       body: "the draft",
     });
-    expect(hasInputBox(tree)).toBe(false);
+    expect(hasEditor(tree)).toBe(false);
     const texts = textBodies(tree).join(" ");
     expect(texts).toContain("Submitting");
     // Body preserved so the user can see what they're submitting.
@@ -100,11 +130,27 @@ describe("Composer render gate (issue #254)", () => {
       body: "preserved draft",
       error: "disk full",
     });
-    expect(hasInputBox(tree)).toBe(false);
+    expect(hasEditor(tree)).toBe(false);
     const texts = textBodies(tree).join(" ");
     expect(texts).toContain("disk full");
     expect(texts).toContain("Enter: retry");
     expect(texts).toContain("Esc: dismiss");
     expect(texts).toContain("preserved draft");
+  });
+
+  // Issue #391: an embedded newline must round-trip through the
+  // submitting / errored render path verbatim — the preserved draft is
+  // rendered as plain text, and `\n` in a <text> body must survive into
+  // the rendered children unchanged so retry from `errored` keeps the
+  // user's paragraph structure.
+  it("preserves embedded newlines in the submitting / errored draft render", () => {
+    const tree = render({
+      kind: "submitting",
+      target: topLevelTarget,
+      body: "line one\nline two",
+    });
+    // The body appears in a <text> child — assert the exact \n survives.
+    const allText = textBodies(tree).join("␟");
+    expect(allText).toContain("line one\nline two");
   });
 });

@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **TUI composer is multi-line + fills the inner width (issue #391).**
+  The comment composer now renders an opentui `<textarea>` instead of
+  the single-line `<input>`. Two consequences. (1) Typed text fills the
+  full inner width of the composer envelope before any horizontal
+  scroll — the legacy `<input>`'s default `scrollMargin` of 0.2
+  reserved ~15 cols of right-edge space, which made the open composer
+  feel narrower than it looked. The textarea is configured with
+  `scrollMargin: 0` and `wrapMode: "word"`. (2) Multi-paragraph
+  markdown notes are possible — Enter inserts a newline, and a new
+  `Ctrl+S` chord (surfaced in the hint row as
+  `Ctrl+S: submit · Enter: newline · Esc: cancel`) submits the draft.
+  The slice contract is unchanged: `composer.setBody` carries the
+  live text (newlines and all), `composer.submit` persists a
+  `Comment` whose `body` may contain embedded `\n` characters, and
+  the `submitting` / `errored` render paths continue to display the
+  preserved draft verbatim (issue #254 render-gate contract). `Esc`
+  still cancels an open composer; `Enter` still retries from
+  `errored`.
+
 - **Reply-agent verb relabel + keybinding rebind (issue #390, ADR 0021
   addendum).** The action that asks the configured reply-agent to
   reply to a human Comment is now surfaced as `Request reply` instead

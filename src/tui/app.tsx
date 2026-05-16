@@ -1356,7 +1356,12 @@ function App(props: AppProps) {
       return;
     }
     if (composer.kind === "open") {
-      // Esc cancels; Return / typing flows through to the focused <input>.
+      // Esc cancels; Return / typing / Ctrl+S flow through to the focused
+      // <textarea> (issue #391). The textarea owns its own key handler:
+      // Enter inserts a newline, Ctrl+S fires its `submit` keybinding
+      // which calls our `onSubmit` prop → `composer.submit`. This branch
+      // only intercepts Esc — the textarea's `defaultTextareaKeyBindings`
+      // don't claim Escape.
       if (key.name === "escape") {
         store.dispatch({ type: "composer.close" });
       }
