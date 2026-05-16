@@ -214,6 +214,35 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     margin-left: auto;
     flex-shrink: 0;
   }
+  /* Issue #390 / ADR 0021 addendum: header chip naming the configured
+     reply-agent and flagging it as a separate session. Render only when
+     --reply-agent is set; muted treatment so it sits alongside the
+     stats / sequence-pill cluster without stealing attention. */
+  .reply-agent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--fg-muted);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-muted, rgba(127, 127, 127, 0.3));
+    border-radius: 999px;
+    padding: 2px 10px;
+    white-space: nowrap;
+  }
+  .reply-agent-chip strong {
+    color: var(--fg-default);
+    font-weight: 600;
+  }
+  /* Issue #390 / ADR 0021 addendum: byline marker on agent-authored
+     Replies (which are by construction reply-agent products — see
+     src/core/reply-runner.ts's createReply call). Muted treatment
+     mirrors the chip so the role indicator is legible without
+     competing with the author name. */
+  .reply-agent-byline {
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
   .tour-stats {
     display: inline-flex;
     align-items: center;

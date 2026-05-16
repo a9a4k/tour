@@ -10,10 +10,11 @@ import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hin
 // convention that motivated the `t → T`, `c → C` rebinds shipping in
 // the same slice.
 //
-// `s send to {agent}` (issue #184, PRD #181) is surfaced conditionally —
-// only when the focused card is a human Comment, `--reply-agent` is
-// set, AND the lock is free. When the lock is held tour-wide the hint
-// stays in the footer but is rendered muted; pressing `s` is a no-op
+// `R request reply` (issue #184, PRD #181; renamed + rebound in
+// issue #390 / ADR 0021 addendum) is surfaced conditionally — only
+// when the focused card is a human Comment, `--reply-agent` is set,
+// AND the lock is free. When the lock is held tour-wide the hint
+// stays in the footer but is rendered muted; pressing `R` is a no-op
 // with a one-line footer status driven by App.tsx, not by this constant.
 //
 // Issue #331: the actual string assembly lives in `core/footer-hints.ts`

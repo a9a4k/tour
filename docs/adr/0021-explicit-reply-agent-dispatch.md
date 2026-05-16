@@ -33,3 +33,21 @@ Field evidence: the user's last Tour under the implicit model dispatched a paid 
 - **The asymmetric failure mode flips.** Under the implicit model, the default outcome was silent over-dispatch (real money on every unintended dispatch). Under the explicit model, the default outcome is silent under-dispatch (zero financial cost; the user just doesn't get a reply when they didn't ask). This matches the "fail safe, not loud" direction.
 
 - **Reversibility.** The flip preserves every other piece of the conversation model. Reverting to implicit dispatch (or adding a `--auto-reply` flag layered on top) is a small re-add of the `ReplyRunner` wiring inside `getOrCreateWatcher` — no schema changes, no migration of existing Tours. The data model is identical across the two models.
+
+## Addendum: Verb + keybinding change (2026-05-16, issue #390)
+
+The user-facing verb and keybinding shifted. The dispatch model itself is unchanged — same `requestReply` seam, same `.reply-lock.json` single-flight, same `canSendToAgent` visibility / enabled rules, same `tour pickup --json` schema. The change is button-copy and input-gesture only.
+
+- **Button copy.** `Send to {agent}` → `Request reply`. The agent name no longer rides on the action label; it moves to the per-card tooltip and the new persistent header chip. Field evidence: "Send to claude" kept reading as "message my current Claude session," when the action actually spawns a separate peer claude process (see [ADR 0010](./0010-bidirectional-review-via-reply-agent.md) and the explicit-dispatch rationale above). Dropping the agent name from the verb kills the brand collision; "Request reply" is outcome-framed so the destination metaphor goes away too.
+
+- **TUI keybinding.** `s` → `R` (shift-r). Same letter as the bare `r: reply` reply-composer key, case-shifted to mark "different actor" — lowercase `r` is "I'll reply," uppercase `R` is "ask the agent to reply." The legend now reads `r: reply  ·  R: request reply` when the action is available. Bare `s` is unbound.
+
+- **Web keybinding.** Mirror of the TUI rebind: `s` → `Shift+R`. Same legend treatment.
+
+- **Header chip.** Persistent indicator `Reply agent: <name> · separate session` rendered when `--reply-agent` is set. Surfaced on both surfaces (TopHeaderTui in the TUI, `.reply-agent-chip` in the webapp). Answers "which agent?" and "is it my session?" at a glance — the indicator is always visible, not gated on cursor position.
+
+- **Reply byline marker.** Agent-authored Replies (those that came in via `reply-runner`'s `createReply` call — structurally `author_kind === "agent"` AND `replies_to != null`) render with a ` · reply-agent` suffix on their byline. Top-level agent annotations don't carry the marker because they came in through a different ingestion path. The marker is a pure read on the projected Comment shape — no on-disk schema change.
+
+- **In-flight pill copy.** `<agent> is replying…` → `Reply agent (<name>) is replying…`. Same role-name framing as the header chip. The lock-held tooltip on the disabled button changes in lockstep.
+
+- **What did NOT change.** `requestReply` signature and discriminated result, `.reply-lock.json` semantics, `annotations.jsonl` / `tour-events.jsonl` schema, `tour pickup --json` schema, `canSendToAgent` predicate, single-flight precedence rules, agent-card-vs-no-reply-agent visibility rules. The reducer action type `send-to-agent` and the cursor-keymap action `send-on-card` also stay — the dispatch wire is identical, only the input gesture and the user-facing copy moved.

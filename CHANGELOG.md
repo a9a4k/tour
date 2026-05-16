@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Reply-agent verb relabel + keybinding rebind (issue #390, ADR 0021
+  addendum).** The action that asks the configured reply-agent to
+  reply to a human Comment is now surfaced as `Request reply` instead
+  of `Send to {agent}`, and the TUI / webapp keybinding moves from
+  bare `s` to `R` (shift-r). Same letter as `r: reply` — case-shifted
+  to mark "different actor": lowercase `r` is "I'll reply," uppercase
+  `R` is "ask the agent to reply." Bare `s` is unbound. Both surfaces
+  now render a persistent `Reply agent: <name> · separate session`
+  header chip when `--reply-agent` is configured, so the reply-agent
+  reads as a distinct entity from the user's current chat. Reply-
+  agent–produced Replies (`author_kind === "agent"` AND
+  `replies_to != null`) carry a ` · reply-agent` byline marker on
+  their header. The in-flight pill copy names the worker role —
+  `Reply agent (<name>) is replying…` — and the disabled-button
+  tooltip changes in lockstep. Dispatch model is unchanged:
+  `requestReply` signature + result discriminants, `.reply-lock.json`
+  semantics, `annotations.jsonl` / `tour-events.jsonl` schema, and
+  `tour pickup --json` all stay byte-identical. Footer legend now
+  reads `… r: reply · R: request reply …` (no agent name on the
+  label — it lives on the chip and tooltip).
+
 ### Added
 
 - **TUI delete (`d` + confirm modal) (issue #388, ADR 0036, PRD #384,

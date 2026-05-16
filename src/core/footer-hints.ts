@@ -1,7 +1,7 @@
 // Cross-surface keybinding legend composer for the footer hint strip.
 // Both the TUI and the webapp render a one-line muted legend at the
 // bottom of their viewport; this module owns the vocabulary so the
-// shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `s`, `L`, `T`) cannot
+// shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `R`, `L`, `T`) cannot
 // drift between surfaces.
 //
 // `surface: "tui"` emits the full key list (16 keys today). `surface:
@@ -9,11 +9,15 @@
 // today — adding webapp bindings later grows the web legend without
 // touching the TUI string.
 //
-// The `s: send to {agent}` hint is surfaced conditionally on both
+// The `R: request reply` hint is surfaced conditionally on both
 // surfaces — only when `--reply-agent` is configured AND the cursor is
 // on a human Comment card AND the reply-lock is free (caller passes
-// `showSendHint: true`). See ADR 0022 / issue #184 for the TUI side;
-// ADR 0028 / issue #330 for the webapp parity.
+// `showSendHint: true`). Issue #390 / ADR 0021 addendum: the verb was
+// "send to {agent}" on key `s` until that label kept reading as
+// "message my current Claude session" — agent name dropped from the
+// legend, role-framed verb, and `s → R` (shift-r) parallel with bare
+// `r: reply` (same letter, case-shifted = same action, different
+// actor).
 //
 // Issues #337 (TUI) + #338 (webapp) / ADR 0029 + ADR 0030: both
 // legends now read `c: comment` / `T: picker`; the TUI also adds
@@ -29,7 +33,7 @@ export interface ComposeFooterHintsOptions {
   replyAgent?: string;
   showSendHint?: boolean;
   // PRD #343 / ADR 0031 / issue #345 + #346: pane-aware legend on both
-  // surfaces. Sidebar mode drops diff-only keys (`n/p`, `c`, `r`, `s`,
+  // surfaces. Sidebar mode drops diff-only keys (`n/p`, `c`, `r`, `R`,
   // and any TUI-only `C`, `Enter: expand`, `Space: page`, `[/]: width`)
   // and adds `Esc: diff` as the pane-toggle hint; diff mode adds
   // `Esc: sidebar` and (on TUI) drops the retired `Tab: pane`. Default
@@ -44,7 +48,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // Sidebar-mode legend (PRD #343 / ADR 0031 / issue #345). Shorter
     // than the diff-mode legend — only sidebar-navigable keys and the
     // pane-agnostic Tour-wide actions (e/y/o/L/T/q). The send-hint
-    // conditional is gated off here: `s` is a cursor-target action
+    // conditional is gated off here: `R` is a cursor-target action
     // that only fires when paneFocus = diff. PRD #349 / ADR 0032 /
     // issue #352: `o: open` slots next to `y` since both are
     // "side-effect on cursor's file."
@@ -65,18 +69,20 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff`
     );
   }
-  const send =
-    opts.showSendHint && opts.replyAgent
-      ? `  ·  s: send to ${opts.replyAgent}`
-      : "";
+  // Issue #390: the agent name is intentionally NOT interpolated into the
+  // legend label. The header chip (webapp + TUI) carries the configured
+  // agent name; the legend just says what the action does. Same letter as
+  // bare `r: reply`, case-shifted to mark "different actor" (the
+  // configured reply-agent runs the request in a separate session).
+  const send = opts.showSendHint && opts.replyAgent ? `  ·  R: request reply` : "";
   if (opts.surface === "tui") {
     // PRD #349 / ADR 0032 / issue #352: `o: open` slots next to
     // `y: yank path` — both are "side-effect on cursor's file."
     //
     // ADR 0036 Slice D / issue #388: `d: delete` slots into the lowercase-
-    // cursor cluster between `r: reply` and `s: send to`. Card-only gesture
-    // — the App-side handler routes `d` on a row to a labelled no-op
-    // (`noop-delete-on-row`), matching the existing `r`/`s` pattern. The
+    // cursor cluster between `r: reply` and `R: request reply`. Card-only
+    // gesture — the App-side handler routes `d` on a row to a labelled no-op
+    // (`noop-delete-on-row`), matching the existing `r`/`R` pattern. The
     // hint is unconditional in the legend (same convention as `r: reply`);
     // gating the verb on cursor context happens at the dispatcher.
     return (

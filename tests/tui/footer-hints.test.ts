@@ -60,8 +60,9 @@ describe("TUI_FOOTER_HINTS", () => {
     expect(TUI_FOOTER_HINTS).not.toContain("y: yank path");
   });
 
-  it("omits the `s: send to {agent}` hint by default (no reply-agent configured)", () => {
-    expect(TUI_FOOTER_HINTS).not.toContain("s: send to");
+  it("omits the `R: request reply` hint by default (no reply-agent configured)", () => {
+    expect(TUI_FOOTER_HINTS).not.toContain("R: request reply");
+    expect(TUI_FOOTER_HINTS).not.toContain("send to");
   });
 
   // Issue #331: the TUI string is now assembled by `core/footer-hints.ts`
@@ -88,30 +89,37 @@ describe("TUI_FOOTER_HINTS", () => {
   });
 });
 
-describe("composeFooterHints (issue #184)", () => {
-  it("interpolates the agent name when showSendHint is true", () => {
+describe("composeFooterHints (issue #184 → relabelled in issue #390)", () => {
+  // Issue #390 / ADR 0021 addendum: the action label no longer carries
+  // the agent name and is bound to `R` (shift-r) rather than `s`. The
+  // configured agent is surfaced in the header chip, not the legend.
+  it("emits `R: request reply` (no agent name interpolated) when showSendHint is true", () => {
     const out = composeFooterHints({ replyAgent: "claude", showSendHint: true });
-    expect(out).toContain("s: send to claude");
+    expect(out).toContain("R: request reply");
+    expect(out).not.toContain("R: request reply claude");
+    expect(out).not.toContain("send to");
   });
 
   it("omits the send hint when replyAgent is unset (even if showSendHint is true)", () => {
     const out = composeFooterHints({ showSendHint: true });
-    expect(out).not.toContain("s: send to");
+    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("send to");
   });
 
   it("omits the send hint when showSendHint is false (e.g. focus is on an agent card)", () => {
     const out = composeFooterHints({ replyAgent: "claude", showSendHint: false });
-    expect(out).not.toContain("s: send to");
+    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("send to");
   });
 
   it("renders the send hint between `r: reply` and `Enter: expand` (next to the human-reply verb)", () => {
     const out = composeFooterHints({ replyAgent: "codex", showSendHint: true });
     const r = out.indexOf("r: reply");
-    const s = out.indexOf("s: send to codex");
+    const requestReply = out.indexOf("R: request reply");
     const enter = out.indexOf("Enter: expand");
     expect(r).toBeGreaterThanOrEqual(0);
-    expect(s).toBeGreaterThan(r);
-    expect(enter).toBeGreaterThan(s);
+    expect(requestReply).toBeGreaterThan(r);
+    expect(enter).toBeGreaterThan(requestReply);
   });
 });
 

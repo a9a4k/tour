@@ -46,11 +46,14 @@ interface PillProps {
 function ReplyPill({ lock, now }: PillProps) {
   const seconds = Math.floor(ageMs(lock, now) / 1000);
   const stale = isStale(lock, now);
+  // Issue #390 / ADR 0021 addendum: name the worker role so the cue
+  // matches the header chip — the in-flight worker is the separate-
+  // session peer, not the user's current chat.
   if (stale) {
     return (
       <box marginTop={1} paddingLeft={2}>
         <text fg={theme.fg.attention}>
-          {`⚠️ ${lock.agent} is taking unusually long…`}
+          {`⚠️ Reply agent (${lock.agent}) is taking unusually long…`}
         </text>
       </box>
     );
@@ -58,7 +61,7 @@ function ReplyPill({ lock, now }: PillProps) {
   return (
     <box marginTop={1} paddingLeft={2}>
       <text fg={theme.fg.muted}>
-        {`✏️ ${lock.agent} is replying… (${seconds}s)`}
+        {`✏️ Reply agent (${lock.agent}) is replying… (${seconds}s)`}
       </text>
     </box>
   );
@@ -157,6 +160,14 @@ export function CommentCard({
               </text>
               {r.author !== r.author_kind ? (
                 <text fg={theme.fg.muted}>{` (${r.author})`}</text>
+              ) : null}
+              {r.author_kind === "agent" && r.replies_to ? (
+                // Issue #390 / ADR 0021 addendum: reply-agent replies are
+                // produced by the dispatch path's `createReply` (always
+                // `author_kind: "agent"` + `replies_to`). Mark them with
+                // a visible role suffix so the reply-agent reads as a
+                // distinct participant from the user's current chat.
+                <text fg={theme.fg.muted}>{` · reply-agent`}</text>
               ) : null}
             </box>
             <text fg={theme.fg.default} wrapMode="word">{r.body}</text>

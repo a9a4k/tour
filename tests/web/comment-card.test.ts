@@ -161,14 +161,16 @@ describe("CommentCard header collapses redundant `author` when author === author
   });
 });
 
-describe("CommentCard `Send to {agent}` affordance (issue #184, PRD #181)", () => {
-  // The "Send to {agent}" button lives next to the existing "Reply"
+describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabelled in issue #390)", () => {
+  // The "Request reply" button (issue #390 / ADR 0021 addendum —
+  // formerly "Send to {agent}") lives next to the existing "Reply"
   // button on every human Comment card. Visibility is delegated to
   // `canSendToAgent` in core; this suite covers the rendering side —
   // is the button there, is the label correct, is the disabled state
-  // wired to the tour-wide lock.
+  // wired to the tour-wide lock, does the tooltip name the configured
+  // agent and clarify the separate-session fact.
 
-  it("renders the button labelled with the agent name on a human card when replyAgent is set", () => {
+  it("renders the button labelled `Request reply` (no agent name on the button) on a human card when replyAgent is set", () => {
     const container = mount(
       createElement(CommentCard, {
         comment: baseComment,
@@ -182,10 +184,13 @@ describe("CommentCard `Send to {agent}` affordance (issue #184, PRD #181)", () =
     );
     const btn = container.querySelector(".send-to-agent-button");
     expect(btn).not.toBeNull();
-    expect(btn?.textContent).toBe("Send to claude");
+    expect(btn?.textContent).toBe("Request reply");
+    // The agent name is intentionally NOT on the button itself —
+    // it lives on the tooltip and the header chip.
+    expect(btn?.textContent).not.toContain("claude");
   });
 
-  it("interpolates a different agent name verbatim from the prop", () => {
+  it("renders the same `Request reply` label irrespective of the configured agent (no interpolation on the button)", () => {
     const container = mount(
       createElement(CommentCard, {
         comment: baseComment,
@@ -198,8 +203,32 @@ describe("CommentCard `Send to {agent}` affordance (issue #184, PRD #181)", () =
       }),
     );
     expect(container.querySelector(".send-to-agent-button")?.textContent).toBe(
-      "Send to codex",
+      "Request reply",
     );
+    expect(
+      container.querySelector(".send-to-agent-button")?.textContent,
+    ).not.toContain("codex");
+  });
+
+  it("hovering the button shows a tooltip that names the configured reply-agent and clarifies the separate-session fact", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const btn = container.querySelector(
+      ".send-to-agent-button",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    const tip = btn?.getAttribute("title") ?? "";
+    expect(tip).toContain("claude");
+    expect(tip.toLowerCase()).toContain("separate session");
   });
 
   it("hides the button on agent-authored cards (agent-card precedence)", () => {
@@ -255,7 +284,7 @@ describe("CommentCard `Send to {agent}` affordance (issue #184, PRD #181)", () =
     expect(container.querySelector(".send-to-agent-button")).toBeNull();
   });
 
-  it("disables the button + carries an agent-name tooltip when a reply-lock is held tour-wide", () => {
+  it("disables the button + carries a worker-role tooltip when a reply-lock is held tour-wide", () => {
     const container = mount(
       createElement(CommentCard, {
         comment: baseComment,
@@ -278,7 +307,13 @@ describe("CommentCard `Send to {agent}` affordance (issue #184, PRD #181)", () =
     ) as HTMLButtonElement | null;
     expect(btn).not.toBeNull();
     expect(btn?.disabled).toBe(true);
-    expect(btn?.getAttribute("title")).toContain("claude is replying");
+    // Issue #390: the lock-held tooltip names the worker role
+    // ("Reply agent (<name>) is replying — wait") so the cue matches
+    // the header chip's framing.
+    const tip = btn?.getAttribute("title") ?? "";
+    expect(tip).toContain("Reply agent");
+    expect(tip).toContain("claude");
+    expect(tip).toContain("is replying");
   });
 
   it("fires onSendToAgent on click when enabled, swallowing event propagation", () => {
@@ -662,7 +697,10 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
     ) as HTMLButtonElement | null;
     expect(btn).not.toBeNull();
     expect(btn?.disabled).toBe(true);
-    expect(btn?.getAttribute("title")).toContain("claude is replying");
+    const tip2 = btn?.getAttribute("title") ?? "";
+    expect(tip2).toContain("Reply agent");
+    expect(tip2).toContain("claude");
+    expect(tip2).toContain("is replying");
     expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(1);
   });
 
@@ -1049,5 +1087,93 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
     expect(
       block.querySelector(".ann-reply .ann-trash-button"),
     ).not.toBeNull();
+  });
+});
+
+describe("CommentCard reply-agent byline marker (issue #390 / ADR 0021 addendum)", () => {
+  // Issue #390 AC: "When the reply-agent's reply lands as a child
+  // Annotation, its byline renders the agent as a distinct participant
+  // — e.g. `claude · reply-agent` — so the second instance becomes a
+  // visible entity in the conversation."
+  //
+  // The structural marker is `author_kind === "agent" && replies_to`
+  // — those replies are by construction produced by `reply-runner`'s
+  // `createReply` call. Top-level agent annotations don't carry the
+  // marker (they came in via ingestion, not the dispatch path).
+
+  const parent: Comment = {
+    ...baseComment,
+    id: "parent-1",
+    author: "alice",
+    author_kind: "human",
+  };
+
+  it("renders ` · reply-agent` next to an agent-authored Reply's byline", () => {
+    const reply: Comment = {
+      ...baseComment,
+      id: "ann-reply-from-agent",
+      body: "agent reply body",
+      author: "claude",
+      author_kind: "agent",
+      replies_to: parent.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    const replyBlock = container.querySelector(`[id="comment-${reply.id}"]`);
+    expect(replyBlock).not.toBeNull();
+    const marker = replyBlock?.querySelector(".reply-agent-byline");
+    expect(marker).not.toBeNull();
+    expect(marker?.textContent).toContain("reply-agent");
+  });
+
+  it("does NOT render the marker on a human-authored Reply", () => {
+    const reply: Comment = {
+      ...baseComment,
+      id: "ann-reply-from-human",
+      body: "human reply body",
+      author: "alice",
+      author_kind: "human",
+      replies_to: parent.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onOpenReply: () => {},
+      }),
+    );
+    const replyBlock = container.querySelector(`[id="comment-${reply.id}"]`);
+    expect(replyBlock?.querySelector(".reply-agent-byline")).toBeNull();
+  });
+
+  it("does NOT render the marker on an agent-authored top-level Comment (no replies_to)", () => {
+    const agentTop: Comment = {
+      ...baseComment,
+      id: "agent-top",
+      author: "claude",
+      author_kind: "agent",
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: agentTop,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+      }),
+    );
+    expect(container.querySelector(".reply-agent-byline")).toBeNull();
   });
 });

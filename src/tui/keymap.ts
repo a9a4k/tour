@@ -14,10 +14,11 @@ export interface KeymapContext {
    *  diff row Enter is a noop. */
   cursorOnInteractive: boolean;
   /** Whether the cursor sits on a Comment card (PRD #192 / ADR 0022).
-   *  Routes the row-kind-aware dispatch: `r` and `s` fire only when this
-   *  is true; `c` fires only when this is false (and the cursor isn't on
-   *  an interactive row either). On a card / row mismatch the action is
-   *  a labelled no-op the App shell surfaces via the footer hint. */
+   *  Routes the row-kind-aware dispatch: `r` and `R` (issue #390:
+   *  shift-r, formerly `s`) fire only when this is true; `c` fires
+   *  only when this is false (and the cursor isn't on an interactive
+   *  row either). On a card / row mismatch the action is a labelled
+   *  no-op the App shell surfaces via the footer hint. */
   cursorOnCard: boolean;
   /** Whether the comment composer is open (any non-closed kind). Routes
    *  Esc to `close-modal` instead of `pane-focus-toggle` per the
@@ -117,6 +118,13 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   // `L` toggles layout (ADR 0011), `T` opens the picker, `C` toggles the
   // replies-collapse across every Thread. Lowercase letters bind cursor-
   // target actions on the same axis (e.g. `c` for comment, `t` is unbound).
+  //
+  // Issue #390 / ADR 0021 addendum: `R` (shift-r) is the request-reply
+  // verb — same letter as bare `r: reply`, case-shifted to mark
+  // "different actor" (the configured reply-agent runs the dispatch in
+  // a separate session). Card-only; off-card / sidebar surfaces a
+  // labelled no-op via `noop-send-on-row`, mirroring the lowercase `r`
+  // route. The prior `s` binding is retired.
   if (!key.ctrl && key.shift && key.name === "l") {
     return { type: "toggle-layout" };
   }
@@ -125,6 +133,10 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   }
   if (!ctx.sidebarFocused && !key.ctrl && key.shift && key.name === "c") {
     return { type: "toggle-replies-collapse" };
+  }
+  if (!key.ctrl && key.shift && key.name === "r") {
+    if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
+    return { type: "send-to-agent" };
   }
 
   if (!key.ctrl && !key.shift) {
@@ -171,10 +183,8 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
       if (!ctx.cursorOnCard) return { type: "noop-reply-on-row" };
       return { type: "open-reply-composer" };
     }
-    if (key.name === "s") {
-      if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
-      return { type: "send-to-agent" };
-    }
+    // Issue #390 / ADR 0021 addendum: the request-reply verb moved to
+    // shift-r above (capital-letter cluster). Bare `s` is now unbound.
     // ADR 0036 Slice D / issue #388. `d` is card-only — opens the delete-
     // confirm modal on the cursored Comment. Off-card presses surface a
     // labelled no-op in the footer, matching the existing

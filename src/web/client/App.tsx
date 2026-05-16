@@ -110,8 +110,8 @@ interface AppProps {
   initialTourId: string | null;
   // The renderer-configured reply-agent name (from `--reply-agent <name>`,
   // baked into the SPA via `__INITIAL_REPLY_AGENT__`). Null when the
-  // server was launched without `--reply-agent`; the "Send to {agent}"
-  // affordance stays hidden in that case.
+  // server was launched without `--reply-agent`; the "Request reply"
+  // affordance and header chip both stay hidden in that case.
   replyAgent?: string | null;
 }
 
@@ -1805,9 +1805,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [setCursorFromCardClick, openInEditor],
   );
 
-  // Explicit reply-agent dispatch (issue #184, ADR 0021). Fired by the
-  // `Send to {agent}` button below each human Comment card. Dispatches
-  // the `send-to-agent` reducer action; the Tour-session runtime + web
+  // Explicit reply-agent dispatch (issue #184, ADR 0021; relabelled in
+  // issue #390). Fired by the `Request reply` button below each human
+  // Comment card. Dispatches the `send-to-agent` reducer action — the
+  // action type stays for back-compat; only the user-facing label
+  // moved. The Tour-session runtime + web
   // adapter chain emits the auto-recall `scrollCursorTarget` intent and
   // POSTs `/api/tours/:id/request-reply` (PRD #278 slice 7). Fire-and-
   // forget — the watcher's `reply-in-flight` SSE event surfaces the in-
@@ -1953,6 +1955,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           <span className="tour-refs">{headerSourcePair(tourMeta)}</span>
         </div>
         <div className="tour-header-right">
+          {replyAgent ? (
+            <span
+              className="reply-agent-chip"
+              role="status"
+              title={`Press Shift+R on a human comment card to ask ${replyAgent} to reply. Runs in a separate session — does not message your current chat.`}
+            >
+              Reply agent: <strong>{replyAgent}</strong> · separate session
+            </span>
+          ) : null}
           <TourStatsIndicator
             additions={tourStats.additions}
             deletions={tourStats.deletions}
@@ -2385,8 +2396,10 @@ interface CommentCardProps {
   onSubmitReply?: () => void;
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
-  // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181).
-  // Null/undefined → the "Send to {agent}" affordance is hidden.
+  // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181;
+  // relabelled in issue #390 — the button now reads "Request reply",
+  // tooltip names the agent and clarifies the separate-session fact).
+  // Null/undefined → the "Request reply" affordance is hidden.
   replyAgent?: string | null;
   onSendToAgent?: (commentId: string) => void;
   // Cursor-landing callback (PRD #192 / ADR 0022 slice 2). Fires when the
@@ -2422,12 +2435,17 @@ function ReplyPill({ lock }: { lock: ReplyLock }): React.JSX.Element {
     return () => clearInterval(handle);
   }, []);
   const seconds = Math.floor(ageMs(lock, now) / 1000);
+  // Issue #390 / ADR 0021 addendum: pill copy names the worker role
+  // ("Reply agent (<name>) is replying…") so the visible cue matches
+  // the header chip's framing — the user can tell at a glance that the
+  // in-flight worker is the separate-session peer, not their current
+  // Claude session.
   if (isStale(lock, now)) {
     return (
       <div className="reply-pill stale" role="status">
         <span className="reply-pill-icon" aria-hidden="true">⚠️</span>
         <span>
-          <strong>{lock.agent}</strong> is taking unusually long…
+          Reply agent (<strong>{lock.agent}</strong>) is taking unusually long…
         </span>
       </div>
     );
@@ -2436,7 +2454,7 @@ function ReplyPill({ lock }: { lock: ReplyLock }): React.JSX.Element {
     <div className="reply-pill" role="status">
       <span className="reply-pill-icon" aria-hidden="true">✏️</span>
       <span>
-        <strong>{lock.agent}</strong> is replying… ({seconds}s)
+        Reply agent (<strong>{lock.agent}</strong>) is replying… ({seconds}s)
       </span>
     </div>
   );
@@ -2481,8 +2499,11 @@ export function CommentCard({
   const showPill =
     !!replyLock && pillTargetsThisCard(comment.id, replies, replyLock);
   const lockHeld = replyLock != null;
+  // Issue #390 / ADR 0021 addendum: the lock-held tooltip names the
+  // worker role ("Reply agent (<name>) is replying — wait") so the
+  // visible copy matches the header chip's framing.
   const lockedTooltip = replyLock
-    ? `${replyLock.agent} is replying — wait`
+    ? `Reply agent (${replyLock.agent}) is replying — wait`
     : undefined;
   // A Thread carries exactly one action row at the bottom (issue #191).
   // The Reply button targets the latest Comment in the Thread so a
@@ -2506,8 +2527,16 @@ export function CommentCard({
           hasReply: false,
         })
       : { visible: false, enabled: false };
+  // Issue #390 / ADR 0021 addendum: the button label is "Request reply"
+  // (no agent name); the tooltip carries the per-state context — agent
+  // name + "separate session" clarifier in the enabled case, or the
+  // lock-held wait message when a reply is in flight.
   const sendTooltip =
-    sendVerdict.reason === "lock-held" ? lockedTooltip : undefined;
+    sendVerdict.reason === "lock-held"
+      ? lockedTooltip
+      : replyAgent
+        ? `Request a reply from ${replyAgent} — runs in a separate session, does not message your current chat`
+        : undefined;
   const composerOpen = replyTargetId != null;
   const showReplyButton = !!onOpenReply;
   const showSendButton = sendVerdict.visible && !!onSendToAgent && !!sendLeafId;
@@ -2596,6 +2625,14 @@ export function CommentCard({
                   [{r.author_kind}]
                 </span>
                 {r.author !== r.author_kind ? <> {r.author}</> : null}
+                {r.author_kind === "agent" && r.replies_to ? (
+                  <span
+                    className="reply-agent-byline"
+                    title="This reply was produced by the configured reply-agent in a separate session."
+                  >
+                    {" "}· reply-agent
+                  </span>
+                ) : null}
                 {onDeleteClick ? (
                   <button
                     type="button"
@@ -2673,7 +2710,7 @@ export function CommentCard({
                 if (sendVerdict.enabled) onSendToAgent(sendLeafId);
               }}
             >
-              Send to {replyAgent}
+              Request reply
             </button>
           ) : null}
         </div>

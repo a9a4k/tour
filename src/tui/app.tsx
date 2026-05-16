@@ -1862,7 +1862,9 @@ function App(props: AppProps) {
         setFooterStatus("r: no comment under cursor — n/p to navigate");
         return;
       case "noop-send-on-row":
-        setFooterStatus("s: no comment under cursor — n/p to navigate");
+        // Issue #390 / ADR 0021 addendum: the request-reply verb is
+        // now `R` (shift-r). Status message follows.
+        setFooterStatus("R: no comment under cursor — n/p to navigate");
         return;
       case "noop-comment-on-card":
         setFooterStatus("c: on a card — j/k to land on a row first");
@@ -1895,6 +1897,7 @@ function App(props: AppProps) {
         currentCommentIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         tourStats={tourStats}
+        replyAgent={props.replyAgent}
         onOpenPicker={() => void openPicker()}
         onPrevComment={gotoPrevComment}
         onNextComment={gotoNextComment}
