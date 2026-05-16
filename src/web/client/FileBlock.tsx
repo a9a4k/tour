@@ -373,7 +373,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           <button
             type="button"
             className="tour-file-open-in-editor-button"
-            aria-label="Open file in editor"
+            aria-label={`Open ${file.name} in editor`}
             onClick={handleOpenInEditor}
           >
             ↗

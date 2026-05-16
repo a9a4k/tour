@@ -769,7 +769,7 @@ describe("<FileBlock> — file-header open-in-editor `↗` button (#383)", () =>
     ) as HTMLButtonElement | null;
     expect(button).not.toBeNull();
     expect(button!.tagName).toBe("BUTTON");
-    expect(button!.getAttribute("aria-label")).toBe("Open file in editor");
+    expect(button!.getAttribute("aria-label")).toBe("Open x.ts in editor");
   });
 
   it("dispatches onOpenInEditor with (file.name, 1, 'additions') on click", () => {
