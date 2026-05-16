@@ -4,6 +4,10 @@ import { ageMs, isStale, type ReplyLock } from "../core/reply-lock.js";
 
 interface CommentCardProps {
   comment: Comment;
+  /** True when the cursor sits on any node of this Thread (parent or
+   *  Reply, per ADR 0037). Drives the Card chrome (heavy border +
+   *  accent background). The narrower within-Card active-node
+   *  highlight reads from `activeNodeId`. */
   isCurrent: boolean;
   replies?: Comment[];
   repliesCollapsed?: boolean;
@@ -13,6 +17,12 @@ interface CommentCardProps {
    *  topLevel; the counter is omitted when null or when navTotal is 0. */
   navIndex?: number | null;
   navTotal?: number;
+  /** ADR 0037 — the specific Comment id the cursor sits on within this
+   *  Thread (parent or Reply). null when `isCurrent` is false. Drives
+   *  the within-Card `●` glyph + emphasis: parent header is highlighted
+   *  when `activeNodeId === comment.id`; a reply is highlighted when
+   *  `activeNodeId === reply.id`. */
+  activeNodeId?: string | null;
 }
 
 function rangeLabel(ann: Comment): string {
@@ -73,11 +83,20 @@ export function CommentCard({
   now,
   navIndex,
   navTotal,
+  activeNodeId,
 }: CommentCardProps) {
   const visibleReplies = repliesCollapsed ? [] : replies ?? [];
   const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
   const showPill =
     replyLock && pillTargetsThisCard(comment, replies, replyLock);
+  // ADR 0037 — within-Card active-node highlight. The Card chrome
+  // (heavy border + accent background) still tracks `isCurrent` (any
+  // node in the Thread is the cursor), but the `●` glyph and tinted
+  // reply chrome narrow to the specific node the cursor points at.
+  // When no `activeNodeId` is provided, fall back to the parent so
+  // pre-ADR call sites read identically.
+  const activeId = activeNodeId ?? (isCurrent ? comment.id : null);
+  const parentActive = isCurrent && activeId === comment.id;
   // Selection is signalled redundantly along three axes (borderStyle,
   // backgroundColor, header `●` glyph) so the cue survives palette drift,
   // colour blindness, and low-contrast displays — a single delta isn't enough.
@@ -91,7 +110,7 @@ export function CommentCard({
       paddingX={1}
     >
       <box flexDirection="row" flexWrap="wrap">
-        {isCurrent ? (
+        {parentActive ? (
           <text fg={theme.fg.accent} bold>
             {"● "}
           </text>
@@ -116,25 +135,34 @@ export function CommentCard({
       <box flexGrow={1}>
         <text fg={theme.fg.default} wrapMode="word">{comment.body}</text>
       </box>
-      {visibleReplies.map((r) => (
-        <box
-          key={r.id}
-          id={`comment-${r.id}`}
-          flexDirection="column"
-          marginTop={1}
-          paddingLeft={2}
-        >
-          <box flexDirection="row" flexWrap="wrap">
-            <text fg={authorKindColor(r.author_kind)} bold>
-              {`[${r.author_kind}]`}
-            </text>
-            {r.author !== r.author_kind ? (
-              <text fg={theme.fg.muted}>{` (${r.author})`}</text>
-            ) : null}
+      {visibleReplies.map((r) => {
+        const replyActive = isCurrent && activeId === r.id;
+        return (
+          <box
+            key={r.id}
+            id={`comment-${r.id}`}
+            flexDirection="column"
+            marginTop={1}
+            paddingLeft={2}
+            backgroundColor={replyActive ? theme.bg.accentCurrent.tui : undefined}
+          >
+            <box flexDirection="row" flexWrap="wrap">
+              {replyActive ? (
+                <text fg={theme.fg.accent} bold>
+                  {"● "}
+                </text>
+              ) : null}
+              <text fg={authorKindColor(r.author_kind)} bold>
+                {`[${r.author_kind}]`}
+              </text>
+              {r.author !== r.author_kind ? (
+                <text fg={theme.fg.muted}>{` (${r.author})`}</text>
+              ) : null}
+            </box>
+            <text fg={theme.fg.default} wrapMode="word">{r.body}</text>
           </box>
-          <text fg={theme.fg.default} wrapMode="word">{r.body}</text>
-        </box>
-      ))}
+        );
+      })}
       {hiddenCount > 0 && (
         <box marginTop={1} paddingLeft={2}>
           <text fg={theme.fg.muted}>

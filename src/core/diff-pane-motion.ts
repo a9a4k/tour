@@ -1,6 +1,7 @@
 import type { Cursor } from "./cursor-state.js";
 import { cursorFromRow, moveCursor, preferredSideOf, resolveCursorRowIdx } from "./cursor-state.js";
 import type { FlatRow } from "./flat-rows.js";
+import type { Thread } from "./threads.js";
 
 /**
  * Diff-pane motion contract (ADR 0011 — Diff-pane motion contract). The
@@ -30,6 +31,10 @@ export interface PaneState {
    *  no-op. `step()` ignores this. */
   contentHeight: number;
   rowY: (rowIdx: number) => number;
+  /** ADR 0037 — Threads context for the in-Card `j`/`k` walker. When
+   *  omitted, `step()` preserves its prior contract (the webapp does
+   *  not adopt reply-level traversal). */
+  threads?: ReadonlyArray<Thread>;
 }
 
 export interface MotionResult {
@@ -45,11 +50,11 @@ export function step(
   if (!state.cursor) {
     return { cursor: null, scrollTop: state.scrollTop };
   }
-  const next = moveCursor(state.cursor, direction, state.flatRows);
+  const next = moveCursor(state.cursor, direction, state.flatRows, state.threads);
   if (next === state.cursor || next === null) {
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }
-  const nextIdx = resolveCursorRowIdx(next, state.flatRows);
+  const nextIdx = resolveCursorRowIdx(next, state.flatRows, state.threads);
   if (nextIdx === -1) {
     return { cursor: next, scrollTop: state.scrollTop };
   }
@@ -96,7 +101,7 @@ export function pageMove(
   if (state.contentHeight <= state.viewportHeight) {
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }
-  const oldIdx = resolveCursorRowIdx(state.cursor, state.flatRows);
+  const oldIdx = resolveCursorRowIdx(state.cursor, state.flatRows, state.threads);
   if (oldIdx === -1) {
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }
@@ -172,7 +177,7 @@ export function jump(
     target === "home" ? y - scrolloff : y - state.viewportHeight + scrolloff + 1;
   const newScrollTop = Math.max(0, Math.min(desiredScrollTop, maxScrollTop));
 
-  const currentIdx = resolveCursorRowIdx(state.cursor, state.flatRows);
+  const currentIdx = resolveCursorRowIdx(state.cursor, state.flatRows, state.threads);
   if (currentIdx === targetIdx && newScrollTop === state.scrollTop) {
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }

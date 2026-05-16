@@ -35,6 +35,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI reply-level cursor stops (issue #385, ADR 0037).** `CardAnchor.commentId`
+  now addresses any node in a Thread — parent or Reply — not just the
+  top-level Comment. `j` from a parent with replies steps onto the
+  first Reply (still a `CardAnchor`, same Card row, new `commentId`);
+  subsequent `j` presses walk each Reply in append order; `j` from the
+  last Reply exits the Card to the next flat row. `k` mirrors
+  symmetrically. Threads with no replies behave exactly as today. The
+  Card chrome (heavy border + accent background) still lights up when
+  the cursor sits on any node in the Thread; the `●` glyph + reply-
+  chrome tint narrow to the specific cursored node. `n`/`p` continues
+  to enumerate top-level Comments only — from a reply, the walker
+  treats the cursor as being on the reply's root, so `n` lands on the
+  next Thread (the `[N/M]` pill counter is unchanged). `preferredSide`
+  carries across all parent ↔ reply, reply ↔ reply, and last-reply →
+  row-exit transitions. The webapp's cursor model is unchanged (ADR
+  0037 is TUI-scoped). Scoped to the TUI by threading
+  `nav.threads` through `moveCursor` / `nextCard` / `prevCard` /
+  `resolveCursorRowIdx` / `validateCursor` / `stepDiffPane` /
+  `pageMoveDiffPane` / `jumpDiffPane` — all four take an optional
+  `threads?: Thread[]` parameter; webapp call sites pass nothing and
+  preserve their prior behaviour. Unblocks per-node verbs (delete in
+  ADR 0036's slice, future edit/resolve) without forcing each verb to
+  ship its own in-modal node selector.
+
+  Issue: #385 · ADR: 0037
+
 - **Webapp mouse paths to open-in-editor — annotation filename link,
   file-header `↗` icon (issue #383, ADR 0035).** ADR 0032 wired the
   keyboard `o` to `POST /api/tours/<id>/open-in-editor` and deferred

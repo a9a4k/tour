@@ -20,6 +20,7 @@ import {
   buildThreads,
   isTopLevel,
   topLevelComments,
+  type Thread,
 } from "./threads.js";
 import type { Layout, TourSessionState, TourSessionStore } from "./tour-session.js";
 import { useTourSession } from "./tour-session.js";
@@ -53,6 +54,10 @@ export interface BundleSlice {
 export interface NavBase {
   topLevel: ReadonlyArray<Comment>;
   repliesByRoot: ReadonlyMap<string, ReadonlyArray<Comment>>;
+  /** Threads (root + ordered replies) — the in-Card `j`/`k` walker
+   *  (ADR 0037) and the row-idx / validate mappers consume this when
+   *  the cursor sits on a Reply. */
+  threads: ReadonlyArray<Thread>;
   /** 1-based, top-level only — replies are absent from the map. */
   navIndexById: ReadonlyMap<string, number>;
   navTotal: number;
@@ -148,13 +153,15 @@ function deriveNavBase(comments: ReadonlyArray<Comment>): NavBase {
   const topLevel = topLevelComments(annArr);
   const navIndexById = new Map<string, number>();
   topLevel.forEach((a, i) => navIndexById.set(a.id, i + 1));
+  const threads = buildThreads(annArr);
   const repliesByRoot = new Map<string, ReadonlyArray<Comment>>();
-  for (const t of buildThreads(annArr)) {
+  for (const t of threads) {
     repliesByRoot.set(t.root.id, t.replies);
   }
   return {
     topLevel,
     repliesByRoot,
+    threads,
     navIndexById,
     navTotal: topLevel.length,
   };
@@ -264,9 +271,10 @@ function deriveCursorSlice(
   flatRowsList: ReadonlyArray<FlatRow>,
   files: ReadonlyArray<BundleFile>,
   comments: ReadonlyArray<Comment>,
+  threads: ReadonlyArray<Thread>,
 ): CursorSlice {
   const flatRowsArr = [...flatRowsList];
-  const anchor = validateCursor(cursor, flatRowsArr, files);
+  const anchor = validateCursor(cursor, flatRowsArr, files, threads);
   const onCard = anchor !== null && anchor.kind === "card";
   const onInteractive =
     anchor !== null && anchor.kind === "row" && !!anchor.interactive;
@@ -274,7 +282,7 @@ function deriveCursorSlice(
     anchor !== null && anchor.kind === "card" ? anchor.commentId : null;
   const cardComment =
     cardId !== null ? comments.find((a) => a.id === cardId) ?? null : null;
-  const rowIdx = resolveCursorRowIdx(anchor, flatRowsArr);
+  const rowIdx = resolveCursorRowIdx(anchor, flatRowsArr, threads);
   return { anchor, onCard, onInteractive, cardId, cardComment, rowIdx };
 }
 
@@ -312,6 +320,7 @@ export function deriveTourSessionView(
     rowsSlice.flatRowsList,
     bundle.files,
     bundle.comments,
+    navBase.threads,
   );
   return {
     kind: "ok",
@@ -406,9 +415,10 @@ export function useTourSessionView(
             rowsSlice.flatRowsList,
             (bundle as OkBundle).files,
             comments,
+            navBase.threads,
           )
         : null,
-    [isOk, cursor, rowsSlice, bundle, comments],
+    [isOk, cursor, rowsSlice, bundle, comments, navBase.threads],
   );
 
   if (!isOk) {

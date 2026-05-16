@@ -388,11 +388,20 @@ export function DiffRows({
         }
         if (row.kind === "comment") {
           const slot = commentCardSlot(layout, row.comment.side);
+          // ADR 0037 — the Card chrome lights up whenever the cursor sits
+          // on any node in the Thread (parent or Reply). `activeNodeId`
+          // narrows the within-Card `●` glyph + reply chrome to the
+          // specific cursored node.
+          const isCurrent =
+            cursorCardId !== null &&
+            (cursorCardId === row.comment.id ||
+              row.replies.some((r) => r.id === cursorCardId));
           const card = (
             <CommentCard
               key={`ann-${row.id}`}
               comment={row.comment}
-              isCurrent={row.id === cursorCardId}
+              isCurrent={isCurrent}
+              activeNodeId={isCurrent ? cursorCardId : null}
               replies={row.replies}
               repliesCollapsed={repliesCollapsed}
               replyLock={replyLock}

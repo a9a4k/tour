@@ -1096,3 +1096,255 @@ describe("cursorAfterExpand (issue #306)", () => {
     expect(landed.lineNumber).toBe(1);
   });
 });
+
+// ADR 0037 — reply-level cursor stops. `CardAnchor.commentId` now
+// addresses any node in a Thread (parent or Reply); `j`/`k` walks into
+// the Thread's replies before exiting to the next flat row; `n`/`p`
+// continues to enumerate top-level Comments only.
+describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
+  const parent = ann({
+    id: "p1",
+    file: "x.txt",
+    side: "additions",
+    line_start: 5,
+    line_end: 5,
+    created_at: "2026-04-01T00:00:00Z",
+  });
+  const r1 = ann({
+    id: "r1",
+    file: "x.txt",
+    side: "additions",
+    line_start: 5,
+    line_end: 5,
+    replies_to: "p1",
+    created_at: "2026-04-02T00:00:00Z",
+  });
+  const r2 = ann({
+    id: "r2",
+    file: "x.txt",
+    side: "additions",
+    line_start: 5,
+    line_end: 5,
+    replies_to: "p1",
+    created_at: "2026-04-03T00:00:00Z",
+  });
+  const r3 = ann({
+    id: "r3",
+    file: "x.txt",
+    side: "additions",
+    line_start: 5,
+    line_end: 5,
+    replies_to: "p1",
+    created_at: "2026-04-04T00:00:00Z",
+  });
+
+  const rowsWithCard: FlatRow[] = [
+    pairedFlat("x.txt", 4, 4),
+    pairedFlat("x.txt", 5, 5),
+    cardFlat({ file: "x.txt", side: "additions", lineEnd: 5, commentId: "p1" }),
+    pairedFlat("x.txt", 6, 6),
+  ];
+
+  describe("moveCursor with thread context — `j`/`k` walks inside a Card", () => {
+    it("`j` from a parent with 1 reply lands on the reply (still a CardAnchor, same Card row)", () => {
+      const threads = [{ root: parent, replies: [r1] }];
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "r1", preferredSide: "additions" });
+    });
+
+    it("`j` from a reply with a following reply lands on the next reply", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "additions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "r2", preferredSide: "additions" });
+    });
+
+    it("`j` from the last reply exits the Card and lands on the next flat row", () => {
+      const threads = [{ root: parent, replies: [r1, r2] }];
+      const c: CardAnchor = { kind: "card", commentId: "r2", preferredSide: "additions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(6);
+      expect(next.side).toBe("additions");
+    });
+
+    it("`k` from a reply steps to the previous reply", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      const c: CardAnchor = { kind: "card", commentId: "r2", preferredSide: "additions" };
+      const next = moveCursor(c, "up", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "r1", preferredSide: "additions" });
+    });
+
+    it("`k` from the first reply steps to the parent", () => {
+      const threads = [{ root: parent, replies: [r1, r2] }];
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "additions" };
+      const next = moveCursor(c, "up", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "p1", preferredSide: "additions" });
+    });
+
+    it("`k` from the parent exits the Card upward to the previous flat row", () => {
+      const threads = [{ root: parent, replies: [r1] }];
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const next = moveCursor(c, "up", rowsWithCard, threads);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(5);
+    });
+
+    it("a Thread with no replies behaves exactly as today — parent → exit", () => {
+      const threads = [{ root: parent, replies: [] }];
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const down = moveCursor(c, "down", rowsWithCard, threads);
+      if (!isRowAnchor(down)) throw new Error("narrow");
+      expect(down.lineNumber).toBe(6);
+      const up = moveCursor(c, "up", rowsWithCard, threads);
+      if (!isRowAnchor(up)) throw new Error("narrow");
+      expect(up.lineNumber).toBe(5);
+    });
+
+    it("`j`/`k` across {parent + 3 replies} walks: parent → r1 → r2 → r3 → exit", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      let cursor: Cursor | null = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      cursor = moveCursor(cursor, "down", rowsWithCard, threads);
+      expect(cursor).toEqual({ kind: "card", commentId: "r1", preferredSide: "additions" });
+      cursor = moveCursor(cursor, "down", rowsWithCard, threads);
+      expect(cursor).toEqual({ kind: "card", commentId: "r2", preferredSide: "additions" });
+      cursor = moveCursor(cursor, "down", rowsWithCard, threads);
+      expect(cursor).toEqual({ kind: "card", commentId: "r3", preferredSide: "additions" });
+      cursor = moveCursor(cursor, "down", rowsWithCard, threads);
+      if (!isRowAnchor(cursor)) throw new Error("narrow");
+      expect(cursor.lineNumber).toBe(6);
+    });
+
+    it("preferredSide carries across parent → reply transition", () => {
+      const threads = [{ root: parent, replies: [r1] }];
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "deletions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      if (next?.kind !== "card") throw new Error("narrow");
+      expect(next.preferredSide).toBe("deletions");
+    });
+
+    it("preferredSide carries across reply → reply transition", () => {
+      const threads = [{ root: parent, replies: [r1, r2] }];
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "deletions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      if (next?.kind !== "card") throw new Error("narrow");
+      expect(next.preferredSide).toBe("deletions");
+    });
+
+    it("preferredSide carries across last-reply exit → row transition", () => {
+      const threads = [{ root: parent, replies: [r1] }];
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "deletions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.preferredSide).toBe("deletions");
+      expect(next.side).toBe("deletions");
+    });
+
+    it("without thread context, j on a CardAnchor steps past the card to the next flat row (back-compat)", () => {
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const next = moveCursor(c, "down", rowsWithCard);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(6);
+    });
+  });
+
+  describe("nextCard / prevCard with thread context — `n`/`p` continues top-level only", () => {
+    const parentA = ann({
+      id: "pA",
+      file: "x.txt",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+      created_at: "2026-04-01T00:00:00Z",
+    });
+    const parentB = ann({
+      id: "pB",
+      file: "x.txt",
+      side: "additions",
+      line_start: 2,
+      line_end: 2,
+      created_at: "2026-04-02T00:00:00Z",
+    });
+    const rA = ann({
+      id: "rA1",
+      file: "x.txt",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+      replies_to: "pA",
+      created_at: "2026-04-01T01:00:00Z",
+    });
+    const topLevel = [parentA, parentB];
+    const threads = [
+      { root: parentA, replies: [rA] },
+      { root: parentB, replies: [] },
+    ];
+
+    it("`n` from a reply in Thread A lands on Thread B's parent", () => {
+      const c: CardAnchor = { kind: "card", commentId: "rA1", preferredSide: "additions" };
+      expect(nextCard(c, topLevel, threads)).toEqual({
+        kind: "card",
+        commentId: "pB",
+        preferredSide: "additions",
+      });
+    });
+
+    it("`p` from a reply in Thread B is null (Thread A is treated as the prior top-level)", () => {
+      // Thread B has no replies; simulate cursor on parentB instead.
+      const c: CardAnchor = { kind: "card", commentId: "pB", preferredSide: "additions" };
+      expect(prevCard(c, topLevel, threads)).toEqual({
+        kind: "card",
+        commentId: "pA",
+        preferredSide: "additions",
+      });
+    });
+
+    it("`p` from a reply walks to the previous top-level (the reply's own root is the current thread, so its prev is one back)", () => {
+      const c: CardAnchor = { kind: "card", commentId: "rA1", preferredSide: "additions" };
+      // From Thread A's reply, the "current" top-level is parentA (idx 0).
+      // prev → null (no prior thread).
+      expect(prevCard(c, topLevel, threads)).toBeNull();
+    });
+
+    it("destination CardAnchors point at top-level parents (not replies)", () => {
+      const c: CardAnchor = { kind: "card", commentId: "rA1", preferredSide: "additions" };
+      const target = nextCard(c, topLevel, threads);
+      expect(target?.commentId).toBe("pB");
+    });
+  });
+
+  describe("resolveCursorRowIdx with thread context — reply id resolves to root's card row", () => {
+    const threads = [{ root: parent, replies: [r1, r2] }];
+
+    it("maps a reply CardAnchor to its root's card row idx in the flat stream", () => {
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "additions" };
+      expect(resolveCursorRowIdx(c, rowsWithCard, threads)).toBe(2);
+    });
+
+    it("a parent CardAnchor still resolves directly", () => {
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      expect(resolveCursorRowIdx(c, rowsWithCard, threads)).toBe(2);
+    });
+
+    it("without thread context, a reply id does not resolve (returns -1)", () => {
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "additions" };
+      expect(resolveCursorRowIdx(c, rowsWithCard)).toBe(-1);
+    });
+  });
+
+  describe("validateCursor with thread context — a reply CardAnchor survives reload", () => {
+    const threads = [{ root: parent, replies: [r1] }];
+
+    it("preserves a CardAnchor pointing at a reply when its root's card row is in the stream", () => {
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "additions" };
+      expect(validateCursor(c, rowsWithCard, undefined, threads)).toBe(c);
+    });
+
+    it("clears a CardAnchor pointing at a reply whose root's card row is gone", () => {
+      const rows: FlatRow[] = [pairedFlat("x.txt", 1, 1)];
+      const c: CardAnchor = { kind: "card", commentId: "r1", preferredSide: "additions" };
+      expect(validateCursor(c, rows, undefined, threads)).toBeNull();
+    });
+  });
+});

@@ -1,6 +1,7 @@
 import type { Comment } from "./types.js";
 import type { FlatRow, DiffFlatRow, InteractiveFlatRow, CardFlatRow } from "./flat-rows.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
+import type { Thread } from "./threads.js";
 
 /**
  * Unified Cursor (ADR 0022 → ADR 0023 / PRD #192, issue #200): one anchor
@@ -42,10 +43,33 @@ export interface RowAnchor {
 
 export interface CardAnchor {
   kind: "card";
+  /** Any Comment id in the Thread — parent or Reply (ADR 0037). The
+   *  Card row in the flat stream is keyed on the parent's id only;
+   *  `resolveCursorRowIdx` maps a reply's id through the supplied
+   *  thread context to the parent's row when needed. `nextCard` /
+   *  `prevCard` continue to enumerate top-level Comments only — when
+   *  the cursor's id is a reply, the walker treats the cursor as
+   *  being "on" the reply's root. */
   commentId: string;
   /** Carried so an `h`/`l` choice survives step-across-card and jump-
    *  between-cards (issue #200 AC). The next diff-row landing applies it. */
   preferredSide: "additions" | "deletions";
+}
+
+/** Locate the Thread that contains a given commentId (parent or
+ *  Reply), and the node's position within `[root, ...replies]`. Used
+ *  by the in-Card `j`/`k` walker (ADR 0037) and by the row-idx /
+ *  validate mappers when the cursor sits on a Reply. */
+function findThreadByNode(
+  commentId: string,
+  threads: ReadonlyArray<Thread>,
+): { thread: Thread; nodeIdx: number } | null {
+  for (const t of threads) {
+    if (t.root.id === commentId) return { thread: t, nodeIdx: 0 };
+    const idx = t.replies.findIndex((r) => r.id === commentId);
+    if (idx !== -1) return { thread: t, nodeIdx: idx + 1 };
+  }
+  return null;
 }
 
 export type Cursor = RowAnchor | CardAnchor;
@@ -102,14 +126,48 @@ export function initialCursor(args: {
  * cards too); the row's natural side wins on single-side destinations.
  * The card-lane jump gesture is `n`/`p` (`nextCard` / `prevCard`), which
  * skips over rows.
+ *
+ * ADR 0037 — reply-level cursor stops. When `threads` is supplied and
+ * the cursor is on a `CardAnchor` inside a multi-node Thread, `j`/`k`
+ * walks the Thread's nodes (`[root, ...replies]`) before exiting to
+ * the next flat row. From the last reply, `j` exits downward to the
+ * row after the Card; from the root, `k` exits upward to the row
+ * before the Card. Threads with no replies behave exactly as today
+ * (parent → exit). When `threads` is omitted, the function preserves
+ * its prior contract — the webapp does not adopt the reply-level
+ * walker (ADR 0037 is TUI-scoped).
  */
 export function moveCursor(
   cursor: Cursor | null,
   direction: "up" | "down",
   flatRows: ReadonlyArray<FlatRow>,
+  threads?: ReadonlyArray<Thread>,
 ): Cursor | null {
   if (!cursor) return null;
-  const idx = resolveCursorRowIdx(cursor, flatRows);
+  if (cursor.kind === "card" && threads) {
+    const found = findThreadByNode(cursor.commentId, threads);
+    if (found) {
+      const nodes = [found.thread.root, ...found.thread.replies];
+      const nextIdx = direction === "down" ? found.nodeIdx + 1 : found.nodeIdx - 1;
+      if (nextIdx >= 0 && nextIdx < nodes.length) {
+        return {
+          kind: "card",
+          commentId: nodes[nextIdx].id,
+          preferredSide: cursor.preferredSide,
+        };
+      }
+      // Exit the Card — resolve against the root's card row in the
+      // flat stream and step from there.
+      const exitAnchor: CardAnchor = { ...cursor, commentId: found.thread.root.id };
+      const idx = resolveCursorRowIdx(exitAnchor, flatRows);
+      if (idx === -1) return cursor;
+      const step = direction === "down" ? 1 : -1;
+      const next = idx + step;
+      if (next < 0 || next >= flatRows.length) return cursor;
+      return cursorFromRow(flatRows[next], preferredSideOf(cursor));
+    }
+  }
+  const idx = resolveCursorRowIdx(cursor, flatRows, threads);
   if (idx === -1) return cursor;
   const step = direction === "down" ? 1 : -1;
   const next = idx + step;
@@ -132,27 +190,38 @@ export function moveCursor(
 export function nextCard(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Comment>,
+  threads?: ReadonlyArray<Thread>,
 ): CardAnchor | null {
-  return walkCards(cursor, topLevel, 1);
+  return walkCards(cursor, topLevel, 1, threads);
 }
 
 export function prevCard(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Comment>,
+  threads?: ReadonlyArray<Thread>,
 ): CardAnchor | null {
-  return walkCards(cursor, topLevel, -1);
+  return walkCards(cursor, topLevel, -1, threads);
 }
 
 function walkCards(
   cursor: Cursor | null,
   topLevel: ReadonlyArray<Comment>,
   step: 1 | -1,
+  threads?: ReadonlyArray<Thread>,
 ): CardAnchor | null {
   if (topLevel.length === 0) return null;
-  const startIdx =
-    cursor && cursor.kind === "card"
-      ? topLevel.findIndex((a) => a.id === cursor.commentId)
-      : -1;
+  let startIdx = -1;
+  if (cursor && cursor.kind === "card") {
+    startIdx = topLevel.findIndex((a) => a.id === cursor.commentId);
+    if (startIdx === -1 && threads) {
+      // ADR 0037 — when the cursor sits on a reply, treat it as being on
+      // the reply's root for the purposes of top-level walking.
+      const found = findThreadByNode(cursor.commentId, threads);
+      if (found) {
+        startIdx = topLevel.findIndex((a) => a.id === found.thread.root.id);
+      }
+    }
+  }
   // When the cursor isn't on a resolvable card, start one step beyond the
   // boundary so the first move lands on the first/last entry.
   const from = startIdx === -1 ? (step === 1 ? -1 : topLevel.length) : startIdx;
@@ -202,9 +271,10 @@ export function validateCursor(
   cursor: Cursor | null,
   flatRows: ReadonlyArray<FlatRow>,
   files?: ReadonlyArray<{ name: string }>,
+  threads?: ReadonlyArray<Thread>,
 ): Cursor | null {
   if (!cursor) return null;
-  if (resolveCursorRowIdx(cursor, flatRows) !== -1) return cursor;
+  if (resolveCursorRowIdx(cursor, flatRows, threads) !== -1) return cursor;
   if (cursor.kind === "card") return null;
   const fileRow = flatRows.find((r) => r.file === cursor.file);
   if (fileRow) return cursorFromRow(fileRow, cursor.preferredSide);
@@ -263,12 +333,25 @@ export function cursorOnInteractive(args: {
 export function resolveCursorRowIdx(
   cursor: Cursor | null,
   flatRows: ReadonlyArray<FlatRow>,
+  threads?: ReadonlyArray<Thread>,
 ): number {
   if (!cursor) return -1;
   if (cursor.kind === "card") {
     for (let i = 0; i < flatRows.length; i++) {
       const r = flatRows[i];
       if (r.kind === "card" && r.commentId === cursor.commentId) return i;
+    }
+    // ADR 0037 — when the cursor sits on a Reply, the flat stream's
+    // Card row is keyed on the Reply's root, not the Reply itself.
+    if (threads) {
+      const found = findThreadByNode(cursor.commentId, threads);
+      if (found && found.nodeIdx > 0) {
+        const rootId = found.thread.root.id;
+        for (let i = 0; i < flatRows.length; i++) {
+          const r = flatRows[i];
+          if (r.kind === "card" && r.commentId === rootId) return i;
+        }
+      }
     }
     return -1;
   }

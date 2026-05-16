@@ -643,6 +643,10 @@ function App(props: AppProps) {
   // `cursor.materialize` is a strict no-op on a non-null cursor as a
   // belt-and-suspenders fallback.
   const topLevel = nav.topLevel;
+  // ADR 0037 — Threads context for the in-Card `j`/`k` walker. Passing
+  // this to `moveCursor` / `nextCard` / `prevCard` / `stepDiffPane` etc.
+  // turns on reply-level cursor stops in the TUI.
+  const threads = nav.threads;
   useEffect(() => {
     if (seededTourIdRef.current !== bundle.tour.id) {
       seededTourIdRef.current = bundle.tour.id;
@@ -940,7 +944,7 @@ function App(props: AppProps) {
   // enters the track at the topLevel edge (cursor position not
   // consulted; issue #206 revert of #203).
   const gotoPrevComment = () => {
-    const target = prevCard(cursor, topLevel);
+    const target = prevCard(cursor, topLevel, threads);
     if (target) {
       const ann = comments.find((a) => a.id === target.commentId);
       if (ann) jumpToComment(ann);
@@ -948,7 +952,7 @@ function App(props: AppProps) {
   };
 
   const gotoNextComment = () => {
-    const target = nextCard(cursor, topLevel);
+    const target = nextCard(cursor, topLevel, threads);
     if (target) {
       const ann = comments.find((a) => a.id === target.commentId);
       if (ann) jumpToComment(ann);
@@ -1617,6 +1621,7 @@ function App(props: AppProps) {
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
             rowY: buildRowYResolver(sb, flatRowsList),
+            threads,
           },
           dir,
           step,
@@ -1645,6 +1650,7 @@ function App(props: AppProps) {
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
             rowY: buildRowYResolver(sb, flatRowsList),
+            threads,
           },
           target,
         );
@@ -1659,7 +1665,7 @@ function App(props: AppProps) {
         const dir = action.type === "cursor-down" ? "down" : "up";
         const sb = diffScrollRef.current;
         if (!sb) {
-          dispatchCursor(moveCursor(cursor, dir, flatRowsList));
+          dispatchCursor(moveCursor(cursor, dir, flatRowsList, threads));
           return;
         }
         // Diff-pane motion contract (ADR 0011 — Diff-pane motion contract).
@@ -1676,6 +1682,7 @@ function App(props: AppProps) {
             viewportHeight: sb.viewport.height,
             contentHeight: sb.scrollHeight,
             rowY: buildRowYResolver(sb, flatRowsList),
+            threads,
           },
           dir,
           3,
