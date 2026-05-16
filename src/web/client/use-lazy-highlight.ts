@@ -9,15 +9,15 @@
 //   useLazyHighlight(ref, content, lang) → Map<lineNumber, html> | null
 //
 // - Returns null before IO fires for `ref.current`.
-// - Once IO fires, awaits `ensureHighlighter()` (if not already ready)
-//   and then calls `tokenize(content, lang)`.
+// - Once IO fires, awaits `ensureHighlighter(lang)` (lazy per-lang grammar
+//   load) and then calls `tokenize(content, lang)`.
 // - Same `(content, lang)` across consecutive renders returns the same
 //   Map reference (downstream React.memo siblings stay stable).
 // - Memoizes the unsupported-lang plain-text fallback per `(content, lang)`
 //   too — `syntax-highlight` doesn't cache that path internally, so the
 //   hook owns reference stability for non-bundled languages.
 // - Disconnects the observer on unmount.
-// - Resilient to the pre→post-init transition: when the highlighter
+// - Resilient to the pre→post-init transition: when the per-lang grammar
 //   resolves, the hook re-tokenizes and returns the styled map.
 
 import {
@@ -29,6 +29,7 @@ import {
 import {
   ensureHighlighter,
   isReady,
+  subscribeReady,
   tokenize,
   type TokenLines,
 } from "./syntax-highlight.js";
@@ -40,10 +41,10 @@ export function useLazyHighlight(
 ): TokenLines | null {
   // Two latches advance forward only:
   //   visible — flipped true once the IO callback fires for ref.current
-  //   ready   — flipped true once the Shiki highlighter has resolved
+  //   ready   — flipped true once `lang`'s Shiki grammar has resolved
   // Both gate the tokenize() call inside the useMemo below.
   const [visible, setVisible] = useState(false);
-  const [ready, setReady] = useState<boolean>(() => isReady());
+  const [ready, setReady] = useState<boolean>(() => isReady(lang));
 
   useEffect(() => {
     if (visible) return;
@@ -73,18 +74,24 @@ export function useLazyHighlight(
 
   useEffect(() => {
     if (!visible) return;
-    if (isReady()) {
+    if (isReady(lang)) {
       setReady(true);
       return;
     }
     let cancelled = false;
-    void ensureHighlighter().then(() => {
+    // Subscribe to the ready-flip so a parallel mount that started the
+    // same lang's load earlier still wakes us up.
+    const unsub = subscribeReady(lang, () => {
+      if (!cancelled) setReady(true);
+    });
+    void ensureHighlighter(lang).then(() => {
       if (!cancelled) setReady(true);
     });
     return () => {
       cancelled = true;
+      unsub();
     };
-  }, [visible]);
+  }, [visible, lang]);
 
   // `ready` is in the deps so the memo recomputes when the highlighter
   // transitions ready, swapping the plain-text fallback for the styled

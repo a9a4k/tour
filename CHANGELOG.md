@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Webapp paints every Shiki-supported language via the new
+  `core/syntax-highlight.ts` module (issue #375, PRD #374, slice 1).**
+  Pre-fix the webapp eagerly bundled 13 grammars (TS/TSX/JS/JSX/JSON/MD/
+  bash/YAML/CSS/HTML/Python/Rust/Go); anything else painted plain. Opening
+  a `.proto`, `.rb`, `.kt`, `.swift`, `.java`, `.toml`, `.c`/`.cpp`,
+  `.php`, `.sql`, `.lua`, `.zig`, etc. file in the webapp now paints with
+  GitHub-Dark token colours. Implementation: the new cross-surface
+  `core/syntax-highlight.ts` module owns Shiki, the curated ~200-entry
+  `EXT_TO_LANG` map, per-`(content, lang)` memoisation, per-lang lazy
+  grammar load, and the italic-comment overlay; the webapp adapter
+  (`src/web/client/syntax-paint.ts`) emits inline-styled `<span>` runs
+  from the surface-agnostic `TokenLine[]` shape. The `tokenize(content,
+  lang) → Map<lineNumber, html>` call-site contract for
+  `useLazyHighlight`'s consumers (FileBlock + row-components) is
+  preserved; the hook's external shape is unchanged. Comments now paint
+  italic on the webapp via the cross-surface overlay
+  (github-dark-default does not flag comment scopes as italic; we
+  promote `italic: true` for tokens whose scope chain includes
+  "comment"). TUI integration is a separate slice under #374.
+
+  Issue: #375 · PRD: #374
+
 ### Changed
 
 - **Sidebar `y` on a folder row now copies the folder's repo-relative
