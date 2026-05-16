@@ -55,7 +55,7 @@ Here are the last 10 commits:
 If you find improvements to make:
 
 1. Make the changes directly on this branch
-2. Run `npm run typecheck` and `npm run test` to ensure nothing is broken
+2. Run `bun run typecheck` and `bun run test` to ensure nothing is broken
 3. Commit with a message starting with `RALPH: Review -` describing the refinements
 
 If the code is already clean and well-structured, do nothing.

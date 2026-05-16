@@ -4,5 +4,6 @@ dist/
 .tour/
 .kanban/
 .npmrc
+package-lock.json
 .*.bun-build
 .DS_Store
