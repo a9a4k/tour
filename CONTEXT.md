@@ -21,12 +21,16 @@ The git ref the Tour's diff starts from. Resolved to a SHA at create time. Defau
 _Avoid_: parent, ancestor
 
 **Comment**:
-A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `side` is `additions` or `deletions` (matching Pierre's legacy vocabulary; see ADR 0001); line numbers are file-line-numbers in the file as it exists on that side at the pinned SHA. Authored by agents (via CLI) or humans (via UI or CLI). Persisted in the Tour's folder. The body is **GitHub Flavored Markdown** (no raw HTML); the webapp renders it as rich markdown — including ` ```mermaid ` fences as diagrams — while the TUI shows the raw source. No `kind` enum — structure lives in the markdown itself. Carries an `author_kind ∈ {agent, human}` so the system can distinguish the two without parsing the free-form `author` display string. The on-disk per-Tour log is `comments.jsonl` (legacy `annotations.jsonl` is the permanent read-fallback per ADR 0029 addendum).
+A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `side` is `additions` or `deletions` (matching Pierre's legacy vocabulary; see ADR 0001); line numbers are file-line-numbers in the file as it exists on that side at the pinned SHA. Authored by agents (via CLI) or humans (via UI or CLI). The body is **GitHub Flavored Markdown** (no raw HTML); the webapp renders it as rich markdown — including ` ```mermaid ` fences as diagrams — while the TUI shows the raw source. No `kind` enum — structure lives in the markdown itself. Carries an `author_kind ∈ {agent, human}` so the system can distinguish the two without parsing the free-form `author` display string. Persisted in the Tour's folder as **Comment events** in `tour-events.jsonl` (ADR 0036); reads project the event log to the current Comment set, including a `deleted` flag carried from `comment.deleted` events. The predecessor formats `comments.jsonl` and `annotations.jsonl` are no longer read.
 _Avoid_: annotation (legacy Pierre-era term; superseded by ADR 0029), review comment, note
 
 **Reply**:
-A Comment whose `replies_to` field points at another Comment in the same Tour. Inherits the parent's `(file, side, line_start, line_end)` anchor — replies don't have independent positions. Renders inside the parent's card as part of a Thread.
+A Comment whose `replies_to` field points at another Comment in the same Tour. Inherits the parent's `(file, side, line_start, line_end)` anchor — replies don't have independent positions. Renders inside the parent's card as part of a Thread. A deleted Reply is removed from its Thread's projection; a deleted parent renders as a `[deleted]` stub when ≥1 Reply remains live, and the whole Thread vanishes when every node is deleted (ADR 0036).
 _Avoid_: comment-on-comment, sub-comment, response
+
+**Comment event**:
+The unit of persistence in `tour-events.jsonl` (ADR 0036). One of `comment.created`, `reply.created`, or `comment.deleted`. The log is append-only; the canonical Comment set for a Tour is the projection produced by folding events at read time. New verbs (edit, resolve, re-anchor) extend the union without changing the storage seam. Only humans emit `comment.deleted` events; agents create only.
+_Avoid_: tombstone (the storage shape is uniform — `comment.deleted` is no more a tombstone than `comment.created` is)
 
 **Thread**:
 A top-level Comment plus the chain of Replies attached to it. Lives entirely inside one Tour — Threads do not carry across Tours in v1 (preserves ADR 0003's "no re-anchoring" stance). When a Tour closes, its Threads close with it. Continuity across Tours is the agent's job (it re-references prior concerns in prose when reviewing the new SHA), not Tour's data model.
