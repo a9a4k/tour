@@ -131,12 +131,9 @@ export class TourSessionRuntime {
           // subtree empty. Issue #322's goal (no SSE-roundtrip latency
           // before the new card appears) is preserved: a microtask
           // hop is sub-frame, well under the watcher's ~500-600 ms.
-          {
-            const comment = intent.comment;
-            queueMicrotask(() => {
-              this.store.dispatch({ type: "bundle.commentInserted", comment });
-            });
-          }
+          queueMicrotask(() => {
+            this.store.dispatch({ type: "bundle.commentInserted", comment: intent.comment });
+          });
           return;
         case "scrollToComposer":
           this.adapter.scrollToComposer(intent.target);
