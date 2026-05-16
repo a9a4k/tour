@@ -42,6 +42,9 @@ export interface TuiTourSessionAdapterDeps {
   loadTour: (id: string) => Promise<TourBundle>;
   loadReplyLock: (id: string) => Promise<ReplyLock | null>;
   writeComment: (tourId: string, input: WriteCommentInput) => Promise<Comment>;
+  /** ADR 0036 Slice D / issue #388. Wraps `createDelete`; the CLI binary
+   *  binds this to `core/comments-store#createDelete` with the cwd. */
+  deleteComment: (tourId: string, targetId: string) => Promise<void>;
   diffScrollBoxRef: { current: ScrollBoxRenderable | null };
   pickerScrollBoxRef: { current: ScrollBoxRenderable | null };
   setSelectedRowIdx: (idx: number) => void;
@@ -132,6 +135,7 @@ export function createTuiTourSessionAdapter(
     fetchBundle: (id) => deps.loadTour(id),
     fetchReplyLock: (id) => deps.loadReplyLock(id),
     writeComment: (tourId, input) => deps.writeComment(tourId, input),
+    deleteComment: ({ tourId, targetId }) => deps.deleteComment(tourId, targetId),
     requestReply: async ({ tourId, commentId }) => {
       // No-op when `--reply-agent` wasn't passed, mirroring `core/reply-
       // runner`'s `no-reply-agent` seam. Rejections propagate; the runtime's

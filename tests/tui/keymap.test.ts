@@ -15,6 +15,7 @@ const sidebar: KeymapContext = {
   cursorOnCard: false,
   composerOpen: false,
   pickerOpen: false,
+  deleteConfirmOpen: false,
 };
 const sidebarFolder: KeymapContext = {
   sidebarFocused: true,
@@ -24,6 +25,7 @@ const sidebarFolder: KeymapContext = {
   cursorOnCard: false,
   composerOpen: false,
   pickerOpen: false,
+  deleteConfirmOpen: false,
 };
 const diffPane: KeymapContext = {
   sidebarFocused: false,
@@ -33,6 +35,7 @@ const diffPane: KeymapContext = {
   cursorOnCard: false,
   composerOpen: false,
   pickerOpen: false,
+  deleteConfirmOpen: false,
 };
 const diffPaneInteractive: KeymapContext = {
   sidebarFocused: false,
@@ -42,6 +45,7 @@ const diffPaneInteractive: KeymapContext = {
   cursorOnCard: false,
   composerOpen: false,
   pickerOpen: false,
+  deleteConfirmOpen: false,
 };
 const diffPaneOnCard: KeymapContext = {
   sidebarFocused: false,
@@ -51,6 +55,7 @@ const diffPaneOnCard: KeymapContext = {
   cursorOnCard: true,
   composerOpen: false,
   pickerOpen: false,
+  deleteConfirmOpen: false,
 };
 const sidebarOnCard: KeymapContext = {
   sidebarFocused: true,
@@ -60,6 +65,7 @@ const sidebarOnCard: KeymapContext = {
   cursorOnCard: true,
   composerOpen: false,
   pickerOpen: false,
+  deleteConfirmOpen: false,
 };
 
 describe("dispatchKey", () => {
@@ -119,6 +125,15 @@ describe("dispatchKey", () => {
     );
   });
 
+  it("Esc with the delete-confirm modal open returns close-modal (ADR 0036 Slice D)", () => {
+    expect(
+      dispatchKey(k("escape"), { ...diffPane, deleteConfirmOpen: true }).type,
+    ).toBe("close-modal");
+    expect(
+      dispatchKey(k("escape"), { ...sidebar, deleteConfirmOpen: true }).type,
+    ).toBe("close-modal");
+  });
+
   it("Esc with both composer and picker open returns close-modal (single modal axis)", () => {
     // Defence in depth: both modals can never co-exist in production
     // (composer is suppressed while picker is open and vice versa), but
@@ -166,6 +181,7 @@ describe("dispatchKey", () => {
         cursorOnCard: false,
         composerOpen: false,
         pickerOpen: false,
+        deleteConfirmOpen: false,
       }).type,
     ).toBe("noop");
   });
@@ -219,6 +235,7 @@ describe("dispatchKey", () => {
         cursorOnCard: false,
         composerOpen: false,
         pickerOpen: false,
+        deleteConfirmOpen: false,
       }).type,
     ).toBe("noop");
   });
@@ -545,6 +562,31 @@ describe("dispatchKey", () => {
   it("s on a row returns noop-send-on-row (PRD #192 — card-only action)", () => {
     expect(dispatchKey(k("s"), sidebar).type).toBe("noop-send-on-row");
     expect(dispatchKey(k("s"), diffPane).type).toBe("noop-send-on-row");
+  });
+
+  // ADR 0036 Slice D / issue #388: `d` opens the delete-confirm modal on
+  // the cursored Comment. Card-only in the diff pane; off-card / sidebar
+  // surfaces a labelled no-op, mirroring `r` / `s`. Reply-level cursor
+  // stops (ADR 0037) let this verb target parents and Replies uniformly.
+  it("d in the diff pane on a card opens the delete-confirm modal", () => {
+    expect(dispatchKey(k("d"), diffPaneOnCard).type).toBe("open-delete-confirm");
+  });
+
+  it("d in the diff pane on a row returns noop-delete-on-row", () => {
+    expect(dispatchKey(k("d"), diffPane).type).toBe("noop-delete-on-row");
+  });
+
+  it("d in the sidebar is a plain noop (no Comment cursor in the sidebar)", () => {
+    expect(dispatchKey(k("d"), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("d"), sidebarFolder).type).toBe("noop");
+    expect(dispatchKey(k("d"), sidebarOnCard).type).toBe("noop");
+  });
+
+  it("Ctrl+D / Shift+D do not fire open-delete-confirm (modifier-free binding only)", () => {
+    expect(dispatchKey(k("d", { ctrl: true }), diffPaneOnCard).type).toBe("noop");
+    expect(dispatchKey(k("d", { shift: true }), diffPaneOnCard).type).toBe("noop");
+    expect(dispatchKey(k("d", { ctrl: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("d", { shift: true }), diffPane).type).toBe("noop");
   });
 
   // Issue #337 / ADR 0029: the row-only labelled-noop now lives on `c`,

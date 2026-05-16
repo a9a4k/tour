@@ -57,6 +57,7 @@ import { dispatchPickerKey } from "./picker-keymap.js";
 import { TourPicker } from "./TourPicker.js";
 import { TopHeaderTui } from "./TopHeader.js";
 import { Composer } from "./Composer.js";
+import { DeleteConfirmModal } from "./DeleteConfirmModal.js";
 import {
   buildReplyComposer,
   buildTopLevelComposer,
@@ -325,6 +326,7 @@ function App(props: AppProps) {
   const cursor = sessionState.cursor;
   const expansion = sessionState.expansion;
   const composer = sessionState.composer;
+  const deleteConfirm = sessionState.deleteConfirm;
   const collapsedFolders = sessionState.collapsedFolders;
   const collapsedOverrides = sessionState.collapsedOverrides;
   const layout = sessionState.layout;
@@ -499,7 +501,7 @@ function App(props: AppProps) {
   // itself when `currentTourId` changes (tour-switch), so this effect
   // runs once at mount and tears down at unmount.
   useEffect(() => {
-    if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeComment) {
+    if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeComment || !props.deleteComment) {
       return;
     }
     const adapter = createTuiTourSessionAdapter({
@@ -508,6 +510,7 @@ function App(props: AppProps) {
       loadTour: props.loadTour,
       loadReplyLock: props.loadReplyLock,
       writeComment: props.writeComment,
+      deleteComment: props.deleteComment,
       diffScrollBoxRef: diffScrollRef,
       pickerScrollBoxRef: pickerScrollRef,
       setSelectedRowIdx,
@@ -521,7 +524,7 @@ function App(props: AppProps) {
       hunkHeaderCursorStop: false,
     });
     return runtime.start();
-  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeComment, props.replyAgent]);
+  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeComment, props.deleteComment, props.replyAgent]);
 
   // Sorted file list for diff-pane render order. `view.rows.plannedRowsByFile`
   // is keyed by name; we still need the ordered file list for the JSX.
@@ -1330,6 +1333,28 @@ function App(props: AppProps) {
       if (now - lastEscAtRef.current < 50) return;
       lastEscAtRef.current = now;
     }
+    // ADR 0036 Slice D / issue #388: delete-confirm modal participates in
+    // the close-modal precedence (ADR 0031) alongside composer / picker.
+    // Esc closes the modal first; Enter confirms (open → submitting via
+    // `deleteConfirm.confirm`, errored → submitting via the same action).
+    // All other keys are swallowed so the user can't fire actions on
+    // stale state while the modal is in flight.
+    if (deleteConfirm.kind !== "closed") {
+      if (key.name === "escape") {
+        store.dispatch({ type: "deleteConfirm.close" });
+        return;
+      }
+      if (key.name === "return") {
+        if (
+          deleteConfirm.kind === "open" ||
+          deleteConfirm.kind === "errored"
+        ) {
+          store.dispatch({ type: "deleteConfirm.confirm" });
+        }
+        return;
+      }
+      return;
+    }
     if (composer.kind === "open") {
       // Esc cancels; Return / typing flows through to the focused <input>.
       if (key.name === "escape") {
@@ -1447,6 +1472,7 @@ function App(props: AppProps) {
         // fields, so pass them for completeness / defense-in-depth.
         composerOpen: composer.kind !== "closed",
         pickerOpen: sessionState.picker.kind === "open",
+        deleteConfirmOpen: deleteConfirm.kind !== "closed",
       },
     );
 
@@ -1839,6 +1865,20 @@ function App(props: AppProps) {
       case "noop-comment-on-card":
         setFooterStatus("c: on a card — j/k to land on a row first");
         return;
+      case "noop-delete-on-row":
+        // ADR 0036 Slice D / issue #388. `d` is card-only — labelled
+        // no-op when the cursor isn't on a Comment card.
+        setFooterStatus("d: no comment under cursor — n/p to navigate");
+        return;
+      case "open-delete-confirm": {
+        // ADR 0036 Slice D / issue #388. The cursor's CardAnchor.commentId
+        // is the modal target — generalised across parents and Replies by
+        // ADR 0037 (Slice A). Defence in depth: guard cursor shape even
+        // though the keymap already gates on `cursorOnCard`.
+        if (!cursor || cursor.kind !== "card") return;
+        store.dispatch({ type: "deleteConfirm.open", targetId: cursor.commentId });
+        return;
+      }
     }
   });
 
@@ -2160,6 +2200,15 @@ function App(props: AppProps) {
           }
           onInput={(body) => store.dispatch({ type: "composer.setBody", body })}
           onSubmit={() => store.dispatch({ type: "composer.submit" })}
+        />
+      )}
+
+      {deleteConfirm.kind !== "closed" && (
+        <DeleteConfirmModal
+          state={deleteConfirm}
+          target={comments.find((a) => a.id === deleteConfirm.targetId) ?? null}
+          threads={threads}
+          now={now}
         />
       )}
     </box>

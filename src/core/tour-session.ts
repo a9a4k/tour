@@ -89,6 +89,18 @@ export type ComposerSlice =
   | { kind: "submitting"; target: ComposerTarget; body: string }
   | { kind: "errored"; target: ComposerTarget; body: string; error: string };
 
+// Delete-confirm modal slice (ADR 0036, Slice D / issue #388). Mirrors the
+// composer's open / submitting / errored shape so the App's modal-unwind
+// precedence (ADR 0031: Esc closes modals before any other gesture) treats
+// both modals uniformly. `targetId` survives the submitting / errored
+// transitions so the user sees the same Comment in the modal preview
+// across an in-flight write or retry.
+export type DeleteConfirmSlice =
+  | { kind: "closed" }
+  | { kind: "open"; targetId: string }
+  | { kind: "submitting"; targetId: string }
+  | { kind: "errored"; targetId: string; error: string };
+
 // The state aggregate a single surface drives for one opened Tour. Per
 // the CONTEXT.md Tour-session entry: layout is preserved across Tour-switch;
 // cursor + expansion slices arrive in slice 2 (PRD #229 / issue #230);
@@ -103,6 +115,11 @@ export interface TourSessionState {
   cursor: Cursor | null;
   expansion: ExpansionState;
   composer: ComposerSlice;
+  // Delete-confirm modal (ADR 0036, Slice D / issue #388). Sibling to
+  // `composer`; shares the modal-unwind precedence (ADR 0031) and follows
+  // the same open / submitting / errored shape so the App's `Esc` routing
+  // treats both modals uniformly.
+  deleteConfirm: DeleteConfirmSlice;
   collapsedFolders: Set<string>;
   collapsedOverrides: Record<string, boolean>;
   // Cross-surface pane focus (PRD #343 / ADR 0031 / issue #344). Sibling
@@ -162,6 +179,11 @@ export type Action =
   | { type: "composer.retry" }
   | { type: "composer.dismissError" }
   | { type: "composer.recall" }
+  | { type: "deleteConfirm.open"; targetId: string }
+  | { type: "deleteConfirm.close" }
+  | { type: "deleteConfirm.confirm" }
+  | { type: "deleteConfirm.succeeded"; targetId: string }
+  | { type: "deleteConfirm.failed"; error: string }
   | { type: "folds.toggleFolder"; path: string }
   | { type: "folds.setOverride"; file: string; value: boolean }
   | { type: "folds.clearOverride"; file: string }
@@ -212,7 +234,8 @@ export type Intent =
   | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
   | { type: "scrollToComment"; commentId: string }
   | { type: "scrollToComposer"; target: ComposerTarget }
-  | { type: "requestReply"; tourId: string; commentId: string };
+  | { type: "requestReply"; tourId: string; commentId: string }
+  | { type: "deleteComment"; tourId: string; targetId: string };
 
 export interface ReduceResult {
   state: TourSessionState;
@@ -230,6 +253,7 @@ export function initialTourSessionState(): TourSessionState {
     cursor: null,
     expansion: emptyExpansion(),
     composer: { kind: "closed" },
+    deleteConfirm: { kind: "closed" },
     collapsedFolders: new Set<string>(),
     collapsedOverrides: {},
     paneFocus: "sidebar",
@@ -366,6 +390,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           cursor: null,
           expansion,
           composer: { kind: "closed" },
+          deleteConfirm: { kind: "closed" },
           collapsedFolders: new Set<string>(),
           collapsedOverrides: {},
         },
@@ -570,6 +595,72 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       const { target, body } = state.composer;
       return {
         state: { ...state, composer: { kind: "open", target, body } },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "deleteConfirm.open":
+      // ADR 0036 Slice D (issue #388). Any prior delete-confirm kind →
+      // fresh `open` on the new target id. Mirrors the composer's
+      // re-open semantic: a second `d` while the modal is in flight /
+      // errored re-targets the modal without writing.
+      return {
+        state: {
+          ...state,
+          deleteConfirm: { kind: "open", targetId: action.targetId },
+        },
+        intents: NO_INTENTS,
+      };
+
+    case "deleteConfirm.close":
+      if (state.deleteConfirm.kind === "closed") return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, deleteConfirm: { kind: "closed" } },
+        intents: NO_INTENTS,
+      };
+
+    case "deleteConfirm.confirm": {
+      // open | errored → submitting; emit `deleteComment` so the runtime
+      // can call the write seam (`createDelete`). No-op on closed /
+      // submitting. Guarded on currentTourId mirrors the composer's
+      // enterSubmitting helper.
+      const dc = state.deleteConfirm;
+      if (dc.kind !== "open" && dc.kind !== "errored") {
+        return { state, intents: NO_INTENTS };
+      }
+      if (state.currentTourId === null) return { state, intents: NO_INTENTS };
+      return {
+        state: {
+          ...state,
+          deleteConfirm: { kind: "submitting", targetId: dc.targetId },
+        },
+        intents: [
+          { type: "deleteComment", tourId: state.currentTourId, targetId: dc.targetId },
+        ],
+      };
+    }
+
+    case "deleteConfirm.succeeded":
+      // submitting → closed. The watcher's `comment-changed` event
+      // will refresh the bundle and the C4 cascade will surface in the
+      // projected state on the next render. No intent emitted here.
+      if (state.deleteConfirm.kind !== "submitting") return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, deleteConfirm: { kind: "closed" } },
+        intents: NO_INTENTS,
+      };
+
+    case "deleteConfirm.failed": {
+      // submitting → errored, preserving the target id so the user can
+      // retry (Enter on the errored modal re-fires `deleteConfirm.confirm`)
+      // or dismiss (Esc).
+      if (state.deleteConfirm.kind !== "submitting") return { state, intents: NO_INTENTS };
+      const { targetId } = state.deleteConfirm;
+      return {
+        state: {
+          ...state,
+          deleteConfirm: { kind: "errored", targetId, error: action.error },
+        },
         intents: NO_INTENTS,
       };
     }

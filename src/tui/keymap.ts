@@ -26,6 +26,9 @@ export interface KeymapContext {
   /** Whether the Tour picker is open. Same modal-unwind precedence as
    *  `composerOpen`. */
   pickerOpen: boolean;
+  /** Whether the delete-confirm modal is open (ADR 0036 Slice D / issue
+   *  #388). Same modal-unwind precedence as `composerOpen`. */
+  deleteConfirmOpen: boolean;
 }
 
 export type KeyAction =
@@ -61,10 +64,12 @@ export type KeyAction =
   | { type: "expand-file-all" }
   | { type: "yank-at-cursor" }
   | { type: "open-in-editor" }
+  | { type: "open-delete-confirm" }
   | { type: "noop" }
   | { type: "noop-reply-on-row" }
   | { type: "noop-send-on-row" }
-  | { type: "noop-comment-on-card" };
+  | { type: "noop-comment-on-card" }
+  | { type: "noop-delete-on-row" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (key.name === "q" || (key.ctrl && key.name === "c")) {
@@ -80,7 +85,9 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   // covers the break; the prior toggle-pane / focus-sidebar actions
   // are also retired).
   if (!key.ctrl && !key.shift && key.name === "escape") {
-    if (ctx.composerOpen || ctx.pickerOpen) return { type: "close-modal" };
+    if (ctx.composerOpen || ctx.pickerOpen || ctx.deleteConfirmOpen) {
+      return { type: "close-modal" };
+    }
     return { type: "pane-focus-toggle" };
   }
 
@@ -167,6 +174,17 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (key.name === "s") {
       if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
       return { type: "send-to-agent" };
+    }
+    // ADR 0036 Slice D / issue #388. `d` is card-only — opens the delete-
+    // confirm modal on the cursored Comment. Off-card presses surface a
+    // labelled no-op in the footer, matching the existing
+    // `noop-reply-on-row` / `noop-send-on-row` pattern. Scoped to the
+    // diff pane: sidebar `d` is a plain noop (no Comment cursor in the
+    // sidebar). Reply-level cursor stops (ADR 0037) let this verb target
+    // both parents and Replies uniformly.
+    if (!ctx.sidebarFocused && key.name === "d") {
+      if (!ctx.cursorOnCard) return { type: "noop-delete-on-row" };
+      return { type: "open-delete-confirm" };
     }
   }
 

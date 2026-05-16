@@ -99,6 +99,20 @@ export function createWebTourSessionAdapter(
       }
       return (await res.json()) as Comment;
     },
+    deleteComment: async ({ tourId, targetId }) => {
+      // ADR 0036 Slice D / issue #388. Webapp trash icon + modal land in
+      // a follow-up slice (issue #389); the seam is wired here against
+      // the eventual `DELETE /api/tours/<id>/comments/<comment-id>`
+      // endpoint so the interface stays uniform across surfaces. The TUI
+      // (this slice) is the only caller for now.
+      const res = await fetch(`/api/tours/${tourId}/comments/${targetId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+    },
     requestReply: async ({ tourId, commentId }) => {
       // SSE `reply-in-flight` / `reply-cleared` events drive the in-flight
       // pill; transport-level failures (non-2xx or network) reject so the

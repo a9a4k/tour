@@ -123,6 +123,7 @@ describe("initialTourSessionState", () => {
       cursor: null,
       expansion: new Map(),
       composer: { kind: "closed" },
+      deleteConfirm: { kind: "closed" },
       collapsedFolders: new Set(),
       collapsedOverrides: {},
       paneFocus: "sidebar",
@@ -2221,5 +2222,157 @@ describe("reduce — paneFocus slice (PRD #343 / ADR 0031 / issue #344)", () => 
     expect(s.cursor).toBe(cursorBefore);
     s = reduce(s, { type: "paneFocus.setSidebar" }).state;
     expect(s.cursor).toBe(cursorBefore);
+  });
+});
+
+// --- ADR 0036 Slice D / issue #388: delete-confirm modal slice -------------
+
+describe("reduce — deleteConfirm slice (ADR 0036 Slice D / issue #388)", () => {
+  it("initial state is { kind: 'closed' }", () => {
+    expect(initialTourSessionState().deleteConfirm).toEqual({ kind: "closed" });
+  });
+
+  it("deleteConfirm.open from closed → { kind: 'open', targetId } (no intents)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "deleteConfirm.open",
+      targetId: "ann-1",
+    });
+    expect(r.state.deleteConfirm).toEqual({ kind: "open", targetId: "ann-1" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.open re-targets when modal is already in flight (no stale id)", () => {
+    let s = stateWithTourLoaded();
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    s = reduce(s, { type: "deleteConfirm.confirm" }).state;
+    expect(s.deleteConfirm.kind).toBe("submitting");
+    const r = reduce(s, { type: "deleteConfirm.open", targetId: "ann-2" });
+    expect(r.state.deleteConfirm).toEqual({ kind: "open", targetId: "ann-2" });
+  });
+
+  it("deleteConfirm.close from open returns to closed", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "deleteConfirm.open",
+      targetId: "ann-1",
+    }).state;
+    const r = reduce(s, { type: "deleteConfirm.close" });
+    expect(r.state.deleteConfirm).toEqual({ kind: "closed" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.close from closed is a same-state-ref no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "deleteConfirm.close" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.confirm on open → submitting; emits deleteComment { tourId, targetId }", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    const r = reduce(s, { type: "deleteConfirm.confirm" });
+    expect(r.state.deleteConfirm).toEqual({ kind: "submitting", targetId: "ann-1" });
+    expect(r.intents).toEqual([
+      { type: "deleteComment", tourId: "tour-a", targetId: "ann-1" },
+    ]);
+  });
+
+  it("deleteConfirm.confirm on errored re-emits deleteComment (retry path)", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    s = reduce(s, { type: "deleteConfirm.confirm" }).state;
+    s = reduce(s, { type: "deleteConfirm.failed", error: "boom" }).state;
+    expect(s.deleteConfirm).toEqual({
+      kind: "errored",
+      targetId: "ann-1",
+      error: "boom",
+    });
+    const r = reduce(s, { type: "deleteConfirm.confirm" });
+    expect(r.state.deleteConfirm).toEqual({ kind: "submitting", targetId: "ann-1" });
+    expect(r.intents).toEqual([
+      { type: "deleteComment", tourId: "tour-a", targetId: "ann-1" },
+    ]);
+  });
+
+  it("deleteConfirm.confirm on closed / submitting is a no-op (same state ref, no intents)", () => {
+    const closedBefore = stateWithTourLoaded();
+    const r1 = reduce(closedBefore, { type: "deleteConfirm.confirm" });
+    expect(r1.state).toBe(closedBefore);
+    expect(r1.intents).toEqual([]);
+
+    let s2 = stateWithTourLoaded();
+    s2 = reduce(s2, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    s2 = reduce(s2, { type: "deleteConfirm.confirm" }).state;
+    const r2 = reduce(s2, { type: "deleteConfirm.confirm" });
+    expect(r2.state).toBe(s2);
+    expect(r2.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.confirm without a tour loaded is a no-op (defence-in-depth)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "deleteConfirm.open",
+      targetId: "ann-1",
+    }).state;
+    const r = reduce(s, { type: "deleteConfirm.confirm" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.succeeded on submitting → closed; no intents", () => {
+    let s = stateWithTourLoaded();
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    s = reduce(s, { type: "deleteConfirm.confirm" }).state;
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "ann-1" });
+    expect(r.state.deleteConfirm).toEqual({ kind: "closed" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.succeeded on non-submitting states is a no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "deleteConfirm.succeeded", targetId: "ann-1" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.failed on submitting → errored; preserves targetId for retry", () => {
+    let s = stateWithTourLoaded();
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    s = reduce(s, { type: "deleteConfirm.confirm" }).state;
+    const r = reduce(s, { type: "deleteConfirm.failed", error: "boom" });
+    expect(r.state.deleteConfirm).toEqual({
+      kind: "errored",
+      targetId: "ann-1",
+      error: "boom",
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("deleteConfirm.failed on non-submitting states is a no-op", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "deleteConfirm.failed", error: "boom" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("tour.switched resets deleteConfirm to closed (alongside picker / cursor / composer)", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    expect(s.deleteConfirm.kind).toBe("open");
+    const r = reduce(s, {
+      type: "tour.switched",
+      tourId: "tour-b",
+      bundle: mkBundle("tour-b"),
+    });
+    expect(r.state.deleteConfirm).toEqual({ kind: "closed" });
+  });
+
+  it("close-modal precedence: closing the delete-confirm modal does not touch the composer or picker slice", () => {
+    let s = stateWithTourLoaded();
+    s = reduce(s, { type: "deleteConfirm.open", targetId: "ann-1" }).state;
+    const composerBefore = s.composer;
+    const pickerBefore = s.picker;
+    s = reduce(s, { type: "deleteConfirm.close" }).state;
+    expect(s.composer).toBe(composerBefore);
+    expect(s.picker).toBe(pickerBefore);
   });
 });

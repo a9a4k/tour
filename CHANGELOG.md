@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TUI delete (`d` + confirm modal) (issue #388, ADR 0036, PRD #384,
+  Slice D).** Pressing `d` while the cursor sits on a Comment card
+  opens a confirmation modal targeting the cursored node — parent or
+  Reply (ADR 0037 / Slice A's reply-level cursor stops make this
+  uniform). The modal previews the target (author, relative age,
+  body excerpt) and surfaces a cascade note: `N replies will remain
+  under [deleted]` when the target is a parent with live Replies,
+  `this reply will be removed from the thread.` when the target is
+  a Reply, `the thread will vanish.` when the deletion retracts the
+  whole Thread. `Enter` confirms — appends the `comment.deleted`
+  event via the `createDelete` seam landed in Slice C — and the
+  watcher's `comment-changed` event refreshes the projection; `Esc`
+  cancels without writing. The modal joins the composer + picker
+  under the `close-modal` precedence (ADR 0031): `Esc` closes the
+  modal first. `d` on a row dispatches a labelled no-op
+  (`noop-delete-on-row`); `d` in the sidebar is unbound. The diff-
+  mode footer legend now reads `… r: reply  ·  d: delete …`.
+
 - **CLI delete verb + humans-only permission predicate (issue #387, ADR
   0036, PRD #384, Slice C).** `tour comment <tour-id> --delete
   <comment-id>` appends a `comment.deleted` event via the new
