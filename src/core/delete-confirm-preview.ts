@@ -1,4 +1,4 @@
-import type { Comment } from "./types.js";
+import type { Comment, CommentState } from "./types.js";
 import type { Thread } from "./threads.js";
 
 // Pure projection from `(targetId, threads)` to the data the delete-confirm
@@ -15,11 +15,6 @@ export type DeleteCascade =
   // The target is the last live node in its Thread — deleting it makes
   // the Thread vanish from the projection entirely.
   | { kind: "last-node-in-thread" };
-
-export interface DeletePreview {
-  target: Comment;
-  cascade: DeleteCascade;
-}
 
 // `cascadeFor` classifies the delete's downstream effect on the C4
 // projection. The rules mirror `events-fold.ts`:
@@ -59,9 +54,11 @@ export function cascadeFor(
 
 // The projection's `[deleted]` stub: a parent comment with an empty body
 // and a `deleted` stamp (set by the fold). Reply nodes never project as
-// stubs — they either survive or vanish.
+// stubs — they either survive or vanish. `Thread.root` is typed `Comment`
+// but at runtime carries `CommentState` (the comments-store now returns
+// the projected shape) — the cast just narrows to the projection field.
 function isDeletedStub(c: Comment): boolean {
-  return (c as Comment & { deleted?: unknown }).deleted !== undefined;
+  return (c as CommentState).deleted !== undefined;
 }
 
 // Human-readable cascade note for the modal's footer line.

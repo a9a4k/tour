@@ -1508,13 +1508,15 @@ function App(props: AppProps) {
         // Defense in depth: in production the App-shell's modal
         // early-returns intercept Esc before dispatchKey is called, so
         // this case is unreachable. Kept so the keymap's documented
-        // contract (Esc with composer/picker open returns close-modal)
-        // is honoured if a future refactor routes Esc through the
-        // dispatchKey path in modal contexts.
+        // contract (Esc with composer / picker / delete-confirm open
+        // returns close-modal) is honoured if a future refactor routes
+        // Esc through the dispatchKey path in modal contexts.
         if (composer.kind !== "closed") {
           store.dispatch({ type: "composer.close" });
         } else if (sessionState.picker.kind === "open") {
           store.dispatch({ type: "picker.close" });
+        } else if (deleteConfirm.kind !== "closed") {
+          store.dispatch({ type: "deleteConfirm.close" });
         }
         return;
       case "move-file-down":
