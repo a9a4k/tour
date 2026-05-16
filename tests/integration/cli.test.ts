@@ -730,6 +730,228 @@ describe("CLI integration", () => {
     });
   });
 
+  // Issue #387 (Slice C / ADR 0036). `tour comment <tour-id>
+  // --delete <comment-id>` appends a `comment.deleted` event via the
+  // humans-only `createDelete` write seam. `--as-agent --delete` is
+  // refused at parse-time so the error surfaces before any I/O. Delete
+  // is mutually exclusive with the create / reply flag families.
+  describe("comment --delete (Slice C / ADR 0036, issue #387)", () => {
+    async function annotate(
+      repo: string,
+      tourId: string,
+      body: string,
+      extra: string[] = [],
+    ): Promise<{ id: string }> {
+      const r = await run(
+        [
+          "comment",
+          tourId,
+          "--file",
+          "hello.txt",
+          "--side",
+          "additions",
+          "--line",
+          "1",
+          "--body",
+          body,
+          "--json",
+          ...extra,
+        ],
+        repo,
+      );
+      if (r.exitCode !== 0) throw new Error(`annotate failed: ${r.stderr}`);
+      return JSON.parse(r.stdout);
+    }
+
+    it("non-JSON: prints 'Deleted comment <id>' on stdout, exit 0", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "to-delete");
+      const r = await run(["comment", tour.id, "--delete", ann.id], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toBe(`Deleted comment ${ann.id}`);
+    });
+
+    it("--json: emits { deleted: <comment-id> } envelope", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "to-delete");
+      const r = await run(
+        ["comment", tour.id, "--delete", ann.id, "--json"],
+        repo,
+      );
+      expect(r.exitCode).toBe(0);
+      const parsed = JSON.parse(r.stdout);
+      expect(parsed).toEqual({ deleted: ann.id });
+    });
+
+    it("--as-agent --delete is rejected at parse with a clear humans-only error", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "agent-can-not-delete");
+      const r = await run(
+        ["comment", tour.id, "--delete", ann.id, "--as-agent"],
+        repo,
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toMatch(/human/i);
+      // The error must surface before any write — the comment is still
+      // there afterward.
+      const show = await run(["show", tour.id, "--json"], repo);
+      const data = JSON.parse(show.stdout);
+      expect(data.comments.map((c: { id: string }) => c.id)).toEqual([ann.id]);
+    });
+
+    it("rejects unknown target id with a clear error", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run(
+        ["comment", tour.id, "--delete", "ghost-id"],
+        repo,
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("ghost-id");
+    });
+
+    it("--delete is mutually exclusive with --file/--side/--line/--body", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "first");
+      const r = await run(
+        [
+          "comment",
+          tour.id,
+          "--delete",
+          ann.id,
+          "--file",
+          "hello.txt",
+          "--side",
+          "additions",
+          "--line",
+          "1",
+          "--body",
+          "x",
+        ],
+        repo,
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toMatch(/mutually exclusive/i);
+    });
+
+    it("--delete is mutually exclusive with --reply-to", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "root");
+      const r = await run(
+        [
+          "comment",
+          tour.id,
+          "--delete",
+          ann.id,
+          "--reply-to",
+          ann.id,
+          "--body",
+          "x",
+        ],
+        repo,
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toMatch(/mutually exclusive/i);
+    });
+
+    it("pickup --json reflects deletion of a leaf reply (reply absent under parent)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = await annotate(repo, tour.id, "parent");
+      const replyR = await run(
+        [
+          "comment",
+          tour.id,
+          "--reply-to",
+          root.id,
+          "--body",
+          "reply body",
+          "--as-human",
+          "--json",
+        ],
+        repo,
+      );
+      const reply = JSON.parse(replyR.stdout);
+      const del = await run(
+        ["comment", tour.id, "--delete", reply.id],
+        repo,
+      );
+      expect(del.exitCode).toBe(0);
+      const pickup = await run(["pickup", tour.id, "--json"], repo);
+      const tree = JSON.parse(pickup.stdout);
+      expect(tree.comments).toHaveLength(1);
+      expect(tree.comments[0].id).toBe(root.id);
+      expect(tree.comments[0].replies).toEqual([]);
+    });
+
+    it("pickup --json reflects C4 stub when a parent with surviving reply is deleted", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = await annotate(repo, tour.id, "parent body");
+      await run(
+        [
+          "comment",
+          tour.id,
+          "--reply-to",
+          root.id,
+          "--body",
+          "still here",
+          "--as-human",
+          "--json",
+        ],
+        repo,
+      );
+      const del = await run(
+        ["comment", tour.id, "--delete", root.id],
+        repo,
+      );
+      expect(del.exitCode).toBe(0);
+      const pickup = await run(["pickup", tour.id, "--json"], repo);
+      const tree = JSON.parse(pickup.stdout);
+      expect(tree.comments).toHaveLength(1);
+      const stub = tree.comments[0];
+      expect(stub.id).toBe(root.id);
+      expect(stub.body).toBe("");
+      expect(stub.deleted).toBeDefined();
+      expect(typeof stub.deleted.at).toBe("string");
+      expect(stub.replies).toHaveLength(1);
+      expect(stub.replies[0].body).toBe("still here");
+    });
+
+    it("pickup --json reflects fully-deleted Thread vanishing", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "lonely note");
+      const del = await run(["comment", tour.id, "--delete", ann.id], repo);
+      expect(del.exitCode).toBe(0);
+      const pickup = await run(["pickup", tour.id, "--json"], repo);
+      const tree = JSON.parse(pickup.stdout);
+      expect(tree.comments).toEqual([]);
+    });
+
+    it("double-delete on a leaf is rejected at the second invocation", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "delete-once");
+      const first = await run(
+        ["comment", tour.id, "--delete", ann.id],
+        repo,
+      );
+      expect(first.exitCode).toBe(0);
+      const second = await run(
+        ["comment", tour.id, "--delete", ann.id],
+        repo,
+      );
+      expect(second.exitCode).toBe(1);
+      expect(second.stderr).toContain(ann.id);
+    });
+  });
+
   describe("pickup", () => {
     it("prints the conversation tree as JSON to stdout (exit 0)", async () => {
       const cr = await run(

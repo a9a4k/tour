@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   createComment,
+  createDelete,
   createReply,
   createComments,
   readComments,
@@ -668,6 +669,139 @@ describe("comments-store", () => {
       expect(loaded).toHaveLength(2);
       expect(loaded[0].id).toBe("good");
       expect(loaded[1].id).toBe("also-good");
+    });
+  });
+
+  describe("createDelete (Slice C / ADR 0036)", () => {
+    it("appends a comment.deleted event for a known top-level comment authored by a human", async () => {
+      await seedTopLevel(dir, tourId, { id: "to-delete", body: "noise" });
+      const result = await createDelete(dir, tourId, {
+        target_id: "to-delete",
+        by_kind: "human",
+      });
+      expect(result.target_id).toBe("to-delete");
+      expect(typeof result.at).toBe("string");
+
+      // Fully-deleted leaf parent vanishes per C4 cascade.
+      const loaded = await readComments(dir, tourId);
+      expect(loaded).toEqual([]);
+    });
+
+    it("writes a comment.deleted event line with only kind, target_id, at (no by_kind)", async () => {
+      await seedTopLevel(dir, tourId, { id: "delete-me" });
+      await createDelete(dir, tourId, {
+        target_id: "delete-me",
+        by_kind: "human",
+      });
+      const content = await readFile(eventsPath(dir, tourId), "utf-8");
+      const lines = content.split("\n").filter((l) => l);
+      expect(lines).toHaveLength(2);
+      const parsed = JSON.parse(lines[1]);
+      expect(parsed.kind).toBe("comment.deleted");
+      expect(parsed.target_id).toBe("delete-me");
+      expect(typeof parsed.at).toBe("string");
+      // ADR 0036 pins: no by_kind on the event line — humans-only is
+      // enforced at the write seam and implicit on disk.
+      expect(parsed.by_kind).toBeUndefined();
+    });
+
+    it("rejects author_kind agent — humans-only contract, no write", async () => {
+      await seedTopLevel(dir, tourId, { id: "human-only" });
+      await expect(
+        createDelete(dir, tourId, {
+          target_id: "human-only",
+          by_kind: "agent",
+        }),
+      ).rejects.toThrow(/human/i);
+      // No delete event landed; the created event is still the only line.
+      const loaded = await readComments(dir, tourId);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0].deleted).toBeUndefined();
+    });
+
+    it("rejects unknown target id and writes nothing", async () => {
+      await seedTopLevel(dir, tourId, { id: "known" });
+      await expect(
+        createDelete(dir, tourId, {
+          target_id: "ghost",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/ghost/);
+      const loaded = await readComments(dir, tourId);
+      expect(loaded.map((c) => c.id)).toEqual(["known"]);
+    });
+
+    it("rejects already-deleted target (deleted-parent stub still in projection)", async () => {
+      // Parent with a surviving reply → after deleting the parent it's a
+      // stub in the projection with `deleted` set. A second delete must
+      // refuse at the write seam (mirrors the fold's idempotency).
+      await seedTopLevel(dir, tourId, { id: "p" });
+      await createReply(dir, tourId, {
+        replies_to: "p",
+        body: "still here",
+        author_kind: "human",
+      });
+      await createDelete(dir, tourId, {
+        target_id: "p",
+        by_kind: "human",
+      });
+      await expect(
+        createDelete(dir, tourId, {
+          target_id: "p",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/deleted/i);
+    });
+
+    it("deletes a leaf reply — projection retains parent, drops the reply", async () => {
+      await seedTopLevel(dir, tourId, { id: "p" });
+      const reply = await createReply(dir, tourId, {
+        replies_to: "p",
+        body: "reply body",
+        author_kind: "human",
+      });
+      await createDelete(dir, tourId, {
+        target_id: reply.id,
+        by_kind: "human",
+      });
+      const loaded = await readComments(dir, tourId);
+      expect(loaded.map((c) => c.id)).toEqual(["p"]);
+    });
+
+    it("deletes a parent with surviving reply — projection surfaces the [deleted] stub", async () => {
+      await seedTopLevel(dir, tourId, {
+        id: "p",
+        file: "src/x.ts",
+        side: "additions",
+        line_start: 5,
+        line_end: 7,
+        body: "original",
+      });
+      const reply = await createReply(dir, tourId, {
+        replies_to: "p",
+        body: "still relevant",
+        author_kind: "human",
+      });
+      const before = Date.now();
+      await createDelete(dir, tourId, {
+        target_id: "p",
+        by_kind: "human",
+      });
+      const loaded = await readComments(dir, tourId);
+      expect(loaded).toHaveLength(2);
+      const stub = loaded[0];
+      expect(stub.id).toBe("p");
+      expect(stub.body).toBe("");
+      expect(stub.file).toBe("src/x.ts");
+      expect(stub.deleted).toBeDefined();
+      expect(stub.deleted!.at.length).toBeGreaterThan(0);
+      // Reply intact under the stub.
+      expect(loaded[1].id).toBe(reply.id);
+      expect(loaded[1].body).toBe("still relevant");
+      // Sanity: the stub's deleted-at timestamp is recent.
+      expect(new Date(stub.deleted!.at).getTime()).toBeGreaterThanOrEqual(
+        before - 1000,
+      );
     });
   });
 

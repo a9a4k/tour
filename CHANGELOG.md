@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CLI delete verb + humans-only permission predicate (issue #387, ADR
+  0036, PRD #384, Slice C).** `tour comment <tour-id> --delete
+  <comment-id>` appends a `comment.deleted` event via the new
+  `createDelete` write seam, which enforces the humans-only contract
+  by rejecting any caller asserting `by_kind === "agent"`. The CLI
+  refuses `--as-agent --delete` before any I/O, and `--delete` is
+  mutually exclusive with the `--file/--side/--line/--body`,
+  `--reply-to/--body`, and `--batch` flag families. `--json` returns
+  the `{ deleted: <comment-id> }` envelope (matching `tour delete`'s
+  convention); the non-JSON path prints `Deleted comment <id>`.
+  Validation mirrors `--reply-to`'s existence check: the target id
+  must resolve in the projected state and not already be deleted —
+  defence-in-depth against the fold's idempotency safety net. `tour
+  pickup --json` now reflects the C4 cascade: deleted leaf Replies
+  vanish, a deleted parent with surviving Replies surfaces as a
+  `[deleted]` stub carrying `deleted: { at }` with the anchor
+  retained, and fully-deleted Threads vanish entirely. The TUI `d`
+  gesture, modal, and webapp trash icon land in subsequent slices.
+
 ### Changed
 
 - **Event-sourced Tour persistence (issue #386, ADR 0036, PRD #384, Slice B).**

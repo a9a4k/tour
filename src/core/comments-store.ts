@@ -259,3 +259,40 @@ export async function readComments(
   const events = await readEvents(repoRoot, tourId);
   return foldEventsToComments(events);
 }
+
+// Slice C / ADR 0036: the single write seam for `comment.deleted` events.
+// Humans-only by protocol contract — agents-asserted callers reject here.
+// Existence + already-deleted guards mirror `createReply`'s parent check;
+// the fold's defence-in-depth (ignore-unknown, idempotent-on-duplicate)
+// stays in place as a safety net behind this primary guard.
+export interface CreateDeleteRequest {
+  target_id: string;
+  by_kind: AuthorKind;
+}
+
+export async function createDelete(
+  repoRoot: string,
+  tourId: string,
+  request: CreateDeleteRequest,
+): Promise<{ target_id: string; at: string }> {
+  if (request.by_kind !== "human") {
+    throw new Error(
+      `comment.deleted is humans-only (ADR 0036) — refused by_kind="${request.by_kind}"`,
+    );
+  }
+  const existing = await readComments(repoRoot, tourId);
+  const target = existing.find((c) => c.id === request.target_id);
+  if (!target) {
+    throw new Error(`No comment with id "${request.target_id}" in this tour`);
+  }
+  if (target.deleted) {
+    throw new Error(`Comment "${request.target_id}" is already deleted`);
+  }
+  const event: TourEvent = {
+    kind: "comment.deleted",
+    target_id: request.target_id,
+    at: new Date().toISOString(),
+  };
+  await appendEvent(repoRoot, tourId, event);
+  return { target_id: event.target_id, at: event.at };
+}

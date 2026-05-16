@@ -93,6 +93,7 @@ Usage:
                                         (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^.)
   tour comment <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
+  tour comment <id> --delete <comment-id> [--json]
   tour comment <id> --batch - [--json]                            (alias: annotate)
   tour list [--status open|closed|all] [--json]
   tour show <id> [--json]
@@ -166,6 +167,7 @@ async function main(): Promise<void> {
           asAgent: boolFlag(flags, "as-agent"),
           asHuman: boolFlag(flags, "as-human"),
           replyTo: flag(flags, "reply-to"),
+          deleteId: flag(flags, "delete"),
           batch: boolFlag(flags, "batch") || flag(flags, "batch") === "-",
           json,
           cwd,

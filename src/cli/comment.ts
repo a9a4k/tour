@@ -1,6 +1,7 @@
 import {
   createComment,
   createComments,
+  createDelete,
   createReply,
   type CreateRequest,
 } from "../core/comments-store.js";
@@ -20,6 +21,7 @@ interface CommentArgs {
   asAgent?: boolean;
   asHuman?: boolean;
   replyTo?: string;
+  deleteId?: string;
   batch?: boolean;
   json: boolean;
   cwd: string;
@@ -64,6 +66,41 @@ function resolveAuthorKind(asAgent?: boolean, asHuman?: boolean): AuthorKind {
 }
 
 export async function comment(args: CommentArgs): Promise<void> {
+  // Delete verb (Slice C / issue #387 / ADR 0036). Mutually exclusive
+  // with the create / reply flag families. `--as-agent --delete` is
+  // refused here — before any I/O — so the humans-only protocol error
+  // surfaces at parse-time as the PRD requires.
+  if (args.deleteId !== undefined) {
+    if (args.asAgent) {
+      throw new Error(
+        "--as-agent --delete is refused: comment.deleted is humans-only (ADR 0036)",
+      );
+    }
+    if (
+      args.file !== undefined ||
+      args.side !== undefined ||
+      args.line !== undefined ||
+      args.body !== undefined ||
+      args.replyTo !== undefined ||
+      args.batch
+    ) {
+      throw new Error(
+        "--delete is mutually exclusive with --file/--side/--line/--body, --reply-to, and --batch",
+      );
+    }
+    const resolvedIdForDelete = await resolveIdPrefix(args.cwd, args.tourId);
+    const result = await createDelete(args.cwd, resolvedIdForDelete, {
+      target_id: args.deleteId,
+      by_kind: "human",
+    });
+    if (args.json) {
+      printOutput({ deleted: result.target_id }, true);
+    } else {
+      console.log(`Deleted comment ${result.target_id}`);
+    }
+    return;
+  }
+
   const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
   const authorKind = resolveAuthorKind(args.asAgent, args.asHuman);
 
