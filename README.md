@@ -35,7 +35,7 @@ tour                                  # open the tour (webapp on a desktop, TUI 
 tour serve --open                     # force webapp + auto-open the browser
 ```
 
-Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tour.toml` and an append-only `comments.jsonl`.
+Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tour.toml` and an append-only `tour-events.jsonl` (event log per ADR 0036).
 
 ## For agents
 

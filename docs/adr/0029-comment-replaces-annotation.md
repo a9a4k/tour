@@ -1,6 +1,8 @@
 # "Comment" replaces "Annotation" as the canonical unit term
 
 > **Status:** Cross-surface naming. The unit name flips from `Annotation` to `Comment` across UI copy, CLI verb, keybinding, glossary, and (eventually) source identifiers and on-disk filename. Staged: surface-side changes ship together; source/disk rename lands as a follow-up. Supersedes the unit-name carve-out in ADR 0004.
+>
+> **On-disk storage portion superseded by ADR 0036** (event-sourced persistence — `tour-events.jsonl`). The Stage B `comments.jsonl` filename, the `annotations.jsonl → comments.jsonl` rename-on-first-write migration, and the "read-fallback stays forever" decision in the Stage B addendum are no longer in effect. The vocabulary decision, CLI alias, glossary flip, keybinding move, and every non-storage Stage A/B decision below remain intact.
 
 The unit that an agent or human anchors to `(file, side, line_start, line_end)` is renamed **Annotation → Comment**. CONTEXT.md's glossary flips first, the CLI gains `tour comment` with a permanent hidden `annotate` alias, the TUI keybinding moves `a → c`, and the webapp/TUI footer legends update via the shared `core/footer-hints.ts`. Source-code identifiers, the on-disk `annotations.jsonl` filename, and the dozens of in-prose references in CONTEXT.md follow in a tracked Stage B PR.
 
