@@ -26,6 +26,16 @@ The decisive observation: **`core/tour-session.ts` is already event-sourced.** I
 - **Event log with on-close compaction.** Live Tour uses events; on `tour close`, compact into a final snapshot. Rejected as premature — Tour ephemerality (ADR 0003) keeps event logs short; compaction adds mechanism on close for no observable user benefit.
 - **Event log, no compaction (selected).** Append-only events for the Tour's full lifetime. Read projects to current state.
 
+### Why not `tour-actions.jsonl` for in-memory vocabulary parity
+
+`core/tour-session.ts` calls the reducer's input `Action`. A consistency-minded reader naturally asks why the on-disk records aren't called Actions too. Three reasons the names diverge deliberately:
+
+- **The disk holds a strict subset of the dispatch stream — post-validation, persistence-bearing only.** The in-memory `Action` union carries ~30 variants (picker open/close, cursor moves, fold toggles, expansion requests, layout switches, pane focus, …) of which only `composer.submitted` and the delete event survive to disk. Calling the disk file `tour-actions.jsonl` implies a 1:1 mapping that doesn't exist.
+- **Tense and semantics.** The on-disk records are past tense (`comment.created`, `reply.created`, `comment.deleted`) — facts that happened and cannot be unhappened. Past-tense facts are Events by any serious definition (Redux collapses Commands and Events under "Action"; event-sourcing keeps them apart). Renaming the file to `tour-actions.jsonl` would pull record names toward present-tense imperatives (`comment.create`), which read like a script of instructions and fight an append-only history log's purpose.
+- **The naming boundary tracks a real semantic boundary: validation.** The Action → Event transition is *exactly* the validation seam. Actions can be rejected; Events cannot. Naming the two sides differently makes the seam visible to future readers; naming them the same hides it.
+
+The symmetric move — renaming the in-memory `Action` to `Command` for DDD-rigour parity with `Event` — is also rejected: it would touch every dispatch site, every reducer signature, and every action-creator across both surfaces' codebases, and fights the Redux convention the codebase has otherwise adopted.
+
 ## Decisions
 
 ### On-disk file: `tour-events.jsonl`
