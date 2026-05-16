@@ -1105,11 +1105,27 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             ? boundaryBottomGapSize(file)
             : hunkSeparatorGapSize(file, boundaryRef);
       if (gapSize === 0) return;
+      // Issue #381: producer-side translation from the click target's
+      // user-facing direction (banner ↑ → "up", standalone ↓ → "down")
+      // to the reducer's gap-edge direction. For mid-file (numeric ref):
+      // user-facing "up" reveals lines just above the banner = bottom
+      // edge of the gap = gap-edge "down"; user-facing "down" reveals
+      // lines just below the standalone row = top edge of the gap =
+      // gap-edge "up". File-top / file-bottom dispatches route through
+      // `expandTop` / `expandBottom` and ignore `direction`, so they
+      // skip the flip. `"both"` is symmetric and unaffected.
+      let effectiveDirection: "up" | "down" | "both" = direction;
+      if (typeof boundaryRef === "number") {
+        if (direction === "up") effectiveDirection = "down";
+        else if (direction === "down") effectiveDirection = "up";
+      }
       // direction "both" needs gap-remaining > 2N to fall back to "down"
       // (matches the TUI's mid-file hunk-header rule). FileBlock passes
       // direction="both" for mid-file hunk-headers; refine here using
-      // expansion state.
-      let effectiveDirection: "up" | "down" | "both" = direction;
+      // expansion state. The fallback target ("down" = bottom of gap =
+      // immediately above the banner) is already in gap-edge vocabulary
+      // and matches the user-facing `↕` intent (reveal near the banner),
+      // so it runs after — not flipped by — the producer-side translation.
       if (direction === "both" && typeof boundaryRef === "number") {
         const cur = getBoundary(expansion, { file, ref: boundaryRef });
         const remaining = gapSize - cur.up - cur.down;
