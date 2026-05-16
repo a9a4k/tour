@@ -35,10 +35,10 @@ const version: string = pkg.version;
 // (or vice versa) (issue #204).
 const embedStub = readFileSync(EMBED_PATH, "utf8");
 
-let stubsRestored = false;
-function restoreStubs(): void {
-  if (stubsRestored) return;
-  stubsRestored = true;
+let stubRestored = false;
+function restoreStub(): void {
+  if (stubRestored) return;
+  stubRestored = true;
   writeFileSync(EMBED_PATH, embedStub);
 }
 
@@ -48,22 +48,22 @@ function restoreStubs(): void {
 // path Node exposes so the working tree never lingers in the half-flipped
 // "populated string + mode binary" state described in issue #204.
 process.on("SIGINT", () => {
-  restoreStubs();
+  restoreStub();
   process.exit(130);
 });
 process.on("SIGTERM", () => {
-  restoreStubs();
+  restoreStub();
   process.exit(143);
 });
 process.on("uncaughtException", (err) => {
-  restoreStubs();
+  restoreStub();
   console.error(err);
   process.exit(1);
 });
 
 const preBuild = spawnSync("bun", ["scripts/build-client.ts"], { cwd: ROOT, stdio: "inherit" });
 if (preBuild.status !== 0) {
-  restoreStubs();
+  restoreStub();
   process.exit(preBuild.status ?? 1);
 }
 
@@ -83,8 +83,8 @@ console.log(`bun ${args.join(" ")}`);
 
 const child = spawn("bun", args, { cwd: ROOT, stdio: "inherit" });
 child.on("exit", (code) => {
-  // Always restore stubs so a build failure doesn't leave the working tree
-  // full of pre-built artifacts.
-  restoreStubs();
+  // Always restore the stub so a build failure doesn't leave the working
+  // tree full of pre-built artifacts.
+  restoreStub();
   process.exit(code ?? 1);
 });
