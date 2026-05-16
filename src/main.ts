@@ -15,53 +15,11 @@ import { pickDefaultSurface } from "./core/surface-picker.js";
 import { isOnPath } from "./core/is-on-path.js";
 import { resolveEditor } from "./core/editor-config.js";
 import { resolveTourRoot } from "./core/tour-root.js";
+import { parseArgs } from "./core/parse-args.js";
 
 declare const __EMBEDDED_VERSION__: string;
 const VERSION =
   typeof __EMBEDDED_VERSION__ !== "undefined" ? __EMBEDDED_VERSION__ : "dev";
-
-function parseArgs(argv: string[]): {
-  command: string;
-  positional: string[];
-  flags: Record<string, string | boolean>;
-} {
-  const args = argv.slice(2);
-  // A leading flag means bare invocation (e.g. `tour --editor <cmd>`):
-  // smart-default surface with flags applied. `--help` / `-h` /
-  // `--version` / `-v` are kept as command-name aliases so the existing
-  // help/version exit paths in the switch keep working.
-  const first = args[0];
-  const helpVersion =
-    first === "--help" ||
-    first === "-h" ||
-    first === "--version" ||
-    first === "-v";
-  const treatAsBare =
-    first !== undefined && first.startsWith("-") && !helpVersion;
-  const command = treatAsBare ? "" : (first ?? "");
-  const startIdx = treatAsBare ? 0 : 1;
-
-  const positional: string[] = [];
-  const flags: Record<string, string | boolean> = {};
-
-  for (let i = startIdx; i < args.length; i++) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = args[i + 1];
-      if (next && !next.startsWith("--")) {
-        flags[key] = next;
-        i++;
-      } else {
-        flags[key] = true;
-      }
-    } else {
-      positional.push(arg);
-    }
-  }
-
-  return { command, positional, flags };
-}
 
 function flag(flags: Record<string, string | boolean>, key: string): string | undefined {
   const v = flags[key];

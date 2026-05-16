@@ -1090,6 +1090,62 @@ describe("CLI integration", () => {
     });
   });
 
+  // Issue #393. The parser must accept `--flag=value` equivalently to
+  // `--flag value` for every long flag. End-to-end smoke through the
+  // real CLI binary — the unit-level matrix lives in
+  // tests/core/parse-args.test.ts.
+  describe("--flag=value form (issue #393)", () => {
+    it("create --head=HEAD --title=Equals creates the tour", async () => {
+      const result = await run(
+        ["create", "--head=HEAD", "--title=Equals", "--json"],
+        repo,
+      );
+      expect(result.exitCode).toBe(0);
+      const tour = JSON.parse(result.stdout);
+      expect(tour.title).toBe("Equals");
+    });
+
+    it("comment with all flags in =value form annotates the tour", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const result = await run(
+        [
+          "comment",
+          tour.id,
+          "--file=hello.txt",
+          "--side=additions",
+          "--line=1",
+          "--body=eq-form",
+          "--json",
+        ],
+        repo,
+      );
+      expect(result.exitCode).toBe(0);
+      const ann = JSON.parse(result.stdout);
+      expect(ann.body).toBe("eq-form");
+      expect(ann.file).toBe("hello.txt");
+    });
+
+    it("tui --reply-agent=cursor fails fast with the shipped-agent error", async () => {
+      // Mirrors the issue's repro recipe: an unknown reply-agent must
+      // hit `assertShippedAgent` and exit non-zero with the same error
+      // message the space form produces today.
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const result = await run(["tui", "--reply-agent=cursor", tour.id], repo);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown reply-agent "cursor"');
+      expect(result.stderr).toContain("claude");
+    });
+
+    it("--flag= (empty value) errors with a missing-value message", async () => {
+      const result = await run(["tui", "--reply-agent="], repo);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("--reply-agent");
+      expect(result.stderr.toLowerCase()).toContain("missing value");
+    });
+  });
+
   describe("unknown command", () => {
     it("exits with error", async () => {
       const result = await run(["bogus"], repo);

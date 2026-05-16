@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLI flag parser accepts `--flag=value` (issue #393).** The argv
+  scanner now splits long flags on the first `=`, so
+  `tour tui --reply-agent=claude` is equivalent to
+  `tour tui --reply-agent claude`. Pre-fix, the `=` form silently
+  stored `flags["reply-agent=claude"] = true`, skipped
+  `assertShippedAgent`, and the TUI launched without a reply-agent
+  configured (no header chip, `R` shortcut a silent no-op). Empty
+  values like `--reply-agent=` now error at startup with
+  `missing value for \`--reply-agent\`` instead of falling through.
+  `--flag=true` / `--flag=false` coerce to booleans so `--open=true`
+  works for users who prefer the `=` form on a boolean flag. The
+  scanner moved out of `src/main.ts` into `src/core/parse-args.ts`
+  so the matrix can be unit-pinned in isolation.
+
 ### Changed
 
 - **TUI composer is multi-line + fills the inner width (issue #391).**
