@@ -73,6 +73,18 @@ export function findThreadByNode(
   return null;
 }
 
+/** Resolve any Comment id (parent or Reply) to its Thread's root id.
+ *  Falls back to `commentId` when the id isn't in any Thread (stale
+ *  cursor, mid-bundle-refresh) so call sites get a stable id without
+ *  branching. Used by PRD #397 / ADR 0038 action seams (`thread.toggle`,
+ *  pre-dispatch `thread.expand`) which all target Thread roots. */
+export function threadRootIdOf(
+  commentId: string,
+  threads: ReadonlyArray<Thread>,
+): string {
+  return findThreadByNode(commentId, threads)?.thread.root.id ?? commentId;
+}
+
 export type Cursor = RowAnchor | CardAnchor;
 
 export function isRowAnchor(c: Cursor | null): c is RowAnchor {
@@ -267,14 +279,40 @@ export function validateCursor(
   flatRows: ReadonlyArray<FlatRow>,
   files?: ReadonlyArray<{ name: string }>,
   threads?: ReadonlyArray<Thread>,
+  collapsedThreads?: ReadonlySet<string>,
 ): Cursor | null {
   if (!cursor) return null;
-  if (resolveCursorRowIdx(cursor, flatRows, threads) !== -1) return cursor;
-  if (cursor.kind === "card") return null;
-  const fileRow = flatRows.find((r) => r.file === cursor.file);
-  if (fileRow) return cursorFromRow(fileRow, cursor.preferredSide);
-  if (files && files.some((f) => f.name === cursor.file)) return cursor;
+  // PRD #397 / ADR 0038. When the cursor sits on a Reply node inside a
+  // Thread the user just collapsed, project the anchor to the parent's
+  // id so the visible cursor stays on the same Card the user acted on.
+  // The generalised principle: project to the most-specific live stop
+  // in the same lineage. Resolution falls through to the standard
+  // row-idx lookup below — collapsing does not remove the parent's
+  // Card row from the flat stream.
+  const projected = projectAnchorOnCollapse(cursor, threads, collapsedThreads);
+  if (resolveCursorRowIdx(projected, flatRows, threads) !== -1) return projected;
+  if (projected.kind === "card") return null;
+  const fileRow = flatRows.find((r) => r.file === projected.file);
+  if (fileRow) return cursorFromRow(fileRow, projected.preferredSide);
+  if (files && files.some((f) => f.name === projected.file)) return projected;
   return null;
+}
+
+function projectAnchorOnCollapse(
+  cursor: Cursor,
+  threads?: ReadonlyArray<Thread>,
+  collapsedThreads?: ReadonlySet<string>,
+): Cursor {
+  if (cursor.kind !== "card") return cursor;
+  if (!threads || !collapsedThreads || collapsedThreads.size === 0) return cursor;
+  const found = findThreadByNode(cursor.commentId, threads);
+  if (!found || found.nodeIdx === 0) return cursor;
+  if (!collapsedThreads.has(found.thread.root.id)) return cursor;
+  return {
+    kind: "card",
+    commentId: found.thread.root.id,
+    preferredSide: cursor.preferredSide,
+  };
 }
 
 /**

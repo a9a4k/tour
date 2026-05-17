@@ -50,7 +50,12 @@ interface DiffRowsProps {
    *  Clicks on replies nested inside the card flow up to the same
    *  wrapper handler — the cursor walks top-level comments only. */
   onCardClick?: (commentId: string) => void;
-  repliesCollapsed?: boolean;
+  /** PRD #397 / ADR 0038. Top-level Comment ids the user has minimised
+   *  to a one-liner via per-Thread `Shift+C`. Threaded into each
+   *  CommentCard so the Card paints the one-liner shape when its
+   *  parent id is in the set. Replaces the retired global
+   *  `repliesCollapsed` flag. */
+  collapsedThreads?: ReadonlySet<string>;
   replyLock?: ReplyLock | null;
   now?: number;
   /** 1-based nav-order index per top-level comment id, for the `i / n`
@@ -209,7 +214,7 @@ export function DiffRows({
   onCursorClick,
   onInteractiveClick,
   onCardClick,
-  repliesCollapsed,
+  collapsedThreads,
   replyLock,
   now,
   navIndexById,
@@ -403,7 +408,7 @@ export function DiffRows({
               isCurrent={isCurrent}
               activeNodeId={isCurrent ? cursorCardId : null}
               replies={row.replies}
-              repliesCollapsed={repliesCollapsed}
+              collapsed={collapsedThreads?.has(row.comment.id) ?? false}
               replyLock={replyLock}
               now={now}
               navIndex={navIndexById?.get(row.comment.id) ?? null}

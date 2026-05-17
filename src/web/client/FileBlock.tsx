@@ -80,6 +80,14 @@ export interface CommentProps {
    *  Pre-built by App so the lookup stays O(1). */
   navIndexById?: ReadonlyMap<string, number>;
   navTotal?: number;
+  /** PRD #397 / ADR 0038. Per-Thread collapse set (top-level Comment
+   *  ids). When a Card's id is in the set, the CommentCard renders the
+   *  one-liner shape. */
+  collapsedThreads?: ReadonlySet<string>;
+  /** PRD #397 / ADR 0038. Fired when the user clicks the header
+   *  chevron. Same id semantics as `onCardClick` — the top-level
+   *  Comment id. */
+  onToggleThreadCollapse?: (commentId: string) => void;
 }
 
 export interface RowClickAnchor {
@@ -722,6 +730,8 @@ function renderComment(
       onCardClick={onCardClick}
       onFileClick={onAnnotationFileClick}
       onDeleteClick={onDeleteClick}
+      collapsed={commentProps?.collapsedThreads?.has(ann.id) ?? false}
+      onToggleCollapse={commentProps?.onToggleThreadCollapse}
     />
   );
 }

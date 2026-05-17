@@ -598,6 +598,9 @@ export interface CardRowProps {
   // trash icon. Fires with the targeted comment id — parent or Reply.
   // The host opens the delete-confirm modal in response.
   onDeleteClick?: (commentId: string) => void;
+  // PRD #397 / ADR 0038. Per-Thread collapse pass-through.
+  collapsed?: boolean;
+  onToggleCollapse?: (commentId: string) => void;
 }
 
 // `grid-column` is set inline so a card's positioning is visible on the
@@ -634,6 +637,8 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     onCardClick,
     onFileClick,
     onDeleteClick,
+    collapsed,
+    onToggleCollapse,
   } = props;
   return (
     <div
@@ -661,6 +666,8 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         onCardClick={onCardClick}
         onFileClick={onFileClick}
         onDeleteClick={onDeleteClick}
+        collapsed={collapsed}
+        onToggleCollapse={onToggleCollapse}
       />
     </div>
   );

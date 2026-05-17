@@ -13,6 +13,12 @@ import {
 // `C: collapse replies`, `T: picker` after the keybinding cutover. The
 // webapp legend keeps its slice-1 form (`a: comment`, `t: picker`) until
 // the Stage A webapp slice lands.
+//
+// PRD #397 / ADR 0038: `C: collapse replies` is retired in favour of
+// per-Thread collapse. The contextual label flips by the cursored
+// Card's collapse state — `C: collapse` when the Thread is expanded
+// (or off-card), `C: expand` when collapsed. The webapp diff-mode
+// legend gains the same hint.
 
 describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI export", () => {
   it("emits today's TUI_FOOTER_HINTS constant verbatim with no options", () => {
@@ -58,14 +64,17 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
   // shape (`a: comment`, `c: collapse`, `t: picker`). `includes` is
   // case-sensitive so the lowercase "c: collapse" check does not match
   // the new "C: collapse replies" label.
-  it("uses the post-cutover TUI labels (`c: comment`, `C: collapse replies`, `T: picker`)", () => {
+  it("uses the post-cutover TUI labels (`c: comment`, `C: collapse`, `T: picker`); the retired `C: collapse replies` label is gone", () => {
     const out = composeFooterHints({ surface: "tui" });
     expect(out).toContain("c: comment");
-    expect(out).toContain("C: collapse replies");
+    expect(out).toContain("C: collapse");
     expect(out).toContain("T: picker");
     expect(out).not.toContain("a: comment");
     expect(out).not.toContain("c: collapse");
     expect(out).not.toContain("t: picker");
+    // PRD #397 / ADR 0038: the global `C: collapse replies` verb is
+    // retired. The new label is per-Thread and contextual.
+    expect(out).not.toContain("C: collapse replies");
   });
 });
 
@@ -98,7 +107,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("d: delete");
     expect(out).toContain("Enter: expand");
     expect(out).toContain("e: expand all");
-    expect(out).toContain("C: collapse replies");
+    expect(out).toContain("C: collapse");
     expect(out).toContain("y: yank");
     expect(out).toContain("o: open");
     expect(out).toContain("Space: page");
@@ -172,7 +181,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).not.toContain("c: comment");
     expect(out).not.toContain("r: reply");
     expect(out).not.toContain("R: request reply");
-    expect(out).not.toContain("C: collapse replies");
+    expect(out).not.toContain("C: collapse");
     expect(out).not.toContain("Enter: expand");
     expect(out).not.toContain("Tab:");
     expect(out).not.toContain("Space: page");
@@ -208,7 +217,7 @@ describe("composeFooterHints (core, surface: web)", () => {
   // are unchanged.
   it("emits the diff-mode webapp legend with `Esc: sidebar` when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  y: yank  ·  o: open  ·  C: collapse  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -219,7 +228,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  R: request reply  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  R: request reply  ·  y: yank  ·  o: open  ·  C: collapse  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -391,5 +400,64 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
   it("sidebar-mode web legend includes `y: yank` (PRD #356 — y is read-only, works in both panes)", () => {
     const out = composeFooterHints({ surface: "web", paneFocus: "sidebar" });
     expect(out).toContain("y: yank");
+  });
+});
+
+// PRD #397 / ADR 0038: the global `C: collapse replies` verb is retired
+// in favour of per-Thread `Shift+C`. The label flips by the cursored
+// Card's collapse state — `C: collapse` when expanded, `C: expand` when
+// collapsed. Both surfaces emit the hint in diff mode; sidebar drops it.
+describe("composeFooterHints — contextual C: collapse / expand flip (PRD #397 / ADR 0038)", () => {
+  it("TUI diff-mode legend reads `C: collapse` when currentThreadCollapsed is false / undefined", () => {
+    const undefinedOut = composeFooterHints({ surface: "tui", paneFocus: "diff" });
+    expect(undefinedOut).toContain("C: collapse");
+    expect(undefinedOut).not.toContain("C: expand");
+    const falseOut = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      currentThreadCollapsed: false,
+    });
+    expect(falseOut).toContain("C: collapse");
+    expect(falseOut).not.toContain("C: expand");
+  });
+
+  it("TUI diff-mode legend flips to `C: expand` when currentThreadCollapsed is true", () => {
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      currentThreadCollapsed: true,
+    });
+    expect(out).toContain("C: expand");
+    expect(out).not.toContain("C: collapse  ·"); // the "collapse" word must not appear as a verb
+  });
+
+  it("Web diff-mode legend mirrors the TUI flip", () => {
+    const expanded = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    expect(expanded).toContain("C: collapse");
+    expect(expanded).not.toContain("C: expand");
+    const collapsed = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      currentThreadCollapsed: true,
+    });
+    expect(collapsed).toContain("C: expand");
+    expect(collapsed).not.toContain("C: collapse");
+  });
+
+  it("Sidebar legends drop the hint entirely regardless of currentThreadCollapsed (off-card by definition)", () => {
+    const tuiSidebar = composeFooterHints({
+      surface: "tui",
+      paneFocus: "sidebar",
+      currentThreadCollapsed: true,
+    });
+    expect(tuiSidebar).not.toContain("C: collapse");
+    expect(tuiSidebar).not.toContain("C: expand");
+    const webSidebar = composeFooterHints({
+      surface: "web",
+      paneFocus: "sidebar",
+      currentThreadCollapsed: true,
+    });
+    expect(webSidebar).not.toContain("C: collapse");
+    expect(webSidebar).not.toContain("C: expand");
   });
 });

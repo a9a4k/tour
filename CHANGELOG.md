@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Per-Thread `Shift+C` collapse replaces the global collapse-replies
+  gesture (PRD #397 / ADR 0038).** GitHub-style minimize on both
+  surfaces. `Shift+C` on the cursored Card folds the whole Thread
+  (parent + Replies) into a one-liner showing chevron · author kind ·
+  file:line · 60-char body preview · `💬 N` reply count; pressing
+  `Shift+C` again expands. The webapp Card header also grows a
+  clickable `▾` / `▸` chevron for mouse users. Modifying actions
+  (`r` reply, `R` request-reply) auto-expand the Thread before
+  acting; destructive cascading actions (`d` delete) refuse with a
+  footer hint forcing manual expand-first; watcher-delivered events
+  (replies authored elsewhere, in-flight pills from a sibling
+  renderer) never auto-expand. Cascade-deleted Threads drop from the
+  hide-set automatically. The cursor validator projects a Reply
+  anchor onto the parent's id when the parent Thread is collapsed
+  (cursor stays on the same Card). Footer legend label flips
+  contextually: `C: collapse` when expanded, `C: expand` when
+  collapsed; the retired `C: collapse replies` label is gone.
+
 ### Fixed
 
 - **TUI: `R` (request reply) now fires when the cursor sits on a reply

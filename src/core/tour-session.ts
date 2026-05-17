@@ -122,6 +122,16 @@ export interface TourSessionState {
   deleteConfirm: DeleteConfirmSlice;
   collapsedFolders: Set<string>;
   collapsedOverrides: Record<string, boolean>;
+  // Per-Thread collapse (PRD #397 / ADR 0038). Holds the top-level
+  // Comment ids of Threads the user has minimised to a one-liner. Mirrors
+  // GitHub's "minimize comment" gesture. `Shift+C` toggles membership of
+  // the cursored Card; modifying action seams (`r`, `R`) pre-dispatch
+  // `thread.expand` before acting; destructive cascade actions (`d`)
+  // refuse to act on a collapsed Thread. Watcher-delivered events never
+  // auto-expand. Reset on tour switch (matches collapsedFolders);
+  // preserved across bundle.refreshed except for ids no longer in
+  // top-level (cascade-delete drop).
+  collapsedThreads: Set<string>;
   // Cross-surface pane focus (PRD #343 / ADR 0031 / issue #344). Sibling
   // to `cursor`; routes keyboard input between the sidebar tree and the
   // diff pane on both surfaces. Initial value is "sidebar" — matching the
@@ -189,6 +199,9 @@ export type Action =
   | { type: "folds.setOverride"; file: string; value: boolean }
   | { type: "folds.clearOverride"; file: string }
   | { type: "folds.clearAll" }
+  | { type: "thread.collapse"; id: string }
+  | { type: "thread.expand"; id: string }
+  | { type: "thread.toggle"; id: string }
   | { type: "layout.set"; layout: Layout }
   | { type: "send-to-agent"; tourId: string; commentId: string }
   | PaneFocusAction;
@@ -258,6 +271,7 @@ export function initialTourSessionState(): TourSessionState {
     deleteConfirm: { kind: "closed" },
     collapsedFolders: new Set<string>(),
     collapsedOverrides: {},
+    collapsedThreads: new Set<string>(),
     paneFocus: "sidebar",
   };
 }
@@ -350,12 +364,26 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // per-side `Math.max`, so manual user expansion is preserved across
       // watcher reloads (issue #114). Empty / absent windows leave the slice
       // ref-equal (same-ref short-circuit in `expansionSeedFromOrphans`).
+      //
+      // PRD #397 / ADR 0038: collapsedThreads is preserved across watcher
+      // reloads (the user's hide intent must survive). Cascade-deleted
+      // Thread ids drop from the set automatically — a parent removed from
+      // the bundle (no live nodes remaining) is no longer in topLevel.
       const expansion =
         action.bundle.kind === "ok"
           ? expansionSeedFromOrphans(state.expansion, flattenOrphanWindows(action.bundle.files))
           : state.expansion;
+      const collapsedThreads = pruneCollapsedThreads(
+        state.collapsedThreads,
+        action.bundle.comments,
+      );
       return {
-        state: { ...state, bundle: { kind: "ok", value: action.bundle }, expansion },
+        state: {
+          ...state,
+          bundle: { kind: "ok", value: action.bundle },
+          expansion,
+          collapsedThreads,
+        },
         intents: revalidateIfCursor(state),
       };
     }
@@ -395,6 +423,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           deleteConfirm: { kind: "closed" },
           collapsedFolders: new Set<string>(),
           collapsedOverrides: {},
+          collapsedThreads: new Set<string>(),
         },
         intents: NO_INTENTS,
       };
@@ -744,6 +773,44 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
     }
 
+    case "thread.collapse": {
+      // PRD #397 / ADR 0038. Add the Thread's top-level id to the set;
+      // no-op when already present (same-ref short-circuit).
+      if (state.collapsedThreads.has(action.id)) return { state, intents: NO_INTENTS };
+      const next = new Set(state.collapsedThreads);
+      next.add(action.id);
+      return {
+        state: { ...state, collapsedThreads: next },
+        intents: revalidateIfCursor(state),
+      };
+    }
+
+    case "thread.expand": {
+      // PRD #397 / ADR 0038. Remove the Thread's top-level id from the
+      // set; no-op when absent. Action seams for modifying verbs (`r`,
+      // `R`) pre-dispatch this so the composer / in-flight pill never
+      // mount under a hidden Card.
+      if (!state.collapsedThreads.has(action.id)) return { state, intents: NO_INTENTS };
+      const next = new Set(state.collapsedThreads);
+      next.delete(action.id);
+      return {
+        state: { ...state, collapsedThreads: next },
+        intents: revalidateIfCursor(state),
+      };
+    }
+
+    case "thread.toggle": {
+      // PRD #397 / ADR 0038. Flip membership. Surfaces wire `Shift+C`
+      // (TUI + webapp) and the webapp header chevron click here.
+      const next = new Set(state.collapsedThreads);
+      if (next.has(action.id)) next.delete(action.id);
+      else next.add(action.id);
+      return {
+        state: { ...state, collapsedThreads: next },
+        intents: revalidateIfCursor(state),
+      };
+    }
+
     case "layout.set":
       if (state.layout === action.layout) return { state, intents: NO_INTENTS };
       return { state: { ...state, layout: action.layout }, intents: NO_INTENTS };
@@ -804,6 +871,29 @@ function withExpansion(state: TourSessionState, next: ExpansionState): ReduceRes
     state: { ...state, expansion: next },
     intents: revalidateIfCursor(state),
   };
+}
+
+// Drop ids from `collapsedThreads` that are no longer top-level Comments
+// in the inbound bundle. Handles ADR 0038's cascade-delete rule: a Thread
+// fully removed (parent and all replies gone) drops out of the user's
+// hide-set automatically — the bundle is authoritative for what Threads
+// exist. Same-ref short-circuit when nothing changes.
+function pruneCollapsedThreads(
+  collapsed: ReadonlySet<string>,
+  comments: ReadonlyArray<Comment>,
+): Set<string> {
+  if (collapsed.size === 0) return collapsed as Set<string>;
+  const topLevelIds = new Set<string>();
+  for (const c of comments) {
+    if (c.replies_to === undefined) topLevelIds.add(c.id);
+  }
+  let changed = false;
+  const next = new Set<string>();
+  for (const id of collapsed) {
+    if (topLevelIds.has(id)) next.add(id);
+    else changed = true;
+  }
+  return changed ? next : (collapsed as Set<string>);
 }
 
 // Returns the standard `revalidateCursor` intent list iff a non-null cursor

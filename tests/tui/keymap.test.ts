@@ -198,6 +198,9 @@ describe("dispatchKey", () => {
   // toggle-collapse) is retired because `h`/`l` already cover those.
   // The diff-pane `c` arm (toggle-replies-collapse) moves to capital
   // `C` per ADR 0030 (lowercase = cursor-target, capital = global).
+  // PRD #397 / ADR 0038: the global `Shift+C` collapse-replies verb is
+  // retired in favour of per-Thread `toggle-thread-collapse`. Same
+  // binding, narrower semantics — acts only on the cursored Card.
   it("c on a file row in the sidebar is a plain noop (prior toggle-collapse retired)", () => {
     expect(dispatchKey(k("c"), sidebar).type).toBe("noop");
   });
@@ -214,16 +217,16 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c"), diffPaneOnCard).type).toBe("noop-comment-on-card");
   });
 
-  it("Shift+C in the diff pane dispatches toggle-replies-collapse (formerly bare `c`)", () => {
+  it("Shift+C in the diff pane dispatches toggle-thread-collapse (PRD #397)", () => {
     expect(dispatchKey(k("c", { shift: true }), diffPane).type).toBe(
-      "toggle-replies-collapse",
+      "toggle-thread-collapse",
     );
     expect(dispatchKey(k("c", { shift: true }), diffPaneOnCard).type).toBe(
-      "toggle-replies-collapse",
+      "toggle-thread-collapse",
     );
   });
 
-  it("Shift+C in the sidebar is a noop (toggle-replies-collapse is diff-pane only)", () => {
+  it("Shift+C in the sidebar is a noop (toggle-thread-collapse is diff-pane only)", () => {
     expect(dispatchKey(k("c", { shift: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("c", { shift: true }), sidebarFolder).type).toBe("noop");
   });

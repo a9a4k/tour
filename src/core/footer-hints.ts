@@ -23,6 +23,14 @@
 // legends now read `c: comment` / `T: picker`; the TUI also adds
 // `C: collapse replies`. The pre-cutover form (`a: comment`,
 // `c: collapse`, `t: picker`) is fully retired.
+//
+// PRD #397 / ADR 0038: the TUI's global "collapse all replies" verb is
+// retired in favour of per-Thread `Shift+C`. The hint label becomes
+// contextual: `C: collapse` when the cursored Thread is expanded,
+// `C: expand` when collapsed. The webapp diff-mode legend gains the
+// same hint (it had no equivalent before; the webapp didn't ship the
+// global gesture). Off-card cursor falls back to `C: collapse` so the
+// legend layout is stable.
 
 import type { PaneFocus } from "./pane-focus-state.js";
 
@@ -40,6 +48,12 @@ export interface ComposeFooterHintsOptions {
   // is `"diff"` so call sites that don't pass `paneFocus` still get a
   // sensible legend.
   paneFocus?: PaneFocus;
+  // PRD #397 / ADR 0038. When the cursor sits on a collapsed Thread,
+  // the `C` legend label flips from `C: collapse` to `C: expand` so the
+  // next gesture is unambiguous. Falsy / undefined → `C: collapse`
+  // (the default — off-card, off-screen, or Thread is currently
+  // expanded). Diff-mode only; sidebar drops the hint entirely.
+  currentThreadCollapsed?: boolean;
 }
 
 export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
@@ -75,6 +89,11 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   // bare `r: reply`, case-shifted to mark "different actor" (the
   // configured reply-agent runs the request in a separate session).
   const send = opts.showSendHint && opts.replyAgent ? `  ·  R: request reply` : "";
+  // PRD #397 / ADR 0038. Contextual `C` verb: `expand` when the cursor
+  // is on a collapsed Thread, otherwise `collapse`. The hint is in the
+  // diff-mode legend on both surfaces; the sidebar branch above
+  // already excludes it.
+  const collapseHint = opts.currentThreadCollapsed ? "C: expand" : "C: collapse";
   if (opts.surface === "tui") {
     // PRD #349 / ADR 0032 / issue #352: `o: open` slots next to
     // `y: yank path` — both are "side-effect on cursor's file."
@@ -86,7 +105,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // hint is unconditional in the legend (same convention as `r: reply`);
     // gating the verb on cursor context happens at the dispatcher.
     return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  d: delete${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank  ·  o: open  ·  Space: page (Shift: up)  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
+      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  d: delete${send}  ·  Enter: expand  ·  e: expand all  ·  ${collapseHint}  ·  y: yank  ·  o: open  ·  Space: page (Shift: up)  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
@@ -94,6 +113,8 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   // issue #358: `y: yank` slots next to `r: reply` in the lowercase-
   // cursor section — symmetric to the TUI legend. PRD #349 / ADR 0032 /
   // issue #353: `o: open` follows `y` so the cursor-target action
-  // cluster stays adjacent.
-  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
+  // cluster stays adjacent. PRD #397 / ADR 0038: `C: collapse` (or
+  // `expand` when current Thread is collapsed) follows the cursor-
+  // target cluster — the gesture is shared with the TUI.
+  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  y: yank  ·  o: open  ·  ${collapseHint}  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
 }

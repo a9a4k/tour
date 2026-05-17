@@ -126,6 +126,7 @@ describe("initialTourSessionState", () => {
       deleteConfirm: { kind: "closed" },
       collapsedFolders: new Set(),
       collapsedOverrides: {},
+      collapsedThreads: new Set(),
       paneFocus: "sidebar",
     });
   });
@@ -1906,6 +1907,180 @@ describe("reduce — folds slice (slice 3 foundation)", () => {
     const r = reduce(before, { type: "folds.clearAll" });
     expect(r.state).toBe(before);
     expect(r.intents).toEqual([]);
+  });
+});
+
+describe("reduce — thread collapse slice (PRD #397 / ADR 0038)", () => {
+  it("thread.collapse adds the id to the set; no intents when cursor is null", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "thread.collapse",
+      id: "ann-1",
+    });
+    expect(r.state.collapsedThreads.has("ann-1")).toBe(true);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.collapse is a same-state-ref no-op when the id is already present", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "thread.collapse",
+      id: "ann-1",
+    }).state;
+    const r = reduce(s, { type: "thread.collapse", id: "ann-1" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.expand removes the id from the set", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "thread.collapse",
+      id: "ann-1",
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "ann-2" }).state;
+    const r = reduce(s, { type: "thread.expand", id: "ann-1" });
+    expect(r.state.collapsedThreads.has("ann-1")).toBe(false);
+    expect(r.state.collapsedThreads.has("ann-2")).toBe(true);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.expand is a same-state-ref no-op when the id is absent", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "thread.expand", id: "missing" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.toggle flips membership (absent → present)", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "thread.toggle",
+      id: "ann-1",
+    });
+    expect(r.state.collapsedThreads.has("ann-1")).toBe(true);
+  });
+
+  it("thread.toggle flips membership (present → absent)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "thread.toggle",
+      id: "ann-1",
+    }).state;
+    const r = reduce(s, { type: "thread.toggle", id: "ann-1" });
+    expect(r.state.collapsedThreads.has("ann-1")).toBe(false);
+  });
+
+  it("thread.collapse with cursor !== null emits revalidateCursor (defence-in-depth for the validator clause)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+    const r = reduce(s, { type: "thread.collapse", id: "ann-1" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("thread.toggle with cursor !== null emits revalidateCursor on both directions", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+    const collapseR = reduce(s, { type: "thread.toggle", id: "ann-1" });
+    expect(collapseR.intents).toEqual([{ type: "revalidateCursor" }]);
+    s = collapseR.state;
+    const expandR = reduce(s, { type: "thread.toggle", id: "ann-1" });
+    expect(expandR.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("thread.* keeps other slices reference-stable", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+    s = reduce(s, { type: "expansion.expandFile", file: "foo.ts" }).state;
+    s = reduce(s, { type: "folds.toggleFolder", path: "src" }).state;
+    const r = reduce(s, { type: "thread.collapse", id: "ann-1" });
+    expect(r.state.expansion).toBe(s.expansion);
+    expect(r.state.bundle).toBe(s.bundle);
+    expect(r.state.collapsedFolders).toBe(s.collapsedFolders);
+    expect(r.state.collapsedOverrides).toBe(s.collapsedOverrides);
+    expect(r.state.composer).toBe(s.composer);
+  });
+
+  it("tour.switched clears collapsedThreads", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, { type: "thread.collapse", id: "ann-1" }).state;
+    s = reduce(s, { type: "thread.collapse", id: "ann-2" }).state;
+    expect(s.collapsedThreads.size).toBe(2);
+    const r = reduce(s, {
+      type: "tour.switched",
+      tourId: "tour-b",
+      bundle: mkBundle("tour-b"),
+    });
+    expect(r.state.collapsedThreads).toEqual(new Set());
+  });
+
+  it("bundle.refreshed preserves collapsedThreads for ids that survive in topLevel", () => {
+    const t1 = mkComment({ id: "t1" });
+    const t2 = mkComment({ id: "t2" });
+    const initial: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1, t2],
+      diff: "",
+      files: [],
+    };
+    let s: TourSessionState = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: initial,
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t2" }).state;
+    const refreshed: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1, t2, mkComment({ id: "r1", replies_to: "t1" })],
+      diff: "",
+      files: [],
+    };
+    const r = reduce(s, { type: "bundle.refreshed", bundle: refreshed });
+    expect(r.state.collapsedThreads.has("t1")).toBe(true);
+    expect(r.state.collapsedThreads.has("t2")).toBe(true);
+  });
+
+  it("bundle.refreshed drops collapsedThreads ids whose Thread was cascade-deleted (no longer in topLevel)", () => {
+    const t1 = mkComment({ id: "t1" });
+    const t2 = mkComment({ id: "t2" });
+    const initial: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1, t2],
+      diff: "",
+      files: [],
+    };
+    let s: TourSessionState = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: initial,
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t2" }).state;
+    // Cascade-delete: t2's Thread fully removed from bundle.
+    const refreshed: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1],
+      diff: "",
+      files: [],
+    };
+    const r = reduce(s, { type: "bundle.refreshed", bundle: refreshed });
+    expect(r.state.collapsedThreads.has("t1")).toBe(true);
+    expect(r.state.collapsedThreads.has("t2")).toBe(false);
+  });
+
+  it("layout.set preserves collapsedThreads", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "thread.collapse",
+      id: "ann-1",
+    }).state;
+    const r = reduce(s, { type: "layout.set", layout: "split" });
+    expect(r.state.collapsedThreads).toBe(s.collapsedThreads);
   });
 });
 

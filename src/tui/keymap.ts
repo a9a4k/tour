@@ -52,7 +52,7 @@ export type KeyAction =
   | { type: "expand-folder" }
   | { type: "collapse-folder" }
   | { type: "collapse-parent" }
-  | { type: "toggle-replies-collapse" }
+  | { type: "toggle-thread-collapse" }
   | { type: "next-comment" }
   | { type: "prev-comment" }
   | { type: "toggle-layout" }
@@ -126,8 +126,10 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
 
   // Capital-letter bindings are reserved for Tour-wide state (ADR 0030):
   // `L` toggles layout (ADR 0011), `T` opens the picker, `C` toggles the
-  // replies-collapse across every Thread. Lowercase letters bind cursor-
-  // target actions on the same axis (e.g. `c` for comment, `t` is unbound).
+  // collapse of the cursored Thread (PRD #397 / ADR 0038 — the global
+  // "collapse all replies" gesture is retired). Lowercase letters bind
+  // cursor-target actions on the same axis (e.g. `c` for comment, `t` is
+  // unbound).
   //
   // Issue #390 / ADR 0021 addendum: `R` (shift-r) is the request-reply
   // verb — same letter as bare `r: reply`, case-shifted to mark
@@ -142,7 +144,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     return { type: "open-picker" };
   }
   if (!ctx.sidebarFocused && !key.ctrl && key.shift && key.name === "c") {
-    return { type: "toggle-replies-collapse" };
+    return { type: "toggle-thread-collapse" };
   }
   if (!key.ctrl && key.shift && key.name === "r") {
     if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };

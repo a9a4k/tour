@@ -24,6 +24,11 @@ import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hin
 export interface FooterHintOptions {
   replyAgent?: string;
   showSendHint?: boolean;
+  paneFocus?: import("../core/pane-focus-state.js").PaneFocus;
+  /** PRD #397 / ADR 0038. Flips the diff-mode `C` legend label from
+   *  `C: collapse` to `C: expand` when the cursored Thread is currently
+   *  collapsed. Off-card / undefined → `C: collapse`. */
+  currentThreadCollapsed?: boolean;
 }
 
 export function composeFooterHints(opts: FooterHintOptions = {}): string {
