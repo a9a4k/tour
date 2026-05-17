@@ -98,6 +98,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   runtime handler are gone — this branch was its only emitter and
   `scrollCursorTarget` already covers the same adapter call.
   Behaviour is identical on TUI and webapp (shared reducer).
+- **Cursor on a deleted Reply / Parent falls back to the surviving
+  lineage instead of clearing (issue #402).** When `deleteConfirm.
+  succeeded` fires for a CardAnchor target, the reducer now projects
+  the cursor onto the most-specific surviving node in the deleted
+  node's lineage *before* the watcher's `bundle.refreshed` lands:
+  reply-only cascade → land on the parent Thread root id;
+  parent-stub cascade → keep cursor on the same parent id (the
+  `[deleted]` stub Card row still exists); thread-vanishes cascade
+  → clear the cursor. `preferredSide` is preserved across the snap.
+  Pre-fix, the validator saw a CardAnchor whose comment id had
+  vanished and returned null, so the surface fell back to a diff-row
+  focus indicator after every Reply delete. `validateCursor`'s pure
+  signature is unchanged — the projection lives at the dispatch site
+  where the bundle still contains the doomed node and
+  `findThreadByNode` resolves the lineage.
 
 - **TUI: collapsed Thread is a single `j`/`k` cursor stop (issue #398,
   PRD #397 / ADR 0038).** `moveCursor` now consults `collapsedThreads`

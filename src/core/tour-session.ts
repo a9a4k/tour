@@ -4,7 +4,14 @@ import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
 import type { Comment, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
-import { cursorFromComment, isCardAnchor, isRowAnchor, preferredSideOf } from "./cursor-state.js";
+import {
+  cursorFromComment,
+  findThreadByNode,
+  isCardAnchor,
+  isRowAnchor,
+  preferredSideOf,
+} from "./cursor-state.js";
+import { buildThreads } from "./threads.js";
 import type { PaneFocus, PaneFocusAction } from "./pane-focus-state.js";
 import { reducePaneFocus } from "./pane-focus-state.js";
 import type {
@@ -695,15 +702,70 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
     }
 
-    case "deleteConfirm.succeeded":
-      // submitting → closed. The watcher's `comment-changed` event
-      // will refresh the bundle and the C4 cascade will surface in the
-      // projected state on the next render. No intent emitted here.
+    case "deleteConfirm.succeeded": {
+      // submitting → closed. The watcher's `comment-changed` event will
+      // refresh the bundle and the C4 cascade surfaces in the next render.
+      //
+      // Issue #402: when the cursor sits on the doomed Card, project it
+      // onto the most-specific surviving node in the deleted node's
+      // lineage *before* `bundle.refreshed` lands. Three cases mirror
+      // the `DeleteCascade` union (delete-cascade.ts):
+      //   reply-only       → land on the parent Thread root id
+      //                      (parent live, or parent is a [deleted]
+      //                      stub with ≥1 surviving sibling)
+      //   parent-stub      → leave cursor on the same parent id
+      //                      (the [deleted] stub Card row still exists)
+      //   thread-vanishes  → clear the cursor
+      // The projection runs against the still-old bundle because at
+      // this dispatch the doomed node remains in `bundle.value.comments`
+      // — `findThreadByNode(targetId, …)` resolves the lineage. The
+      // follow-up `bundle.refreshed` is a cursor no-op for the snapped
+      // anchor: parent's Card row is still in flatRows, or the cursor
+      // is null and `revalidateIfCursor` short-circuits.
       if (state.deleteConfirm.kind !== "submitting") return { state, intents: NO_INTENTS };
-      return {
-        state: { ...state, deleteConfirm: { kind: "closed" } },
+      const closedDc = { kind: "closed" as const };
+      const cursor = state.cursor;
+      const noSnap = {
+        state: { ...state, deleteConfirm: closedDc },
         intents: NO_INTENTS,
       };
+      if (
+        !isCardAnchor(cursor) ||
+        cursor.commentId !== action.targetId ||
+        state.bundle.kind !== "ok"
+      ) {
+        return noSnap;
+      }
+      const threads = buildThreads(state.bundle.value.comments);
+      const found = findThreadByNode(action.targetId, threads);
+      if (!found) return noSnap;
+      let nextCursor: Cursor | null;
+      if (found.nodeIdx === 0) {
+        // Cursor on the doomed parent. ≥1 reply survives → parent-stub
+        // (cursor stays on parent id). Otherwise the Thread vanishes.
+        nextCursor = found.thread.replies.length === 0 ? null : cursor;
+      } else {
+        // Cursor on a doomed Reply. If parent already a [deleted] stub
+        // AND this was the last live reply, the Thread vanishes.
+        const otherLiveReplies = found.thread.replies.filter(
+          (r) => r.id !== action.targetId,
+        );
+        const parentIsLive = found.thread.root.deleted === undefined;
+        nextCursor =
+          otherLiveReplies.length === 0 && !parentIsLive
+            ? null
+            : {
+                kind: "card",
+                commentId: found.thread.root.id,
+                preferredSide: cursor.preferredSide,
+              };
+      }
+      if (nextCursor === cursor) return noSnap;
+      return {
+        state: { ...state, cursor: nextCursor, deleteConfirm: closedDc },
+        intents: [{ type: "mirrorAnnUrl", commentId: nextCursor?.commentId ?? null }],
+      };
+    }
 
     case "deleteConfirm.failed": {
       // submitting → errored, preserving the target id so the user can
