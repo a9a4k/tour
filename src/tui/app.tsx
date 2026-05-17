@@ -1741,7 +1741,7 @@ function App(props: AppProps) {
         const dir = action.type === "cursor-down" ? "down" : "up";
         const sb = diffScrollRef.current;
         if (!sb) {
-          dispatchCursor(moveCursor(cursor, dir, flatRowsList, threads));
+          dispatchCursor(moveCursor(cursor, dir, flatRowsList, threads, collapsedThreads));
           return;
         }
         // Diff-pane motion contract (ADR 0011 — Diff-pane motion contract).
@@ -1759,6 +1759,7 @@ function App(props: AppProps) {
             contentHeight: sb.scrollHeight,
             rowY: buildRowYResolver(sb, flatRowsList),
             threads,
+            collapsedThreads,
           },
           dir,
           3,

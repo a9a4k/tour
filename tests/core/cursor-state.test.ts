@@ -1249,6 +1249,52 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
     });
   });
 
+  // PRD #397 / ADR 0038 — when a Thread is in `collapsedThreads`, its
+  // Reply nodes are not rendered, so `j`/`k` must treat the whole
+  // Thread as a single cursor stop (one press in = land on Card, one
+  // press out = exit to next flat row). Without this, `moveCursor`
+  // would walk into the first Reply, the view-level `validateCursor`
+  // would project the anchor back to the parent, and the user would
+  // need N+1 j-presses on a Thread with N Replies before the cursor
+  // visibly moved past the Card.
+  describe("moveCursor with collapsedThreads — single stop on j/k", () => {
+    it("`j` from the parent of a collapsed Thread exits the Card to the next flat row (does not walk into Replies)", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      const collapsedThreads = new Set(["p1"]);
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads, collapsedThreads);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(6);
+    });
+
+    it("`k` from the parent of a collapsed Thread exits the Card upward to the previous flat row", () => {
+      const threads = [{ root: parent, replies: [r1, r2] }];
+      const collapsedThreads = new Set(["p1"]);
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const next = moveCursor(c, "up", rowsWithCard, threads, collapsedThreads);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.lineNumber).toBe(5);
+    });
+
+    it("when the Thread is not in collapsedThreads, `j` walks into Replies as before", () => {
+      const threads = [{ root: parent, replies: [r1] }];
+      const collapsedThreads = new Set<string>();
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "additions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads, collapsedThreads);
+      expect(next).toEqual({ kind: "card", commentId: "r1", preferredSide: "additions" });
+    });
+
+    it("preserves preferredSide when exiting a collapsed Thread to a paired row", () => {
+      const threads = [{ root: parent, replies: [r1] }];
+      const collapsedThreads = new Set(["p1"]);
+      const c: CardAnchor = { kind: "card", commentId: "p1", preferredSide: "deletions" };
+      const next = moveCursor(c, "down", rowsWithCard, threads, collapsedThreads);
+      if (!isRowAnchor(next)) throw new Error("narrow");
+      expect(next.preferredSide).toBe("deletions");
+      expect(next.side).toBe("deletions");
+    });
+  });
+
   describe("nextCard / prevCard with thread context — `n`/`p` continues top-level only", () => {
     const parentA = ann({
       id: "pA",

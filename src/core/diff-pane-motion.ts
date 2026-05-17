@@ -35,6 +35,11 @@ export interface PaneState {
    *  omitted, `step()` preserves its prior contract (the webapp does
    *  not adopt reply-level traversal). */
   threads?: ReadonlyArray<Thread>;
+  /** PRD #397 / ADR 0038 — top-level Comment ids the user has minimised
+   *  to a one-liner. When the cursor's Thread is in this set, the in-
+   *  Card walker is skipped so `j`/`k` treats the whole Thread as a
+   *  single cursor stop. Omitting it preserves prior contract. */
+  collapsedThreads?: ReadonlySet<string>;
 }
 
 export interface MotionResult {
@@ -50,7 +55,13 @@ export function step(
   if (!state.cursor) {
     return { cursor: null, scrollTop: state.scrollTop };
   }
-  const next = moveCursor(state.cursor, direction, state.flatRows, state.threads);
+  const next = moveCursor(
+    state.cursor,
+    direction,
+    state.flatRows,
+    state.threads,
+    state.collapsedThreads,
+  );
   if (next === state.cursor || next === null) {
     return { cursor: state.cursor, scrollTop: state.scrollTop };
   }

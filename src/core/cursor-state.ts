@@ -149,17 +149,27 @@ export function initialCursor(args: {
  * (parent → exit). When `threads` is omitted, the function preserves
  * its prior contract — the webapp does not adopt the reply-level
  * walker (ADR 0037 is TUI-scoped).
+ *
+ * PRD #397 / ADR 0038 — when `collapsedThreads` contains the Thread's
+ * root id, the Replies are not rendered, so the in-Card walker is
+ * skipped: the Thread is a single cursor stop on `j`/`k`, exiting
+ * directly to the next/previous flat row. Without this, the view-
+ * level validator would project a Reply anchor back to the parent
+ * (cursor-state.ts:projectAnchorOnCollapse) and the user would need
+ * N+1 j-presses on a Thread with N hidden Replies before the cursor
+ * visibly moved.
  */
 export function moveCursor(
   cursor: Cursor | null,
   direction: "up" | "down",
   flatRows: ReadonlyArray<FlatRow>,
   threads?: ReadonlyArray<Thread>,
+  collapsedThreads?: ReadonlySet<string>,
 ): Cursor | null {
   if (!cursor) return null;
   if (cursor.kind === "card" && threads) {
     const found = findThreadByNode(cursor.commentId, threads);
-    if (found) {
+    if (found && !collapsedThreads?.has(found.thread.root.id)) {
       const nodes = [found.thread.root, ...found.thread.replies];
       const nextIdx = direction === "down" ? found.nodeIdx + 1 : found.nodeIdx - 1;
       if (nextIdx >= 0 && nextIdx < nodes.length) {

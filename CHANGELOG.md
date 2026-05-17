@@ -48,6 +48,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: collapsed Thread is a single `j`/`k` cursor stop (issue #398,
+  PRD #397 / ADR 0038).** `moveCursor` now consults `collapsedThreads`
+  before walking the in-Card reply nodes added by ADR 0037 — when the
+  cursor's Thread root is in the set, the walker is skipped and the
+  step falls straight through to the next/previous flat row. Pre-fix,
+  `moveCursor` walked into Replies regardless of collapse state and
+  the view-level `projectAnchorOnCollapse` validator silently projected
+  each Reply anchor back to the parent's id, so a user pressing `j` on
+  a collapsed Thread with N hidden Replies would see no cursor motion
+  for N+1 keystrokes before the cursor finally exited the Card. The
+  AC ("a collapsed Thread is a single cursor stop on `j`/`k`") now
+  matches behaviour. The `n`/`p` jump gesture was already correct
+  (`nextCard` / `prevCard` enumerate top-level Comments only) and is
+  untouched by this fix. The `collapsedThreads` parameter is
+  threaded through `diff-pane-motion.ts:step` so both the off-
+  viewport branch (no scrollbox) and the in-viewport branch in
+  `tui/app.tsx` honour it.
+
 - **TUI: `R` (request reply) now fires when the cursor sits on a reply
   node (issue #395).** ADR 0037 broadened `CardAnchor.commentId` to
   include reply ids, but `sendTarget` still assumed the cursor's id
