@@ -420,6 +420,19 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     padding-left: 6px;
     border-radius: 2px;
   }
+  /* Issue #409 — third cue for TUI parity. The CSS-only treatment
+     above reads as too subtle next to the unchanged Card chrome on
+     dogfood; the TUI surfaces the same node with a glyph on the
+     byline. Riding the existing .active-node selector via ::before
+     keeps the class the single source of truth — when j / k flips
+     the class, the glyph moves with it. Presentational pseudo-element
+     so screen readers ignore it (the byline text carries the semantics). */
+  .comment-block .ann-header.active-node::before,
+  .comment-block .ann-reply.active-node::before {
+    content: "● ";
+    color: var(--fg-accent);
+    font-weight: 700;
+  }
   .comment-block .ann-actions {
     margin-top: 8px;
     display: flex;

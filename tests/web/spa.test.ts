@@ -141,6 +141,24 @@ describe("spa shell html()", () => {
     expect(html()).toMatch(/\.comment-block\s+\.selection-marker\s*\{[^}]*color:\s*var\(--fg-accent\)/);
   });
 
+  it("prefixes the within-Card active node with a `●` glyph via ::before (issue #409 — TUI parity)", () => {
+    // Issue #408 shipped a CSS-only active-node cue (left-accent stroke
+    // + tint). Dogfood revealed it read as too subtle next to the
+    // unchanged Card chrome — the TUI's matching surface paints three
+    // cues (heavy border + accent background + `●` glyph) so the
+    // webapp needs the third cue to match. The glyph rides the
+    // existing `.active-node` class via a `::before` pseudo so the
+    // class stays the single source of truth — when `j` / `k` flips
+    // the class the glyph moves with it.
+    const out = html();
+    expect(out).toMatch(
+      /\.comment-block\s+\.ann-header\.active-node::before,\s*\.comment-block\s+\.ann-reply\.active-node::before\s*\{[^}]*content:\s*"●\s*"/,
+    );
+    expect(out).toMatch(
+      /\.comment-block\s+\.ann-header\.active-node::before,\s*\.comment-block\s+\.ann-reply\.active-node::before\s*\{[^}]*color:\s*var\(--fg-accent\)/,
+    );
+  });
+
   it("renders a baseline container at rest — neutral 1px border + tinted surface (Issue #162)", () => {
     const out = html();
     // The unfocused card must read as a card, not raw text: visible neutral

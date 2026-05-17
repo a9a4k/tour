@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Webapp: within-Card active-node cue gains a `●` glyph (issue #409 —
+  TUI parity follow-up to #408).** Issue #408 shipped a CSS-only
+  active-node cue (left-accent stroke + `--bg-accent-current` tint) on
+  the parent header / each reply wrapper. Dogfood revealed the
+  treatment read as too subtle next to the unchanged
+  `.comment-block.current` Card chrome — the TUI's matching surface
+  paints three redundant cues (heavy border + accent background +
+  `●` glyph), and the webapp post-#408 carried only two of the three.
+  The glyph is now reinstated via a `::before` pseudo-element on the
+  existing `.active-node` selector (`content: "● "; color: var(--fg-
+  accent); font-weight: 700;`) — the class stays the single source of
+  truth, so when `j` / `k` flips the class the glyph moves with it.
+  Presentational pseudo-element so screen readers ignore it (the
+  byline text carries the semantics). No JSX change; no plumbing
+  change; no TUI / reducer / runtime change.
+
 ### Fixed
 
 - **Webapp: within-Card cursor cue lights the active node (issue #408 /
