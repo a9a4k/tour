@@ -176,7 +176,7 @@ function deriveNavSlice(
     const idx = base.topLevel.findIndex((a) => a.id === cursor.commentId);
     if (idx !== -1) currentIdx = idx + 1;
   }
-  const target = sendTarget(cursor, base.topLevel, base.repliesByRoot);
+  const target = sendTarget(cursor, base.threads);
   return {
     ...base,
     currentIdx,

@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TUI: `R` (request reply) now fires when the cursor sits on a reply
+  node (issue #395).** ADR 0037 broadened `CardAnchor.commentId` to
+  include reply ids, but `sendTarget` still assumed the cursor's id
+  was a top-level. After submitting a Reply, the post-submit
+  `scrollToComment` landed the cursor on the freshly-created Reply and
+  pressing `R` was a silent no-op until the user manually `k`-stepped
+  back up to the parent. `sendTarget` now resolves the cursor through
+  `findThreadByNode` so `R` is Thread-scoped regardless of which node
+  the cursor sits on — the same target the cursor-on-parent case has
+  dispatched to since issue #196. Webapp gains the fix for free
+  (shared pure module). Signature change:
+  `sendTarget(cursor, threads)` replaces the prior
+  `(cursor, topLevel, repliesByRoot)` — `threads` carries everything
+  the resolution needs in one scan.
+
 - **CLI flag parser accepts `--flag=value` (issue #393).** The argv
   scanner now splits long flags on the first `=`, so
   `tour tui --reply-agent=claude` is equivalent to

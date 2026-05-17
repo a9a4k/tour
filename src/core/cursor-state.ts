@@ -58,9 +58,10 @@ export interface CardAnchor {
 
 /** Locate the Thread that contains a given commentId (parent or
  *  Reply), and the node's position within `[root, ...replies]`. Used
- *  by the in-Card `j`/`k` walker (ADR 0037) and by the row-idx /
- *  validate mappers when the cursor sits on a Reply. */
-function findThreadByNode(
+ *  by the in-Card `j`/`k` walker (ADR 0037), the row-idx / validate
+ *  mappers when the cursor sits on a Reply, and `sendTarget` (issue
+ *  #395) so `R` dispatches Thread-scoped from a reply node. */
+export function findThreadByNode(
   commentId: string,
   threads: ReadonlyArray<Thread>,
 ): { thread: Thread; nodeIdx: number } | null {
