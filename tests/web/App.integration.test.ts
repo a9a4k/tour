@@ -1695,3 +1695,286 @@ describe("App cross-surface pane focus (PRD #343 / issue #346)", () => {
     expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
   });
 });
+
+// Issue #404: ADR 0037's in-Card walker is gated on `moveCursor` receiving
+// `threads` + `collapsedThreads`. The TUI passes both; the webapp's
+// `case "move-down" / "move-up"` reducer branches did not, so `j`/`k`
+// on a parent Card skipped past the entire Thread to the next diff row
+// instead of descending into the reply nodes. These tests pin that the
+// webapp now walks: parent → replies → next-row on `j`, and the mirror
+// on `k`. A collapsed-Thread variant pins that the in-Card walker is
+// skipped when the Thread's root id is in `collapsedThreads`.
+
+const replyWalkTourId = "2026-05-17-000000-issue-404-reply-walk";
+
+const replyWalkTourSummary = {
+  id: replyWalkTourId,
+  title: "Reply walk fixture",
+  status: "open" as const,
+  created_at: "2026-05-17T00:00:00Z",
+  closed_at: "",
+  head_sha: "deadbeef",
+  base_sha: "cafebabe",
+  head_source: "feature/x",
+  base_source: "main",
+  wip_snapshot: false,
+};
+
+const replyWalkDiff = `diff --git a/src/foo.ts b/src/foo.ts
+index 1..2 100644
+--- a/src/foo.ts
++++ b/src/foo.ts
+@@ -1,2 +1,4 @@
+ first line
+-old line
++new line
++added line
++third added
+`;
+
+const replyWalkParent = {
+  id: "ann-parent",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 2,
+  line_end: 2,
+  body: "parent",
+  author: "alice",
+  author_kind: "human" as const,
+  created_at: "2026-05-17T00:00:00Z",
+};
+
+const replyWalkReply1 = {
+  id: "ann-reply-1",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 2,
+  line_end: 2,
+  body: "reply 1",
+  author: "alice",
+  author_kind: "human" as const,
+  replies_to: "ann-parent",
+  created_at: "2026-05-17T00:00:01Z",
+};
+
+const replyWalkReply2 = {
+  id: "ann-reply-2",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 2,
+  line_end: 2,
+  body: "reply 2",
+  author: "alice",
+  author_kind: "human" as const,
+  replies_to: "ann-parent",
+  created_at: "2026-05-17T00:00:02Z",
+};
+
+const replyWalkBundle = {
+  kind: "ok" as const,
+  tour: replyWalkTourSummary,
+  comments: [replyWalkParent, replyWalkReply1, replyWalkReply2],
+  diff: replyWalkDiff,
+  files: [
+    {
+      name: "src/foo.ts",
+      type: "modified",
+      hunks: [],
+      oldContent: "first line\nold line\n",
+      newContent: "first line\nnew line\nadded line\nthird added\n",
+      classification: { collapsed: false },
+      orphanWindows: [],
+    },
+  ],
+};
+
+function stubReplyWalkFetch(): typeof fetch {
+  return vi.fn((input: RequestInfo | URL) => {
+    const u = typeof input === "string" ? input : input.toString();
+    if (u.includes("/api/tours?")) {
+      return Promise.resolve(
+        new Response(JSON.stringify([replyWalkTourSummary]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${replyWalkTourId}`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(replyWalkBundle), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (u.endsWith(`/api/tours/${replyWalkTourId}/reply-lock`)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as unknown as typeof fetch;
+}
+
+function annFromHash(): string | null {
+  if (window.location.hash === "") return null;
+  return decodeURIComponent(window.location.hash.slice(1));
+}
+
+describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", () => {
+  it("j on a parent Card with replies lands the cursor on the first reply id", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    // Bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on the
+    // first top-level Comment — the parent. The mirrorAnnUrl intent writes
+    // the parent id into window.location.hash.
+    expect(annFromHash()).toBe("ann-parent");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+
+    // ADR 0037 in-Card walker: parent → first reply.
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    // Card chrome stays lit while the cursor walks into a reply node
+    // (Thread-level `isCurrent` is true when the cursor sits on any
+    // Thread node, matching TUI behaviour).
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-parent"]`,
+    );
+    expect(parentBlock).not.toBeNull();
+    expect(parentBlock!.classList.contains("current")).toBe(true);
+  });
+
+  it("j twice walks parent → reply-1 → reply-2; one more j exits the Thread to the next diff row", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    expect(annFromHash()).toBe("ann-parent");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-2");
+
+    // Past the last reply: the next `j` exits the Card to a diff row.
+    // mirrorAnnUrl fires with null, clearing the URL's `#<id>` fragment.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBeNull();
+  });
+
+  it("k from a reply walks back up the Thread (reply-2 → reply-1 → parent)", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    // Walk down twice so the cursor sits on reply-2.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-2");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
+  });
+
+  it("j on a Card whose Thread is collapsed (Shift+C) skips the Thread to the next diff row", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    expect(annFromHash()).toBe("ann-parent");
+
+    // PRD #397 / ADR 0038: Shift+C collapses the Thread under the cursor.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "C",
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    await flush();
+
+    // With the Thread collapsed, the in-Card walker is skipped. `j`
+    // exits straight to the diff row past the Card — cursor becomes a
+    // RowAnchor, mirrorAnnUrl fires with null, hash clears.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBeNull();
+  });
+});

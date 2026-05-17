@@ -704,7 +704,12 @@ function renderComment(
   navTotal: number,
 ): React.ReactNode {
   const ann = row.comment;
-  const isCurrent = ann.id === cursorCardId;
+  // Issue #404 — ADR 0037's in-Card walker lands the cursor on a reply
+  // id; the parent's Card chrome must stay lit while the cursor sits on
+  // any node in the Thread (matches TUI behaviour, DiffRows.tsx).
+  const isCurrent =
+    cursorCardId !== null &&
+    (ann.id === cursorCardId || row.replies.some((r) => r.id === cursorCardId));
   const navIndex = navIndexById?.get(ann.id) ?? null;
   return (
     <CardRow

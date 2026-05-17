@@ -79,6 +79,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp `j` / `k` descend into Card reply nodes (issue #404).**
+  ADR 0037's in-Card walker was wired on the TUI but not the webapp:
+  the `case "move-down" / "move-up"` reducer branches in `App.tsx`
+  called `moveCursor` without the `threads` / `collapsedThreads`
+  arguments the walker is gated on, so `j` on a parent Card with
+  replies skipped past the whole Thread to the next diff row. Both
+  call sites now thread `view.nav.threads` +
+  `sessionState.collapsedThreads` through, matching the TUI's call at
+  `src/tui/app.tsx`. `decideReanchor` (the bundle-load re-anchor
+  policy) was also extended with a `threads` parameter — without it
+  the post-`j` cursor (now a reply id, not a top-level id) failed the
+  `topLevel.some(...)` check and snapped right back to the parent on
+  the next render. `FileBlock.renderComment` + the snapshot-lost
+  `CommentList` now compute `isCurrent` over the whole Thread so the
+  Card chrome stays lit when the cursor walks onto a reply (parity
+  with `DiffRows.tsx`).
 - **Cursor follows the freshly-created Comment after a composer submit
   (issue #401).** Pre-fix, `composer.submitted` emitted a
   `scrollToComment` intent (scroll-only) and an

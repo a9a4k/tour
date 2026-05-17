@@ -539,7 +539,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
-    const action = decideReanchor(cursor, readAnnFromUrl(), topLevel);
+    const action = decideReanchor(
+      cursor,
+      readAnnFromUrl(),
+      topLevel,
+      view.nav.threads,
+    );
     if (action.kind === "noop") return;
     // Fresh landing (URL `?ann=` restore or stale-fallback to first
     // comment): cursor.set carries `placement: "center"` so the
@@ -1474,15 +1479,30 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Compute next pure via moveCursor against the latest
           // flat-rows; cursor.set dispatch fires scrollCursorTarget
           // which the intent listener realizes as scrollIntoView.
+          // ADR 0037 / issue #404 — passing `view.nav.threads` +
+          // `sessionState.collapsedThreads` enables the in-Card walker
+          // so `j`/`k` descend into reply nodes (parity with the TUI).
           if (view.kind !== "ok") return;
-          const next = moveCursor(cursor, "down", view.rows.flatRowsList);
+          const next = moveCursor(
+            cursor,
+            "down",
+            view.rows.flatRowsList,
+            view.nav.threads,
+            sessionState.collapsedThreads,
+          );
           if (next === null || next === cursor) return;
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
         }
         case "move-up": {
           if (view.kind !== "ok") return;
-          const next = moveCursor(cursor, "up", view.rows.flatRowsList);
+          const next = moveCursor(
+            cursor,
+            "up",
+            view.rows.flatRowsList,
+            view.nav.threads,
+            sessionState.collapsedThreads,
+          );
           if (next === null || next === cursor) return;
           store.dispatch({ type: "cursor.set", anchor: next });
           return;
@@ -3007,12 +3027,15 @@ function CommentListSnapshotLost({
             replies.some((r) => r.id === composerTarget.replies_to))
             ? composerTarget.replies_to
             : null;
+        const isCurrent =
+          cursorCardId !== null &&
+          (a.id === cursorCardId || replies.some((r) => r.id === cursorCardId));
         return (
           <CommentCard
             key={a.id}
             comment={a}
             replies={replies}
-            isCurrent={a.id === cursorCardId}
+            isCurrent={isCurrent}
             navIndex={navIndexById.get(a.id) ?? null}
             navTotal={navTotal}
             registerRef={registerCommentRef}

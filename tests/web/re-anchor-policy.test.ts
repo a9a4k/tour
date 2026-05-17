@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { decideReanchor } from "../../src/web/client/re-anchor-policy.js";
 import type { Comment } from "../../src/core/types.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
+import { buildThreads } from "../../src/core/threads.js";
 
 function ann(id: string, file = "x.txt"): Comment {
   return {
@@ -97,5 +98,47 @@ describe("decideReanchor (issue #197 Bug B)", () => {
       interactive: { subKind: "hunk-separator", boundaryRef: 1 },
     };
     expect(decideReanchor(cursor, "annA", topLevel)).toEqual({ kind: "noop" });
+  });
+
+  // Issue #404 — ADR 0037's in-Card walker lands the cursor on a reply
+  // id. The reply id is NOT in topLevel but IS a real Thread node; the
+  // bundle-load re-anchor effect re-runs after every cursor change and
+  // would snap a reply-id cursor back to the parent without `threads`.
+  it("noop on a CardAnchor that points to a Reply id (issue #404)", () => {
+    const annParent = ann("annP", "a.txt");
+    const annReply: Comment = {
+      ...ann("annR", "a.txt"),
+      replies_to: "annP",
+      created_at: "2026-01-01T00:00:01Z",
+    };
+    const topLevelWithThread = [annParent];
+    const threads = buildThreads([annParent, annReply]);
+    const cursor: Cursor = {
+      kind: "card",
+      commentId: "annR",
+      preferredSide: "additions",
+    };
+    expect(decideReanchor(cursor, null, topLevelWithThread, threads)).toEqual({
+      kind: "noop",
+    });
+  });
+
+  it("stale-fallback still fires for a CardAnchor whose id matches no Thread node (issue #404)", () => {
+    const annParent = ann("annP", "a.txt");
+    const annReply: Comment = {
+      ...ann("annR", "a.txt"),
+      replies_to: "annP",
+      created_at: "2026-01-01T00:00:01Z",
+    };
+    const threads = buildThreads([annParent, annReply]);
+    const cursor: Cursor = {
+      kind: "card",
+      commentId: "ghost",
+      preferredSide: "additions",
+    };
+    expect(decideReanchor(cursor, null, [annParent], threads)).toEqual({
+      kind: "stale-fallback",
+      target: annParent,
+    });
   });
 });
