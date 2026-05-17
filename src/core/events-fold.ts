@@ -90,6 +90,12 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
     parentsWithSurvivingReplies.add(c.replies_to);
   }
 
+  // Always shallow-copy on emit so callers mutating the returned
+  // `CommentState[]` can't corrupt the fold's internal `created` map.
+  // The stub path was already copying via `{ ...c, body: "" }`; the
+  // live paths were sharing object identity, which is fine for current
+  // consumers but a subtle footgun for any future code that mutates the
+  // returned list in place.
   const out: CommentState[] = [];
   for (const id of order) {
     const c = created.get(id);
@@ -97,7 +103,7 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
     if (c.replies_to !== undefined) {
       // Reply: emit iff not deleted.
       if (c.deleted) continue;
-      out.push(c);
+      out.push({ ...c });
     } else {
       // Top-level: emit as-is, or as a `[deleted]` stub, or skip when
       // the whole Thread has been retracted.
@@ -105,7 +111,7 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
         if (!parentsWithSurvivingReplies.has(c.id)) continue;
         out.push({ ...c, body: "" });
       } else {
-        out.push(c);
+        out.push({ ...c });
       }
     }
   }

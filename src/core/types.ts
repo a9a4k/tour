@@ -24,13 +24,13 @@ export interface Comment {
   author_kind: AuthorKind;
   replies_to?: string;
   created_at: string;
-  // Issue #389 / ADR 0036 (Slice E): C4 cascade marker. Stamped at
-  // fold time when a `comment.deleted` event targets this comment AND
-  // ≥1 reply survives (parent-stub case). Leaf-deleted replies and
-  // fully-deleted threads are absent from the projection entirely;
-  // this field only appears on `[deleted]` parent stubs. The fold lives
-  // in `events-fold.ts`; the surfaces consuming projections (CLI / TUI
-  // / webapp / pickup / reply-runner) switch on it to render the stub.
+  // Issue #389 / ADR 0036 (Slice E): C4 cascade marker. Set internally
+  // on every deleted comment during the fold; only ever observable on
+  // `[deleted]` parent stubs in the projection that consumers see —
+  // leaf-deleted replies and fully-deleted threads are filtered out
+  // before emit. The fold lives in `events-fold.ts`; the surfaces
+  // consuming projections (CLI / TUI / webapp / pickup / reply-runner)
+  // switch on this field to render the stub.
   deleted?: { at: string };
 }
 
