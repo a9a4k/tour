@@ -25,6 +25,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (cursor stays on the same Card). Footer legend label flips
   contextually: `C: collapse` when expanded, `C: expand` when
   collapsed; the retired `C: collapse replies` label is gone.
+- **CLI guardrails against agent author-identity mistakes (issue #396).**
+  Three independent improvements landed together:
+  1. `tour comment ... --as-human --batch -` with non-TTY stdin now emits
+     a one-line `tour: warning: ...` to stderr nudging an agent caller
+     to drop `--as-human`. The operation still succeeds — the warning
+     is captured in agent transcripts so the mistake is caught in the
+     same turn. Interactive (TTY) stdin and the single-comment path are
+     unaffected.
+  2. The `--author <name>` flag in `--batch -` mode now acts as a
+     per-batch default. Items that omit `author` pick up the CLI value;
+     per-item `author` in the JSONL still wins. Symmetric with the
+     existing `--as-agent` / `--as-human` cascade into `author_kind`.
+     Pre-fix, the CLI `--author` flag was silently ignored in batch
+     mode, leaving `author: "agent"` instead of e.g. `author: "claude"`.
+  3. The `/tour` skill's authoring example now passes `--as-agent`
+     explicitly, names the audience-vs-author confusion as Comment
+     rule #8, and ships a post-authoring `tour pickup --json | jq -e`
+     self-audit that fails loudly when any comment has `author_kind
+     !== "agent"`. `REFERENCE.md` documents the new `--author`
+     precedence.
 
 ### Fixed
 

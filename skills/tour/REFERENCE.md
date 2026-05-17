@@ -15,6 +15,16 @@ Each line of input to `tour comment <id> --batch -` is a JSON object:
 | `author` | string | no | Display string; defaults to the `author_kind` literal (`"agent"`) |
 | `author_kind` | `"agent"` \| `"human"` | no | Defaults to `"agent"` for CLI invocations |
 
+### Batch-mode `--author` precedence
+
+In `--batch -` mode the CLI's `--author <name>` flag is a per-batch default — items that omit `author` pick it up, items that set `author` override it. Symmetric with `--as-agent` / `--as-human` cascading into `author_kind`.
+
+| JSONL item carries `author`? | CLI passes `--author`? | Stored `author` |
+|---|---|---|
+| yes | (any) | the item's `author` |
+| no | yes | the CLI `--author` value |
+| no | no | the `author_kind` literal (`"agent"` or `"human"`) |
+
 ### Side decision rule
 
 - Comment is about a **new** line (the `+` side in unified view) → `"additions"`

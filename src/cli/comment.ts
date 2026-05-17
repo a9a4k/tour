@@ -105,10 +105,28 @@ export async function comment(args: CommentArgs): Promise<void> {
   const authorKind = resolveAuthorKind(args.asAgent, args.asHuman);
 
   if (args.batch) {
+    // Issue #396: an agent that follows the `tour comment ... --batch -`
+    // shape but passes `--as-human` is almost always a self-identity
+    // mistake (the audience is the human reviewer; the author is the
+    // agent). Non-TTY stdin distinguishes the agent-shaped invocation
+    // from a legitimate interactive human pipeline. Nudge, don't refuse
+    // — the warning is captured in agent transcripts so the mistake is
+    // caught in the same turn. `isTTY` is `true` when attached to a
+    // terminal and `undefined` otherwise — falsy covers the non-TTY
+    // case (piped stdin, redirected file, etc.).
+    if (args.asHuman && !process.stdin.isTTY) {
+      console.error(
+        "tour: warning: --as-human with --batch - on non-TTY stdin looks like an agent self-mis-identifying as human (issue #396). If you are an agent, drop --as-human (or pass --as-agent) so the audit trail records your identity correctly.",
+      );
+    }
     const stdin = await readStdin();
     const items = parseBatch(stdin);
     const requests: CreateRequest[] = items.map((item) => {
       const itemKind = item.author_kind ?? authorKind;
+      // Issue #396: `--author` cascades into batch items the same way
+      // `--as-agent` / `--as-human` already do. Per-item `author` in the
+      // JSONL still wins (symmetric with `item.author_kind ?? authorKind`).
+      const itemAuthor = item.author ?? args.author;
       if (item.replies_to !== undefined) {
         if (item.body === undefined) {
           throw new Error("Batch reply item missing body");
@@ -117,7 +135,7 @@ export async function comment(args: CommentArgs): Promise<void> {
           kind: "reply",
           replies_to: item.replies_to,
           body: item.body,
-          author: item.author,
+          author: itemAuthor,
           author_kind: itemKind,
         };
       }
@@ -132,7 +150,7 @@ export async function comment(args: CommentArgs): Promise<void> {
         line_start: start,
         line_end: end,
         body: item.body,
-        author: item.author,
+        author: itemAuthor,
         author_kind: itemKind,
       };
     });

@@ -30,10 +30,13 @@ Before creating: if `tour list --status open --json` returns a tour whose `head_
 
 ```sh
 TOUR_ID=$(tour create --head HEAD --title "<short>")
-cat <<'JSONL' | tour comment "$TOUR_ID" --batch -
+cat <<'JSONL' | tour comment "$TOUR_ID" --batch - --as-agent
 {"file":"src/foo.ts","side":"additions","line_start":12,"line_end":14,"body":"..."}
 {"file":"src/foo.ts","side":"additions","line_start":40,"body":"..."}
 JSONL
+# Verify identity before serving — see "Verify after authoring" below.
+tour pickup "$TOUR_ID" --json | jq -e '[.comments[].author_kind] | all(. == "agent")' > /dev/null \
+  || { echo "tour: identity check failed — delete with \`tour delete $TOUR_ID\` and re-author with --as-agent"; exit 1; }
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
 
@@ -56,6 +59,19 @@ Uncommitted work: `--head WIP` (synthetic snapshot, no commit needed).
 5. **Write for a teammate's first read, with their eye on this line.** Lead with the claim (the heading carries it). Explain the mechanism as a story — named actors, causal connectives, plain words. References to code elsewhere in the diff are spatial cues ("at the bottom of this method"), not load-bearing. Length matches the mechanism — a pure-move comment is one sentence, a multi-step composition needs the full story. Cut evidence (provenance, history, links) — replies absorb it.
 6. **Match medium to message.** Diagrams for flow, snippets for code changes, tables for comparisons, prose for the *why* and the narrative. Markdown renders rich in the webapp.
 7. **Findings batch**: external findings (security scan, lint, thorough-review) get one comment per finding — drop the narrative arc. Optional `[severity]` prefix per [Conventional Comments](https://conventionalcomments.org/).
+8. **Authoring identity.** You are the *author*; the human is the *audience*. Pass `--as-agent` (or rely on the default). Never pass `--as-human` — that flag is for migration scripts and test fixtures writing on behalf of a real person. The audit log is append-only: a wrong `author_kind` cannot be patched, only deleted-and-re-authored.
+
+## Verify after authoring
+
+Right after the batch lands, assert every comment carries `author_kind: "agent"`:
+
+```sh
+tour pickup "$TOUR_ID" --json \
+  | jq -e '[.comments[].author_kind] | all(. == "agent")' > /dev/null \
+  || { echo "identity check failed"; tour delete "$TOUR_ID"; exit 1; }
+```
+
+If the check fails: the events are append-only, so the only remediation is `tour delete "$TOUR_ID"` and re-author with `--as-agent`. Do not attempt in-place patching.
 
 ## Continue (pickup)
 
