@@ -29,18 +29,19 @@ interface ComposerProps {
 //     0` + `wrapMode: "word"` together fill the full inner width before
 //     any scroll happens.
 //  2. The <input> is height-1 and binds Enter to submit. Multi-paragraph
-//     markdown notes need Enter to insert a newline and a distinct chord
-//     to submit. The default textarea keybindings already bind Enter to
-//     `newline`; we add a Ctrl+S → `submit` override on top.
+//     markdown notes need a way to insert a newline without submitting.
 const COMPOSER_TEXTAREA_HEIGHT = 4;
 
-// Custom submit chord. Ctrl+S is terminal-portable (no meta/super
-// required), and bare `s` is no longer bound anywhere in the TUI keymap
-// (issue #390 retired the legacy `s: send to agent` binding), so muscle
-// memory doesn't collide. Surface this in the hint row so a first-time
-// reader doesn't have to guess.
-const COMPOSER_SUBMIT_BINDINGS = [
-  { name: "s", ctrl: true, action: "submit" as const },
+// Issue #394: Slack / Claude Code submit pattern. Enter submits;
+// Shift+Enter (Kitty keyboard protocol terminals) or Ctrl+J (universal —
+// 0x0A LF, distinct from Enter's 0x0D CR) inserts a literal newline at
+// the cursor. opentui's `defaultTextareaKeyBindings` already maps
+// `linefeed` (Ctrl+J) → `newline`, so the explicit overrides only need
+// to flip Enter from newline → submit and add Shift+Enter → newline.
+// The keyBindings prop merges with the defaults; the entries here win.
+const COMPOSER_KEY_BINDINGS = [
+  { name: "return", action: "submit" as const },
+  { name: "return", shift: true, action: "newline" as const },
 ];
 
 function rangeLabel(line_start: number, line_end: number): string {
@@ -62,7 +63,7 @@ function hintText(state: ComposerProps["state"]): string {
   if (state.kind === "errored") {
     return ` Error: ${state.error}  ·  Enter: retry  ·  Esc: dismiss `;
   }
-  return " Ctrl+S: submit  ·  Enter: newline  ·  Esc: cancel ";
+  return " Enter: submit  ·  Shift+Enter / Ctrl+J: newline  ·  Esc: cancel ";
 }
 
 export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
@@ -109,11 +110,11 @@ export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
               textareaRef.current = r;
             }}
             focused
-            placeholder="Type your note (markdown supported, Enter = newline)…"
+            placeholder="Type your note (markdown supported, Shift+Enter or Ctrl+J = newline)…"
             initialValue={state.body}
             wrapMode="word"
             scrollMargin={0}
-            keyBindings={COMPOSER_SUBMIT_BINDINGS}
+            keyBindings={COMPOSER_KEY_BINDINGS}
             onContentChange={() => {
               const ta = textareaRef.current;
               if (ta) onInput(ta.plainText);
@@ -121,7 +122,7 @@ export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
             onSubmit={() => {
               // Flush the latest text through the slice before the
               // submit action lands — the dispatcher reads `state.body`,
-              // and a fast Ctrl+S right after the last keystroke can
+              // and a fast Enter right after the last keystroke can
               // race the onContentChange callback.
               const ta = textareaRef.current;
               if (ta) onInput(ta.plainText);

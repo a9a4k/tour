@@ -94,13 +94,47 @@ describe("Composer render gate (issue #254 + issue #391)", () => {
   it("open state's hint row documents the submit / newline / cancel chord", () => {
     const tree = render({ kind: "open", target: topLevelTarget, body: "draft" });
     const texts = textBodies(tree).join(" ");
-    // Submit chord is surfaced — Enter alone no longer submits.
-    expect(texts).toContain("Ctrl+S: submit");
-    expect(texts).toContain("Enter: newline");
+    // Slack-pattern submit chord (issue #394): Enter submits, Shift+Enter
+    // (Kitty-protocol terminals) or Ctrl+J (universal fallback) inserts
+    // a newline. The hint row must surface all three chords plus Esc.
+    expect(texts).toContain("Enter: submit");
     expect(texts).toContain("Esc: cancel");
-    // Negative: the old single-line copy is gone so users don't expect
-    // bare Enter to submit any more.
-    expect(texts).not.toContain("Enter: submit");
+    // At least one of the newline chord names must appear — both is
+    // even better. Pin "newline" so a future copy refresh that drops
+    // both names would still fail.
+    expect(texts.includes("Shift+Enter") || texts.includes("Ctrl+J")).toBe(
+      true,
+    );
+    expect(texts).toContain("newline");
+    // Negatives: the retired Ctrl+S copy and the original "Enter:
+    // newline" wording from issue #391 must not appear anywhere — users
+    // shouldn't be told to use either pattern.
+    expect(texts).not.toContain("Ctrl+S: submit");
+    expect(texts).not.toContain("Enter: newline");
+  });
+
+  // Issue #394 acceptance: pin the textarea's `keyBindings` prop to
+  // include the Enter → submit override. opentui's defaults bind
+  // `return` to `newline`; without this entry the merge would leave
+  // Enter as newline. `linefeed` → newline (Ctrl+J) is opentui's
+  // default and remains in effect via merge.
+  it("open state's <textarea> binds Enter to submit", () => {
+    const tree = render({ kind: "open", target: topLevelTarget, body: "" });
+    const ta = findTextarea(tree);
+    expect(ta).toBeDefined();
+    const bindings = ta?.props.keyBindings as
+      | Array<{ name: string; shift?: boolean; ctrl?: boolean; action: string }>
+      | undefined;
+    expect(Array.isArray(bindings)).toBe(true);
+    const hasEnterSubmit = (bindings ?? []).some(
+      (b) => b.name === "return" && !b.shift && !b.ctrl && b.action === "submit",
+    );
+    expect(hasEnterSubmit).toBe(true);
+    // Negative: the retired Ctrl+S submit binding must not be present.
+    const hasCtrlSSubmit = (bindings ?? []).some(
+      (b) => b.name === "s" && b.ctrl === true && b.action === "submit",
+    );
+    expect(hasCtrlSSubmit).toBe(false);
   });
 
   // The pre-fix UI rendered nothing when the slice was `submitting`, so a

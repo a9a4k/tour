@@ -132,6 +132,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still cancels an open composer; `Enter` still retries from
   `errored`.
 
+- **TUI composer adopts the Slack / Claude Code submit pattern
+  (issue #394).** Enter now submits the draft; Shift+Enter (Kitty
+  keyboard protocol terminals — kitty, Ghostty, WezTerm, iTerm2 with
+  the protocol enabled, modern Windows Terminal, etc.) or Ctrl+J
+  (universal — 0x0A LF, distinct from Enter's 0x0D CR, works in every
+  terminal, multiplexer, and SSH / Docker exec session) inserts a
+  literal newline at the cursor. The previous `Ctrl+S` submit chord
+  from issue #391 is removed entirely — one canonical submit chord
+  wins over the marginal switching-cost savings of preserving a few
+  weeks of muscle memory. The hint row now reads
+  `Enter: submit · Shift+Enter / Ctrl+J: newline · Esc: cancel`. The
+  errored-state behaviour is unchanged: `Enter: retry · Esc: dismiss`,
+  routed through the App-shell handler (operates outside the focused
+  textarea). The slice contract (`composer.setBody`, `composer.submit`,
+  `composer.retry`, `composer.dismissError`, `composer.close`) and the
+  `submitting` / `errored` render-gate (issue #254 / issue #391) are
+  unchanged; embedded `\n` characters composed via Ctrl+J still
+  survive the submit / preserve-on-retry path. Kitty-keyboard-protocol
+  background: see https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+  for the spec that lets terminals send a distinct sequence for
+  Shift+Enter; the universal Ctrl+J fallback works regardless.
+
 - **Reply-agent verb relabel + keybinding rebind (issue #390, ADR 0021
   addendum).** The action that asks the configured reply-agent to
   reply to a human Comment is now surfaced as `Request reply` instead
