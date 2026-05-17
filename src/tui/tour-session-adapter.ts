@@ -190,9 +190,10 @@ export function createTuiTourSessionAdapter(
             return;
           }
           // Target not in DOM yet (post-submit `scrollCursorTarget` fires
-          // synchronously inside `composer.submitted`, before the watcher
-          // delivers the freshly-written card). Retry until the bundle
-          // refreshes or the budget runs out.
+          // from the deferred `bundle.commentInsertedWithLanding` dispatch
+          // — issue #405 — and React's commit for the new CommentRow may
+          // not have flushed by the time this adapter call runs). Retry
+          // until the row mounts or the budget runs out.
           if (remaining > 0) {
             attempt(remaining - 1, true);
             return;

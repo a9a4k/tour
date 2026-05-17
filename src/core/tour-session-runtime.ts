@@ -259,9 +259,10 @@ export class TourSessionRuntime {
   // (or attaches the live bundle for top-level) via the shared
   // `buildWriteCommentInput` builder so both surfaces converge on the
   // same `WriteCommentInput` shape. On success dispatches
-  // `composer.submitted` (the reducer re-anchors the cursor to the new
-  // Comment, which emits `scrollCursorTarget`); on rejection dispatches
-  // `composer.failed`.
+  // `composer.submitted` (the reducer emits `applyPostSubmitLanding`,
+  // which this runtime defers ~50 ms and turns into the atomic
+  // `bundle.commentInsertedWithLanding` dispatch — issue #405); on
+  // rejection dispatches `composer.failed`.
   private handleSubmitComment(
     tourId: string,
     target: ComposerTarget,
