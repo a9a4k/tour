@@ -2617,3 +2617,194 @@ describe("reduce — deleteConfirm slice (ADR 0036 Slice D / issue #388)", () =>
     expect(s.picker).toBe(pickerBefore);
   });
 });
+
+// --- issue #402: deleteConfirm.succeeded cursor fallback to thread parent ---
+
+describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402)", () => {
+  function stateWithComments(comments: Comment[]): TourSessionState {
+    const bundle: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments,
+      diff: "",
+      files: [],
+    };
+    return reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle,
+    }).state;
+  }
+
+  function withCardCursor(
+    state: TourSessionState,
+    commentId: string,
+    preferredSide: "additions" | "deletions" = "additions",
+  ): TourSessionState {
+    return { ...state, cursor: { kind: "card", commentId, preferredSide } };
+  }
+
+  function inSubmitting(state: TourSessionState, targetId: string): TourSessionState {
+    let s = reduce(state, { type: "deleteConfirm.open", targetId }).state;
+    s = reduce(s, { type: "deleteConfirm.confirm" }).state;
+    return s;
+  }
+
+  it("reply-only (parent live + ≥1 sibling): cursor on doomed Reply → snaps to parent root; preferredSide preserved", () => {
+    const parent = mkComment({ id: "p1" });
+    const r1 = mkComment({ id: "r1", replies_to: "p1", created_at: "2026-05-13T00:00:01Z" });
+    const r2 = mkComment({ id: "r2", replies_to: "p1", created_at: "2026-05-13T00:00:02Z" });
+    let s = stateWithComments([parent, r1, r2]);
+    s = withCardCursor(s, "r1", "deletions");
+    s = inSubmitting(s, "r1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "p1",
+      preferredSide: "deletions",
+    });
+    expect(r.state.deleteConfirm).toEqual({ kind: "closed" });
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: "p1" }]);
+  });
+
+  it("reply-only (parent live, no siblings): cursor on doomed Reply → snaps to parent root", () => {
+    const parent = mkComment({ id: "p1" });
+    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    let s = stateWithComments([parent, r1]);
+    s = withCardCursor(s, "r1", "additions");
+    s = inSubmitting(s, "r1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "p1",
+      preferredSide: "additions",
+    });
+  });
+
+  it("reply-only (parent is [deleted] stub + ≥1 surviving sibling): cursor on doomed Reply → snaps to parent stub id", () => {
+    const parentStub: Comment = {
+      ...mkComment({ id: "p1" }),
+      deleted: { at: "2026-05-13T00:00:00Z" },
+    };
+    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r2 = mkComment({ id: "r2", replies_to: "p1" });
+    let s = stateWithComments([parentStub, r1, r2]);
+    s = withCardCursor(s, "r1", "deletions");
+    s = inSubmitting(s, "r1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "p1",
+      preferredSide: "deletions",
+    });
+  });
+
+  it("parent-stub: cursor on doomed parent with ≥1 surviving Reply → cursor unchanged (same parent id)", () => {
+    const parent = mkComment({ id: "p1" });
+    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    let s = stateWithComments([parent, r1]);
+    s = withCardCursor(s, "p1", "deletions");
+    const cursorBefore = s.cursor;
+    s = inSubmitting(s, "p1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "p1" });
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "p1",
+      preferredSide: "deletions",
+    });
+    // Same-ref short-circuit: cursor id didn't change, so the slice is the same value.
+    expect(r.state.cursor).toBe(cursorBefore);
+    // No mirrorAnnUrl — the ann id under cursor did not change.
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread-vanishes (parent alone, no replies): cursor on doomed parent → cursor clears; emits mirrorAnnUrl null", () => {
+    const parent = mkComment({ id: "p1" });
+    let s = stateWithComments([parent]);
+    s = withCardCursor(s, "p1");
+    s = inSubmitting(s, "p1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "p1" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+  });
+
+  it("thread-vanishes (only-reply-under-[deleted]-stub): cursor on doomed Reply → cursor clears", () => {
+    const parentStub: Comment = {
+      ...mkComment({ id: "p1" }),
+      deleted: { at: "2026-05-13T00:00:00Z" },
+    };
+    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    let s = stateWithComments([parentStub, r1]);
+    s = withCardCursor(s, "r1");
+    s = inSubmitting(s, "r1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+  });
+
+  it("cursor on a different CardAnchor (not the deleted target): cursor unchanged, no intents", () => {
+    const p1 = mkComment({ id: "p1" });
+    const p2 = mkComment({ id: "p2" });
+    let s = stateWithComments([p1, p2]);
+    s = withCardCursor(s, "p2", "deletions");
+    const cursorBefore = s.cursor;
+    s = inSubmitting(s, "p1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "p1" });
+    expect(r.state.cursor).toBe(cursorBefore);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("RowAnchor cursor: unchanged across the delete (no fallback semantics for diff-row cursors)", () => {
+    const parent = mkComment({ id: "p1" });
+    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    let s = stateWithComments([parent, r1]);
+    const row: RowAnchor = {
+      kind: "row",
+      file: "foo.ts",
+      lineNumber: 10,
+      side: "additions",
+      preferredSide: "additions",
+    };
+    s = { ...s, cursor: row };
+    s = inSubmitting(s, "r1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
+    expect(r.state.cursor).toBe(row);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("null cursor: unchanged across the delete (no fallback semantics)", () => {
+    const parent = mkComment({ id: "p1" });
+    let s = stateWithComments([parent]);
+    expect(s.cursor).toBeNull();
+    s = inSubmitting(s, "p1");
+    const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "p1" });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([]);
+  });
+
+  it("subsequent bundle.refreshed is a cursor no-op after the snap (parent still exists in flatRows)", () => {
+    const parent = mkComment({ id: "p1" });
+    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    let s = stateWithComments([parent, r1]);
+    s = withCardCursor(s, "r1", "deletions");
+    s = inSubmitting(s, "r1");
+    s = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" }).state;
+    // Watcher delivers the post-delete bundle: r1 gone, parent live.
+    const refreshed: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [parent],
+      diff: "",
+      files: [],
+    };
+    s = reduce(s, { type: "bundle.refreshed", bundle: refreshed }).state;
+    // Cursor still on parent after the bundle.refreshed → revalidateCursor
+    // round-trip (the surface validates against the refreshed flatRows and
+    // finds parent's Card row still present).
+    expect(s.cursor).toEqual({
+      kind: "card",
+      commentId: "p1",
+      preferredSide: "deletions",
+    });
+  });
+});
