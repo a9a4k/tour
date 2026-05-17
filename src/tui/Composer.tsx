@@ -95,7 +95,14 @@ export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
       backgroundColor={theme.canvas.default}
     >
       <box paddingX={1} paddingTop={1} flexDirection="row">
-        <text fg={theme.fg.muted}>{"❯ "}</text>
+        {/*
+         * Pin the chevron glyph's width and forbid flex-shrink. Without
+         * `flexShrink: 0`, yoga compresses this <text> to width 0 once
+         * the sibling <textarea>'s content forces a wrap — the chevron
+         * vanishes and the textarea's first column slides leftward over
+         * its column (issue #391 follow-up).
+         */}
+        <text fg={theme.fg.muted} style={{ flexShrink: 0, width: 2 }}>{"❯ "}</text>
         {showEditableInput ? (
           <textarea
             ref={(r) => {
