@@ -121,6 +121,7 @@ import {
 import { buildRowYResolver, cursorRowDomId } from "./row-y-resolver.js";
 import { resizeReanchorTargetId } from "./resize-reanchor-target.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
+import type { EnterHintCursor } from "../core/footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
@@ -829,14 +830,12 @@ function App(props: AppProps) {
   // `Enter: collapse` (expanded Card), omitted (plain diff row).
   // `threadRootIdOf` resolves a Reply cursor to its Thread root so the
   // collapse lookup is correct on either node.
-  const enterHintCursor: import("../core/footer-hints.js").EnterHintCursor =
-    cursor?.kind === "row" && cursor.interactive
-      ? "interactive"
-      : cursor?.kind === "card"
-        ? collapsedThreads.has(threadRootIdOf(cursor.commentId, threads))
-          ? "card-collapsed"
-          : "card-expanded"
-        : "row";
+  const enterHintCursor: EnterHintCursor = (() => {
+    if (cursor?.kind === "row" && cursor.interactive) return "interactive";
+    if (cursor?.kind !== "card") return "row";
+    const rootId = threadRootIdOf(cursor.commentId, threads);
+    return collapsedThreads.has(rootId) ? "card-collapsed" : "card-expanded";
+  })();
   // Issue #406 / ADR 0038 amended. The diff-mode `C` legend flips by
   // the bundle: `C: collapse all` (any Thread expanded), `C: expand
   // all` (every Thread already collapsed). Omitted when zero Threads.

@@ -78,7 +78,7 @@ import {
   type ResizeReanchorTarget,
 } from "./resize-reanchor-target.js";
 import { Footer } from "./Footer.js";
-import { composeFooterHints } from "../../core/footer-hints.js";
+import { composeFooterHints, type EnterHintCursor } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
 import { resolveYankTarget } from "../../core/yank-target.js";
 import { dispatchOpenInEditor } from "./dispatch-open-in-editor.js";
@@ -2006,6 +2006,23 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ? view.nav.currentIdx - 1
       : -1;
 
+  // Issue #406 / ADR 0038 amended. Footer-hint inputs — extracted here
+  // so the composeFooterHints call site reads as a flat options object.
+  const footerEnterHintCursor: EnterHintCursor = (() => {
+    if (view.kind !== "ok" || !view.cursor.onCard || view.cursor.cardId === null) {
+      return "row";
+    }
+    const rootId = threadRootIdOf(view.cursor.cardId, view.nav.threads);
+    return sessionState.collapsedThreads.has(rootId)
+      ? "card-collapsed"
+      : "card-expanded";
+  })();
+  const footerTopLevel = view.kind === "ok" ? view.nav.topLevel : [];
+  const footerAnyThreads = footerTopLevel.length > 0;
+  const footerAllThreadsCollapsed =
+    footerAnyThreads &&
+    footerTopLevel.every((c) => sessionState.collapsedThreads.has(c.id));
+
   return (
     <>
       <div className="tour-header">
@@ -2263,26 +2280,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // interactive-row Enter on its legend (the `Enter: expand`
           // hint for hidden-context only existed on the TUI), so
           // map an interactive cursor to "row" here.
-          enterHintCursor:
-            view.kind === "ok" && view.cursor.onCard
-              ? view.cursor.cardId !== null &&
-                sessionState.collapsedThreads.has(
-                  threadRootIdOf(view.cursor.cardId, view.nav.threads),
-                )
-                ? "card-collapsed"
-                : "card-expanded"
-              : "row",
+          enterHintCursor: footerEnterHintCursor,
           // Issue #406 / ADR 0038 amended. Global `C` verb —
           // `collapse all` when any Thread is expanded; `expand all`
           // when every Thread is already collapsed; omitted when zero
           // Threads exist.
-          anyThreads: view.kind === "ok" && view.nav.topLevel.length > 0,
-          allThreadsCollapsed:
-            view.kind === "ok" &&
-            view.nav.topLevel.length > 0 &&
-            view.nav.topLevel.every((c) =>
-              sessionState.collapsedThreads.has(c.id),
-            ),
+          anyThreads: footerAnyThreads,
+          allThreadsCollapsed: footerAllThreadsCollapsed,
         })}
       />
       {sessionState.picker.kind === "open" ? (
