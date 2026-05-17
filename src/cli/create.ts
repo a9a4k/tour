@@ -78,7 +78,7 @@ export async function create(args: CreateArgs): Promise<void> {
     }
   }
 
-  const id = isWip ? (wipId as string) : generateId();
+  const id = wipId ?? generateId();
   const tour: Tour = {
     id,
     title: title ?? "",
