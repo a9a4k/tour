@@ -28,6 +28,15 @@ interface CommentCardProps {
    *  when `activeNodeId === comment.id`; a reply is highlighted when
    *  `activeNodeId === reply.id`. */
   activeNodeId?: string | null;
+  /** PRD #397 / ADR 0038. Mouse-click toggle for the header chevron —
+   *  `▾` when expanded, `▸` when collapsed. The callback is invoked
+   *  with the parent Comment id; the App-side handler dispatches
+   *  `thread.toggle`. The chevron is rendered on the top-level header
+   *  only (Reply nodes get no chevron), so the id is always a Thread
+   *  root — no `threadRootIdOf` normalisation needed at the callback
+   *  site. Omitted in unit-test mounts that don't wire the callback
+   *  path; the chevron renders as plain text in that case. */
+  onToggleCollapse?: (commentId: string) => void;
 }
 
 // PRD #397 / ADR 0038 — body preview cap on the collapsed one-liner.
@@ -104,6 +113,7 @@ export function CommentCard({
   navIndex,
   navTotal,
   activeNodeId,
+  onToggleCollapse,
 }: CommentCardProps) {
   const visibleReplies = collapsed ? [] : replies ?? [];
   const showPill =
@@ -129,7 +139,13 @@ export function CommentCard({
           {isCurrent ? (
             <text fg={theme.fg.accent} bold>{"● "}</text>
           ) : null}
-          <text fg={theme.fg.muted}>{"▸ "}</text>
+          {onToggleCollapse ? (
+            <box onMouseDown={() => onToggleCollapse(comment.id)}>
+              <text fg={theme.fg.muted}>{"▸ "}</text>
+            </box>
+          ) : (
+            <text fg={theme.fg.muted}>{"▸ "}</text>
+          )}
           {navIndex != null && navTotal != null && navTotal > 0 ? (
             <text fg={theme.fg.muted} bold>{`${navIndex} / ${navTotal} `}</text>
           ) : null}
@@ -172,6 +188,13 @@ export function CommentCard({
             {"● "}
           </text>
         ) : null}
+        {onToggleCollapse ? (
+          <box onMouseDown={() => onToggleCollapse(comment.id)}>
+            <text fg={theme.fg.muted}>{"▾ "}</text>
+          </box>
+        ) : (
+          <text fg={theme.fg.muted}>{"▾ "}</text>
+        )}
         {navIndex != null && navTotal != null && navTotal > 0 ? (
           <text fg={theme.fg.muted} bold>
             {`${navIndex} / ${navTotal} `}

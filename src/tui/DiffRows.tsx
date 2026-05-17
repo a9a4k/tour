@@ -50,11 +50,16 @@ interface DiffRowsProps {
    *  Clicks on replies nested inside the card flow up to the same
    *  wrapper handler — the cursor walks top-level comments only. */
   onCardClick?: (commentId: string) => void;
+  /** PRD #397 / ADR 0038. Mouse-click toggle for a Card's header
+   *  chevron (`▾` expanded / `▸` collapsed). Threaded to CommentCard
+   *  as `onToggleCollapse`; the App-side handler dispatches
+   *  `thread.toggle` on the parent's id (the chevron lives on the
+   *  top-level Comment, no Reply normalisation needed). */
+  onCardToggleCollapse?: (commentId: string) => void;
   /** PRD #397 / ADR 0038. Top-level Comment ids the user has minimised
-   *  to a one-liner via per-Thread `Shift+C`. Threaded into each
-   *  CommentCard so the Card paints the one-liner shape when its
-   *  parent id is in the set. Replaces the retired global
-   *  `repliesCollapsed` flag. */
+   *  to a one-liner via per-Thread `Enter` (or the header chevron).
+   *  Threaded into each CommentCard so the Card paints the one-liner
+   *  shape when its parent id is in the set. */
   collapsedThreads?: ReadonlySet<string>;
   replyLock?: ReplyLock | null;
   now?: number;
@@ -214,6 +219,7 @@ export function DiffRows({
   onCursorClick,
   onInteractiveClick,
   onCardClick,
+  onCardToggleCollapse,
   collapsedThreads,
   replyLock,
   now,
@@ -413,6 +419,7 @@ export function DiffRows({
               now={now}
               navIndex={navIndexById?.get(row.comment.id) ?? null}
               navTotal={navTotal ?? 0}
+              onToggleCollapse={onCardToggleCollapse}
             />
           );
           // Issue #261: click anywhere on the card (or a nested reply)

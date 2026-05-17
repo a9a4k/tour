@@ -198,6 +198,7 @@ interface DiffPaneFileProps {
     boundaryRef: BoundaryRef,
   ) => void;
   onCardClick: (commentId: string) => void;
+  onCardToggleCollapse: (commentId: string) => void;
   collapsedThreads: ReadonlySet<string>;
   replyLock: ReplyLock | null;
   now: number;
@@ -225,6 +226,7 @@ function DiffPaneFile({
   onCursorClick,
   onInteractiveClick,
   onCardClick,
+  onCardToggleCollapse,
   collapsedThreads,
   replyLock,
   now,
@@ -248,6 +250,7 @@ function DiffPaneFile({
       onCursorClick={onCursorClick}
       onInteractiveClick={onInteractiveClick}
       onCardClick={onCardClick}
+      onCardToggleCollapse={onCardToggleCollapse}
       collapsedThreads={collapsedThreads}
       replyLock={replyLock}
       now={now}
@@ -1058,6 +1061,18 @@ function App(props: AppProps) {
     // Cursor-follow useEffect handles the scroll-into-view via the
     // reducer's `scrollCursorTarget` intent — no parallel scroll call
     // here (would race the centred scroller).
+  };
+
+  // PRD #397 / ADR 0038. Header chevron click on a Card (collapsed `▸`
+  // or expanded `▾`) toggles the Thread's collapse state. The chevron
+  // is rendered on the top-level Comment's header only — replies have
+  // no chevron — so `commentId` is always a Thread root; no
+  // `threadRootIdOf` step needed. The outer Card-click handler also
+  // fires on the same mouse event (OpenTUI bubbles), so the cursor
+  // lands on the Card alongside the toggle (mirrors the webapp
+  // chevron's explicit `onCardClick + onToggleCollapse` pair).
+  const onCardToggleCollapse = (commentId: string) => {
+    store.dispatch({ type: "thread.toggle", id: commentId });
   };
 
   // Hunk-separator gap size = lines between previous hunk's additions end
@@ -2240,6 +2255,7 @@ function App(props: AppProps) {
                           onCursorClick={onCursorClick}
                           onInteractiveClick={onInteractiveClick}
                           onCardClick={onCardClick}
+                          onCardToggleCollapse={onCardToggleCollapse}
                           collapsedThreads={collapsedThreads}
                           replyLock={replyLock}
                           now={now}
