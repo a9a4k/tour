@@ -730,6 +730,117 @@ describe("CLI integration", () => {
     });
   });
 
+  // Issue #396: prevent agent author-identity mistakes when authoring
+  // via the CLI. Two CLI-side improvements:
+  //   1. `--as-human` + `--batch -` + non-TTY stdin is a stderr-only nudge.
+  //      Captured in agent transcripts; the operation still succeeds.
+  //   2. `--author` in `--batch -` mode acts as a per-batch default,
+  //      mirroring `--as-agent` / `--as-human`. Per-item JSONL `author`
+  //      still overrides.
+  describe("author-identity safeguards (issue #396)", () => {
+    it("emits a stderr nudge when --as-human + --batch - sees non-TTY stdin", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl = `{"file":"hello.txt","side":"additions","line":"1","body":"nudge-me"}\n`;
+      const r = await run(
+        ["comment", tour.id, "--as-human", "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      // Warning is a nudge, not a refusal — exit 0 and the comment lands.
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toMatch(/tour: warning:.*issue #396/i);
+      expect(r.stderr).toMatch(/--as-human/);
+      const anns = JSON.parse(r.stdout);
+      expect(anns).toHaveLength(1);
+      expect(anns[0].author_kind).toBe("human");
+    });
+
+    it("does not warn when --as-human is paired with the single-comment path (no --batch)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const r = await run(
+        [
+          "comment", tour.id,
+          "--file", "hello.txt",
+          "--side", "additions",
+          "--line", "1",
+          "--body", "interactive-ish",
+          "--as-human",
+          "--json",
+        ],
+        repo,
+      );
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe("");
+    });
+
+    it("does not warn when --as-agent + --batch - is used (the correct agent shape)", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl = `{"file":"hello.txt","side":"additions","line":"1","body":"agent-batch"}\n`;
+      const r = await run(
+        ["comment", tour.id, "--as-agent", "--batch", "-", "--json"],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe("");
+    });
+
+    it("--author in --batch - mode cascades into items that omit `author`", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl =
+        `{"file":"hello.txt","side":"additions","line":"1","body":"a"}\n` +
+        `{"file":"hello.txt","side":"deletions","line":"1","body":"b"}\n`;
+      const r = await run(
+        [
+          "comment", tour.id,
+          "--as-agent",
+          "--author", "claude",
+          "--batch", "-",
+          "--json",
+        ],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(r.exitCode).toBe(0);
+      const anns = JSON.parse(r.stdout);
+      expect(anns).toHaveLength(2);
+      expect(anns[0].author).toBe("claude");
+      expect(anns[1].author).toBe("claude");
+      // The author_kind cascade is unaffected by this change.
+      expect(anns[0].author_kind).toBe("agent");
+      expect(anns[1].author_kind).toBe("agent");
+    });
+
+    it("per-item `author` in JSONL still overrides the CLI --author default", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const jsonl =
+        `{"file":"hello.txt","side":"additions","line":"1","body":"a","author":"override"}\n` +
+        `{"file":"hello.txt","side":"deletions","line":"1","body":"b"}\n`;
+      const r = await run(
+        [
+          "comment", tour.id,
+          "--as-agent",
+          "--author", "claude",
+          "--batch", "-",
+          "--json",
+        ],
+        repo,
+        { stdin: jsonl },
+      );
+      expect(r.exitCode).toBe(0);
+      const anns = JSON.parse(r.stdout);
+      expect(anns).toHaveLength(2);
+      // Per-item author wins on line 1; CLI default fills in on line 2.
+      expect(anns[0].author).toBe("override");
+      expect(anns[1].author).toBe("claude");
+    });
+  });
+
   // Issue #387 (Slice C / ADR 0036). `tour comment <tour-id>
   // --delete <comment-id>` appends a `comment.deleted` event via the
   // humans-only `createDelete` write seam. `--as-agent --delete` is
