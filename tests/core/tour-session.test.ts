@@ -2475,6 +2475,136 @@ describe("reduce — thread collapse slice (PRD #397 / ADR 0038)", () => {
   });
 });
 
+// Issue #406 / ADR 0038 (amended). `Shift+C` becomes a global toggle —
+// the App-side handler picks the direction (collapseAll vs expandAll)
+// from the current state. Reducer actions stay pure: collapseAll
+// folds every top-level Comment id into the set; expandAll empties
+// the set. Both emit revalidateCursor when the cursor is non-null
+// so the validator's Reply→parent projection fires.
+describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => {
+  function bundleWithTopLevel(ids: string[]): TourBundle {
+    const comments: Comment[] = ids.map((id) => mkComment({ id }));
+    return {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments,
+      diff: "",
+      files: [],
+    };
+  }
+
+  it("thread.collapseAll folds every top-level Comment id into the set", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1", "t2", "t3"]),
+    }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.state.collapsedThreads).toEqual(new Set(["t1", "t2", "t3"]));
+  });
+
+  it("thread.collapseAll skips Reply ids (only top-level Comments)", () => {
+    const t1 = mkComment({ id: "t1" });
+    const r1 = mkComment({ id: "r1", replies_to: "t1" });
+    const bundle: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1, r1],
+      diff: "",
+      files: [],
+    };
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle,
+    }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.state.collapsedThreads).toEqual(new Set(["t1"]));
+  });
+
+  it("thread.collapseAll is a same-state-ref no-op when every top-level id is already collapsed", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1", "t2"]),
+    }).state;
+    s = reduce(s, { type: "thread.collapseAll" }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.collapseAll preserves existing ids and adds the missing ones", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1", "t2", "t3"]),
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t2" }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.state.collapsedThreads).toEqual(new Set(["t1", "t2", "t3"]));
+  });
+
+  it("thread.collapseAll is a no-op when the bundle is not `ok` (no Threads to collapse)", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "thread.collapseAll" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.collapseAll is a no-op when the bundle has zero top-level Comments", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel([]),
+    }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.state).toBe(s);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.collapseAll with cursor !== null emits revalidateCursor", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1", "t2"]),
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "t1" }) }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("thread.expandAll empties the set", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1", "t2"]),
+    }).state;
+    s = reduce(s, { type: "thread.collapseAll" }).state;
+    const r = reduce(s, { type: "thread.expandAll" });
+    expect(r.state.collapsedThreads).toEqual(new Set());
+  });
+
+  it("thread.expandAll is a same-state-ref no-op when the set is already empty", () => {
+    const before = initialTourSessionState();
+    const r = reduce(before, { type: "thread.expandAll" });
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
+  });
+
+  it("thread.expandAll with cursor !== null emits revalidateCursor", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1"]),
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "t1" }) }).state;
+    const r = reduce(s, { type: "thread.expandAll" });
+    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+});
+
 describe("reduce — folds.* + expansion.* → revalidateCursor wiring (issue #309)", () => {
   // The fix mirrors the `bundle.refreshed → revalidateCursor` wiring at every
   // reducer branch that mutates flat-rows-shape state (folds + expansion) so

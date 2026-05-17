@@ -213,6 +213,8 @@ export type Action =
   | { type: "thread.collapse"; id: string }
   | { type: "thread.expand"; id: string }
   | { type: "thread.toggle"; id: string }
+  | { type: "thread.collapseAll" }
+  | { type: "thread.expandAll" }
   | { type: "layout.set"; layout: Layout }
   | { type: "send-to-agent"; tourId: string; commentId: string }
   | PaneFocusAction;
@@ -894,13 +896,51 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     }
 
     case "thread.toggle": {
-      // PRD #397 / ADR 0038. Flip membership. Surfaces wire `Shift+C`
-      // (TUI + webapp) and the webapp header chevron click here.
+      // PRD #397 / ADR 0038. Flip membership. Surfaces wire `Enter`
+      // on a Card (per-Thread, issue #406) and the surface header
+      // chevron click here. `threadRootIdOf` upstream normalises a
+      // Reply-cursor id to the parent root.
       const next = new Set(state.collapsedThreads);
       if (next.has(action.id)) next.delete(action.id);
       else next.add(action.id);
       return {
         state: { ...state, collapsedThreads: next },
+        intents: revalidateIfCursor(state),
+      };
+    }
+
+    case "thread.collapseAll": {
+      // Issue #406 / ADR 0038 (amended). Add every top-level Comment id
+      // in the current bundle to the set. No-op when bundle isn't `ok`
+      // (no Threads to collapse) or every top-level id is already
+      // present (same-ref short-circuit).
+      if (state.bundle.kind !== "ok") return { state, intents: NO_INTENTS };
+      const topLevelIds: string[] = [];
+      for (const c of state.bundle.value.comments) {
+        if (c.replies_to === undefined) topLevelIds.push(c.id);
+      }
+      if (topLevelIds.length === 0) return { state, intents: NO_INTENTS };
+      const next = new Set(state.collapsedThreads);
+      let changed = false;
+      for (const id of topLevelIds) {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      }
+      if (!changed) return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, collapsedThreads: next },
+        intents: revalidateIfCursor(state),
+      };
+    }
+
+    case "thread.expandAll": {
+      // Issue #406 / ADR 0038 (amended). Empty the set. Same-ref
+      // short-circuit when already empty.
+      if (state.collapsedThreads.size === 0) return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, collapsedThreads: new Set<string>() },
         intents: revalidateIfCursor(state),
       };
     }

@@ -82,6 +82,7 @@ export type CursorAction =
   | { type: "open-reply-on-card" }
   | { type: "send-on-card" }
   | { type: "toggle-thread-collapse" }
+  | { type: "toggle-all-threads-collapse" }
   | { type: "nav-next-comment" }
   | { type: "nav-prev-comment" }
   | { type: "toggle-layout" }
@@ -147,13 +148,15 @@ export function dispatchCursorKey(
   // Layout toggle moved from `l` to Shift-L (ADR 0012, mirrors ADR 0011).
   if (e.shiftKey && e.key === "L") return { type: "toggle-layout" };
 
-  // PRD #397 / ADR 0038. `Shift+C` toggles per-Thread collapse on the
-  // cursored Card. Silent no-op when paneFocus is sidebar (the user
-  // must Esc back to the diff first; auto-flipping would lose the
-  // target). When the cursor isn't on a Card, the App-side handler
-  // surfaces a footer status.
+  // Issue #406 / ADR 0038 amended. `Shift+C` is the global "collapse /
+  // expand all Threads" toggle (the per-Thread gesture moved to
+  // `Enter` on a Card). The App-side handler reads the current
+  // `collapsedThreads` size + the bundle's top-level Comment count
+  // to pick the direction. Silent no-op when paneFocus is sidebar
+  // (the user must Esc back to the diff first; the gesture targets
+  // diff-pane state).
   if (e.shiftKey && e.key === "C") {
-    return { type: "toggle-thread-collapse" };
+    return { type: "toggle-all-threads-collapse" };
   }
 
   // `T` (Shift+t) opens picker (ADR 0030 — capital = global). PRD #335 /
@@ -245,6 +248,17 @@ export function dispatchCursorKey(
       };
     }
     return { type: "send-on-card" };
+  }
+
+  // Issue #406 / ADR 0038 amended. `Enter` on a Card cursor toggles
+  // the per-Thread collapse (the gesture moved from `Shift+C`). The
+  // App.tsx Enter-on-interactive-row handler runs before this
+  // dispatcher and handles `cursor.interactive` rows (hidden-context
+  // expand); a Card cursor falls through to here. Off-card Enter is
+  // a no-op (the App.tsx primary-action handler doesn't fire either).
+  if (!e.shiftKey && e.key === "Enter") {
+    if (ctx.cursorOnCard) return { type: "toggle-thread-collapse" };
+    return { type: "noop" };
   }
 
   // Comment nav `n`/`p` walks the card lane (PRD #192).

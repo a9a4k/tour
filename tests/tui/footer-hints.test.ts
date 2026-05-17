@@ -113,7 +113,13 @@ describe("composeFooterHints (issue #184 → relabelled in issue #390)", () => {
   });
 
   it("renders the send hint between `r: reply` and `Enter: expand` (next to the human-reply verb)", () => {
-    const out = composeFooterHints({ replyAgent: "codex", showSendHint: true });
+    // Issue #406 / ADR 0038 amended: `Enter:` is now cursor-contextual.
+    // Pass `enterHintCursor: "interactive"` to assert the prior layout.
+    const out = composeFooterHints({
+      replyAgent: "codex",
+      showSendHint: true,
+      enterHintCursor: "interactive",
+    });
     const r = out.indexOf("r: reply");
     const requestReply = out.indexOf("R: request reply");
     const enter = out.indexOf("Enter: expand");

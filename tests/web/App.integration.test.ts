@@ -1943,7 +1943,7 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
     expect(annFromHash()).toBe("ann-parent");
   });
 
-  it("j on a Card whose Thread is collapsed (Shift+C) skips the Thread to the next diff row", async () => {
+  it("j on a Card whose Thread is collapsed (Enter on Card) skips the Thread to the next diff row", async () => {
     globalThis.fetch = stubReplyWalkFetch();
     const container = document.getElementById("root")!;
     await act(async () => {
@@ -1954,14 +1954,11 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
 
     expect(annFromHash()).toBe("ann-parent");
 
-    // PRD #397 / ADR 0038: Shift+C collapses the Thread under the cursor.
+    // Issue #406 / ADR 0038 amended: `Enter` on the cursored Card
+    // toggles per-Thread collapse (was `Shift+C` pre-#406).
     await act(async () => {
       document.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "C",
-          shiftKey: true,
-          bubbles: true,
-        }),
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
       );
     });
     await flush();
@@ -1976,6 +1973,182 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
     });
     await flush();
     expect(annFromHash()).toBeNull();
+  });
+});
+
+// Issue #406 / ADR 0038 amended. The per-Thread collapse gesture moved
+// from `Shift+C` to `Enter` on a Card; `Shift+C` is now the global
+// "collapse all / expand all Threads" toggle. These pins exercise the
+// dispatch chain end-to-end (App-rendered tree → keymap → reducer →
+// view) on both shapes.
+describe("App Enter / Shift+C collapse routing (issue #406)", () => {
+  let root: import("react-dom/client").Root | null = null;
+  let containerEl: HTMLDivElement | null = null;
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    history.replaceState(null, "", "/");
+    location.hash = "";
+    containerEl = document.createElement("div");
+    containerEl.id = "root";
+    document.body.appendChild(containerEl);
+  });
+
+  afterEach(async () => {
+    if (root) {
+      await act(async () => {
+        root!.unmount();
+      });
+      root = null;
+    }
+    if (containerEl) document.body.removeChild(containerEl);
+    containerEl = null;
+    globalThis.fetch = originalFetch;
+  });
+
+  it("Enter on a Card toggles per-Thread collapse; a second Enter expands it (Reply cursor folds onto the Thread root)", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    // Cursor lands on the parent Card after bundle-load seed.
+    expect(annFromHash()).toBe("ann-parent");
+
+    // Enter on the parent Card collapses the Thread. With the Thread
+    // collapsed the in-Card walker is skipped on `j`, so the cursor
+    // exits to the next diff row — same regression guard as the
+    // existing collapsed-Thread test.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    await flush();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBeNull();
+
+    // Move back to the parent Card and re-Enter to expand. Now the
+    // in-Card walker fires on `j`, landing on the first reply.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    await flush();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+  });
+
+  it("Enter with the cursor on a Reply normalises to the Thread root (collapse-then-expand round-trip preserves Card cursor)", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    // Walk into the first reply node (ADR 0037 in-Card walker).
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    // Enter on a Reply collapses the Thread (root-normalised dispatch).
+    // The validator projects the cursor to the parent root post-collapse.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
+  });
+
+  it("Shift+C collapses every top-level Thread; a second Shift+C expands every Thread (global toggle)", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    // Pre-collapse: `j` descends into the first reply.
+    expect(annFromHash()).toBe("ann-parent");
+
+    // Shift+C: any Thread expanded → collapseAll (single Thread in
+    // this fixture, but the action is bundle-wide).
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "C",
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    await flush();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    // Thread collapsed → `j` exits straight to a diff row.
+    expect(annFromHash()).toBeNull();
+
+    // Walk back to the parent Card; Shift+C now expands all (every
+    // Thread is already collapsed → expandAll branch).
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "C",
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    await flush();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    // Thread expanded → `j` descends into the first reply.
+    expect(annFromHash()).toBe("ann-reply-1");
   });
 });
 

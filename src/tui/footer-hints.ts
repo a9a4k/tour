@@ -1,6 +1,9 @@
 import type { Cursor } from "../core/cursor-state.js";
 import type { Comment } from "../core/types.js";
-import { composeFooterHints as composeFooterHintsCore } from "../core/footer-hints.js";
+import {
+  composeFooterHints as composeFooterHintsCore,
+  type EnterHintCursor,
+} from "../core/footer-hints.js";
 
 // The bottom-bar key-action hint surfaced by the TUI app shell. The
 // comment binding (formerly `a`, now `c` per ADR 0029 + issue #337) is
@@ -25,10 +28,17 @@ export interface FooterHintOptions {
   replyAgent?: string;
   showSendHint?: boolean;
   paneFocus?: import("../core/pane-focus-state.js").PaneFocus;
-  /** PRD #397 / ADR 0038. Flips the diff-mode `C` legend label from
-   *  `C: collapse` to `C: expand` when the cursored Thread is currently
-   *  collapsed. Off-card / undefined → `C: collapse`. */
-  currentThreadCollapsed?: boolean;
+  /** Issue #406 / ADR 0038 amended. Drives the diff-mode `Enter` verb
+   *  flip: `Enter: expand` (interactive / card-collapsed) /
+   *  `Enter: collapse` (card-expanded) / omitted (row, undefined). */
+  enterHintCursor?: EnterHintCursor;
+  /** Issue #406 / ADR 0038 amended. Drives the global `C` verb flip:
+   *  `C: collapse all` (any Thread expanded) /
+   *  `C: expand all` (every Thread already collapsed). */
+  allThreadsCollapsed?: boolean;
+  /** Issue #406. Drop the `C` hint when there are no top-level Threads
+   *  (Shift+C is a labelled footer no-op then). */
+  anyThreads?: boolean;
 }
 
 export function composeFooterHints(opts: FooterHintOptions = {}): string {

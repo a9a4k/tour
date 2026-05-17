@@ -121,6 +121,7 @@ import {
 import { buildRowYResolver, cursorRowDomId } from "./row-y-resolver.js";
 import { resizeReanchorTargetId } from "./resize-reanchor-target.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
+import type { EnterHintCursor } from "../core/footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
@@ -824,12 +825,23 @@ function App(props: AppProps) {
           hasReply: false,
         })
       : { visible: false, enabled: false };
-  // PRD #397 / ADR 0038. The diff-mode `C` legend flips by the cursored
-  // Card's collapse state. `threadRootIdOf` resolves a Reply cursor to
-  // its Thread root so the lookup is correct on either node.
-  const currentThreadCollapsed =
-    cursor?.kind === "card" &&
-    collapsedThreads.has(threadRootIdOf(cursor.commentId, threads));
+  // Issue #406 / ADR 0038 amended. The diff-mode `Enter` legend flips
+  // by the cursor: `Enter: expand` (interactive row OR collapsed Card),
+  // `Enter: collapse` (expanded Card), omitted (plain diff row).
+  // `threadRootIdOf` resolves a Reply cursor to its Thread root so the
+  // collapse lookup is correct on either node.
+  const enterHintCursor: EnterHintCursor = (() => {
+    if (cursor?.kind === "row" && cursor.interactive) return "interactive";
+    if (cursor?.kind !== "card") return "row";
+    const rootId = threadRootIdOf(cursor.commentId, threads);
+    return collapsedThreads.has(rootId) ? "card-collapsed" : "card-expanded";
+  })();
+  // Issue #406 / ADR 0038 amended. The diff-mode `C` legend flips by
+  // the bundle: `C: collapse all` (any Thread expanded), `C: expand
+  // all` (every Thread already collapsed). Omitted when zero Threads.
+  const anyThreads = topLevel.length > 0;
+  const allThreadsCollapsed =
+    anyThreads && topLevel.every((c) => collapsedThreads.has(c.id));
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
     showSendHint: sendHintVerdict.visible,
@@ -837,7 +849,9 @@ function App(props: AppProps) {
     // emits a shorter sidebar-relevant string; diff mode shows the full
     // legend with `Esc: sidebar` replacing the retired `Tab: pane`.
     paneFocus,
-    currentThreadCollapsed,
+    enterHintCursor,
+    allThreadsCollapsed,
+    anyThreads,
   });
   // Action-target preview line (PRD #192 / ADR 0022). Renders the
   // cursor's `r` target so the user knows what `r` will do before
@@ -1623,17 +1637,33 @@ function App(props: AppProps) {
         gotoPrevComment();
         return;
       case "toggle-thread-collapse": {
-        // PRD #397 / ADR 0038. Per-Thread collapse — the global
-        // `Shift+C` replies-collapse gesture is retired. Only acts when
-        // the cursor sits on a Card (keymap gates the binding to the
-        // diff pane, but a non-card cursor is still a silent no-op).
-        // Toggle the cursored Card's top-level Comment id; a Reply
-        // cursor folds onto its root via `threadRootIdOf` (matches the
-        // validator's cursor-on-reply projection).
+        // Issue #406 / ADR 0038 amended. Per-Thread collapse on
+        // `Enter` (was `Shift+C` pre-#406). The keymap gates the
+        // binding on `cursorOnCard`, so the cursor is always a Card
+        // anchor here; a Reply-cursor folds onto its root via
+        // `threadRootIdOf` (matches the validator's cursor-on-reply
+        // projection).
         if (!cursor || cursor.kind !== "card") return;
         store.dispatch({
           type: "thread.toggle",
           id: threadRootIdOf(cursor.commentId, threads),
+        });
+        return;
+      }
+      case "toggle-all-threads-collapse": {
+        // Issue #406 / ADR 0038 amended. `Shift+C` is the global
+        // "collapse all / expand all Threads" toggle. Direction:
+        // any Thread expanded → collapseAll; every Thread already
+        // collapsed → expandAll (mixed states resolve toward
+        // "hide everything", the more common intent). Zero Threads
+        // → labelled footer no-op.
+        if (topLevel.length === 0) {
+          setFooterStatus("C: no threads to collapse");
+          return;
+        }
+        const allCollapsed = topLevel.every((c) => collapsedThreads.has(c.id));
+        store.dispatch({
+          type: allCollapsed ? "thread.expandAll" : "thread.collapseAll",
         });
         return;
       }

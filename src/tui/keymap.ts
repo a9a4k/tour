@@ -53,6 +53,7 @@ export type KeyAction =
   | { type: "collapse-folder" }
   | { type: "collapse-parent" }
   | { type: "toggle-thread-collapse" }
+  | { type: "toggle-all-threads-collapse" }
   | { type: "next-comment" }
   | { type: "prev-comment" }
   | { type: "toggle-layout" }
@@ -125,11 +126,13 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   }
 
   // Capital-letter bindings are reserved for Tour-wide state (ADR 0030):
-  // `L` toggles layout (ADR 0011), `T` opens the picker, `C` toggles the
-  // collapse of the cursored Thread (PRD #397 / ADR 0038 — the global
-  // "collapse all replies" gesture is retired). Lowercase letters bind
-  // cursor-target actions on the same axis (e.g. `c` for comment, `t` is
-  // unbound).
+  // `L` toggles layout (ADR 0011), `T` opens the picker, `C` is the
+  // global "collapse / expand all Threads" toggle (issue #406 / ADR 0038
+  // amended — the per-Thread gesture moved to `Enter` on a Card). The
+  // App-side handler reads the current `collapsedThreads` size + the
+  // bundle's top-level count to pick the direction. Lowercase letters
+  // bind cursor-target actions on the same axis (e.g. `c` for comment,
+  // `t` is unbound).
   //
   // Issue #390 / ADR 0021 addendum: `R` (shift-r) is the request-reply
   // verb — same letter as bare `r: reply`, case-shifted to mark
@@ -144,7 +147,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     return { type: "open-picker" };
   }
   if (!ctx.sidebarFocused && !key.ctrl && key.shift && key.name === "c") {
-    return { type: "toggle-thread-collapse" };
+    return { type: "toggle-all-threads-collapse" };
   }
   if (!key.ctrl && key.shift && key.name === "r") {
     if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
@@ -211,18 +214,16 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     }
   }
 
-  // Diff-pane Enter (ADR 0013 / ADR 0025): only fires when the cursor
-  // sits on an interactive row. The Shift modifier carries no special
-  // meaning — per PRD #270 Slice 5 the per-file Expand-all button is
-  // the whole-file escape hatch; Shift+Enter behaves identically to
-  // plain Enter.
-  if (
-    !ctx.sidebarFocused &&
-    !key.ctrl &&
-    ctx.cursorOnInteractive &&
-    key.name === "return"
-  ) {
-    return { type: "primary-action" };
+  // Diff-pane Enter (ADR 0013 / ADR 0025): on an interactive row fires
+  // `primary-action` (hidden-context expand); on a Card the per-Thread
+  // collapse toggle (issue #406 / ADR 0038 amended — moved from
+  // `Shift+C`); elsewhere a no-op. The Shift modifier carries no
+  // special meaning — per PRD #270 Slice 5 the per-file Expand-all
+  // button is the whole-file escape hatch; Shift+Enter behaves
+  // identically to plain Enter.
+  if (!ctx.sidebarFocused && !key.ctrl && key.name === "return") {
+    if (ctx.cursorOnInteractive) return { type: "primary-action" };
+    if (ctx.cursorOnCard) return { type: "toggle-thread-collapse" };
   }
 
   if (ctx.sidebarFocused && ctx.rowCount > 0) {

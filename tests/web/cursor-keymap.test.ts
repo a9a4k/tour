@@ -644,23 +644,21 @@ describe("dispatchCursorKey: context-aware yank (PRD #356 / issue #358)", () => 
   });
 });
 
-// PRD #397 / ADR 0038 / issue #399. Webapp parity with the TUI per-
-// Thread collapse gesture. `Shift+C` in diff mode dispatches
-// `toggle-thread-collapse`; the App-side handler routes it through
-// `thread.toggle(id)` (off-card → footer status, no dispatch). The
-// keymap is pure — gating-on-card lives at the App-side handler so
-// the dispatcher contract stays testable without a fake bundle.
-describe("dispatchCursorKey: Shift+C per-Thread collapse (PRD #397 / issue #399)", () => {
-  it("Shift+C in diff mode → toggle-thread-collapse (card cursor)", () => {
+// Issue #406 / ADR 0038 amended. `Shift+C` is the global "collapse /
+// expand all Threads" toggle (the per-Thread gesture moved to `Enter`
+// on a Card). The App-side handler picks direction from current state.
+// The keymap is pure: gating-on-bundle lives at the App-side handler.
+describe("dispatchCursorKey: Shift+C global collapse / expand all (issue #406)", () => {
+  it("Shift+C in diff mode → toggle-all-threads-collapse (card cursor)", () => {
     expect(
       dispatchCursorKey(key({ key: "C", shiftKey: true }), cardCtx),
-    ).toEqual({ type: "toggle-thread-collapse" });
+    ).toEqual({ type: "toggle-all-threads-collapse" });
   });
 
-  it("Shift+C in diff mode dispatches even when the cursor isn't on a card (App-side handler surfaces the off-card hint)", () => {
+  it("Shift+C in diff mode dispatches even when the cursor isn't on a card (it's a global gesture)", () => {
     expect(
       dispatchCursorKey(key({ key: "C", shiftKey: true }), baseCtx),
-    ).toEqual({ type: "toggle-thread-collapse" });
+    ).toEqual({ type: "toggle-all-threads-collapse" });
   });
 
   it("bare c is still `comment-at-cursor` / `noop` (the existing rule) — Shift is load-bearing", () => {
@@ -697,6 +695,60 @@ describe("dispatchCursorKey: Shift+C per-Thread collapse (PRD #397 / issue #399)
     ).toEqual({ type: "noop" });
     expect(
       dispatchCursorKey(key({ key: "C", shiftKey: true, altKey: true }), cardCtx),
+    ).toEqual({ type: "noop" });
+  });
+});
+
+// Issue #406 / ADR 0038 amended. `Enter` on a Card cursor toggles the
+// per-Thread collapse (the gesture moved here from `Shift+C`). The
+// App.tsx Enter-on-interactive-row handler runs before this
+// dispatcher and handles `cursor.interactive` rows; a Card cursor
+// falls through to here.
+describe("dispatchCursorKey: Enter on Card → toggle-thread-collapse (issue #406)", () => {
+  it("Enter on a Card cursor → toggle-thread-collapse", () => {
+    expect(dispatchCursorKey(key({ key: "Enter" }), cardCtx)).toEqual({
+      type: "toggle-thread-collapse",
+    });
+  });
+
+  it("Enter on a row cursor (no Card) → noop", () => {
+    expect(dispatchCursorKey(key({ key: "Enter" }), baseCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("Shift+Enter on a Card cursor does NOT toggle (Shift+Enter is reserved for the composer)", () => {
+    // Diff-mode Card cursor without Shift wins; Shift+Enter falls
+    // through to the rest of the dispatcher (which routes it to
+    // noop here — there's no Shift+Enter arm).
+    expect(
+      dispatchCursorKey(key({ key: "Enter", shiftKey: true }), cardCtx).type,
+    ).not.toBe("toggle-thread-collapse");
+  });
+
+  it("Enter is suppressed when focus is in an editable element (textarea Enter is composer-submit)", () => {
+    const ctx: CursorKeymapContext = { ...cardCtx, focusInEditable: true };
+    expect(dispatchCursorKey(key({ key: "Enter" }), ctx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("Enter is suppressed when the picker is open", () => {
+    const ctx: CursorKeymapContext = { ...cardCtx, pickerOpen: true };
+    expect(dispatchCursorKey(key({ key: "Enter" }), ctx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("Enter with modifiers (Ctrl/Cmd/Alt) → noop", () => {
+    expect(
+      dispatchCursorKey(key({ key: "Enter", ctrlKey: true }), cardCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "Enter", metaKey: true }), cardCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "Enter", altKey: true }), cardCtx),
     ).toEqual({ type: "noop" });
   });
 });

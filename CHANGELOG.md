@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Per-Thread collapse moves to `Enter`; `Shift+C` becomes a global
+  toggle (issue #406 / ADR 0038 amended).** The per-Thread gesture
+  from PRD #397 — fold a single Thread into a one-liner — moves from
+  `Shift+C` to `Enter` on a Card on both surfaces, matching org-mode's
+  `TAB`-cycles-fold pattern and the sidebar's existing `Enter` →
+  fold-toggle. `Enter` on a Reply normalises to the Thread root via
+  the existing `threadRootIdOf` helper (same path the validator's
+  cursor-on-Reply projection uses); off-card Enter semantics (primary-
+  action on interactive rows, diff-row no-op, sidebar
+  select-file / toggle-folder) are unchanged. `Shift+C` is now the
+  global "collapse all / expand all Threads" toggle — any Thread
+  expanded → `thread.collapseAll`; every Thread already collapsed →
+  `thread.expandAll`; zero Threads → labelled footer no-op. Two new
+  reducer actions (`thread.collapseAll`, `thread.expandAll`) carry
+  the bulk shape; both emit `revalidateCursor` for the same defence-
+  in-depth reason as the single-Thread variants. Footer legend
+  reflects the new bindings: `Enter:` flips between `expand`
+  (interactive row OR card-collapsed) / `collapse` (card-expanded) /
+  omitted (diff row); `C:` flips between `collapse all` (any
+  expanded) / `expand all` (all collapsed) / omitted (zero Threads).
+  The webapp Card-header chevron and TUI Card-header chevron still
+  toggle the cursored Thread via mouse click (unchanged from the
+  pre-#406 mouse path).
 - **`tour create` refuses duplicate open tours over the same diff
   (issue #400, breaking change).** `tour create --head <ref>` now
   refuses when an open tour with the same `(head_sha, base_sha)`

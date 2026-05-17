@@ -42,11 +42,16 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
   // bare `r: reply` to mark "different actor" — same letter, same
   // verb-family, different actor. The agent name lives on the header
   // chip, not on the legend.
+  //
+  // Issue #406 / ADR 0038 amended: `Enter: expand` is now contextual
+  // (interactive-row / card-collapsed only). Pass
+  // `enterHintCursor: "interactive"` to assert the prior layout.
   it("inserts `R: request reply` between `r: reply` and `Enter: expand` (no agent name on the label)", () => {
     const out = composeFooterHints({
       surface: "tui",
       replyAgent: "codex",
       showSendHint: true,
+      enterHintCursor: "interactive",
     });
     const r = out.indexOf("r: reply");
     const requestReply = out.indexOf("R: request reply");
@@ -98,7 +103,17 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
   });
 
   it("diff-mode legend retains today's other persistent hints", () => {
-    const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
+    // Issue #406 / ADR 0038 amended: `Enter:` is now contextual on the
+    // cursor; pass `enterHintCursor: "interactive"` to retain
+    // `Enter: expand` for the regression guard. `C:` is now contextual
+    // on the bundle: `C: collapse all` (any expanded) /
+    // `C: expand all` (all collapsed); the substring `C: collapse`
+    // still matches `C: collapse all`.
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      enterHintCursor: "interactive",
+    });
     expect(out).toContain("j/k: move");
     expect(out).toContain("h/l: side");
     expect(out).toContain("n/p: nav");
@@ -215,9 +230,13 @@ describe("composeFooterHints (core, surface: web)", () => {
   // PRD #343 / ADR 0031 / issue #346: the web diff-mode legend gains
   // `Esc: sidebar` as the pane-toggle entry-point. The 8 prior keys
   // are unchanged.
+  // Issue #406 / ADR 0038 amended: the global `C:` verb is now
+  // `collapse all` / `expand all` (was the per-cursor `collapse` /
+  // `expand` flip). With `anyThreads` undefined the back-compat
+  // default emits `C: collapse all`.
   it("emits the diff-mode webapp legend with `Esc: sidebar` when showSendHint is false", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  y: yank  ·  o: open  ·  C: collapse  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  y: yank  ·  o: open  ·  C: collapse all  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -228,7 +247,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  R: request reply  ·  y: yank  ·  o: open  ·  C: collapse  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  R: request reply  ·  y: yank  ·  o: open  ·  C: collapse all  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
@@ -403,61 +422,145 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
   });
 });
 
-// PRD #397 / ADR 0038: the global `C: collapse replies` verb is retired
-// in favour of per-Thread `Shift+C`. The label flips by the cursored
-// Card's collapse state — `C: collapse` when expanded, `C: expand` when
-// collapsed. Both surfaces emit the hint in diff mode; sidebar drops it.
-describe("composeFooterHints — contextual C: collapse / expand flip (PRD #397 / ADR 0038)", () => {
-  it("TUI diff-mode legend reads `C: collapse` when currentThreadCollapsed is false / undefined", () => {
+// Issue #406 / ADR 0038 amended: `Shift+C` is now the global toggle —
+// the legend `C:` verb flips on the bundle's collapse state, not the
+// cursored Card's. `C: collapse all` (any Thread expanded) /
+// `C: expand all` (all Threads collapsed) / omitted (zero Threads).
+// `Enter:` is now contextual on the cursor: `Enter: expand`
+// (interactive row OR card-collapsed), `Enter: collapse` (card-
+// expanded), omitted (plain diff row).
+describe("composeFooterHints — `C:` global collapse-all / expand-all flip (issue #406)", () => {
+  it("TUI diff-mode legend reads `C: collapse all` when allThreadsCollapsed is false / undefined", () => {
     const undefinedOut = composeFooterHints({ surface: "tui", paneFocus: "diff" });
-    expect(undefinedOut).toContain("C: collapse");
-    expect(undefinedOut).not.toContain("C: expand");
+    expect(undefinedOut).toContain("C: collapse all");
+    expect(undefinedOut).not.toContain("C: expand all");
     const falseOut = composeFooterHints({
       surface: "tui",
       paneFocus: "diff",
-      currentThreadCollapsed: false,
+      allThreadsCollapsed: false,
     });
-    expect(falseOut).toContain("C: collapse");
-    expect(falseOut).not.toContain("C: expand");
+    expect(falseOut).toContain("C: collapse all");
+    expect(falseOut).not.toContain("C: expand all");
   });
 
-  it("TUI diff-mode legend flips to `C: expand` when currentThreadCollapsed is true", () => {
+  it("TUI diff-mode legend flips to `C: expand all` when allThreadsCollapsed is true", () => {
     const out = composeFooterHints({
       surface: "tui",
       paneFocus: "diff",
-      currentThreadCollapsed: true,
+      allThreadsCollapsed: true,
     });
-    expect(out).toContain("C: expand");
-    expect(out).not.toContain("C: collapse  ·"); // the "collapse" word must not appear as a verb
+    expect(out).toContain("C: expand all");
+    expect(out).not.toContain("C: collapse all");
   });
 
   it("Web diff-mode legend mirrors the TUI flip", () => {
     const expanded = composeFooterHints({ surface: "web", paneFocus: "diff" });
-    expect(expanded).toContain("C: collapse");
-    expect(expanded).not.toContain("C: expand");
+    expect(expanded).toContain("C: collapse all");
+    expect(expanded).not.toContain("C: expand all");
     const collapsed = composeFooterHints({
       surface: "web",
       paneFocus: "diff",
-      currentThreadCollapsed: true,
+      allThreadsCollapsed: true,
     });
-    expect(collapsed).toContain("C: expand");
-    expect(collapsed).not.toContain("C: collapse");
+    expect(collapsed).toContain("C: expand all");
+    expect(collapsed).not.toContain("C: collapse all");
   });
 
-  it("Sidebar legends drop the hint entirely regardless of currentThreadCollapsed (off-card by definition)", () => {
+  it("Both surfaces omit the `C:` hint entirely when anyThreads is false (Shift+C is a labelled no-op then)", () => {
+    const tui = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      anyThreads: false,
+    });
+    expect(tui).not.toContain("C: collapse");
+    expect(tui).not.toContain("C: expand");
+    const web = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      anyThreads: false,
+    });
+    expect(web).not.toContain("C: collapse");
+    expect(web).not.toContain("C: expand");
+  });
+
+  it("Sidebar legends drop the hint entirely regardless of bundle state (Shift+C is diff-pane only)", () => {
     const tuiSidebar = composeFooterHints({
       surface: "tui",
       paneFocus: "sidebar",
-      currentThreadCollapsed: true,
+      allThreadsCollapsed: true,
     });
     expect(tuiSidebar).not.toContain("C: collapse");
     expect(tuiSidebar).not.toContain("C: expand");
     const webSidebar = composeFooterHints({
       surface: "web",
       paneFocus: "sidebar",
-      currentThreadCollapsed: true,
+      allThreadsCollapsed: true,
     });
     expect(webSidebar).not.toContain("C: collapse");
     expect(webSidebar).not.toContain("C: expand");
+  });
+});
+
+describe("composeFooterHints — `Enter:` cursor-contextual flip (issue #406)", () => {
+  it("TUI diff-mode emits `Enter: expand` on an interactive-row cursor", () => {
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      enterHintCursor: "interactive",
+    });
+    expect(out).toContain("Enter: expand");
+    expect(out).not.toContain("Enter: collapse");
+  });
+
+  it("TUI diff-mode emits `Enter: collapse` when the cursor is on an expanded Card", () => {
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      enterHintCursor: "card-expanded",
+    });
+    expect(out).toContain("Enter: collapse");
+    expect(out).not.toContain("Enter: expand");
+  });
+
+  it("TUI diff-mode emits `Enter: expand` when the cursor is on a collapsed Card", () => {
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      enterHintCursor: "card-collapsed",
+    });
+    expect(out).toContain("Enter: expand");
+    expect(out).not.toContain("Enter: collapse");
+  });
+
+  it("TUI diff-mode omits the `Enter:` hint when the cursor is on a plain diff row (Enter is a no-op there)", () => {
+    const out = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      enterHintCursor: "row",
+    });
+    expect(out).not.toContain("Enter: expand");
+    expect(out).not.toContain("Enter: collapse");
+  });
+
+  it("Web diff-mode mirrors the TUI flip for Card cursors", () => {
+    const expandedCard = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      enterHintCursor: "card-expanded",
+    });
+    expect(expandedCard).toContain("Enter: collapse");
+    expect(expandedCard).not.toContain("Enter: expand");
+    const collapsedCard = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      enterHintCursor: "card-collapsed",
+    });
+    expect(collapsedCard).toContain("Enter: expand");
+    expect(collapsedCard).not.toContain("Enter: collapse");
+  });
+
+  it("Web diff-mode omits the `Enter:` hint by default (back-compat — webapp didn't surface Enter on its legend pre-#406)", () => {
+    const out = composeFooterHints({ surface: "web", paneFocus: "diff" });
+    expect(out).not.toContain("Enter:");
   });
 });

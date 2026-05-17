@@ -217,16 +217,16 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c"), diffPaneOnCard).type).toBe("noop-comment-on-card");
   });
 
-  it("Shift+C in the diff pane dispatches toggle-thread-collapse (PRD #397)", () => {
+  it("Shift+C in the diff pane dispatches toggle-all-threads-collapse (issue #406 — global toggle)", () => {
     expect(dispatchKey(k("c", { shift: true }), diffPane).type).toBe(
-      "toggle-thread-collapse",
+      "toggle-all-threads-collapse",
     );
     expect(dispatchKey(k("c", { shift: true }), diffPaneOnCard).type).toBe(
-      "toggle-thread-collapse",
+      "toggle-all-threads-collapse",
     );
   });
 
-  it("Shift+C in the sidebar is a noop (toggle-thread-collapse is diff-pane only)", () => {
+  it("Shift+C in the sidebar is a noop (toggle-all-threads-collapse is diff-pane only)", () => {
     expect(dispatchKey(k("c", { shift: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("c", { shift: true }), sidebarFolder).type).toBe("noop");
   });
@@ -714,10 +714,13 @@ describe("dispatchKey — line cursor (ADR 0011)", () => {
 // the cursor sits on an interactive row in the diff pane. The Shift
 // modifier carries no special meaning (PRD #270 Slice 5 / issue #275 —
 // the per-file Expand-all chrome button is the whole-file escape
-// hatch); Shift+Enter behaves identically to plain Enter. Diff-row
-// Enter is a noop (Enter is reserved for interactive-row actions, not
-// an alias for `a`). Sidebar Enter retains select-file.
-describe("dispatchKey — primary-action (PRD #107)", () => {
+// hatch); Shift+Enter behaves identically to plain Enter.
+//
+// Issue #406 / ADR 0038 amended: Enter on a Card cursor dispatches
+// `toggle-thread-collapse` (the per-Thread gesture moved from `Shift+C`
+// to `Enter`). Diff-row Enter is still a noop. Sidebar Enter retains
+// its select-file / toggle-folder routing.
+describe("dispatchKey — Enter routing (PRD #107 / issue #406)", () => {
   it("Enter on a cursor-on-interactive row dispatches primary-action", () => {
     expect(dispatchKey(k("return"), diffPaneInteractive).type).toBe("primary-action");
   });
@@ -728,7 +731,19 @@ describe("dispatchKey — primary-action (PRD #107)", () => {
     );
   });
 
-  it("Enter on a regular diff row dispatches noop (Enter is reserved for interactive-row actions)", () => {
+  it("Enter on a Card cursor dispatches toggle-thread-collapse (issue #406 — moved from Shift+C)", () => {
+    expect(dispatchKey(k("return"), diffPaneOnCard).type).toBe(
+      "toggle-thread-collapse",
+    );
+  });
+
+  it("Shift+Enter on a Card cursor also dispatches toggle-thread-collapse (Shift carries no special meaning)", () => {
+    expect(dispatchKey(k("return", { shift: true }), diffPaneOnCard).type).toBe(
+      "toggle-thread-collapse",
+    );
+  });
+
+  it("Enter on a regular diff row dispatches noop (Enter is reserved for interactive-row / Card actions)", () => {
     expect(dispatchKey(k("return"), diffPane).type).toBe("noop");
   });
 
@@ -736,15 +751,20 @@ describe("dispatchKey — primary-action (PRD #107)", () => {
     expect(dispatchKey(k("return", { shift: true }), diffPane).type).toBe("noop");
   });
 
-  it("sidebar-focused Enter retains select-file regardless of cursor-on-interactive bit", () => {
-    // Even with cursorOnInteractive=true, sidebar focus wins — the
-    // primary-action route is gated on `!sidebarFocused`.
+  it("sidebar-focused Enter retains select-file regardless of cursor-on-interactive / cursor-on-card bits", () => {
+    // Even with cursorOnInteractive=true or cursorOnCard=true, sidebar
+    // focus wins — the diff-pane Enter route is gated on
+    // `!sidebarFocused`.
     const sidebarWithInteractiveCursor = { ...sidebar, cursorOnInteractive: true };
     expect(dispatchKey(k("return"), sidebarWithInteractiveCursor).type).toBe("select-file");
+    expect(dispatchKey(k("return"), sidebarOnCard).type).toBe("select-file");
   });
 
-  it("Ctrl+Enter is not consumed as primary-action (modifier guard)", () => {
+  it("Ctrl+Enter is not consumed as primary-action / toggle-thread-collapse (modifier guard)", () => {
     expect(dispatchKey(k("return", { ctrl: true }), diffPaneInteractive).type).toBe(
+      "noop",
+    );
+    expect(dispatchKey(k("return", { ctrl: true }), diffPaneOnCard).type).toBe(
       "noop",
     );
   });
