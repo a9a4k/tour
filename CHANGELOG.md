@@ -62,6 +62,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **ADR 0030 amendment: three-tier keybinding framework.** Pre-1.0
+  audit reframed the original lowercase/capital rule as bare / Shift /
+  Ctrl + symbols, added a "different actor" sub-shape under Tier 2 to
+  legitimise the `r` / `R` pair (which had silently violated the
+  original "Tour-wide only" capital rule since issue #390), and
+  reserved `?` (help) and `/` (search) as future-use symbols. No
+  rebinds — every shipped letter fits cleanly under one of the three
+  tiers or the symbol axis. Also fixes the TUI footer legend to read
+  `Space: page (Shift: up)` so the previously-hidden `Shift+Space`
+  half-page-up binding is discoverable from the always-on hint strip.
+
 - **TUI composer is multi-line + fills the inner width (issue #391).**
   The comment composer now renders an opentui `<textarea>` instead of
   the single-line `<input>`. Two consequences. (1) Typed text fills the
