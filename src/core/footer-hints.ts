@@ -86,7 +86,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // hint is unconditional in the legend (same convention as `r: reply`);
     // gating the verb on cursor context happens at the dispatcher.
     return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  d: delete${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank  ·  o: open  ·  Space: page  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
+      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  d: delete${send}  ·  Enter: expand  ·  e: expand all  ·  C: collapse replies  ·  y: yank  ·  o: open  ·  Space: page (Shift: up)  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
     );
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
