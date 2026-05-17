@@ -428,7 +428,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
      the class, the glyph moves with it. Presentational pseudo-element
      so screen readers ignore it (the byline text carries the semantics). */
   .comment-block .ann-header.active-node::before,
-  .comment-block .ann-reply.active-node::before {
+  .comment-block .ann-reply.active-node .ann-header::before {
     content: "● ";
     color: var(--fg-accent);
     font-weight: 700;

@@ -2009,6 +2009,16 @@ describe("App within-Card active-node surface (issue #408 — ADR 0037 webapp pa
     expect(reply2).not.toBeNull();
     expect(reply1!.classList.contains("active-node")).toBe(false);
     expect(reply2!.classList.contains("active-node")).toBe(false);
+
+    // Issue #409 follow-up: the pre-ADR-0037 inline `<span
+    // className="selection-marker">●</span>` on the parent header was
+    // duplicating the `::before` glyph the active-node CSS now provides.
+    // The parent header must NOT render an inline selection-marker when
+    // the cursor is on it — the `::before` pseudo is the single source
+    // of truth for the within-Card glyph.
+    expect(
+      parentHeader!.querySelector(":scope > .selection-marker"),
+    ).toBeNull();
   });
 
   it("press `j` → first reply wrapper gains `active-node`; parent header loses it", async () => {

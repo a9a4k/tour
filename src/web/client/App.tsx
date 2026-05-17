@@ -2758,9 +2758,11 @@ export function CommentCard({
       onClick={() => onCardClick?.(comment.id)}
     >
       <div className={parentActive ? "ann-header active-node" : "ann-header"}>
-        {isCurrent ? (
-          <span className="selection-marker" aria-hidden="true">●{" "}</span>
-        ) : null}
+        {/* Issue #409 follow-up: the `●` glyph rides
+            `.ann-header.active-node::before` (`src/web/spa.ts`) so the
+            within-Card active-node cue has one source. The pre-ADR-0037
+            inline `selection-marker` span was duplicating that glyph on
+            the parent header. */}
         {onToggleCollapse ? (
           <button
             type="button"

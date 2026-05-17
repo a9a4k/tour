@@ -150,12 +150,17 @@ describe("spa shell html()", () => {
     // existing `.active-node` class via a `::before` pseudo so the
     // class stays the single source of truth — when `j` / `k` flips
     // the class the glyph moves with it.
+    //
+    // Issue #409 follow-up: the reply selector targets the inner
+    // `.ann-header` (not the wrapper) so the glyph inherits the
+    // byline's 11 px monospace font-size; pre-fix the wrapper-level
+    // `::before` rendered at the wrapper's larger inherited body font.
     const out = html();
     expect(out).toMatch(
-      /\.comment-block\s+\.ann-header\.active-node::before,\s*\.comment-block\s+\.ann-reply\.active-node::before\s*\{[^}]*content:\s*"●\s*"/,
+      /\.comment-block\s+\.ann-header\.active-node::before,\s*\.comment-block\s+\.ann-reply\.active-node\s+\.ann-header::before\s*\{[^}]*content:\s*"●\s*"/,
     );
     expect(out).toMatch(
-      /\.comment-block\s+\.ann-header\.active-node::before,\s*\.comment-block\s+\.ann-reply\.active-node::before\s*\{[^}]*color:\s*var\(--fg-accent\)/,
+      /\.comment-block\s+\.ann-header\.active-node::before,\s*\.comment-block\s+\.ann-reply\.active-node\s+\.ann-header::before\s*\{[^}]*color:\s*var\(--fg-accent\)/,
     );
   });
 
