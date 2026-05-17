@@ -73,6 +73,18 @@ export function findThreadByNode(
   return null;
 }
 
+/** Resolve any Comment id (parent or Reply) to its Thread's root id.
+ *  Falls back to `commentId` when the id isn't in any Thread (stale
+ *  cursor, mid-bundle-refresh) so call sites get a stable id without
+ *  branching. Used by PRD #397 / ADR 0038 action seams (`thread.toggle`,
+ *  pre-dispatch `thread.expand`) which all target Thread roots. */
+export function threadRootIdOf(
+  commentId: string,
+  threads: ReadonlyArray<Thread>,
+): string {
+  return findThreadByNode(commentId, threads)?.thread.root.id ?? commentId;
+}
+
 export type Cursor = RowAnchor | CardAnchor;
 
 export function isRowAnchor(c: Cursor | null): c is RowAnchor {

@@ -98,7 +98,7 @@ import {
   cursorFromComment,
   cursorAtFirstFileRow,
   cursorOnInteractive,
-  findThreadByNode,
+  threadRootIdOf,
   type Cursor,
 } from "../core/cursor-state.js";
 import {
@@ -825,16 +825,11 @@ function App(props: AppProps) {
         })
       : { visible: false, enabled: false };
   // PRD #397 / ADR 0038. The diff-mode `C` legend flips by the cursored
-  // Card's collapse state. Resolves the cursor's id to a top-level root
-  // through `findThreadByNode` so a cursor on a Reply still reads its
-  // Thread's collapse state correctly.
-  const currentThreadRootId = (() => {
-    if (!cursor || cursor.kind !== "card") return null;
-    const found = findThreadByNode(cursor.commentId, threads);
-    return found?.thread.root.id ?? cursor.commentId;
-  })();
+  // Card's collapse state. `threadRootIdOf` resolves a Reply cursor to
+  // its Thread root so the lookup is correct on either node.
   const currentThreadCollapsed =
-    currentThreadRootId !== null && collapsedThreads.has(currentThreadRootId);
+    cursor?.kind === "card" &&
+    collapsedThreads.has(threadRootIdOf(cursor.commentId, threads));
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
     showSendHint: sendHintVerdict.visible,
@@ -1285,10 +1280,8 @@ function App(props: AppProps) {
     // Thread before mounting the composer so the existing Replies stay
     // visible above the new draft. `thread.expand` is a no-op when the
     // id isn't in `collapsedThreads`, so this is cheap on the common
-    // (already-expanded) path. Resolves the cursored node's id to the
-    // top-level Comment id even when the cursor sits on a Reply.
-    const found = findThreadByNode(cursorCardComment.id, threads);
-    const rootId = found?.thread.root.id ?? cursorCardComment.id;
+    // (already-expanded) path.
+    const rootId = threadRootIdOf(cursorCardComment.id, threads);
     if (collapsedThreads.has(rootId)) {
       store.dispatch({ type: "thread.expand", id: rootId });
     }
@@ -1336,8 +1329,7 @@ function App(props: AppProps) {
     // PRD #397 / ADR 0038. Modifying action seam — auto-expand the
     // Thread before dispatching the agent reply so the user can watch
     // the in-flight pill and the agent's reply land in context.
-    const found = findThreadByNode(cursorCardComment.id, threads);
-    const rootId = found?.thread.root.id ?? cursorCardComment.id;
+    const rootId = threadRootIdOf(cursorCardComment.id, threads);
     if (collapsedThreads.has(rootId)) {
       store.dispatch({ type: "thread.expand", id: rootId });
     }
@@ -1634,14 +1626,14 @@ function App(props: AppProps) {
         // `Shift+C` replies-collapse gesture is retired. Only acts when
         // the cursor sits on a Card (keymap gates the binding to the
         // diff pane, but a non-card cursor is still a silent no-op).
-        // Toggle the cursored Card's top-level Comment id. When the
-        // cursor sits on a Reply, the projection helper folds it onto
-        // the root id (matches the validator's cursor-on-reply
-        // projection in `core/cursor-state.ts`).
+        // Toggle the cursored Card's top-level Comment id; a Reply
+        // cursor folds onto its root via `threadRootIdOf` (matches the
+        // validator's cursor-on-reply projection).
         if (!cursor || cursor.kind !== "card") return;
-        const root = findThreadByNode(cursor.commentId, threads);
-        const targetId = root?.thread.root.id ?? cursor.commentId;
-        store.dispatch({ type: "thread.toggle", id: targetId });
+        store.dispatch({
+          type: "thread.toggle",
+          id: threadRootIdOf(cursor.commentId, threads),
+        });
         return;
       }
       case "toggle-layout": {
@@ -1947,11 +1939,8 @@ function App(props: AppProps) {
         // PRD #397 / ADR 0038. Destructive-cascade action seam — `d`
         // refuses to act on a collapsed Thread. The user must expand
         // first so the Replies they're about to cascade-delete are
-        // visible before confirmation. Resolve the cursored node's id
-        // to the top-level root before checking the set.
-        const found = findThreadByNode(cursor.commentId, threads);
-        const rootId = found?.thread.root.id ?? cursor.commentId;
-        if (collapsedThreads.has(rootId)) {
+        // visible before confirmation.
+        if (collapsedThreads.has(threadRootIdOf(cursor.commentId, threads))) {
           setFooterStatus("d: — (Thread collapsed, expand to delete)");
           return;
         }
