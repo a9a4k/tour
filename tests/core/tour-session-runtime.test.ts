@@ -872,12 +872,15 @@ describe("TourSessionRuntime", () => {
   describe("optimisticInsertComment intent (issue #392)", () => {
     // Issue #322 keeps its goal — the freshly-created Comment lands in the
     // bundle before the SSE-driven `bundle.refreshed` round-trip. Issue #392
-    // changes *how*: the fold no longer happens in the same React commit as
+    // changes *how*: the fold no longer happens in the same render cycle as
     // the composer-overlay unmount. The reducer emits
-    // `optimisticInsertComment`, the runtime queues a microtask that
-    // dispatches `bundle.commentInserted`, and the heightful CommentRow add
-    // lands in its own commit — opentui's yoga layout pass no longer crashes.
-    it("defers the bundle fold via queueMicrotask so the composer-close commit lands first", async () => {
+    // `optimisticInsertComment`; the runtime defers via a short timer
+    // (empirically 50 ms — see the runtime comment for why microtask /
+    // setTimeout(0) are insufficient) and dispatches `bundle.commentInserted`
+    // in a later commit. The heightful CommentRow add lands after opentui has
+    // reflowed the composer-close commit; the yoga layout pass no longer
+    // leaves the file's content empty.
+    it("defers the bundle fold via a timer so the composer-close commit lands first", async () => {
       const store = storeWithTour(null);
       const ann: Comment = {
         id: "a-new",
@@ -922,16 +925,16 @@ describe("TourSessionRuntime", () => {
       store.dispatch({ type: "composer.submit" });
       // One microtask is enough to flush the writeComment promise →
       // composer.submitted dispatch. The bundle fold has NOT landed yet —
-      // it was queued via queueMicrotask one further hop away.
+      // it was scheduled on a 50ms timer one further hop away.
       await Promise.resolve();
 
       const afterSubmittedCommit = commits[commits.length - 1];
       expect(afterSubmittedCommit.composerKind).toBe("closed");
       expect(afterSubmittedCommit.commentIds).not.toContain("a-new");
 
-      // Drain the queued microtask. The bundle.commentInserted dispatch
+      // Drain the deferred timer. The bundle.commentInserted dispatch
       // fires and the freshly-created comment lands in the bundle.
-      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 100));
       const afterFoldCommit = commits[commits.length - 1];
       expect(afterFoldCommit.composerKind).toBe("closed");
       expect(afterFoldCommit.commentIds).toContain("a-new");
@@ -970,13 +973,13 @@ describe("TourSessionRuntime", () => {
       });
       store.dispatch({ type: "composer.setBody", body: "x" });
       store.dispatch({ type: "composer.submit" });
-      // After writeComment resolves but before the queued microtask fires,
+      // After writeComment resolves but before the deferred timer fires,
       // the bundle slice drops out (e.g. a watcher race re-classified the
       // tour as failed). The deferred fold must be a no-op rather than
       // crash on the non-ok bundle.
       await Promise.resolve();
       store.dispatch({ type: "bundle.failed", tourId: "tour-a", error: "lost" });
-      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(store.getState().bundle).toEqual({ kind: "err", error: "lost" });
       stop();

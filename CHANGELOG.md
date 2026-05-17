@@ -24,7 +24,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **TUI diff pane no longer breaks after comment / reply submit (issue
   #392).** The optimistic bundle fold issue #322 introduced was running
-  in the same React commit that unmounted the absolute-positioned
+  in the same render cycle that unmounted the absolute-positioned
   `<Composer>` overlay. When the underlying diff-rows tree
   simultaneously gained a height-changing CommentRow, opentui's yoga
   layout pass left the affected file's content subtree empty — diff
@@ -32,15 +32,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   through empty space until the user re-opened the Tour. The
   `composer.submitted` reducer branch now closes the composer
   synchronously and emits a new `optimisticInsertComment` intent; the
-  runtime queues a `bundle.commentInserted` dispatch on the next
-  microtask, so the heightful row add lands in its own React commit.
-  Issue #322's goal is preserved — a microtask hop is sub-frame, well
-  under the watcher's ~500-600 ms — and the existing id-collision
-  short-circuit (a subsequent `bundle.refreshed` carrying the same id
-  results in exactly one occurrence) carries over to the new
-  `bundle.commentInserted` reducer branch. Shared between TUI and
-  webapp; the webapp didn't exhibit the layout bug but now follows
-  the same microtask cadence for parity.
+  runtime defers the `bundle.commentInserted` dispatch on a short
+  (50 ms) post-paint timer so the heightful row add lands after
+  opentui has reflowed the composer-close commit. Empirically verified
+  that microtask and `setTimeout(0)` are both insufficient — opentui's
+  render tick needs ~33 ms to settle before the next React commit can
+  safely change layout-affecting state. Issue #322's goal is preserved
+  — 50 ms is well under the watcher's ~500-600 ms RTT and sub-perceptual
+  — and the existing id-collision short-circuit (a subsequent
+  `bundle.refreshed` carrying the same id results in exactly one
+  occurrence) carries over to the new `bundle.commentInserted` reducer
+  branch. Shared between TUI and webapp; the webapp didn't exhibit the
+  layout bug but now follows the same deferred cadence for parity.
 
 ### Changed
 

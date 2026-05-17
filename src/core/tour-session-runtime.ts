@@ -121,19 +121,30 @@ export class TourSessionRuntime {
           return;
         case "optimisticInsertComment":
           // Issue #392: split the optimistic bundle fold off the same
-          // React commit that closes the composer overlay. Queueing
-          // the `bundle.commentInserted` dispatch on the next microtask
-          // lets the composer's overlay unmount commit first (commit
-          // 1), and the heightful CommentRow add lands on its own
-          // commit (commit 2) — opentui's yoga layout pass no longer
-          // sees an absolute-positioned overlay unmount + a sibling
-          // height change in a single commit and leave the file's
-          // subtree empty. Issue #322's goal (no SSE-roundtrip latency
-          // before the new card appears) is preserved: a microtask
-          // hop is sub-frame, well under the watcher's ~500-600 ms.
-          queueMicrotask(() => {
+          // render cycle that closes the composer overlay. The bug:
+          // when an absolute-positioned overlay (`<Composer>`) unmounts
+          // while a sibling subtree in the diff scrollbox grows, opentui's
+          // yoga layout pass leaves the affected file's content empty —
+          // diff rows vanish below the parent's anchor, the new card
+          // doesn't render. Symptom is purely visual; disk state and
+          // React state are both correct.
+          //
+          // Fix: defer the bundle dispatch enough for opentui to fully
+          // render + reflow the composer-close commit first. `queueMicrotask`
+          // and `setTimeout(0)` (one macrotask) are both insufficient —
+          // empirically verified that 16 ms is also too short and 50 ms
+          // is the floor that consistently lands the second commit after
+          // the first has fully painted. opentui's renderer doesn't expose
+          // a post-paint signal we can subscribe to, so a small timer is
+          // the pragmatic fix until that primitive lands (or opentui
+          // resolves the underlying yoga interaction).
+          //
+          // Issue #322's goal (no SSE-roundtrip latency before the new
+          // card appears) is still preserved: 50 ms is well under the
+          // watcher's ~500-600 ms RTT and is sub-perceptual.
+          setTimeout(() => {
             this.store.dispatch({ type: "bundle.commentInserted", comment: intent.comment });
-          });
+          }, 50);
           return;
         case "scrollToComposer":
           this.adapter.scrollToComposer(intent.target);

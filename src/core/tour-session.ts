@@ -549,12 +549,13 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // `bundle.refreshed` round-trip (~500-600 ms on large tours).
       // Issue #392 splits *how*: this branch no longer folds the
       // comment inline. It emits `optimisticInsertComment` instead,
-      // which the runtime queues via `queueMicrotask` as a separate
-      // `bundle.commentInserted` dispatch. Two React commits, ordered:
-      // (1) composer overlay unmounts here; (2) one microtask later,
-      // the bundle gains the new CommentRow. The TUI's opentui yoga
-      // layout pass crashed when both happened in the same commit —
-      // see the issue for the diff-pane-blank-after-submit symptom.
+      // which the runtime defers (via a small post-paint timer) and
+      // dispatches `bundle.commentInserted` separately. Two React
+      // commits, ordered: (1) composer overlay unmounts here;
+      // (2) ~50 ms later, after opentui has reflowed, the bundle
+      // gains the new CommentRow. Without the gap, opentui's yoga
+      // layout pass leaves the affected file's content empty — the
+      // diff-pane-blank-after-submit symptom from the issue.
       if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
       return {
         state: { ...state, composer: { kind: "closed" } },
@@ -573,7 +574,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // landed via the runtime). No-op on a non-resolved bundle slice
       // (defence in depth — the runtime already swallowed any case
       // where the bundle dropped out mid-submit, and the reducer must
-      // not crash on a late microtask).
+      // not crash on a late dispatch).
       if (state.bundle.kind !== "ok") return { state, intents: NO_INTENTS };
       const inner = state.bundle.value;
       if (inner.comments.some((a) => a.id === action.comment.id)) {
