@@ -35,7 +35,7 @@ cat <<'JSONL' | tour comment "$TOUR_ID" --batch - --as-agent
 {"file":"src/foo.ts","side":"additions","line_start":40,"body":"..."}
 JSONL
 # Verify identity before serving — see "Verify after authoring" below.
-tour pickup "$TOUR_ID" --json | jq -e '[.comments[].author_kind] | all(. == "agent")' > /dev/null \
+tour pickup "$TOUR_ID" --json | node -e "let d=JSON.parse(require('fs').readFileSync(0));process.exit(d.comments.every(c=>c.author_kind==='agent')?0:1)" \
   || { echo "tour: identity check failed — delete with \`tour delete $TOUR_ID\` and re-author with --as-agent"; exit 1; }
 tour serve "$TOUR_ID" --reply-agent claude &
 ```
@@ -67,9 +67,11 @@ Right after the batch lands, assert every comment carries `author_kind: "agent"`
 
 ```sh
 tour pickup "$TOUR_ID" --json \
-  | jq -e '[.comments[].author_kind] | all(. == "agent")' > /dev/null \
+  | node -e "let d=JSON.parse(require('fs').readFileSync(0));process.exit(d.comments.every(c=>c.author_kind==='agent')?0:1)" \
   || { echo "tour: identity check failed — run \`tour delete $TOUR_ID\` and re-author with --as-agent"; exit 1; }
 ```
+
+Uses `node` (already on every machine that runs Tour) so the check works on fresh installs — no `jq` dependency.
 
 If the check fails: the events are append-only, so the only remediation is `tour delete "$TOUR_ID"` and re-author with `--as-agent`. Do not attempt in-place patching.
 
