@@ -2297,6 +2297,15 @@ export async function startTui(props: AppProps): Promise<void> {
     autoFocus: false,
     exitOnCtrlC: true,
   });
+  // Engage the Kitty keyboard protocol so modifier+key chords (notably
+  // Shift+Enter → newline in the Composer, issue #394) arrive as distinct
+  // sequences. Without this, opentui configures its parser to recognise
+  // Kitty sequences but never writes `CSI > <flags> u` to the terminal,
+  // and the terminal keeps sending legacy bytes where Shift+Enter is
+  // indistinguishable from Enter. Ctrl+J (0x0A LF) remains the universal
+  // fallback for non-Kitty-protocol terminals and multiplexers that
+  // don't propagate the handshake.
+  renderer.enableKittyKeyboard();
   const root = createRoot(renderer);
   root.render(<App {...props} />);
   await new Promise<void>((resolve) => {
