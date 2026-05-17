@@ -10,6 +10,7 @@ import {
   isCardAnchor,
   isRowAnchor,
   preferredSideOf,
+  threadRootIdOf,
 } from "./cursor-state.js";
 import { buildThreads } from "./threads.js";
 import type { PaneFocus, PaneFocusAction } from "./pane-focus-state.js";
@@ -931,7 +932,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (!changed) return { state, intents: NO_INTENTS };
       return {
         state: { ...state, collapsedThreads: next },
-        intents: revalidateIfCursor(state),
+        intents: [
+          ...recenterCardCursorIntents(state),
+          ...revalidateIfCursor(state),
+        ],
       };
     }
 
@@ -941,7 +945,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (state.collapsedThreads.size === 0) return { state, intents: NO_INTENTS };
       return {
         state: { ...state, collapsedThreads: new Set<string>() },
-        intents: revalidateIfCursor(state),
+        intents: [
+          ...recenterCardCursorIntents(state),
+          ...revalidateIfCursor(state),
+        ],
       };
     }
 
@@ -1039,6 +1046,29 @@ function pruneCollapsedThreads(
 // `validateCursor`.
 function revalidateIfCursor(state: TourSessionState): Intent[] {
   return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
+}
+
+// Issue #407. The bulk `Shift+C` toggle reshapes the document by potentially
+// hundreds of rows — the cursored Card can land far off-screen. After
+// `thread.collapseAll` / `thread.expandAll` lands, recenter the viewport on
+// the cursored Card with `center` + `instant` (a smooth scroll over a
+// freshly-resized doc reads as glitchy). Row / interactive-row cursors are
+// doc-position-stable; no scroll fires. Reply-cursor ids normalise to the
+// Thread root via `threadRootIdOf` — after `collapseAll` the Reply row is
+// gone, so the intent must carry the parent's id.
+function recenterCardCursorIntents(state: TourSessionState): Intent[] {
+  const cursor = state.cursor;
+  if (!isCardAnchor(cursor) || state.bundle.kind !== "ok") return NO_INTENTS;
+  const threads = buildThreads(state.bundle.value.comments);
+  const rootId = threadRootIdOf(cursor.commentId, threads);
+  return [
+    {
+      type: "scrollCursorTarget",
+      target: { kind: "card", commentId: rootId },
+      placement: "center",
+      behavior: "instant",
+    },
+  ];
 }
 
 // Open → submitting and errored → submitting share their entire transition:

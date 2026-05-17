@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`Shift+C` bulk toggle recenters the cursored Card (issue #407).**
+  After `thread.collapseAll` / `thread.expandAll` lands with the cursor
+  on a Card, the diff pane scrolls so the Card is centred in the
+  viewport. The reducer emits `scrollCursorTarget` with
+  `placement: "center"` and `behavior: "instant"` (a smooth scroll over
+  a freshly-resized doc reads as glitchy). Reply-cursor ids normalise
+  to the Thread root via the existing `threadRootIdOf` helper — after
+  `collapseAll` the Reply row is gone, so the intent must carry the
+  parent's id. Row / interactive-row / null cursors emit no scroll
+  (doc-position is stable). Per-Thread `Enter` and chevron-click
+  toggles still emit no scroll — only the bulk path disorients the
+  user's spatial bearing enough to justify a jump. Both TUI and webapp
+  inherit the behaviour through their existing tour-session adapter.
 - **Per-Thread collapse moves to `Enter`; `Shift+C` becomes a global
   toggle (issue #406 / ADR 0038 amended).** The per-Thread gesture
   from PRD #397 — fold a single Thread into a one-liner — moves from

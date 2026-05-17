@@ -2563,7 +2563,7 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
     expect(r.intents).toEqual([]);
   });
 
-  it("thread.collapseAll with cursor !== null emits revalidateCursor", () => {
+  it("thread.collapseAll with cursor on a Card emits scrollCursorTarget + revalidateCursor (issue #407)", () => {
     let s = reduce(initialTourSessionState(), {
       type: "tour.switched",
       tourId: "tour-a",
@@ -2571,7 +2571,64 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
     }).state;
     s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "t1" }) }).state;
     const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "t1" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "revalidateCursor" },
+    ]);
+  });
+
+  it("thread.collapseAll with cursor on a Reply emits scrollCursorTarget targeting the Thread root (issue #407)", () => {
+    const t1 = mkComment({ id: "t1" });
+    const r1 = mkComment({ id: "r1", replies_to: "t1" });
+    const bundle: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1, r1],
+      diff: "",
+      files: [],
+    };
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle,
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "r1" }) }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "t1" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "revalidateCursor" },
+    ]);
+  });
+
+  it("thread.collapseAll with cursor on a row emits only revalidateCursor (no scroll, issue #407)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1"]),
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: rowAnchor() }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
     expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("thread.collapseAll with null cursor emits no scroll (issue #407)", () => {
+    const s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1"]),
+    }).state;
+    const r = reduce(s, { type: "thread.collapseAll" });
+    expect(r.intents).toEqual([]);
   });
 
   it("thread.expandAll empties the set", () => {
@@ -2592,7 +2649,7 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
     expect(r.intents).toEqual([]);
   });
 
-  it("thread.expandAll with cursor !== null emits revalidateCursor", () => {
+  it("thread.expandAll with cursor on a Card emits scrollCursorTarget + revalidateCursor (issue #407)", () => {
     let s = reduce(initialTourSessionState(), {
       type: "tour.switched",
       tourId: "tour-a",
@@ -2601,7 +2658,67 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
     s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
     s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "t1" }) }).state;
     const r = reduce(s, { type: "thread.expandAll" });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "t1" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "revalidateCursor" },
+    ]);
+  });
+
+  it("thread.expandAll with cursor on a Reply emits scrollCursorTarget targeting the Thread root (issue #407)", () => {
+    const t1 = mkComment({ id: "t1" });
+    const r1 = mkComment({ id: "r1", replies_to: "t1" });
+    const bundle: TourBundle = {
+      kind: "ok",
+      tour: tour({ id: "tour-a" }),
+      comments: [t1, r1],
+      diff: "",
+      files: [],
+    };
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle,
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "r1" }) }).state;
+    const r = reduce(s, { type: "thread.expandAll" });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "t1" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "revalidateCursor" },
+    ]);
+  });
+
+  it("thread.expandAll with cursor on a row emits only revalidateCursor (no scroll, issue #407)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1"]),
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
+    s = reduce(s, { type: "cursor.set", anchor: rowAnchor() }).state;
+    const r = reduce(s, { type: "thread.expandAll" });
     expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+  });
+
+  it("thread.expandAll with null cursor emits no scroll (issue #407)", () => {
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: bundleWithTopLevel(["t1"]),
+    }).state;
+    s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
+    const r = reduce(s, { type: "thread.expandAll" });
+    expect(r.intents).toEqual([]);
   });
 });
 
