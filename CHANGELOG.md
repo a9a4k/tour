@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Webapp: within-Card cursor cue lights the active node (issue #408 /
+  ADR 0037 webapp parity).** The `j` / `k` in-Card walker (#404) lands
+  the cursor on a reply id but the webapp previously rendered no
+  per-node cue — `.comment-block.current` stayed lit Thread-wide and
+  there was no class on the parent header vs each reply div, so the
+  user perceived `j` / `k` as a no-op on the Card body even though the
+  cursor had functionally moved. `CommentCard` now accepts an optional
+  `activeNodeId` prop (mirroring `src/tui/CommentCard.tsx`'s ADR 0037
+  prop); the parent `.ann-header` and each `.ann-reply` wrapper carry
+  an `active-node` class when the cursor sits on that specific node.
+  Two new CSS rules (`.comment-block .ann-header.active-node`,
+  `.comment-block .ann-reply.active-node`) paint a left-accent stroke
+  + subtle tint — a distinct emphasis level from the `.comment-block.
+  current` Card chrome so both signals read at a glance. Wired at
+  both `CommentCard` call sites (`FileBlock`'s `renderComment` →
+  `CardRow`, and `CommentListSnapshotLost`'s direct render) by
+  passing `activeNodeId={isCurrent ? cursorCardId : null}`. No change
+  to `moveCursor`, `findThreadByNode`, `sendTarget`, the reducer, or
+  any pure-module behaviour — the plumbing was correct from #404;
+  this closes the render-side gap.
+
 ### Changed
 
 - **`Shift+C` bulk toggle recenters the cursored Card (issue #407).**

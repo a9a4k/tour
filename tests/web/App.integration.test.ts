@@ -1976,6 +1976,109 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
   });
 });
 
+// Issue #408 / ADR 0037 active-node surface. The in-Card walker (#404)
+// lands the cursor on a reply id, but the webapp's `CommentCard`
+// rendered no per-node cue — the Card chrome (`.comment-block.current`)
+// stayed lit Thread-wide and there was no `.active-node` class on
+// the parent header vs each reply div. The TUI's `activeNodeId` prop
+// drives a `●` glyph + reply background tint; the webapp now mirrors
+// that via an `active-node` class on the parent header / reply wrapper.
+describe("App within-Card active-node surface (issue #408 — ADR 0037 webapp parity)", () => {
+  it("cursor on the parent → parent header carries `active-node`; no reply wrapper does", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    expect(annFromHash()).toBe("ann-parent");
+
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-parent"]`,
+    );
+    expect(parentBlock).not.toBeNull();
+    const parentHeader = parentBlock!.querySelector(":scope > .ann-header");
+    expect(parentHeader).not.toBeNull();
+    expect(parentHeader!.classList.contains("active-node")).toBe(true);
+
+    const reply1 = container.querySelector("#comment-ann-reply-1");
+    const reply2 = container.querySelector("#comment-ann-reply-2");
+    expect(reply1).not.toBeNull();
+    expect(reply2).not.toBeNull();
+    expect(reply1!.classList.contains("active-node")).toBe(false);
+    expect(reply2!.classList.contains("active-node")).toBe(false);
+  });
+
+  it("press `j` → first reply wrapper gains `active-node`; parent header loses it", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-parent"]`,
+    );
+    const parentHeader = parentBlock!.querySelector(":scope > .ann-header");
+    const reply1 = container.querySelector("#comment-ann-reply-1");
+    const reply2 = container.querySelector("#comment-ann-reply-2");
+
+    // Card chrome stays lit (Thread-wide isCurrent — issue #404 rule).
+    expect(parentBlock!.classList.contains("current")).toBe(true);
+    // Within-Card marker moves to the reply.
+    expect(parentHeader!.classList.contains("active-node")).toBe(false);
+    expect(reply1!.classList.contains("active-node")).toBe(true);
+    expect(reply2!.classList.contains("active-node")).toBe(false);
+  });
+
+  it("press `k` from a reply cursor → parent header regains `active-node`; reply loses it", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
+
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-parent"]`,
+    );
+    const parentHeader = parentBlock!.querySelector(":scope > .ann-header");
+    const reply1 = container.querySelector("#comment-ann-reply-1");
+    expect(parentHeader!.classList.contains("active-node")).toBe(true);
+    expect(reply1!.classList.contains("active-node")).toBe(false);
+  });
+});
+
 // Issue #406 / ADR 0038 amended. The per-Thread collapse gesture moved
 // from `Shift+C` to `Enter` on a Card; `Shift+C` is now the global
 // "collapse all / expand all Threads" toggle. These pins exercise the

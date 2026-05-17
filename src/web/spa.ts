@@ -405,6 +405,27 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   }
   .comment-block .ann-reply { margin-top: 8px; }
   .comment-block .ann-reply:first-child { margin-top: 0; }
+  /* Issue #408 / ADR 0037 — within-Card active-node cue. The Card chrome
+     (.comment-block.current) signals "cursor is somewhere in this Thread";
+     .active-node narrows to the specific node (parent header or one reply).
+     Mirrors the TUI's bullet glyph + reply background tint. The left-accent
+     stroke + subtle tint reads as a distinct emphasis level from the Card
+     chrome so a user can tell at a glance both which Thread is current AND
+     which node within it the cursor sits on. */
+  .comment-block .ann-header.active-node {
+    border-left: 2px solid var(--border-accent);
+    background: var(--bg-accent-current);
+    margin-left: -8px;
+    padding-left: 6px;
+    border-radius: 2px;
+  }
+  .comment-block .ann-reply.active-node {
+    border-left: 2px solid var(--border-accent);
+    background: var(--bg-accent-current);
+    margin-left: -8px;
+    padding-left: 6px;
+    border-radius: 2px;
+  }
   .comment-block .ann-actions {
     margin-top: 8px;
     display: flex;

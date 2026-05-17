@@ -737,6 +737,7 @@ function renderComment(
       onDeleteClick={onDeleteClick}
       collapsed={commentProps?.collapsedThreads?.has(ann.id) ?? false}
       onToggleCollapse={commentProps?.onToggleThreadCollapse}
+      activeNodeId={isCurrent ? cursorCardId : null}
     />
   );
 }

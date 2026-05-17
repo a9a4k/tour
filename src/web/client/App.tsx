@@ -2553,6 +2553,13 @@ interface CommentCardProps {
   // around the click — same id semantics as `onCardClick` (the top-
   // level Comment id).
   onToggleCollapse?: (commentId: string) => void;
+  // Issue #408 / ADR 0037 — the specific Comment id the cursor sits on
+  // within this Thread (parent or Reply). null when `isCurrent` is
+  // false. Drives the within-Card `active-node` class on the parent
+  // header vs each reply wrapper. Mirrors `src/tui/CommentCard.tsx`'s
+  // `activeNodeId` prop (the TUI surfaces this via a `●` glyph; the
+  // webapp uses a CSS-driven left-accent + tint).
+  activeNodeId?: string | null;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -2623,7 +2630,15 @@ export function CommentCard({
   onDeleteClick,
   collapsed,
   onToggleCollapse,
+  activeNodeId,
 }: CommentCardProps): React.JSX.Element {
+  // Issue #408 / ADR 0037 — within-Card active-node highlight. The Card
+  // chrome (`.comment-block.current`) still tracks `isCurrent` (any
+  // node in the Thread is the cursor), but the per-node `active-node`
+  // class narrows to the specific node the cursor points at. Falls
+  // back to the parent id so pre-ADR call sites read identically.
+  const activeId = activeNodeId ?? (isCurrent ? comment.id : null);
+  const parentActive = isCurrent && activeId === comment.id;
   const isDeletedStub = !!comment.deleted;
   const range =
     comment.line_start === comment.line_end
@@ -2742,7 +2757,7 @@ export function CommentCard({
       data-comment-id={comment.id}
       onClick={() => onCardClick?.(comment.id)}
     >
-      <div className="ann-header">
+      <div className={parentActive ? "ann-header active-node" : "ann-header"}>
         {isCurrent ? (
           <span className="selection-marker" aria-hidden="true">●{" "}</span>
         ) : null}
@@ -2816,9 +2831,11 @@ export function CommentCard({
       </div>
       {replies && replies.length > 0 ? (
         <div className="ann-replies">
-          {replies.map((r) => (
+          {replies.map((r) => {
+            const replyActive = isCurrent && activeId === r.id;
+            return (
             <div
-              className="ann-reply"
+              className={replyActive ? "ann-reply active-node" : "ann-reply"}
               key={r.id}
               ref={(el) => registerRef?.(r.id, el)}
               id={`comment-${r.id}`}
@@ -2868,7 +2885,8 @@ export function CommentCard({
                 </div>
               ) : null}
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
       {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
@@ -3105,6 +3123,7 @@ function CommentListSnapshotLost({
             onDeleteClick={onDeleteClick}
             collapsed={collapsedThreads.has(a.id)}
             onToggleCollapse={onToggleCollapse}
+            activeNodeId={isCurrent ? cursorCardId : null}
           />
         );
       })}

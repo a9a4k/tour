@@ -601,6 +601,10 @@ export interface CardRowProps {
   // PRD #397 / ADR 0038. Per-Thread collapse pass-through.
   collapsed?: boolean;
   onToggleCollapse?: (commentId: string) => void;
+  // Issue #408 / ADR 0037 — within-Card active-node id pass-through.
+  // Null when `isCurrent` is false; otherwise the specific Comment id
+  // the cursor sits on (parent or Reply).
+  activeNodeId?: string | null;
 }
 
 // `grid-column` is set inline so a card's positioning is visible on the
@@ -639,6 +643,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     onDeleteClick,
     collapsed,
     onToggleCollapse,
+    activeNodeId,
   } = props;
   return (
     <div
@@ -668,6 +673,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         onDeleteClick={onDeleteClick}
         collapsed={collapsed}
         onToggleCollapse={onToggleCollapse}
+        activeNodeId={activeNodeId}
       />
     </div>
   );
