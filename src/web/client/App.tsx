@@ -46,6 +46,7 @@ import {
   preferredSideOf,
   resolveCursorRowIdx,
   setCursorSide,
+  threadRootIdOf,
   type Cursor,
   type ExpandOrphanKind,
 } from "../../core/cursor-state.js";
@@ -1578,15 +1579,40 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           return;
         }
         case "toggle-thread-collapse": {
-          // PRD #397 / ADR 0038. `Shift+C` on a Card flips the Thread's
-          // collapse state. Off-card → footer status, no dispatch.
+          // Issue #406 / ADR 0038 amended. `Enter` on a Card flips the
+          // Thread's collapse state (the gesture moved from `Shift+C`).
+          // The webapp keymap returns this only when `cursorOnCard`, so
+          // a missing cardId is a defensive no-op. A Reply-cursor folds
+          // onto its root via `threadRootIdOf` (matches the validator's
+          // cursor-on-reply projection).
           if (view.kind !== "ok") return;
           const cardId = view.cursor.cardId;
-          if (!cardId) {
-            flashFooterStatus("Shift+C: no comment under cursor");
+          if (!cardId) return;
+          store.dispatch({
+            type: "thread.toggle",
+            id: threadRootIdOf(cardId, view.nav.threads),
+          });
+          return;
+        }
+        case "toggle-all-threads-collapse": {
+          // Issue #406 / ADR 0038 amended. `Shift+C` is the global
+          // "collapse all / expand all Threads" toggle. Direction:
+          // any Thread expanded → collapseAll; every Thread already
+          // collapsed → expandAll (mixed states resolve toward
+          // "hide everything", the more common intent). Zero Threads
+          // → labelled footer no-op.
+          if (view.kind !== "ok") return;
+          const topLevel = view.nav.topLevel;
+          if (topLevel.length === 0) {
+            flashFooterStatus("C: no threads to collapse");
             return;
           }
-          store.dispatch({ type: "thread.toggle", id: cardId });
+          const allCollapsed = topLevel.every((c) =>
+            sessionState.collapsedThreads.has(c.id),
+          );
+          store.dispatch({
+            type: allCollapsed ? "thread.expandAll" : "thread.collapseAll",
+          });
           return;
         }
         case "send-on-card": {
@@ -2230,12 +2256,33 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Sidebar mode shows the shorter sidebar-relevant keys;
           // diff mode appends `Esc: sidebar` to today's web legend.
           paneFocus,
-          // PRD #397 / ADR 0038. Contextual `C` verb — flips to
-          // `C: expand` when the cursored Thread is collapsed.
-          currentThreadCollapsed:
+          // Issue #406 / ADR 0038 amended. Contextual `Enter` verb —
+          // omitted on a plain diff row; `Enter: expand` on a Card
+          // whose Thread is collapsed; `Enter: collapse` on a Card
+          // whose Thread is expanded. The webapp doesn't surface
+          // interactive-row Enter on its legend (the `Enter: expand`
+          // hint for hidden-context only existed on the TUI), so
+          // map an interactive cursor to "row" here.
+          enterHintCursor:
+            view.kind === "ok" && view.cursor.onCard
+              ? view.cursor.cardId !== null &&
+                sessionState.collapsedThreads.has(
+                  threadRootIdOf(view.cursor.cardId, view.nav.threads),
+                )
+                ? "card-collapsed"
+                : "card-expanded"
+              : "row",
+          // Issue #406 / ADR 0038 amended. Global `C` verb —
+          // `collapse all` when any Thread is expanded; `expand all`
+          // when every Thread is already collapsed; omitted when zero
+          // Threads exist.
+          anyThreads: view.kind === "ok" && view.nav.topLevel.length > 0,
+          allThreadsCollapsed:
             view.kind === "ok" &&
-            view.cursor.cardId !== null &&
-            sessionState.collapsedThreads.has(view.cursor.cardId),
+            view.nav.topLevel.length > 0 &&
+            view.nav.topLevel.every((c) =>
+              sessionState.collapsedThreads.has(c.id),
+            ),
         })}
       />
       {sessionState.picker.kind === "open" ? (

@@ -1,13 +1,13 @@
 // Cross-surface keybinding legend composer for the footer hint strip.
 // Both the TUI and the webapp render a one-line muted legend at the
 // bottom of their viewport; this module owns the vocabulary so the
-// shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `R`, `L`, `T`) cannot
-// drift between surfaces.
+// shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `R`, `L`, `T`, `Enter`,
+// `Shift+C`) cannot drift between surfaces.
 //
-// `surface: "tui"` emits the full key list (16 keys today). `surface:
-// "web"` emits only the subset that is actually bound on the webapp
-// today — adding webapp bindings later grows the web legend without
-// touching the TUI string.
+// `surface: "tui"` emits the full key list. `surface: "web"` emits
+// only the subset that is actually bound on the webapp today — adding
+// webapp bindings later grows the web legend without touching the TUI
+// string.
 //
 // The `R: request reply` hint is surfaced conditionally on both
 // surfaces — only when `--reply-agent` is configured AND the cursor is
@@ -20,40 +20,57 @@
 // actor).
 //
 // Issues #337 (TUI) + #338 (webapp) / ADR 0029 + ADR 0030: both
-// legends now read `c: comment` / `T: picker`; the TUI also adds
-// `C: collapse replies`. The pre-cutover form (`a: comment`,
-// `c: collapse`, `t: picker`) is fully retired.
+// legends now read `c: comment` / `T: picker`. The pre-cutover form
+// (`a: comment`, `c: collapse`, `t: picker`) is fully retired.
 //
-// PRD #397 / ADR 0038: the TUI's global "collapse all replies" verb is
-// retired in favour of per-Thread `Shift+C`. The hint label becomes
-// contextual: `C: collapse` when the cursored Thread is expanded,
-// `C: expand` when collapsed. The webapp diff-mode legend gains the
-// same hint (it had no equivalent before; the webapp didn't ship the
-// global gesture). Off-card cursor falls back to `C: collapse` so the
-// legend layout is stable.
+// Issue #406 / ADR 0038 amended: the per-Thread collapse gesture moved
+// from `Shift+C` to `Enter`; `Shift+C` is now the global "collapse all
+// / expand all Threads" toggle. The hint labels flip:
+//   `Enter:` — `expand` (interactive row), `collapse` (Card expanded),
+//              `expand` (Card collapsed), omitted (diff row).
+//   `C:`     — `collapse all` (any expanded), `expand all` (all
+//              collapsed), omitted (zero Threads).
 
 import type { PaneFocus } from "./pane-focus-state.js";
 
 export type FooterSurface = "tui" | "web";
+
+// Issue #406. Discriminator for the diff-mode `Enter` legend verb. The
+// surface computes the kind from cursor + collapsedThreads at render
+// time; the legend renders the matching label (or omits the hint).
+//   "interactive" → `Enter: expand`   (PRD #107 hidden-context expand)
+//   "card-expanded" → `Enter: collapse`
+//   "card-collapsed" → `Enter: expand`
+//   "row" / undefined → omitted from the legend (no-op there)
+export type EnterHintCursor =
+  | "interactive"
+  | "card-expanded"
+  | "card-collapsed"
+  | "row";
 
 export interface ComposeFooterHintsOptions {
   surface: FooterSurface;
   replyAgent?: string;
   showSendHint?: boolean;
   // PRD #343 / ADR 0031 / issue #345 + #346: pane-aware legend on both
-  // surfaces. Sidebar mode drops diff-only keys (`n/p`, `c`, `r`, `R`,
-  // and any TUI-only `C`, `Enter: expand`, `Space: page`, `[/]: width`)
-  // and adds `Esc: diff` as the pane-toggle hint; diff mode adds
-  // `Esc: sidebar` and (on TUI) drops the retired `Tab: pane`. Default
-  // is `"diff"` so call sites that don't pass `paneFocus` still get a
-  // sensible legend.
+  // surfaces. Sidebar mode drops diff-only keys and adds `Esc: diff`
+  // as the pane-toggle hint; diff mode adds `Esc: sidebar` and (on
+  // TUI) drops the retired `Tab: pane`. Default is `"diff"` so call
+  // sites that don't pass `paneFocus` still get a sensible legend.
   paneFocus?: PaneFocus;
-  // PRD #397 / ADR 0038. When the cursor sits on a collapsed Thread,
-  // the `C` legend label flips from `C: collapse` to `C: expand` so the
-  // next gesture is unambiguous. Falsy / undefined → `C: collapse`
-  // (the default — off-card, off-screen, or Thread is currently
-  // expanded). Diff-mode only; sidebar drops the hint entirely.
-  currentThreadCollapsed?: boolean;
+  // Issue #406 / ADR 0038 amended. Drives the diff-mode `Enter` verb
+  // flip. Undefined / row → the hint is omitted entirely from the
+  // legend (Enter on a diff row is a no-op). See `EnterHintCursor`.
+  enterHintCursor?: EnterHintCursor;
+  // Issue #406 / ADR 0038 amended. Drives the `C` global verb flip.
+  // `true` (every top-level Thread already collapsed) → `C: expand
+  // all`; falsy (any Thread expanded) → `C: collapse all`. When
+  // `anyThreads` is false the hint is omitted regardless.
+  allThreadsCollapsed?: boolean;
+  // Issue #406. Drop the `C` hint when there are no top-level Threads
+  // to collapse (the gesture is a labelled no-op). Default true so
+  // call sites that haven't migrated keep emitting the hint.
+  anyThreads?: boolean;
 }
 
 export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
@@ -89,32 +106,89 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   // bare `r: reply`, case-shifted to mark "different actor" (the
   // configured reply-agent runs the request in a separate session).
   const send = opts.showSendHint && opts.replyAgent ? `  ·  R: request reply` : "";
-  // PRD #397 / ADR 0038. Contextual `C` verb: `expand` when the cursor
-  // is on a collapsed Thread, otherwise `collapse`. The hint is in the
-  // diff-mode legend on both surfaces; the sidebar branch above
-  // already excludes it.
-  const collapseHint = opts.currentThreadCollapsed ? "C: expand" : "C: collapse";
+  // Issue #406 / ADR 0038 amended. Contextual `Enter` verb. On
+  // diff-pane: `Enter: expand` on an interactive row OR collapsed
+  // Card; `Enter: collapse` on an expanded Card; omitted on a plain
+  // diff row (it's a no-op there). Sidebar branch has its own
+  // `Enter: activate` and never enters this code path. Undefined →
+  // omitted (call sites that haven't migrated don't carry a hint).
+  const enterFragment = ((): string | null => {
+    switch (opts.enterHintCursor) {
+      case "interactive":
+      case "card-collapsed":
+        return "Enter: expand";
+      case "card-expanded":
+        return "Enter: collapse";
+      case "row":
+      default:
+        return null;
+    }
+  })();
+  // Issue #406 / ADR 0038 amended. Global `C` verb: `collapse all`
+  // when any Thread is expanded; `expand all` when every Thread is
+  // already collapsed. Omitted when no top-level Threads exist
+  // (the gesture is a labelled footer no-op at dispatch time, not a
+  // dead hint). `anyThreads` defaults to true for back-compat with
+  // call sites that haven't migrated.
+  const anyThreads = opts.anyThreads ?? true;
+  const collapseHint = !anyThreads
+    ? null
+    : opts.allThreadsCollapsed
+      ? "C: expand all"
+      : "C: collapse all";
   if (opts.surface === "tui") {
-    // PRD #349 / ADR 0032 / issue #352: `o: open` slots next to
-    // `y: yank path` — both are "side-effect on cursor's file."
-    //
     // ADR 0036 Slice D / issue #388: `d: delete` slots into the lowercase-
     // cursor cluster between `r: reply` and `R: request reply`. Card-only
-    // gesture — the App-side handler routes `d` on a row to a labelled no-op
-    // (`noop-delete-on-row`), matching the existing `r`/`R` pattern. The
-    // hint is unconditional in the legend (same convention as `r: reply`);
-    // gating the verb on cursor context happens at the dispatcher.
-    return (
-      `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  d: delete${send}  ·  Enter: expand  ·  e: expand all  ·  ${collapseHint}  ·  y: yank  ·  o: open  ·  Space: page (Shift: up)  ·  L: layout  ·  T: picker  ·  Esc: sidebar  ·  [/]: width  ·  q: quit`
-    );
+    // gesture — the App-side handler routes `d` on a row to a labelled
+    // no-op (`noop-delete-on-row`), matching the existing `r`/`R`
+    // pattern. The hint is unconditional in the legend (same convention
+    // as `r: reply`); gating the verb on cursor context happens at the
+    // dispatcher.
+    //
+    // PRD #349 / ADR 0032 / issue #352: `o: open` slots next to
+    // `y: yank path` — both are "side-effect on cursor's file."
+    const parts = [
+      "j/k: move",
+      "h/l: side",
+      "n/p: nav",
+      "c: comment",
+      `r: reply  ·  d: delete${send}`,
+      ...(enterFragment ? [enterFragment] : []),
+      "e: expand all",
+      ...(collapseHint ? [collapseHint] : []),
+      "y: yank",
+      "o: open",
+      "Space: page (Shift: up)",
+      "L: layout",
+      "T: picker",
+      "Esc: sidebar",
+      "[/]: width",
+      "q: quit",
+    ];
+    return parts.join("  ·  ");
   }
   // Web diff-mode legend (PRD #343 / ADR 0031 / issue #346): today's
   // subset + `Esc: sidebar` as the pane-toggle entry-point. PRD #356 /
   // issue #358: `y: yank` slots next to `r: reply` in the lowercase-
   // cursor section — symmetric to the TUI legend. PRD #349 / ADR 0032 /
   // issue #353: `o: open` follows `y` so the cursor-target action
-  // cluster stays adjacent. PRD #397 / ADR 0038: `C: collapse` (or
-  // `expand` when current Thread is collapsed) follows the cursor-
-  // target cluster — the gesture is shared with the TUI.
-  return `j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply${send}  ·  y: yank  ·  o: open  ·  ${collapseHint}  ·  L: layout  ·  T: picker  ·  Esc: sidebar`;
+  // cluster stays adjacent. Issue #406 / ADR 0038 amended:
+  // `Enter: collapse/expand` (cursor-contextual) and `C: collapse all
+  // / expand all` (global) follow the cursor-target cluster — shared
+  // vocabulary with the TUI.
+  const webParts = [
+    "j/k: move",
+    "h/l: side",
+    "n/p: nav",
+    "c: comment",
+    `r: reply${send}`,
+    "y: yank",
+    "o: open",
+    ...(enterFragment ? [enterFragment] : []),
+    ...(collapseHint ? [collapseHint] : []),
+    "L: layout",
+    "T: picker",
+    "Esc: sidebar",
+  ];
+  return webParts.join("  ·  ");
 }

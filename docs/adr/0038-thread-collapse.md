@@ -1,8 +1,12 @@
-# Per-Thread collapse replaces global `Shift+C`
+# Per-Thread collapse on `Enter`; global toggle on `Shift+C`
 
-> **Status:** Retires the global `Shift+C` (collapse-all-replies) gesture introduced as a TUI prop and replaces it with a per-Thread minimize action on both surfaces. References ADR 0029 (Comment vocabulary), ADR 0036 (event-sourced persistence — informs the cascade-delete drop rule), and ADR 0037 (per-Reply cursor stops — informs the validator clause).
+> **Status:** Retires the global `Shift+C` (collapse-all-replies) gesture introduced as a TUI prop and replaces it with a per-Thread minimize action on both surfaces. References ADR 0029 (Comment vocabulary), ADR 0030 (Tier 1 lowercase / Tier 2 capital convention), ADR 0036 (event-sourced persistence — informs the cascade-delete drop rule), and ADR 0037 (per-Reply cursor stops — informs the validator clause).
+>
+> **Amended (issue #406, 2026-05-17):** the per-Thread binding moved from `Shift+C` to `Enter` on a Card; `Shift+C` is now the global "collapse all / expand all" toggle. Sections below mark the amended rules inline.
 
 The previous `Shift+C` hid every Thread's Replies at once, leaving every parent Card at full height. The actual user need is "I'm done with this one — hide it from view"; this ADR replaces the global verb with GitHub's per-Thread minimize gesture so a reviewer can scroll past resolved Threads cheaply while keeping the active ones expanded.
+
+Issue #406's amendment then split the gesture across two scopes: `Enter` for per-Thread (matching org-mode `TAB` and the sidebar's existing `Enter: toggle-folder`), and `Shift+C` for the global "collapse all / expand all" toggle (matching ADR 0030's exemplar table where `C` = collapse-all, and aligning with the local + Shift-modified global pairing in Reddit Enhancement Suite, IntelliJ, VS Code, etc.).
 
 ## Why
 
@@ -21,11 +25,15 @@ Two options:
 
 The unit is the Thread (top-level Comment + its Replies). Reply nodes themselves are not independently collapsible. No auto-collapse-by-default-when-Thread-has-replies heuristic. The global `Shift+C` is retired with no replacement collapse-all gesture in v1 — revisit only if per-Thread proves insufficient.
 
-### `Shift+C` on both surfaces; webapp also has a chevron
+### `Enter` per-Thread; `Shift+C` global toggle; chevron on the Card header
 
-`Shift+C` toggles collapse on the cursored Card on both TUI and webapp. When the cursor isn't on a Card, the key is a no-op (TUI keymap silently routes off-card to a row no-op; webapp surfaces a footer status).
+**Amended (issue #406).** `Enter` on a Card toggles collapse on the cursored Thread on both TUI and webapp. When the cursor isn't on a Card, `Enter` keeps its existing semantics: interactive row → `primary-action`; diff row → no-op; sidebar folder row → fold toggle; sidebar file row → select-file. A Reply-cursor normalises to the Thread root via `threadRootIdOf` (same path the validator's cursor-on-Reply projection uses).
 
-The webapp Card header grows a clickable chevron — `▾` when expanded, `▸` when collapsed. Click moves the cursor onto the Card (consistent with click-to-position rules) and toggles the collapse.
+`Shift+C` is the global "collapse all / expand all Threads" toggle. Direction is computed at the App-side handler: any Thread currently expanded → `thread.collapseAll`; every top-level Thread already in `collapsedThreads` → `thread.expandAll` (mixed states resolve toward "hide everything", the more common intent). Zero top-level Threads → labelled footer no-op.
+
+The webapp Card header keeps its clickable chevron — `▾` when expanded, `▸` when collapsed. Click moves the cursor onto the Card (consistent with click-to-position rules) and toggles the collapse. TUI Card-header chevron click stays unchanged.
+
+The original (pre-#406) shape was `Shift+C` for per-Thread with no global gesture; both halves of the issue #406 redesign — moving local to `Enter` and binding global to `Shift+C` — reuse existing keys without inventing a new chord namespace.
 
 ### Action-axis rule
 
@@ -63,6 +71,8 @@ collapsedThreads: Set<string>; // top-level Comment ids
 
 Reducer actions: `thread.collapse(id)`, `thread.expand(id)`, `thread.toggle(id)`. Each emits `revalidateCursor` when the cursor is non-null (defence in depth for the validator clause — same posture as `folds.*`).
 
+**Amended (issue #406).** Two bulk actions for the global `Shift+C` toggle: `thread.collapseAll` populates the set with every top-level Comment id in the current bundle (no-op when the bundle isn't resolved or every id is already present); `thread.expandAll` empties the set (no-op when already empty). The App-side handler picks the direction from the current state — it doesn't live on the reducer because the predicate ("any Thread expanded?") needs the bundle's top-level set and the current `collapsedThreads` size, both of which the App layer already has at hand. Both bulk actions emit `revalidateCursor` for the same defence-in-depth reason as the single-Thread variants.
+
 Lifecycle:
 
 | Event | Behaviour |
@@ -80,9 +90,12 @@ No URL persistence — collapse is per-renderer-session, matching the existing f
 
 ### Footer hints
 
-The legend's `C` verb flips contextually: `C: collapse` when the cursored Thread is expanded (or off-card), `C: expand` when collapsed. The retired `C: collapse replies` label is gone from both legends. The webapp diff-mode legend gains the same hint (it had no equivalent before; the webapp didn't ship the global gesture).
+**Amended (issue #406).** The legend's `Enter` and `C` verbs both flip contextually:
 
-Sidebar-mode legends drop the hint entirely — `Shift+C` is diff-pane only.
+- `Enter:` flips by the cursor — `Enter: expand` (interactive row OR collapsed Card), `Enter: collapse` (expanded Card), omitted (plain diff row, no-op there).
+- `C:` flips by the bundle — `C: collapse all` (any Thread expanded), `C: expand all` (every Thread already collapsed), omitted (zero Threads — `Shift+C` is a labelled footer no-op).
+
+The retired pre-#406 labels (`C: collapse replies`, per-cursor `C: collapse` / `C: expand`) are gone from both legends. Sidebar-mode legends drop both hints entirely — `Enter` keeps its `Enter: activate` (file → select; folder → toggle) and `Shift+C` is diff-pane only.
 
 ### Counts (unchanged)
 
@@ -95,9 +108,9 @@ Sidebar per-file `[N]` badge counts all top-level Comments; top-header `[← N/M
 ## Consequences
 
 - The `repliesCollapsed: boolean` prop is removed from `CommentCard` / `DiffRows` and from the TUI App's local `useState`. The CommentCard renders a one-liner when `collapsed: true` (a derived prop computed from the per-card `collapsedThreads.has(root.id)`).
-- The TUI keymap returns `toggle-thread-collapse` instead of `toggle-replies-collapse`. Wired into the App-side handler, which dispatches `thread.toggle` against the cursored Card's root id (resolved through `findThreadByNode` so a cursor on a Reply still targets the right Thread).
-- The webapp's `cursor-keymap.ts` gains a `Shift+C` arm dispatching `toggle-thread-collapse`. The App-side handler dispatches `thread.toggle` for the cursored Card; off-card surfaces a footer status.
+- The TUI keymap returns `toggle-thread-collapse` for `Enter` on a Card (issue #406; previously `Shift+C`) and `toggle-all-threads-collapse` for `Shift+C` in the diff pane. Both wire into App-side handlers; `toggle-thread-collapse` dispatches `thread.toggle` against the cursored Card's root id (resolved through `findThreadByNode` so a Reply-cursor still targets the right Thread); `toggle-all-threads-collapse` dispatches `thread.collapseAll` or `thread.expandAll` based on the current `collapsedThreads` membership of the bundle's top-level ids.
+- The webapp's `cursor-keymap.ts` carries the same two arms: `Enter` on a Card → `toggle-thread-collapse`; `Shift+C` (diff mode) → `toggle-all-threads-collapse`. The App-side handlers mirror the TUI's dispatch shape.
 - Action seams in both surfaces (`r`/`R` on the cursored Card) pre-dispatch `thread.expand` before opening the composer / dispatching the agent reply.
 - The TUI `d` handler refuses on a collapsed Thread with the documented footer hint. The keymap's `noop-delete-on-stub` case continues to handle the existing ADR 0036 stub case; the new collapse case is a per-Thread predicate applied after the keymap's card-only gate.
 - ADR 0037's per-Reply cursor stops continue to work inside expanded Threads. When a Thread collapses while the cursor sits on a Reply, the validator promotes the anchor to the parent's id so the visible cursor stays on the same Card.
-- Reducer tests cover `thread.collapse / expand / toggle`, the lifecycle rules, and the cascade-delete prune. Validator tests cover the Reply → parent projection on collapse and the unchanged behaviour when the Thread is expanded. Renderer-only changes (the one-liner JSX, the chevron click) are not under unit-test coverage, matching the existing posture for `CommentCard.tsx`.
+- Reducer tests cover `thread.collapse / expand / toggle / collapseAll / expandAll`, the lifecycle rules, and the cascade-delete prune. Validator tests cover the Reply → parent projection on collapse and the unchanged behaviour when the Thread is expanded. Renderer-only changes (the one-liner JSX, the chevron click) are not under unit-test coverage, matching the existing posture for `CommentCard.tsx`.
