@@ -187,7 +187,9 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
     expect(btn).not.toBeNull();
     expect(btn?.textContent).toBe("Request reply");
     // The agent name is intentionally NOT on the button itself —
-    // it lives on the tooltip and the header chip.
+    // it lives on the tooltip, the in-flight pill, and the agent-
+    // reply byline. (The header chip carried it pre-rollback; ADR
+    // 0021 addendum amended to record the retirement.)
     expect(btn?.textContent).not.toContain("claude");
   });
 
@@ -309,8 +311,10 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
     expect(btn).not.toBeNull();
     expect(btn?.disabled).toBe(true);
     // Issue #390: the lock-held tooltip names the worker role
-    // ("Reply agent (<name>) is replying — wait") so the cue matches
-    // the header chip's framing.
+    // ("Reply agent (<name>) is replying — wait") so the cue carries
+    // the same role-naming framing as the in-flight pill and the
+    // agent-reply byline. (Pre-rollback the header chip was the
+    // canonical home; ADR 0021 addendum amended.)
     const tip = btn?.getAttribute("title") ?? "";
     expect(tip).toContain("Reply agent");
     expect(tip).toContain("claude");

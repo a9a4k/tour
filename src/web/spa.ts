@@ -214,26 +214,9 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     margin-left: auto;
     flex-shrink: 0;
   }
-  /* Issue #390 / ADR 0021 addendum: header chip naming the configured
-     reply-agent and flagging it as a separate session. Render only when
-     --reply-agent is set; muted treatment so it sits alongside the
-     stats / sequence-pill cluster without stealing attention. */
-  .reply-agent-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--fg-muted);
-    background: var(--bg-subtle);
-    border: 1px solid var(--border-muted, rgba(127, 127, 127, 0.3));
-    border-radius: 999px;
-    padding: 2px 10px;
-    white-space: nowrap;
-  }
-  .reply-agent-chip strong {
-    color: var(--fg-default);
-    font-weight: 600;
-  }
+  /* Reply-agent header chip retired — the agent name now lives on
+     the button tooltip, the in-flight pill, and the agent-reply
+     byline. ADR 0021 addendum amended. */
   /* Issue #390 / ADR 0021 addendum: byline marker on agent-authored
      Replies (which are by construction reply-agent products — see
      src/core/reply-runner.ts's createReply call). Muted treatment
@@ -360,7 +343,11 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     border-color: var(--border-accent);
     box-shadow: 0 2px 8px var(--shadow-medium);
   }
-  .comment-block .selection-marker { color: var(--fg-accent); font-weight: 700; }
+  .comment-block .selection-marker {
+    color: var(--fg-accent);
+    font-weight: 700;
+    margin-right: 6px;
+  }
   .comment-block .nav-index { color: var(--fg-muted); font-weight: 600; }
   .comment-block .ann-header {
     color: var(--fg-accent);
@@ -429,9 +416,17 @@ export function html(initialTourId?: string, replyAgent?: string): string {
      so screen readers ignore it (the byline text carries the semantics). */
   .comment-block .ann-header.active-node::before,
   .comment-block .ann-reply.active-node .ann-header::before {
-    content: "● ";
+    content: "●";
     color: var(--fg-accent);
     font-weight: 700;
+    /* Explicit gap — don't rely on a trailing space inside the
+       pseudo-element content. The collapsed header's display:flex
+       flex item silently trims trailing whitespace inside
+       selection-marker, producing a narrower gap than the expanded
+       header's inline-flow rendering. Pinning the gap via
+       margin-right keeps the dot-to-chevron spacing identical
+       across both layouts. */
+    margin-right: 6px;
   }
   .comment-block .ann-actions {
     margin-top: 8px;

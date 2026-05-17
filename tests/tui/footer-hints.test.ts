@@ -92,7 +92,10 @@ describe("TUI_FOOTER_HINTS", () => {
 describe("composeFooterHints (issue #184 → relabelled in issue #390)", () => {
   // Issue #390 / ADR 0021 addendum: the action label no longer carries
   // the agent name and is bound to `R` (shift-r) rather than `s`. The
-  // configured agent is surfaced in the header chip, not the legend.
+  // configured agent is surfaced via the button tooltip, the in-flight
+  // pill, and the agent-reply byline — not the legend. (Pre-rollback
+  // the header chip was the canonical home; ADR 0021 addendum amended
+  // to record the chip retirement.)
   it("emits `R: request reply` (no agent name interpolated) when showSendHint is true", () => {
     const out = composeFooterHints({ replyAgent: "claude", showSendHint: true });
     expect(out).toContain("R: request reply");

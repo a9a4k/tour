@@ -2057,15 +2057,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           <span className="tour-refs">{headerSourcePair(tourMeta)}</span>
         </div>
         <div className="tour-header-right">
-          {replyAgent ? (
-            <span
-              className="reply-agent-chip"
-              role="status"
-              title={`Press Shift+R on a human comment card to ask ${replyAgent} to reply. Runs in a separate session — does not message your current chat.`}
-            >
-              Reply agent: <strong>{replyAgent}</strong> · separate session
-            </span>
-          ) : null}
+          {/* Reply-agent header chip retired — the agent name now lives
+              on the button tooltip, the in-flight pill ("Reply agent
+              (<name>) is replying…"), and the agent-reply byline
+              ("· reply-agent"). ADR 0021 addendum amended. */}
           <TourStatsIndicator
             additions={tourStats.additions}
             deletions={tourStats.deletions}
@@ -2715,7 +2710,7 @@ export function CommentCard({
       >
         <div className="ann-header ann-header-collapsed">
           {isCurrent ? (
-            <span className="selection-marker" aria-hidden="true">●{" "}</span>
+            <span className="selection-marker" aria-hidden="true">●</span>
           ) : null}
           {onToggleCollapse ? (
             <button

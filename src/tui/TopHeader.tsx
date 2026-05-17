@@ -13,11 +13,12 @@ interface TopHeaderTuiProps {
   // / webapp parity #233). Zero totals render no indicator. Pure-addition
   // / pure-deletion tours render only the non-zero side.
   tourStats: DiffStats;
-  // Issue #390 / ADR 0021 addendum: `--reply-agent <name>` configured at
-  // launch. When set, the header surfaces a persistent
-  // `Reply agent: <name> · separate session` chip so the user always
-  // knows which agent `R` (shift-r) would dispatch to, and that it runs
-  // as a separate session — not their current Claude Code chat.
+  // Reply-agent header chip retired — the agent name now lives on the
+  // footer hint (`R: request reply`), the in-flight pill, the agent-
+  // reply byline, and (for any future surface) the configured-at-launch
+  // env. Prop stays in the type for caller-side backwards-compat: any
+  // remaining caller passing `replyAgent` is harmless (we no longer
+  // render it). ADR 0021 addendum amended.
   replyAgent?: string;
   onOpenPicker: () => void;
   onPrevComment: () => void;
@@ -43,7 +44,6 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
     currentCommentIdx,
     topLevelTotal,
     tourStats,
-    replyAgent,
     onOpenPicker,
     onPrevComment,
     onNextComment,
@@ -73,18 +73,6 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
         </box>
       </box>
       <box flexDirection="row" alignItems="center" marginLeft="auto">
-        {replyAgent ? (
-          <box flexDirection="row" alignItems="center">
-            <text fg={theme.fg.muted}>
-              {`Reply agent: `}
-            </text>
-            <text fg={theme.fg.accent} bold>
-              {replyAgent}
-            </text>
-            <text fg={theme.fg.muted}>{` · separate session`}</text>
-            <box width={2} />
-          </box>
-        ) : null}
         <TourStatsIndicatorTui
           additions={tourStats.additions}
           deletions={tourStats.deletions}

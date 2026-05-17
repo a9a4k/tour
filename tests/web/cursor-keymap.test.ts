@@ -171,7 +171,9 @@ describe("dispatchCursorKey: r / R miss reasons surface as status (PRD #330, iss
   // PRD #335 / ADR 0029 flipped "annotation" → "comment" in these strings.
   // Issue #390 / ADR 0021 addendum: the "Send …" copy was reframed to
   // "Request-reply …" and "Reply agent (<name>) is already replying."
-  // so the visible role-name matches the header chip's framing.
+  // so the visible role-name carries the same framing as the in-flight
+  // pill and the agent-reply byline. (The header chip carried it pre-
+  // rollback; ADR 0021 addendum amended to record the retirement.)
 
   it("r on a diff-row cursor → status `No comment under cursor.`", () => {
     expect(dispatchCursorKey(key({ key: "r" }), baseCtx)).toEqual({

@@ -51,3 +51,17 @@ The user-facing verb and keybinding shifted. The dispatch model itself is unchan
 - **In-flight pill copy.** `<agent> is replying…` → `Reply agent (<name>) is replying…`. Same role-name framing as the header chip. The lock-held tooltip on the disabled button changes in lockstep.
 
 - **What did NOT change.** `requestReply` signature and discriminated result, `.reply-lock.json` semantics, `annotations.jsonl` / `tour-events.jsonl` schema, `tour pickup --json` schema, `canSendToAgent` predicate, single-flight precedence rules, agent-card-vs-no-reply-agent visibility rules. The reducer action type `send-to-agent` and the cursor-keymap action `send-on-card` also stay — the dispatch wire is identical, only the input gesture and the user-facing copy moved.
+
+## Addendum 2: Header chip retired
+
+The persistent `Reply agent: <name> · separate session` chip introduced by the first addendum is removed from both surfaces. The agent name continues to surface via three remaining places:
+
+- **Button tooltip** on the per-card `Request reply` button — `"Request a reply from <name> — runs in a separate session, does not message your current chat"`.
+- **In-flight pill** rendered while `.reply-lock.json` is held — `"Reply agent (<name>) is replying… (Ns)"`.
+- **Agent-reply byline** — the `· reply-agent` suffix on Replies produced via the dispatch path.
+
+Field evidence: the chip read as redundant once the verb, the tooltip, and the in-flight pill all carried the role-naming framing. The first three surfaces are cursor-, hover-, or event-driven (they appear at the moment the user is engaging with the dispatch path); the chip was always-visible chrome that competed with the diff for attention without adding a signal the other three surfaces don't already carry.
+
+The `replyAgent` prop on `TopHeaderTui` and the corresponding webapp App-level wiring stay in place for backwards-compat — they're now unused render-side, but removing them would touch every call site. A future cleanup slice can drop the prop entirely. The `replyAgent` value is still threaded through `canSendToAgent` and the dispatch chain, which is unchanged from the first addendum.
+
+What did NOT change: `requestReply` signature, `.reply-lock.json` semantics, persistence schemas, `canSendToAgent` predicate, the in-flight pill copy, the tooltip copy, the agent-reply byline, or the `R` / Shift+R keybinding. Only the header chip's render is removed.
