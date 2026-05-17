@@ -42,14 +42,11 @@ export function decideReanchor(
     return { kind: "url-restore", target };
   }
   if (cursor.kind === "card") {
-    const onTopLevel = topLevel.some((a) => a.id === cursor.commentId);
-    const onReply =
-      !onTopLevel &&
-      threads !== undefined &&
-      findThreadByNode(cursor.commentId, threads) !== null;
-    if (!onTopLevel && !onReply) {
-      return { kind: "stale-fallback", target: topLevel[0] };
-    }
+    const isKnownNode =
+      topLevel.some((a) => a.id === cursor.commentId) ||
+      (threads !== undefined &&
+        findThreadByNode(cursor.commentId, threads) !== null);
+    if (!isKnownNode) return { kind: "stale-fallback", target: topLevel[0] };
   }
   // RowAnchor cursor: user is walking rows; never override.
   return { kind: "noop" };
