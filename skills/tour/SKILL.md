@@ -68,7 +68,7 @@ Right after the batch lands, assert every comment carries `author_kind: "agent"`
 ```sh
 tour pickup "$TOUR_ID" --json \
   | jq -e '[.comments[].author_kind] | all(. == "agent")' > /dev/null \
-  || { echo "identity check failed"; tour delete "$TOUR_ID"; exit 1; }
+  || { echo "tour: identity check failed — run \`tour delete $TOUR_ID\` and re-author with --as-agent"; exit 1; }
 ```
 
 If the check fails: the events are append-only, so the only remediation is `tour delete "$TOUR_ID"` and re-author with `--as-agent`. Do not attempt in-place patching.
