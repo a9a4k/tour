@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Webapp per-Thread collapse pinned by tests (issue #399 / PRD #397
+  / ADR 0038).** Slice 2 of the per-Thread collapse PRD — the webapp
+  slice itself landed alongside the TUI slice in the merged #397 work;
+  this commit fills in the webapp-surface test pins that were
+  deferred. Webapp cursor-keymap now has six pins for `Shift+C →
+  toggle-thread-collapse` (card / off-card / editable suppression /
+  picker suppression / modifier guards) and CommentCard gains twelve
+  pins for the collapsed one-liner (`.collapsed` class, header shape
+  with `[author_kind]`/file:line/`"preview"`/`💬 N`, body-preview
+  60-char truncation, `▾` ↔ `▸` chevron flip, chevron click fires
+  `onCardClick` + `onToggleCollapse` in order, click elsewhere on the
+  one-liner moves the cursor without toggling, in-flight reply-lock
+  pill renders on the collapsed Card when the lock targets the
+  Thread). Mirrors the existing CommentCard test posture; no
+  renderer or seam behaviour changed.
 - **Per-Thread `Shift+C` collapse replaces the global collapse-replies
   gesture (PRD #397 / ADR 0038).** GitHub-style minimize on both
   surfaces. `Shift+C` on the cursored Card folds the whole Thread

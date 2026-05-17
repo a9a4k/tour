@@ -643,3 +643,60 @@ describe("dispatchCursorKey: context-aware yank (PRD #356 / issue #358)", () => 
     ).toEqual({ type: "yank-at-cursor" });
   });
 });
+
+// PRD #397 / ADR 0038 / issue #399. Webapp parity with the TUI per-
+// Thread collapse gesture. `Shift+C` in diff mode dispatches
+// `toggle-thread-collapse`; the App-side handler routes it through
+// `thread.toggle(id)` (off-card → footer status, no dispatch). The
+// keymap is pure — gating-on-card lives at the App-side handler so
+// the dispatcher contract stays testable without a fake bundle.
+describe("dispatchCursorKey: Shift+C per-Thread collapse (PRD #397 / issue #399)", () => {
+  it("Shift+C in diff mode → toggle-thread-collapse (card cursor)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true }), cardCtx),
+    ).toEqual({ type: "toggle-thread-collapse" });
+  });
+
+  it("Shift+C in diff mode dispatches even when the cursor isn't on a card (App-side handler surfaces the off-card hint)", () => {
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true }), baseCtx),
+    ).toEqual({ type: "toggle-thread-collapse" });
+  });
+
+  it("bare c is still `comment-at-cursor` / `noop` (the existing rule) — Shift is load-bearing", () => {
+    // Regression guard: a bug that lost the shiftKey check would route
+    // bare `c` here. Make sure it doesn't.
+    expect(dispatchCursorKey(key({ key: "c" }), baseCtx)).toEqual({
+      type: "comment-at-cursor",
+    });
+    expect(dispatchCursorKey(key({ key: "c" }), cardCtx)).toEqual({
+      type: "noop",
+    });
+  });
+
+  it("Shift+C is suppressed when focus is in an editable element", () => {
+    const ctx: CursorKeymapContext = { ...cardCtx, focusInEditable: true };
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true }), ctx),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("Shift+C is suppressed when the picker is open", () => {
+    const ctx: CursorKeymapContext = { ...cardCtx, pickerOpen: true };
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true }), ctx),
+    ).toEqual({ type: "noop" });
+  });
+
+  it("Shift+C with modifiers (Ctrl/Cmd/Alt) → noop", () => {
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true, ctrlKey: true }), cardCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true, metaKey: true }), cardCtx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "C", shiftKey: true, altKey: true }), cardCtx),
+    ).toEqual({ type: "noop" });
+  });
+});

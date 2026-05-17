@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { CommentCard } from "../../src/web/client/App.js";
 import type { Comment } from "../../src/web/client/types.js";
+import type { ReplyLock } from "../../src/core/reply-lock.js";
 
 // Collapse rule mirrors the TUI side (see tests/tui/comment-card.test.ts):
 // ADR 0016 keeps `author = author_kind` as the on-disk default, but the
@@ -1175,5 +1176,256 @@ describe("CommentCard reply-agent byline marker (issue #390 / ADR 0021 addendum)
       }),
     );
     expect(container.querySelector(".reply-agent-byline")).toBeNull();
+  });
+});
+
+// PRD #397 / ADR 0038 / issue #399. Webapp parity with the TUI per-
+// Thread collapse — when `collapsed` is true, the Card renders as a
+// single-row one-liner: chevron · author kind · file:line · "first 60
+// chars…" · 💬 N. Header chevron flips between ▾ (expanded) and ▸
+// (collapsed); clicking it dispatches `onToggleCollapse(id)` AND
+// `onCardClick(id)` so the cursor follows the click. The in-flight
+// reply-lock pill still renders on the collapsed Card when the lock
+// targets the Thread ("honest signal over tidy hiding").
+describe("CommentCard collapsed one-liner (PRD #397 / ADR 0038 / issue #399)", () => {
+  const longBody =
+    "this is a fairly long parent body that should be truncated to the first sixty characters with an ellipsis appended to the end";
+
+  it("renders the .collapsed comment-block when collapsed is true", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: { ...baseComment, body: "hello world" },
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+      }),
+    );
+    const block = container.querySelector(".comment-block");
+    expect(block?.classList.contains("collapsed")).toBe(true);
+    // The expanded body slot must not render in collapsed mode.
+    expect(block?.querySelector(".ann-body")).toBeNull();
+  });
+
+  it("renders the one-liner header with author_kind tag, file:line, body preview, and reply count", () => {
+    const r1: Comment = { ...baseComment, id: "r1", body: "reply", replies_to: "ann-1" };
+    const r2: Comment = { ...baseComment, id: "r2", body: "reply2", replies_to: "ann-1" };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: { ...baseComment, body: "short body", line_start: 42, line_end: 42 },
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 3,
+        collapsed: true,
+      }),
+    );
+    const header = container.querySelector(".ann-header-collapsed");
+    expect(header).not.toBeNull();
+    const text = header?.textContent ?? "";
+    expect(text).toContain("[human]");
+    expect(text).toContain("x.txt:42");
+    expect(text).toContain('"short body"');
+    expect(text).toContain("💬 2");
+  });
+
+  it("omits the 💬 N reply count when the Thread has no Replies", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+      }),
+    );
+    expect(container.querySelector(".ann-collapsed-reply-count")).toBeNull();
+    expect(container.textContent).not.toContain("💬");
+  });
+
+  it("truncates the body preview to 60 chars with an ellipsis when longer", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: { ...baseComment, body: longBody },
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+      }),
+    );
+    const preview = container.querySelector(".ann-collapsed-preview");
+    expect(preview).not.toBeNull();
+    const text = preview?.textContent ?? "";
+    // Tail "…" plus a 59-char slice inside the surrounding `"…"` quotes
+    // — total length stays at a snug 60 visible characters of body.
+    expect(text).toContain("…");
+    expect(text.includes(longBody)).toBe(false);
+  });
+
+  it("renders the chevron as ▸ when collapsed", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+        onToggleCollapse: () => {},
+      }),
+    );
+    const chevron = container.querySelector(".ann-collapse-chevron");
+    expect(chevron).not.toBeNull();
+    expect(chevron?.textContent).toBe("▸");
+    expect(chevron?.getAttribute("aria-label")).toBe("Expand comment");
+  });
+
+  it("renders the chevron as ▾ when expanded", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: false,
+        onToggleCollapse: () => {},
+      }),
+    );
+    const chevron = container.querySelector(".ann-collapse-chevron");
+    expect(chevron).not.toBeNull();
+    expect(chevron?.textContent).toBe("▾");
+    expect(chevron?.getAttribute("aria-label")).toBe("Collapse comment");
+  });
+
+  it("clicking the chevron in the collapsed state fires onToggleCollapse AND onCardClick with the comment id", () => {
+    const toggles: string[] = [];
+    const clicks: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+        onToggleCollapse: (id: string) => toggles.push(id),
+        onCardClick: (id: string) => clicks.push(id),
+      }),
+    );
+    const chevron = container.querySelector(
+      ".ann-collapse-chevron",
+    ) as HTMLButtonElement;
+    act(() => {
+      chevron.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    // The chevron click moves the cursor first (onCardClick), then
+    // toggles. Both fire exactly once on the targeted Card.
+    expect(clicks).toEqual(["ann-1"]);
+    expect(toggles).toEqual(["ann-1"]);
+  });
+
+  it("clicking the chevron in the expanded state fires the same pair (cursor follows, then toggle)", () => {
+    const toggles: string[] = [];
+    const clicks: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: false,
+        onToggleCollapse: (id: string) => toggles.push(id),
+        onCardClick: (id: string) => clicks.push(id),
+      }),
+    );
+    const chevron = container.querySelector(
+      ".ann-collapse-chevron",
+    ) as HTMLButtonElement;
+    act(() => {
+      chevron.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(clicks).toEqual(["ann-1"]);
+    expect(toggles).toEqual(["ann-1"]);
+  });
+
+  it("omits the chevron entirely when onToggleCollapse is not supplied (defensive)", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: false,
+      }),
+    );
+    // The expanded variant only renders the chevron when the callback
+    // is provided — there's no use case for a non-interactive `▾`.
+    expect(container.querySelector(".ann-collapse-chevron")).toBeNull();
+  });
+
+  it("clicking elsewhere on the collapsed card still fires onCardClick (cursor follows the click) without toggling", () => {
+    const toggles: string[] = [];
+    const clicks: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+        onToggleCollapse: (id: string) => toggles.push(id),
+        onCardClick: (id: string) => clicks.push(id),
+      }),
+    );
+    const block = container.querySelector(".comment-block") as HTMLElement;
+    // Click on the preview span (not the chevron) — should move the
+    // cursor (onCardClick) but NOT toggle collapse state. Only the
+    // chevron click is a toggle gesture.
+    const preview = block.querySelector(".ann-collapsed-preview") as HTMLElement;
+    act(() => {
+      preview.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(clicks).toEqual(["ann-1"]);
+    expect(toggles).toEqual([]);
+  });
+
+  it("collapsed Card with a reply-lock targeting the Thread renders the inline ReplyPill (watcher signal survives the hide intent)", () => {
+    const lock: ReplyLock = {
+      agent: "claude",
+      responding_to: baseComment.id,
+      started_at: new Date(Date.now() - 1000).toISOString(),
+      pid: 1,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+        replyLock: lock,
+        replyAgent: "claude",
+      }),
+    );
+    expect(container.querySelector(".reply-pill")).not.toBeNull();
+  });
+
+  it("collapsed Card with a reply-lock targeting a different Thread does NOT render the pill", () => {
+    const lock: ReplyLock = {
+      agent: "claude",
+      responding_to: "some-other-comment",
+      started_at: new Date(Date.now() - 1000).toISOString(),
+      pid: 1,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        collapsed: true,
+        replyLock: lock,
+        replyAgent: "claude",
+      }),
+    );
+    expect(container.querySelector(".reply-pill")).toBeNull();
   });
 });
