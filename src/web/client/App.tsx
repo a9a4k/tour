@@ -2834,57 +2834,57 @@ export function CommentCard({
           {replies.map((r) => {
             const replyActive = isCurrent && activeId === r.id;
             return (
-            <div
-              className={replyActive ? "ann-reply active-node" : "ann-reply"}
-              key={r.id}
-              ref={(el) => registerRef?.(r.id, el)}
-              id={`comment-${r.id}`}
-            >
-              <div className="ann-header">
-                <span className={`author-kind ${r.author_kind}`}>
-                  [{r.author_kind}]
-                </span>
-                {r.author !== r.author_kind ? <> {r.author}</> : null}
-                {r.author_kind === "agent" && r.replies_to ? (
-                  <span
-                    className="reply-agent-byline"
-                    title="This reply was produced by the configured reply-agent in a separate session."
-                  >
-                    {" "}· reply-agent
+              <div
+                className={replyActive ? "ann-reply active-node" : "ann-reply"}
+                key={r.id}
+                ref={(el) => registerRef?.(r.id, el)}
+                id={`comment-${r.id}`}
+              >
+                <div className="ann-header">
+                  <span className={`author-kind ${r.author_kind}`}>
+                    [{r.author_kind}]
                   </span>
-                ) : null}
-                {onDeleteClick ? (
-                  <button
-                    type="button"
-                    className="ann-trash-button"
-                    aria-label="Delete reply"
-                    title="Delete reply"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDeleteClick(r.id);
-                    }}
-                  >
-                    🗑
-                  </button>
-                ) : null}
-              </div>
-              <div className="ann-body">
-                <CommentMarkdown body={r.body} />
-              </div>
-              {replyTargetId === r.id ? (
-                <div className="ann-reply-composer">
-                  <Composer
-                    placeholder="Reply…"
-                    submitLabel="Reply"
-                    body={composerBody}
-                    error={composerError ?? null}
-                    onBodyChange={(b) => onComposerBodyChange?.(b)}
-                    onSubmit={() => onSubmitReply?.()}
-                    onCancel={() => onCancelReply?.()}
-                  />
+                  {r.author !== r.author_kind ? <> {r.author}</> : null}
+                  {r.author_kind === "agent" && r.replies_to ? (
+                    <span
+                      className="reply-agent-byline"
+                      title="This reply was produced by the configured reply-agent in a separate session."
+                    >
+                      {" "}· reply-agent
+                    </span>
+                  ) : null}
+                  {onDeleteClick ? (
+                    <button
+                      type="button"
+                      className="ann-trash-button"
+                      aria-label="Delete reply"
+                      title="Delete reply"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteClick(r.id);
+                      }}
+                    >
+                      🗑
+                    </button>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
+                <div className="ann-body">
+                  <CommentMarkdown body={r.body} />
+                </div>
+                {replyTargetId === r.id ? (
+                  <div className="ann-reply-composer">
+                    <Composer
+                      placeholder="Reply…"
+                      submitLabel="Reply"
+                      body={composerBody}
+                      error={composerError ?? null}
+                      onBodyChange={(b) => onComposerBodyChange?.(b)}
+                      onSubmit={() => onSubmitReply?.()}
+                      onCancel={() => onCancelReply?.()}
+                    />
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </div>

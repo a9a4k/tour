@@ -412,13 +412,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
      stroke + subtle tint reads as a distinct emphasis level from the Card
      chrome so a user can tell at a glance both which Thread is current AND
      which node within it the cursor sits on. */
-  .comment-block .ann-header.active-node {
-    border-left: 2px solid var(--border-accent);
-    background: var(--bg-accent-current);
-    margin-left: -8px;
-    padding-left: 6px;
-    border-radius: 2px;
-  }
+  .comment-block .ann-header.active-node,
   .comment-block .ann-reply.active-node {
     border-left: 2px solid var(--border-accent);
     background: var(--bg-accent-current);
