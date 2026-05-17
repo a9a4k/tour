@@ -709,25 +709,20 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (state.deleteConfirm.kind !== "submitting") return { state, intents: NO_INTENTS };
       const closedDc = { kind: "closed" as const };
       const cursor = state.cursor;
+      const noSnap = {
+        state: { ...state, deleteConfirm: closedDc },
+        intents: NO_INTENTS,
+      };
       if (
-        cursor === null ||
-        cursor.kind !== "card" ||
+        !isCardAnchor(cursor) ||
         cursor.commentId !== action.targetId ||
         state.bundle.kind !== "ok"
       ) {
-        return {
-          state: { ...state, deleteConfirm: closedDc },
-          intents: NO_INTENTS,
-        };
+        return noSnap;
       }
       const threads = buildThreads(state.bundle.value.comments);
       const found = findThreadByNode(action.targetId, threads);
-      if (!found) {
-        return {
-          state: { ...state, deleteConfirm: closedDc },
-          intents: NO_INTENTS,
-        };
-      }
+      if (!found) return noSnap;
       let nextCursor: Cursor | null;
       if (found.nodeIdx === 0) {
         // Cursor on the doomed parent. ≥1 reply survives → parent-stub
@@ -749,21 +744,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
                 preferredSide: cursor.preferredSide,
               };
       }
-      if (nextCursor === cursor) {
-        return {
-          state: { ...state, deleteConfirm: closedDc },
-          intents: NO_INTENTS,
-        };
-      }
-      if (nextCursor === null) {
-        return {
-          state: { ...state, cursor: null, deleteConfirm: closedDc },
-          intents: [{ type: "mirrorAnnUrl", commentId: null }],
-        };
-      }
+      if (nextCursor === cursor) return noSnap;
       return {
         state: { ...state, cursor: nextCursor, deleteConfirm: closedDc },
-        intents: [{ type: "mirrorAnnUrl", commentId: nextCursor.commentId }],
+        intents: [{ type: "mirrorAnnUrl", commentId: nextCursor?.commentId ?? null }],
       };
     }
 
