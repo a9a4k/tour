@@ -1405,36 +1405,31 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r3.intents).toEqual([]);
   });
 
-  it("composer.submitted on submitting → closed; re-anchors the cursor and emits the landing intents", () => {
-    // Issue #392: the bundle fold no longer happens inline. The reducer
-    // emits `optimisticInsertComment` so the runtime queues a separate
-    // `bundle.commentInserted` dispatch on the next microtask — two React
-    // commits, decoupled from the composer-overlay unmount.
-    // Issue #401: the reducer also re-anchors the cursor to the new
-    // Comment via the shared `setCursor` helper, which emits the
-    // scroll-and-mirror intents (center / instant, same adapter call
-    // path as the legacy `scrollToComment`).
+  it("composer.submitted on submitting → closed; emits applyPostSubmitLanding (no synchronous cursor move — issue #405)", () => {
+    // Issue #392: the bundle fold no longer happens inline. Issue #405:
+    // the cursor re-anchor no longer happens inline either — the
+    // synchronous cursor write was racing the deferred bundle fold and
+    // App.tsx's cursor-reconcile useEffect cleared the orphan
+    // CardAnchor. Both the fold and the cursor land atomically on the
+    // runtime-deferred `bundle.commentInsertedWithLanding` action; this
+    // reducer branch only closes the composer and emits the deferred-
+    // landing intent.
     let s = stateWithTourLoaded();
     s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
     s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
     s = reduce(s, { type: "composer.submit" }).state;
+    const cursorBefore = s.cursor;
     const ann = mkComment({ id: "fresh-ann-1" });
     const r = reduce(s, { type: "composer.submitted", comment: ann });
     expect(r.state.composer).toEqual({ kind: "closed" });
-    expect(r.state.cursor).toEqual({
-      kind: "card",
-      commentId: "fresh-ann-1",
-      preferredSide: "additions",
-    });
+    // Cursor is unchanged here — it lands in the deferred dispatch.
+    expect(r.state.cursor).toEqual(cursorBefore);
     expect(r.intents).toEqual([
       {
-        type: "scrollCursorTarget",
-        target: { kind: "card", commentId: "fresh-ann-1" },
-        placement: "center",
-        behavior: "instant",
+        type: "applyPostSubmitLanding",
+        comment: ann,
+        preferredSide: "additions",
       },
-      { type: "mirrorAnnUrl", commentId: "fresh-ann-1" },
-      { type: "optimisticInsertComment", comment: ann },
     ]);
   });
 
@@ -1457,25 +1452,48 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
   // SSE-driven `bundle.refreshed` round-trip (~500-600ms on large tours).
   //
   // Issue #392: the fold no longer happens inline in `composer.submitted`
-  // — it ships via a separate `bundle.commentInserted` action that the
-  // runtime dispatches one microtask after `composer.submitted`, so the
-  // composer-overlay unmount and the height-changing CommentRow add land
-  // in two distinct React commits (opentui's yoga layout pass crashed
-  // when both happened in the same commit). The fold's *semantics* —
-  // append-if-absent on a resolved bundle, leave the bundle untouched on
-  // any other slice variant — are owned by `bundle.commentInserted`.
-  describe("bundle.commentInserted optimistic fold (issue #322 + #392)", () => {
-    it("appends the new comment to a resolved snapshot-lost bundle's comments array", () => {
+  // — it ships via a separate action the runtime dispatches after a
+  // ~50 ms timer, so the composer-overlay unmount and the height-
+  // changing CommentRow add land in two distinct React commits (opentui's
+  // yoga layout pass crashed when both happened in the same commit).
+  //
+  // Issue #405: the cursor re-anchor was synchronous in `composer.submitted`
+  // and raced the deferred fold. The fix unifies bundle fold + cursor
+  // landing in one atomic action — `bundle.commentInsertedWithLanding`
+  // — so the cursor never points at a Comment id that isn't already in
+  // `bundle.comments`. Append-if-absent semantics are preserved;
+  // cursor lands on the new Comment with the supplied `preferredSide`.
+  describe("bundle.commentInsertedWithLanding atomic fold + cursor landing (issue #322 + #392 + #405)", () => {
+    it("appends the new comment to a resolved snapshot-lost bundle's comments array AND lands the cursor on it", () => {
       let s = stateWithTourLoaded();
       const ann = mkComment({ id: "fresh-ann-1" });
-      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
+      const r = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         expect(r.state.bundle.value.comments.map((a) => a.id)).toContain("fresh-ann-1");
         // Variant is preserved across the optimistic fold.
         expect(r.state.bundle.value.kind).toBe("snapshot-lost");
       }
-      expect(r.intents).toEqual([]);
+      // Cursor lands on the new Comment atomically with the fold.
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "fresh-ann-1",
+        preferredSide: "additions",
+      });
+      // setCursor emits the scroll + mirror intents.
+      expect(r.intents).toEqual([
+        {
+          type: "scrollCursorTarget",
+          target: { kind: "card", commentId: "fresh-ann-1" },
+          placement: "center",
+          behavior: "instant",
+        },
+        { type: "mirrorAnnUrl", commentId: "fresh-ann-1" },
+      ]);
     });
 
     it("appends the new comment to a resolved ok-bundle's comments array (preserves diff + files)", () => {
@@ -1486,7 +1504,11 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         bundle: b,
       }).state;
       const ann = mkComment({ id: "fresh-ann-ok" });
-      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
+      const r = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         expect(r.state.bundle.value.kind).toBe("ok");
@@ -1499,7 +1521,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       }
     });
 
-    it("reply path produces the same fold (parent retained, reply appended)", () => {
+    it("reply path produces the same fold (parent retained, reply appended) and lands cursor on the reply", () => {
       const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
         kind: "snapshot-lost",
@@ -1512,32 +1534,79 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         bundle: b,
       }).state;
       const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
-      const r = reduce(s, { type: "bundle.commentInserted", comment: reply });
+      const r = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: reply,
+        preferredSide: "additions",
+      });
       expect(r.state.bundle.kind).toBe("ok");
       if (r.state.bundle.kind === "ok") {
         const ids = r.state.bundle.value.comments.map((a) => a.id);
         expect(ids).toEqual(["parent-1", "reply-1"]);
       }
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "reply-1",
+        preferredSide: "additions",
+      });
     });
 
-    it("is idempotent: a second commentInserted for the same id is a no-op (no duplicate)", () => {
+    it("preferredSide is carried through to the new CardAnchor", () => {
+      let s = stateWithTourLoaded();
+      const ann = mkComment({ id: "fresh-with-side" });
+      const r = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "deletions",
+      });
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "fresh-with-side",
+        preferredSide: "deletions",
+      });
+    });
+
+    it("is idempotent on the fold: a second insert for the same id does not duplicate (cursor still re-lands)", () => {
       let s = stateWithTourLoaded();
       const ann = mkComment({ id: "dedup-1" });
-      s = reduce(s, { type: "bundle.commentInserted", comment: ann }).state;
-      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
-      // Same-ref short-circuit on dedup so listeners don't churn.
-      expect(r.state).toBe(s);
-      expect(r.intents).toEqual([]);
+      s = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      }).state;
+      const r = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      });
+      // Bundle slice ref-equal — fold portion is a no-op since the id
+      // is already present (so the bundle.comments array isn't rebuilt).
+      expect(r.state.bundle).toBe(s.bundle);
       if (r.state.bundle.kind === "ok") {
         const matching = r.state.bundle.value.comments.filter((a) => a.id === "dedup-1");
         expect(matching).toHaveLength(1);
       }
+      // mirrorAnnUrl is NOT emitted — comment id under the cursor is
+      // unchanged across the second dispatch. scrollCursorTarget still
+      // fires (re-centers the cursor target, harmless on duplicate).
+      expect(r.intents).toEqual([
+        {
+          type: "scrollCursorTarget",
+          target: { kind: "card", commentId: "dedup-1" },
+          placement: "center",
+          behavior: "instant",
+        },
+      ]);
     });
 
     it("subsequent bundle.refreshed carrying the same id results in exactly one occurrence (no duplicate)", () => {
       let s = stateWithTourLoaded();
       const ann = mkComment({ id: "dedup-1" });
-      s = reduce(s, { type: "bundle.commentInserted", comment: ann }).state;
+      s = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      }).state;
       // Server bundle from the SSE-triggered refetch — also carries the
       // same comment. The refresh must overwrite the optimistic copy,
       // not double-insert.
@@ -1557,7 +1626,11 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     it("subsequent bundle.refreshed NOT carrying the id overwrites the optimistic insert (server wins on divergence)", () => {
       let s = stateWithTourLoaded();
       const optimistic = mkComment({ id: "optimistic-1" });
-      s = reduce(s, { type: "bundle.commentInserted", comment: optimistic }).state;
+      s = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: optimistic,
+        preferredSide: "additions",
+      }).state;
       // Multi-client scenario: another writer concurrently created a
       // different comment; ours never reached disk. The refreshed
       // bundle carries someone else's comment but not ours.
@@ -1576,11 +1649,14 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       }
     });
 
-    it("is a no-op when the bundle isn't resolved (defence in depth; state ref-equal)", () => {
+    it("is a no-op when the bundle isn't resolved (defence in depth; state ref-equal, cursor untouched)", () => {
       // Hand-construct a state with a non-ok bundle slice — the runtime
       // already gates `composer.submit` on a resolved bundle, but the
-      // reducer must defensively no-op so a late microtask dispatch
-      // after the bundle dropped out doesn't crash.
+      // reducer must defensively no-op so a late timer dispatch after
+      // the bundle dropped out doesn't crash. The cursor must NOT land
+      // on a CardAnchor that the bundle can't resolve — the validator
+      // would project to null and the cursor-reconcile useEffect would
+      // clear it (the exact race the atomic-landing action closes).
       const base = initialTourSessionState();
       const s: TourSessionState = {
         ...base,
@@ -1588,13 +1664,17 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         bundle: { kind: "loading" },
       };
       const ann = mkComment({ id: "fresh-but-bundleless" });
-      const r = reduce(s, { type: "bundle.commentInserted", comment: ann });
+      const r = reduce(s, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      });
       expect(r.state).toBe(s);
       expect(r.intents).toEqual([]);
     });
   });
 
-  describe("composer.submitted decouples the bundle fold (issue #392)", () => {
+  describe("composer.submitted decouples the bundle fold AND cursor landing (issue #392 + #405)", () => {
     it("does NOT mutate bundle.comments inline — bundle slice ref-equal across the dispatch", () => {
       let s = stateWithTourLoaded();
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
@@ -1604,15 +1684,37 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       const ann = mkComment({ id: "fresh-1" });
       const r = reduce(s, { type: "composer.submitted", comment: ann });
       // Bundle slice unchanged — the fold ships on a separate dispatch
-      // that the runtime queues for the next microtask, so the composer-
-      // overlay unmount and the height-changing CommentRow add land in
-      // two distinct React commits.
+      // that the runtime queues for the next timer tick.
       expect(r.state.bundle).toBe(bundleBefore);
       // Composer still transitions to closed in the same commit.
       expect(r.state.composer).toEqual({ kind: "closed" });
     });
 
-    it("emits optimisticInsertComment alongside the cursor-landing intents so the runtime can defer the fold", () => {
+    it("does NOT mutate the cursor inline — cursor slice ref-equal across the dispatch (issue #405)", () => {
+      // The cursor used to re-anchor synchronously in `composer.submitted`
+      // (issue #401's fix), but the synchronous CardAnchor pointed at a
+      // Comment id not yet in `bundle.comments`, and the validator
+      // cleared it before the deferred fold landed. The atomic-landing
+      // action (`bundle.commentInsertedWithLanding`) owns the cursor
+      // move now — `composer.submitted` is cursor-neutral.
+      let s = stateWithTourLoaded();
+      const cursorBefore: Cursor = {
+        kind: "row",
+        file: "foo.ts",
+        side: "additions",
+        lineNumber: 10,
+        preferredSide: "additions",
+      };
+      s = reduce(s, { type: "cursor.set", anchor: cursorBefore }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkComment({ id: "fresh-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      expect(r.state.cursor).toBe(s.cursor);
+    });
+
+    it("emits applyPostSubmitLanding carrying the new Comment + pre-submit preferredSide (no inline cursor intents)", () => {
       let s = stateWithTourLoaded();
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
       s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
@@ -1621,22 +1723,20 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       const r = reduce(s, { type: "composer.submitted", comment: ann });
       expect(r.intents).toEqual([
         {
-          type: "scrollCursorTarget",
-          target: { kind: "card", commentId: "fresh-1" },
-          placement: "center",
-          behavior: "instant",
+          type: "applyPostSubmitLanding",
+          comment: ann,
+          preferredSide: "additions",
         },
-        { type: "mirrorAnnUrl", commentId: "fresh-1" },
-        { type: "optimisticInsertComment", comment: ann },
       ]);
     });
 
-    it("emits the same intent stream regardless of bundle slice state (runtime owns the bundle guard)", () => {
-      // The reducer no longer peeks at the bundle. The `bundle.commentInserted`
-      // dispatch the runtime schedules is the home of the bundle-resolved
-      // check. This keeps the reducer's branch shape uniform across
-      // bundle states and lets the failure-recovery path (composer.submit
-      // while bundle is loading) close cleanly.
+    it("emits the same intent stream regardless of bundle slice state (runtime + deferred reducer own the bundle guard)", () => {
+      // The reducer no longer peeks at the bundle. The runtime's
+      // deferred `bundle.commentInsertedWithLanding` dispatch is the
+      // home of the bundle-resolved check. This keeps the reducer's
+      // branch shape uniform across bundle states and lets the failure-
+      // recovery path (composer.submit while bundle is loading) close
+      // cleanly.
       const base = initialTourSessionState();
       const s: TourSessionState = {
         ...base,
@@ -1654,25 +1754,26 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       expect(r.state.bundle).toEqual({ kind: "loading" });
       expect(r.intents).toEqual([
         {
-          type: "scrollCursorTarget",
-          target: { kind: "card", commentId: "fresh-but-bundleless" },
-          placement: "center",
-          behavior: "instant",
+          type: "applyPostSubmitLanding",
+          comment: ann,
+          preferredSide: "additions",
         },
-        { type: "mirrorAnnUrl", commentId: "fresh-but-bundleless" },
-        { type: "optimisticInsertComment", comment: ann },
       ]);
     });
   });
 
-  // Issue #401: after a successful submit, the cursor re-anchors to the
-  // freshly-created Comment so focus follows the new Card. Replaces the
-  // legacy `scrollToComment` intent with a `cursor.set` to a CardAnchor —
-  // the `setCursor` helper emits `scrollCursorTarget` (center / instant)
-  // under the hood so the visible landing is unchanged. Reply-composer
-  // and top-level-composer paths share the same landing semantics.
-  describe("composer.submitted re-anchors the cursor to the new Comment (issue #401)", () => {
-    it("reply-composer submit lands the cursor on the new Comment as a CardAnchor", () => {
+  // Issue #401 + #405: after a successful submit, the cursor re-anchors
+  // to the freshly-created Comment so focus follows the new Card. The
+  // re-anchor happens atomically with the deferred bundle fold on the
+  // `bundle.commentInsertedWithLanding` action — not synchronously in
+  // `composer.submitted`. The synchronous path (issue #401's original
+  // fix) created a transient orphan-CardAnchor window in which the
+  // cursor-reconcile useEffect cleared the cursor (issue #405).
+  // Reply-composer and top-level-composer paths share the same landing
+  // semantics; the `applyPostSubmitLanding` intent carries the
+  // pre-submit cursor's `preferredSide` through to the deferred dispatch.
+  describe("post-submit cursor landing on bundle.commentInsertedWithLanding (issue #401 + #405)", () => {
+    it("reply-composer submit emits applyPostSubmitLanding with the new Comment + parent's preferredSide", () => {
       const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
         kind: "snapshot-lost",
@@ -1695,14 +1796,28 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.submit" }).state;
       const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
       const r = reduce(s, { type: "composer.submitted", comment: reply });
-      expect(r.state.cursor).toEqual({
+      expect(r.intents).toEqual([
+        {
+          type: "applyPostSubmitLanding",
+          comment: reply,
+          preferredSide: "additions",
+        },
+      ]);
+      // The deferred dispatch is what actually lands the cursor. Pin
+      // the end-state by running the action the runtime would dispatch.
+      const r2 = reduce(r.state, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: reply,
+        preferredSide: "additions",
+      });
+      expect(r2.state.cursor).toEqual({
         kind: "card",
         commentId: "reply-1",
         preferredSide: "additions",
       });
     });
 
-    it("top-level submit from a RowAnchor lands the cursor on the new Comment as a CardAnchor", () => {
+    it("top-level submit from a RowAnchor lands the cursor on the new Comment via the deferred dispatch", () => {
       let s = stateWithTourLoaded();
       s = reduce(s, {
         type: "cursor.set",
@@ -1719,14 +1834,19 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "fresh-top-level-1" });
       const r = reduce(s, { type: "composer.submitted", comment: ann });
-      expect(r.state.cursor).toEqual({
+      const r2 = reduce(r.state, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "additions",
+      });
+      expect(r2.state.cursor).toEqual({
         kind: "card",
         commentId: "fresh-top-level-1",
         preferredSide: "additions",
       });
     });
 
-    it("preferredSide on the new CardAnchor is inherited from the pre-submit cursor", () => {
+    it("preferredSide on the new CardAnchor is inherited from the pre-submit cursor (intent payload + deferred landing)", () => {
       let s = stateWithTourLoaded();
       // Park on a RowAnchor whose preferredSide is "deletions" (e.g. an
       // `h` flip on the diff before opening the composer).
@@ -1745,7 +1865,20 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "fresh-2" });
       const r = reduce(s, { type: "composer.submitted", comment: ann });
-      expect(r.state.cursor).toEqual({
+      // preferredSide carried on the deferred-landing intent.
+      expect(r.intents).toEqual([
+        {
+          type: "applyPostSubmitLanding",
+          comment: ann,
+          preferredSide: "deletions",
+        },
+      ]);
+      const r2 = reduce(r.state, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: ann,
+        preferredSide: "deletions",
+      });
+      expect(r2.state.cursor).toEqual({
         kind: "card",
         commentId: "fresh-2",
         preferredSide: "deletions",
@@ -1761,14 +1894,16 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "fresh-3" });
       const r = reduce(s, { type: "composer.submitted", comment: ann });
-      expect(r.state.cursor).toEqual({
-        kind: "card",
-        commentId: "fresh-3",
-        preferredSide: "additions",
-      });
+      expect(r.intents).toEqual([
+        {
+          type: "applyPostSubmitLanding",
+          comment: ann,
+          preferredSide: "additions",
+        },
+      ]);
     });
 
-    it("emits scrollCursorTarget center/instant + mirrorAnnUrl + optimisticInsertComment (no scrollToComment)", () => {
+    it("composer.submitted emits ONLY applyPostSubmitLanding (no synchronous scroll/mirror intents — issue #405)", () => {
       let s = stateWithTourLoaded();
       s = reduce(s, {
         type: "cursor.set",
@@ -1785,16 +1920,79 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.submit" }).state;
       const ann = mkComment({ id: "fresh-4" });
       const r = reduce(s, { type: "composer.submitted", comment: ann });
+      // No inline scrollCursorTarget / mirrorAnnUrl — they're emitted
+      // when the deferred-landing action runs, atomically with the
+      // bundle fold.
       expect(r.intents).toEqual([
         {
-          type: "scrollCursorTarget",
-          target: { kind: "card", commentId: "fresh-4" },
-          placement: "center",
-          behavior: "instant",
+          type: "applyPostSubmitLanding",
+          comment: ann,
+          preferredSide: "additions",
         },
-        { type: "mirrorAnnUrl", commentId: "fresh-4" },
-        { type: "optimisticInsertComment", comment: ann },
       ]);
+    });
+
+    it("end-to-end dispatch chain: composer.submitted then bundle.commentInsertedWithLanding lands the cursor with no orphan-CardAnchor window (issue #405)", () => {
+      // This is the reducer-level pin on the race fix. After
+      // composer.submitted, the cursor is still on its pre-submit
+      // anchor — it does NOT yet point at the new Comment. The new
+      // Comment is also NOT yet in bundle.comments. The deferred
+      // dispatch atomically folds the comment AND lands the cursor on
+      // it — so no intermediate state has cursor-points-at-orphan-id.
+      const parent = mkComment({ id: "parent-1" });
+      const b: TourBundle = {
+        kind: "snapshot-lost",
+        tour: tour({ id: "tour-a" }),
+        comments: [parent],
+      };
+      let s = reduce(initialTourSessionState(), {
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: b,
+      }).state;
+      s = reduce(s, {
+        type: "cursor.set",
+        anchor: { kind: "card", commentId: "parent-1", preferredSide: "additions" },
+      }).state;
+      s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
+      s = reduce(s, { type: "composer.setBody", body: "reply" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
+
+      // composer.submitted commit — cursor and bundle both still pre-submit.
+      const afterSubmitted = reduce(s, {
+        type: "composer.submitted",
+        comment: reply,
+      }).state;
+      expect(afterSubmitted.cursor).toEqual({
+        kind: "card",
+        commentId: "parent-1",
+        preferredSide: "additions",
+      });
+      if (afterSubmitted.bundle.kind === "ok") {
+        expect(
+          afterSubmitted.bundle.value.comments.map((a) => a.id),
+        ).toEqual(["parent-1"]);
+      }
+
+      // Deferred dispatch — bundle gains the reply AND cursor lands on
+      // it in the same commit. No state in this chain has the cursor
+      // pointing at a Comment id missing from bundle.comments.
+      const afterLanding = reduce(afterSubmitted, {
+        type: "bundle.commentInsertedWithLanding",
+        comment: reply,
+        preferredSide: "additions",
+      }).state;
+      expect(afterLanding.cursor).toEqual({
+        kind: "card",
+        commentId: "reply-1",
+        preferredSide: "additions",
+      });
+      if (afterLanding.bundle.kind === "ok") {
+        expect(
+          afterLanding.bundle.value.comments.map((a) => a.id),
+        ).toEqual(["parent-1", "reply-1"]);
+      }
     });
 
     it("composer.failed leaves the cursor untouched (cursor only updates on the success branch)", () => {

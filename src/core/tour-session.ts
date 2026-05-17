@@ -155,7 +155,11 @@ export type Action =
   | { type: "picker.commit" }
   | { type: "bundle.loading"; tourId: string }
   | { type: "bundle.refreshed"; bundle: TourBundle }
-  | { type: "bundle.commentInserted"; comment: Comment }
+  | {
+      type: "bundle.commentInsertedWithLanding";
+      comment: Comment;
+      preferredSide: "additions" | "deletions";
+    }
   | { type: "bundle.failed"; tourId: string; error: string }
   | { type: "tour.switched"; tourId: string; bundle: TourBundle }
   | { type: "replyLock.loaded"; replyLock: ReplyLock | null }
@@ -253,7 +257,11 @@ export type Intent =
   | { type: "selectSidebarFile"; file: string }
   | { type: "mirrorAnnUrl"; commentId: string | null }
   | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
-  | { type: "optimisticInsertComment"; comment: Comment }
+  | {
+      type: "applyPostSubmitLanding";
+      comment: Comment;
+      preferredSide: "additions" | "deletions";
+    }
   | { type: "scrollToComposer"; target: ComposerTarget }
   | { type: "requestReply"; tourId: string; commentId: string }
   | { type: "deleteComment"; tourId: string; targetId: string };
@@ -575,65 +583,79 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       return enterSubmitting(state, "open");
 
     case "composer.submitted": {
-      // Submitting → closed; re-anchor the cursor to the freshly-created
-      // Comment so focus follows the new Card (issue #401). The
-      // `setCursor` helper emits `scrollCursorTarget` (center / instant)
-      // under the hood — same adapter call as the legacy `scrollToComment`
-      // intent, so the visible landing is unchanged. `preferredSide` is
-      // inherited from the pre-submit cursor so an `h`/`l` choice made
-      // before submission survives.
+      // Submitting → closed. The cursor does NOT re-anchor here (issue
+      // #405). It will re-anchor atomically with the deferred bundle
+      // fold on `bundle.commentInsertedWithLanding`, in the same
+      // dispatch / React commit as the fold. Issue #401 originally moved
+      // the cursor in this branch, but the in-between cycle left a
+      // CardAnchor pointing at a Comment that wasn't in `bundle.comments`
+      // yet — `validateCursor` (driven by the cursor-reconcile useEffect
+      // in App.tsx) projected it to null, and the cursor was cleared
+      // before the deferred fold landed.
       //
       // Issue #322 (preserved by issue #392): the freshly-created
       // Comment must land in the bundle before the SSE-driven
       // `bundle.refreshed` round-trip (~500-600 ms on large tours).
       // Issue #392 splits *how*: this branch doesn't fold the comment
-      // inline. It emits `optimisticInsertComment`, which the runtime
+      // inline. It emits `applyPostSubmitLanding`, which the runtime
       // defers (via a small post-paint timer) and dispatches
-      // `bundle.commentInserted` separately. Two React commits, ordered:
-      // (1) composer overlay unmounts here; (2) ~50 ms later, after
-      // opentui has reflowed, the bundle gains the new CommentRow.
+      // `bundle.commentInsertedWithLanding` separately. Two React
+      // commits, ordered: (1) composer overlay unmounts here;
+      // (2) ~50 ms later, after opentui has reflowed, the bundle gains
+      // the new CommentRow AND the cursor lands on it in one commit.
       // Without the gap, opentui's yoga layout pass leaves the affected
       // file's content empty — the diff-pane-blank-after-submit symptom
-      // from the issue.
+      // from issue #392.
+      //
+      // `preferredSide` is captured here from the pre-submit cursor so
+      // an `h`/`l` choice made before submission survives the deferred
+      // landing.
       if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
-      const stateClosed: TourSessionState = { ...state, composer: { kind: "closed" } };
-      const landed = setCursor(
-        stateClosed,
-        cursorFromComment(action.comment, preferredSideOf(state.cursor)),
-        "center",
-        "instant",
-      );
       return {
-        state: landed.state,
+        state: { ...state, composer: { kind: "closed" } },
         intents: [
-          ...landed.intents,
-          { type: "optimisticInsertComment", comment: action.comment },
+          {
+            type: "applyPostSubmitLanding",
+            comment: action.comment,
+            preferredSide: preferredSideOf(state.cursor),
+          },
         ],
       };
     }
 
-    case "bundle.commentInserted": {
-      // Issue #392: the deferred optimistic fold. Append the freshly-
-      // created Comment to the resolved bundle's comments array,
-      // idempotent on id collision (a `bundle.refreshed` may have
-      // already carried the id, or a duplicate `composer.submitted`
-      // landed via the runtime). No-op on a non-resolved bundle slice
-      // (defence in depth — the runtime already swallowed any case
-      // where the bundle dropped out mid-submit, and the reducer must
-      // not crash on a late dispatch).
+    case "bundle.commentInsertedWithLanding": {
+      // Issue #392 + #405: the deferred optimistic fold AND the cursor
+      // re-anchor land in the same dispatch / React commit. This closes
+      // the race in which the cursor briefly pointed at a Comment id
+      // that wasn't yet in `bundle.comments` — `validateCursor` would
+      // project to null and the App's cursor-reconcile useEffect would
+      // clear the cursor.
+      //
+      // Bundle fold semantics are unchanged from the prior
+      // `bundle.commentInserted`: append-if-absent on a resolved
+      // bundle, defensive no-op on any other slice. Cursor landing only
+      // fires when the bundle is resolved (`setCursor` against an
+      // orphan CardAnchor would re-introduce the race).
       if (state.bundle.kind !== "ok") return { state, intents: NO_INTENTS };
       const inner = state.bundle.value;
-      if (inner.comments.some((a) => a.id === action.comment.id)) {
-        return { state, intents: NO_INTENTS };
-      }
-      const nextBundle: TourBundle = {
-        ...inner,
-        comments: [...inner.comments, action.comment],
-      };
-      return {
-        state: { ...state, bundle: { kind: "ok", value: nextBundle } },
-        intents: NO_INTENTS,
-      };
+      const alreadyPresent = inner.comments.some(
+        (a) => a.id === action.comment.id,
+      );
+      const folded: TourSessionState = alreadyPresent
+        ? state
+        : {
+            ...state,
+            bundle: {
+              kind: "ok",
+              value: { ...inner, comments: [...inner.comments, action.comment] },
+            },
+          };
+      return setCursor(
+        folded,
+        cursorFromComment(action.comment, action.preferredSide),
+        "center",
+        "instant",
+      );
     }
 
     case "composer.failed": {

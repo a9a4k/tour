@@ -1978,3 +1978,154 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
     expect(annFromHash()).toBeNull();
   });
 });
+
+// Issue #405: the post-submit cursor must land on the freshly-created
+// Reply (or top-level Comment) once the deferred bundle fold runs.
+// Pre-fix the synchronous cursor re-anchor in `composer.submitted`
+// pointed at a Comment id that wasn't yet in `bundle.comments` — the
+// cursor-reconcile useEffect saw the orphan CardAnchor and dispatched
+// `cursor.clear`, so by the time the user saw the post-submit screen,
+// `state.cursor` was null. The fix unifies the bundle fold and cursor
+// landing in one atomic action (`bundle.commentInsertedWithLanding`)
+// dispatched by the runtime after the same 50 ms timer that decouples
+// the composer-overlay unmount from the heightful CommentRow add.
+//
+// Acceptance criterion from issue #405:
+//   "[ ] New integration test on App-rendered tree (TUI and/or webapp):
+//    submit a reply via dispatch chain, await the full timer + render
+//    cycle, assert that the DOM / virtual tree shows the Card with
+//    isCurrent=true and the new Reply's byline carrying the active-
+//    node indicator."
+//
+// The webapp's cursor-on-card indicator is the `mirrorAnnUrl` write to
+// `window.location.hash` plus the `.current` className on the Thread's
+// outer block. Pre-fix the hash cleared; post-fix the hash is the new
+// Reply id and the parent block stays `.current`.
+describe("App post-submit cursor lands on the new Reply (issue #405 race with #392's deferred fold)", () => {
+  const submittedReply = {
+    id: "ann-reply-success-405",
+    file: "src/foo.ts",
+    side: "additions" as const,
+    line_start: 2,
+    line_end: 2,
+    body: "pushback",
+    author: "human",
+    author_kind: "human" as const,
+    replies_to: "ann-human-fail",
+    created_at: "2026-05-17T00:00:00Z",
+  };
+
+  it("after a successful reply submit, window.location.hash is the new Reply id (not cleared)", async () => {
+    globalThis.fetch = stubFailFetch({
+      bundle: failBundleWithAnn,
+      postResponder: () =>
+        Promise.resolve(
+          new Response(JSON.stringify(submittedReply), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    // Bundle-load re-anchor seats the cursor on the parent Comment;
+    // its id is mirrored to the URL hash.
+    expect(annFromHash()).toBe("ann-human-fail");
+
+    // `r` opens the reply composer for the Thread under the cursor.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    await act(async () => {
+      setTextareaValue(ta!, "pushback");
+    });
+
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    expect(submitBtn).not.toBeNull();
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+
+    // Wait past the runtime's 50 ms deferred-landing timer + the
+    // dispatch/render cycle it triggers. Pre-fix, by this point the
+    // cursor had been cleared by App.tsx's cursor-reconcile useEffect
+    // (orphan CardAnchor against a not-yet-folded bundle).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    await flush();
+
+    // Post-fix: hash is the new Reply id. Pre-fix this was empty
+    // (cursor.clear had fired during the orphan window).
+    expect(annFromHash()).toBe("ann-reply-success-405");
+  });
+
+  it("after a successful reply submit, the parent Thread block stays .current (Thread-wide isCurrent)", async () => {
+    globalThis.fetch = stubFailFetch({
+      bundle: failBundleWithAnn,
+      postResponder: () =>
+        Promise.resolve(
+          new Response(JSON.stringify(submittedReply), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+    });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    await act(async () => {
+      setTextareaValue(ta!, "pushback");
+    });
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    await flush();
+
+    // The parent Card stays lit while the cursor sits on its reply node
+    // (Thread-level isCurrent — same rule as issue #404). Pre-fix the
+    // cursor was null, so this block had `.current` go false.
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-human-fail"]`,
+    );
+    expect(parentBlock).not.toBeNull();
+    expect(parentBlock!.classList.contains("current")).toBe(true);
+  });
+});

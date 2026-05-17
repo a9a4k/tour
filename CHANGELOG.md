@@ -79,6 +79,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Post-submit cursor lands atomically with the deferred bundle fold
+  (issue #405).** Issue #401's synchronous cursor re-anchor in
+  `composer.submitted` raced issue #392's deferred (~50 ms timer)
+  bundle fold: for the ~50 ms between dispatch and fold, the cursor
+  was a `CardAnchor` whose `commentId` wasn't yet in `bundle.comments`,
+  the view's `validateCursor` projected it to null, App.tsx's cursor-
+  reconcile useEffect saw the orphan and dispatched `cursor.clear` — so
+  after every successful submit the cursor was permanently null. The
+  fix unifies bundle fold + cursor landing in one atomic action
+  (`bundle.commentInsertedWithLanding`) the runtime dispatches on the
+  same timer that decouples the composer-overlay unmount from the
+  heightful CommentRow add. The reducer's `composer.submitted` branch
+  is now cursor-neutral and emits a single `applyPostSubmitLanding`
+  intent carrying the new Comment + the pre-submit cursor's
+  `preferredSide`; the runtime's deferred dispatch folds the comment
+  and re-anchors the cursor in one commit, with the same
+  `scrollCursorTarget` (center / instant) + `mirrorAnnUrl` intents the
+  shared `setCursor` helper emits. The retired `optimisticInsertComment`
+  intent and `bundle.commentInserted` action are removed (only emitter /
+  dispatcher were the same pair). New App-rendered integration tests
+  pin the end-state on the webapp — the URL `#<id>` mirror equals the
+  new Reply's id and the parent Thread block stays `.current` after
+  the deferred-landing dispatch — so this race surfaces at the test
+  layer rather than dogfood next time.
 - **Webapp `j` / `k` descend into Card reply nodes (issue #404).**
   ADR 0037's in-Card walker was wired on the TUI but not the webapp:
   the `case "move-down" / "move-up"` reducer branches in `App.tsx`

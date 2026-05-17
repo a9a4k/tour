@@ -113,31 +113,47 @@ export class TourSessionRuntime {
             this.adapter.scrollToRow(intent.target, intent.placement, intent.behavior);
           }
           return;
-        case "optimisticInsertComment":
-          // Issue #392: split the optimistic bundle fold off the same
-          // render cycle that closes the composer overlay. The bug:
-          // when an absolute-positioned overlay (`<Composer>`) unmounts
-          // while a sibling subtree in the diff scrollbox grows, opentui's
-          // yoga layout pass leaves the affected file's content empty —
-          // diff rows vanish below the parent's anchor, the new card
-          // doesn't render. Symptom is purely visual; disk state and
-          // React state are both correct.
+        case "applyPostSubmitLanding":
+          // Issue #392 + #405: split the optimistic bundle fold AND the
+          // cursor re-anchor off the same render cycle that closes the
+          // composer overlay. The original #392 bug: when an absolute-
+          // positioned overlay (`<Composer>`) unmounts while a sibling
+          // subtree in the diff scrollbox grows, opentui's yoga layout
+          // pass leaves the affected file's content empty — diff rows
+          // vanish below the parent's anchor, the new card doesn't
+          // render. Symptom is purely visual; disk state and React
+          // state are both correct.
           //
-          // Fix: defer the bundle dispatch enough for opentui to fully
-          // render + reflow the composer-close commit first. `queueMicrotask`
-          // and `setTimeout(0)` (one macrotask) are both insufficient —
-          // empirically verified that 16 ms is also too short and 50 ms
-          // is the floor that consistently lands the second commit after
-          // the first has fully painted. opentui's renderer doesn't expose
-          // a post-paint signal we can subscribe to, so a small timer is
-          // the pragmatic fix until that primitive lands (or opentui
-          // resolves the underlying yoga interaction).
+          // Fix: defer the bundle + cursor dispatch enough for opentui
+          // to fully render + reflow the composer-close commit first.
+          // `queueMicrotask` and `setTimeout(0)` (one macrotask) are
+          // both insufficient — empirically verified that 16 ms is also
+          // too short and 50 ms is the floor that consistently lands
+          // the second commit after the first has fully painted.
+          // opentui's renderer doesn't expose a post-paint signal we
+          // can subscribe to, so a small timer is the pragmatic fix
+          // until that primitive lands (or opentui resolves the
+          // underlying yoga interaction).
           //
           // Issue #322's goal (no SSE-roundtrip latency before the new
           // card appears) is still preserved: 50 ms is well under the
           // watcher's ~500-600 ms RTT and is sub-perceptual.
+          //
+          // Issue #405: the cursor re-anchor was previously dispatched
+          // synchronously by `composer.submitted`, which created a
+          // ~50 ms window in which the cursor pointed at a Comment id
+          // not yet in `bundle.comments`. The cursor-reconcile
+          // useEffect in App.tsx observed the orphan CardAnchor and
+          // cleared the cursor. Bundling the cursor write into the
+          // same dispatch as the bundle fold (atomic-landing action)
+          // closes the race — there is no commit where cursor.commentId
+          // is orphan from bundle.comments.
           setTimeout(() => {
-            this.store.dispatch({ type: "bundle.commentInserted", comment: intent.comment });
+            this.store.dispatch({
+              type: "bundle.commentInsertedWithLanding",
+              comment: intent.comment,
+              preferredSide: intent.preferredSide,
+            });
           }, 50);
           return;
         case "scrollToComposer":

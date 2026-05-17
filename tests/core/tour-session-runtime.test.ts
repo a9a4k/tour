@@ -869,18 +869,19 @@ describe("TourSessionRuntime", () => {
     });
   });
 
-  describe("optimisticInsertComment intent (issue #392)", () => {
+  describe("applyPostSubmitLanding intent (issue #392 + #405)", () => {
     // Issue #322 keeps its goal — the freshly-created Comment lands in the
     // bundle before the SSE-driven `bundle.refreshed` round-trip. Issue #392
     // changes *how*: the fold no longer happens in the same render cycle as
-    // the composer-overlay unmount. The reducer emits
-    // `optimisticInsertComment`; the runtime defers via a short timer
-    // (empirically 50 ms — see the runtime comment for why microtask /
-    // setTimeout(0) are insufficient) and dispatches `bundle.commentInserted`
-    // in a later commit. The heightful CommentRow add lands after opentui has
-    // reflowed the composer-close commit; the yoga layout pass no longer
-    // leaves the file's content empty.
-    it("defers the bundle fold via a timer so the composer-close commit lands first", async () => {
+    // the composer-overlay unmount. Issue #405 unifies the cursor landing
+    // with the fold so the cursor never sits on a Comment id missing from
+    // bundle.comments. The reducer emits `applyPostSubmitLanding`; the
+    // runtime defers via a short timer (empirically 50 ms — see the
+    // runtime comment for why microtask / setTimeout(0) are insufficient)
+    // and dispatches `bundle.commentInsertedWithLanding` in a later
+    // commit. The heightful CommentRow add + cursor write lands after
+    // opentui has reflowed the composer-close commit.
+    it("defers the bundle fold + cursor landing via a timer so the composer-close commit lands first", async () => {
       const store = storeWithTour(null);
       const ann: Comment = {
         id: "a-new",
@@ -1371,7 +1372,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("composer.submitted re-anchors the cursor and routes to adapter.scrollToCard(id, 'center', 'instant') (issue #401)", () => {
+    it("post-submit deferred dispatch routes to adapter.scrollToCard(id, 'center', 'instant') (issue #401 + #405)", async () => {
       const store = storeWithTour(null);
       const ann: Comment = {
         id: "a-new",
@@ -1390,10 +1391,12 @@ describe("TourSessionRuntime", () => {
       const stop = runtime.start();
       store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle });
 
-      // composer.submitted dispatches re-anchor the cursor to the new
-      // Comment via setCursor, which emits scrollCursorTarget — the
-      // runtime routes that to adapter.scrollToCard(id, "center", "instant").
-      // The reducer requires composer to be in `submitting` for the transition.
+      // Issue #405: composer.submitted no longer emits scrollCursorTarget
+      // synchronously — the cursor write and the bundle fold land
+      // atomically on the deferred `bundle.commentInsertedWithLanding`
+      // action (~50 ms after submit). The deferred dispatch's setCursor
+      // call emits scrollCursorTarget, which the runtime routes to
+      // adapter.scrollToCard(id, "center", "instant").
       store.dispatch({
         type: "composer.open",
         target: {
@@ -1408,6 +1411,14 @@ describe("TourSessionRuntime", () => {
       store.dispatch({ type: "composer.submit" });
       store.dispatch({ type: "composer.submitted", comment: ann });
 
+      // No synchronous adapter call — the cursor landing is deferred.
+      expect(
+        adapter.scrollCardCalls.filter((c) => c.id === "a-new" && c.mode === "center"),
+      ).toEqual([]);
+
+      // Drain the 50 ms timer; the deferred-landing dispatch fires and
+      // the adapter is now called.
+      await new Promise((resolve) => setTimeout(resolve, 100));
       expect(
         adapter.scrollCardCalls.filter((c) => c.id === "a-new" && c.mode === "center"),
       ).toEqual([{ id: "a-new", mode: "center", behavior: "instant" }]);
