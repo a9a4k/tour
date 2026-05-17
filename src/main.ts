@@ -47,8 +47,8 @@ Usage:
   tour                                  (open the best surface for your env: webapp on a desktop with a browser, TUI otherwise)
   tour tui [<id>] [--reply-agent <name>] [--editor <cmd>]   (open TUI for a specific tour)
   tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] [--editor <cmd>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
-  tour create --head <ref> [--base <ref>] [--title <s>] [--json]
-                                        (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^.)
+  tour create --head <ref> [--base <ref>] [--title <s>] [--force] [--json]
+                                        (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^. --force overrides the duplicate-open-tour refusal.)
   tour comment <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour comment <id> --delete <comment-id> [--json]
@@ -109,7 +109,14 @@ async function main(): Promise<void> {
       case "create": {
         const head = flag(flags, "head");
         if (!head) throw new Error("--head is required");
-        await create({ head, base: flag(flags, "base"), title: flag(flags, "title"), json, cwd });
+        await create({
+          head,
+          base: flag(flags, "base"),
+          title: flag(flags, "title"),
+          force: boolFlag(flags, "force"),
+          json,
+          cwd,
+        });
         break;
       }
 

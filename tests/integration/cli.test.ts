@@ -228,6 +228,150 @@ describe("CLI integration", () => {
         expect(tour.base_source).toBe(`merge-base(origin/${branch})`);
       });
     });
+
+    describe("duplicate-open-tour refusal (issue #400)", () => {
+      it("second create against the same (head_sha, base_sha) exits 1 with stderr block and empty stdout", async () => {
+        const first = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(first.exitCode).toBe(0);
+        const firstTour = JSON.parse(first.stdout);
+
+        const second = await run(["create", "--head", "HEAD"], repo);
+        expect(second.exitCode).toBe(1);
+        // stdout is empty in non-JSON refuse case so `$()` capture
+        // never picks up the existing id by accident.
+        expect(second.stdout).toBe("");
+        // stderr names the existing tour id and the three recovery commands.
+        expect(second.stderr).toContain(
+          `error: open tour ${firstTour.id} already covers this diff`,
+        );
+        expect(second.stderr).toContain(`head_sha=${firstTour.head_sha.slice(0, 7)}`);
+        expect(second.stderr).toContain(`base_sha=${firstTour.base_sha.slice(0, 7)}`);
+        expect(second.stderr).toContain(`resume:   tour tui ${firstTour.id}`);
+        expect(second.stderr).toContain(`list:     tour list --status open`);
+        expect(second.stderr).toContain(`override: tour create --head HEAD --force`);
+
+        // Still only one tour on disk.
+        const ls = await run(["list", "--json"], repo);
+        const tours = JSON.parse(ls.stdout);
+        expect(tours).toHaveLength(1);
+        expect(tours[0].id).toBe(firstTour.id);
+      });
+
+      it("--force overrides the refusal and creates a fresh tour", async () => {
+        const first = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(first.exitCode).toBe(0);
+        const firstTour = JSON.parse(first.stdout);
+
+        const second = await run(["create", "--head", "HEAD", "--force"], repo);
+        expect(second.exitCode).toBe(0);
+        expect(second.stdout).toMatch(/^\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{4}$/);
+        expect(second.stdout).not.toBe(firstTour.id);
+        expect(second.stderr).toContain(`Open with: tour tui ${second.stdout}`);
+
+        const ls = await run(["list", "--json"], repo);
+        const tours = JSON.parse(ls.stdout);
+        expect(tours).toHaveLength(2);
+      });
+
+      it("closed tour does not block a new create over the same diff", async () => {
+        const first = await run(["create", "--head", "HEAD", "--json"], repo);
+        const firstTour = JSON.parse(first.stdout);
+        const closeResult = await run(["close", firstTour.id], repo);
+        expect(closeResult.exitCode).toBe(0);
+
+        const second = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(second.exitCode).toBe(0);
+        const secondTour = JSON.parse(second.stdout);
+        expect(secondTour.id).not.toBe(firstTour.id);
+        expect(secondTour.status).toBe("open");
+      });
+
+      it("base divergence is legitimate — same head + different base creates a new tour", async () => {
+        // Add a third commit so HEAD^ and HEAD^^ are distinct shas the
+        // matcher can disagree on.
+        await writeFile(join(repo, "third.txt"), "third\n");
+        await gitCmd(["add", "."], repo);
+        await gitCmd(["commit", "-m", "third"], repo);
+
+        const first = await run(
+          ["create", "--head", "HEAD", "--base", "HEAD^", "--json"],
+          repo,
+        );
+        expect(first.exitCode).toBe(0);
+        const firstTour = JSON.parse(first.stdout);
+
+        const second = await run(
+          ["create", "--head", "HEAD", "--base", "HEAD^^", "--json"],
+          repo,
+        );
+        expect(second.exitCode).toBe(0);
+        const secondTour = JSON.parse(second.stdout);
+        expect(secondTour.head_sha).toBe(firstTour.head_sha);
+        expect(secondTour.base_sha).not.toBe(firstTour.base_sha);
+        expect(secondTour.id).not.toBe(firstTour.id);
+      });
+
+      it("--json refuse case emits the existing tour's record (with comments) on stdout, exits 1", async () => {
+        const first = await run(
+          ["create", "--head", "HEAD", "--title", "Existing", "--json"],
+          repo,
+        );
+        const firstTour = JSON.parse(first.stdout);
+        // Add a comment so the record's `comments` array is not just `[]`
+        // and the envelope shape can be compared against `tour show --json`.
+        await run(
+          [
+            "comment", firstTour.id,
+            "--file", "hello.txt",
+            "--side", "additions",
+            "--line", "1",
+            "--body", "from issue 400",
+            "--author", "human",
+            "--as-human",
+          ],
+          repo,
+        );
+
+        const showJson = await run(["show", firstTour.id, "--json"], repo);
+        const showRecord = JSON.parse(showJson.stdout);
+
+        const second = await run(["create", "--head", "HEAD", "--json"], repo);
+        expect(second.exitCode).toBe(1);
+        const refuseRecord = JSON.parse(second.stdout);
+        expect(refuseRecord).toEqual(showRecord);
+        // The stderr block is still printed alongside the JSON.
+        expect(second.stderr).toContain(`error: open tour ${firstTour.id}`);
+      });
+
+      it("--json --force emits the new tour's record on stdout, exits 0", async () => {
+        const first = await run(["create", "--head", "HEAD", "--json"], repo);
+        const firstTour = JSON.parse(first.stdout);
+
+        const second = await run(
+          ["create", "--head", "HEAD", "--json", "--force"],
+          repo,
+        );
+        expect(second.exitCode).toBe(0);
+        const newTour = JSON.parse(second.stdout);
+        expect(newTour.id).not.toBe(firstTour.id);
+        expect(newTour.status).toBe("open");
+        expect(second.stderr).toBe("");
+      });
+
+      it("WIP is exempt — `tour create --head WIP` after an open WIP tour still creates", async () => {
+        await writeFile(join(repo, "wip.txt"), "wip changes\n");
+        const first = await run(["create", "--head", "WIP", "--json"], repo);
+        expect(first.exitCode).toBe(0);
+        const firstTour = JSON.parse(first.stdout);
+
+        const second = await run(["create", "--head", "WIP", "--json"], repo);
+        expect(second.exitCode).toBe(0);
+        const secondTour = JSON.parse(second.stdout);
+        expect(secondTour.id).not.toBe(firstTour.id);
+        expect(secondTour.wip_snapshot).toBe(true);
+      });
+    });
+
   });
 
   describe("list", () => {

@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`tour create` refuses duplicate open tours over the same diff
+  (issue #400, breaking change).** `tour create --head <ref>` now
+  refuses when an open tour with the same `(head_sha, base_sha)`
+  already exists. The second invocation exits non-zero with a stderr
+  block naming the existing tour id and the three recovery commands
+  (`tour tui <id>`, `tour list --status open`, `tour create --head
+  <ref> --force`); stdout is empty in the non-JSON case. In `--json`
+  mode the existing tour's full record (same envelope as `tour show
+  <id> --json`) is emitted to stdout, with the non-zero exit as the
+  signal that this is the existing tour and not a freshly created
+  one. The new `--force` flag opts back into the old always-create
+  behaviour. Closed tours never block. Base divergence (same head,
+  different base) is legitimate and creates a new tour. WIP tours
+  (`--head WIP`) are exempt — their snapshot sha is deterministic
+  only over the working-tree bytes, not over a ref, and reuse
+  semantics need their own design (out of scope).
 - **Webapp per-Thread collapse pinned by tests (issue #399 / PRD #397
   / ADR 0038).** Slice 2 of the per-Thread collapse PRD — the webapp
   slice itself landed alongside the TUI slice in the merged #397 work;
