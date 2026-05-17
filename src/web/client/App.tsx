@@ -1539,6 +1539,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           const cardAnn = view.cursor.cardComment;
           const cardId = view.cursor.cardId;
           if (!cardAnn || !cardId) return;
+          // PRD #397 / ADR 0038. Modifying action seam — auto-expand
+          // the Thread before mounting the composer so the existing
+          // Replies stay visible above the new draft.
+          if (sessionState.collapsedThreads.has(cardId)) {
+            store.dispatch({ type: "thread.expand", id: cardId });
+          }
           const latestId = latestCommentId(
             cardAnn,
             [...(view.nav.repliesByRoot.get(cardId) ?? [])],
@@ -1549,6 +1555,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               target: { kind: "reply", replies_to: latestId },
             });
           });
+          return;
+        }
+        case "toggle-thread-collapse": {
+          // PRD #397 / ADR 0038. `Shift+C` on a Card flips the Thread's
+          // collapse state. Off-card → footer status, no dispatch.
+          if (view.kind !== "ok") return;
+          const cardId = view.cursor.cardId;
+          if (!cardId) {
+            flashFooterStatus("Shift+C: no comment under cursor");
+            return;
+          }
+          store.dispatch({ type: "thread.toggle", id: cardId });
           return;
         }
         case "send-on-card": {
@@ -1575,6 +1593,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             hasReply: false,
           });
           if (!verdict.enabled) return;
+          // PRD #397 / ADR 0038. Modifying action seam — auto-expand
+          // the Thread so the in-flight pill and the landed agent
+          // reply render in context.
+          const cardId = view.cursor.cardId;
+          if (cardId && sessionState.collapsedThreads.has(cardId)) {
+            store.dispatch({ type: "thread.expand", id: cardId });
+          }
           store.dispatch({
             type: "send-to-agent",
             tourId,
@@ -1824,6 +1849,19 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [tourId, store],
   );
 
+  // PRD #397 / ADR 0038. Header-chevron click dispatcher — flips the
+  // Thread's collapse state. The CommentCard wraps the click in a
+  // `setCursorFromCardClick(commentId)` so a follow-up `Shift+C` from
+  // the keyboard targets the same Card. The id is always a top-level
+  // Comment id (the CommentCard only renders the chevron on the
+  // top-level header).
+  const toggleThreadCollapse = useCallback(
+    (commentId: string) => {
+      store.dispatch({ type: "thread.toggle", id: commentId });
+    },
+    [store],
+  );
+
   // Submit-or-retry dispatcher (PRD #234 slice 3, issue #238). Reads the
   // current composer kind and routes to `composer.submit` (open) or
   // `composer.retry` (errored); both transitions land on `submitting` and
@@ -2016,6 +2054,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 onCardClick={setCursorFromCardClick}
                 onAnnotationFileClick={onAnnotationFileClick}
                 onDeleteClick={openDeleteModal}
+                collapsedThreads={sessionState.collapsedThreads}
+                onToggleCollapse={toggleThreadCollapse}
               />
             </main>
           </>
@@ -2138,6 +2178,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       onSendToAgent: sendToAgent,
                       navIndexById: view.nav.navIndexById,
                       navTotal: view.nav.navTotal,
+                      collapsedThreads: sessionState.collapsedThreads,
+                      onToggleThreadCollapse: toggleThreadCollapse,
                     }}
                     isCollapsed={isCollapsed(fileName)}
                     onToggleCollapse={() => toggleCollapsed(fileName)}
@@ -2168,6 +2210,12 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Sidebar mode shows the shorter sidebar-relevant keys;
           // diff mode appends `Esc: sidebar` to today's web legend.
           paneFocus,
+          // PRD #397 / ADR 0038. Contextual `C` verb — flips to
+          // `C: expand` when the cursored Thread is collapsed.
+          currentThreadCollapsed:
+            view.kind === "ok" &&
+            view.cursor.cardId !== null &&
+            sessionState.collapsedThreads.has(view.cursor.cardId),
         })}
       />
       {sessionState.picker.kind === "open" ? (
@@ -2423,6 +2471,17 @@ interface CommentCardProps {
   // so call sites that haven't wired the modal (snapshot-lost branch,
   // unit-test mounts) keep their existing behaviour.
   onDeleteClick?: (commentId: string) => void;
+  // PRD #397 / ADR 0038. When true, the Card collapses to a single
+  // one-liner row (chevron + author kind + file:line + first 60 chars
+  // of the parent body + `💬 N` reply count). The in-flight reply pill
+  // still renders below the one-liner so the watcher-driven signal
+  // survives the user's hide intent.
+  collapsed?: boolean;
+  // PRD #397 / ADR 0038. Fires when the user clicks the header chevron
+  // (▾ when expanded, ▸ when collapsed). The host wraps the dispatch
+  // around the click — same id semantics as `onCardClick` (the top-
+  // level Comment id).
+  onToggleCollapse?: (commentId: string) => void;
 }
 
 // Owns its own 1Hz tick so the wall-clock advances only here. The previous
@@ -2491,6 +2550,8 @@ export function CommentCard({
   onCardClick,
   onFileClick,
   onDeleteClick,
+  collapsed,
+  onToggleCollapse,
 }: CommentCardProps): React.JSX.Element {
   const isDeletedStub = !!comment.deleted;
   const range =
@@ -2541,13 +2602,68 @@ export function CommentCard({
   const composerOpen = replyTargetId != null;
   const showReplyButton = !!onOpenReply;
   const showSendButton = sendVerdict.visible && !!onSendToAgent && !!sendLeafId;
+  // PRD #397 / ADR 0038. Collapsed one-liner. Watcher-driven lock pills
+  // still render below the one-liner ("honest signal over tidy hiding").
+  // `💬 N` counts all live Replies under the projection.
+  const collapsedPreview = (() => {
+    const oneLine = comment.body.replace(/\s+/g, " ").trim();
+    if (oneLine.length <= 60) return oneLine;
+    return `${oneLine.slice(0, 59)}…`;
+  })();
   const blockClass = [
     "comment-block",
     isCurrent ? "current" : "",
     isDeletedStub ? "deleted-stub" : "",
+    collapsed ? "collapsed" : "",
   ]
     .filter(Boolean)
     .join(" ");
+  if (collapsed) {
+    const replyCount = replies?.length ?? 0;
+    return (
+      <div
+        className={blockClass}
+        ref={(el) => registerRef?.(comment.id, el)}
+        data-comment-id={comment.id}
+        onClick={() => onCardClick?.(comment.id)}
+      >
+        <div className="ann-header ann-header-collapsed">
+          {isCurrent ? (
+            <span className="selection-marker" aria-hidden="true">●{" "}</span>
+          ) : null}
+          {onToggleCollapse ? (
+            <button
+              type="button"
+              className="ann-collapse-chevron"
+              aria-label="Expand comment"
+              title="Expand"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCardClick?.(comment.id);
+                onToggleCollapse(comment.id);
+              }}
+            >
+              ▸
+            </button>
+          ) : (
+            <span aria-hidden="true">▸ </span>
+          )}
+          {navIndex !== null && navTotal > 0 ? (
+            <span className="nav-index">{navIndex} / {navTotal}{" "}</span>
+          ) : null}
+          <span className={`author-kind ${comment.author_kind}`}>
+            [{comment.author_kind}]
+          </span>{" "}
+          <span className="ann-filename">{comment.file}:{range}</span>
+          <span className="ann-collapsed-preview">  "{collapsedPreview}"</span>
+          {replyCount > 0 ? (
+            <span className="ann-collapsed-reply-count">  💬 {replyCount}</span>
+          ) : null}
+        </div>
+        {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
+      </div>
+    );
+  }
   return (
     <div
       className={blockClass}
@@ -2558,6 +2674,21 @@ export function CommentCard({
       <div className="ann-header">
         {isCurrent ? (
           <span className="selection-marker" aria-hidden="true">●{" "}</span>
+        ) : null}
+        {onToggleCollapse ? (
+          <button
+            type="button"
+            className="ann-collapse-chevron"
+            aria-label="Collapse comment"
+            title="Collapse"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCardClick?.(comment.id);
+              onToggleCollapse(comment.id);
+            }}
+          >
+            ▾
+          </button>
         ) : null}
         {navIndex !== null && navTotal > 0 ? (
           <span className="nav-index">{navIndex} / {navTotal}{" "}</span>
@@ -2833,6 +2964,10 @@ interface CommentListSnapshotLostProps {
   // Issue #389 / ADR 0036 (Slice E): per-card 🗑 click. Targets the
   // clicked node id (parent or Reply) — used to open the confirm modal.
   onDeleteClick?: (commentId: string) => void;
+  // PRD #397 / ADR 0038. Per-Thread collapse set (top-level Comment ids)
+  // and chevron click dispatcher.
+  collapsedThreads: ReadonlySet<string>;
+  onToggleCollapse: (commentId: string) => void;
 }
 
 // Renders comments when the bundle is `snapshot-lost`. Reads `view.nav`
@@ -2855,6 +2990,8 @@ function CommentListSnapshotLost({
   onCardClick,
   onAnnotationFileClick,
   onDeleteClick,
+  collapsedThreads,
+  onToggleCollapse,
 }: CommentListSnapshotLostProps): React.JSX.Element {
   const { topLevel, repliesByRoot, navIndexById, navTotal } = nav;
   if (topLevel.length === 0) return <div className="empty">No comments</div>;
@@ -2892,6 +3029,8 @@ function CommentListSnapshotLost({
             onCardClick={onCardClick}
             onFileClick={onAnnotationFileClick}
             onDeleteClick={onDeleteClick}
+            collapsed={collapsedThreads.has(a.id)}
+            onToggleCollapse={onToggleCollapse}
           />
         );
       })}

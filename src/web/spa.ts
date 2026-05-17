@@ -499,6 +499,42 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   .comment-block .ann-reply.deleted-stub .ann-trash-button {
     display: none;
   }
+  /* PRD #397 / ADR 0038: per-Thread collapse. The header chevron is the
+     mouse-driven counterpart of Shift+C; the one-liner Card shape
+     trims the body + replies down to a single row so a reviewer can
+     skim past Threads they've already absorbed. */
+  .comment-block .ann-collapse-chevron {
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+    margin-right: 4px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
+    vertical-align: middle;
+  }
+  .comment-block .ann-collapse-chevron:hover {
+    color: var(--fg-default);
+  }
+  .comment-block .ann-collapse-chevron:focus-visible {
+    outline: 1px solid var(--border-accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+  .comment-block.collapsed .ann-header-collapsed {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0;
+  }
+  .comment-block.collapsed .ann-collapsed-preview {
+    color: var(--fg-muted);
+  }
+  .comment-block.collapsed .ann-collapsed-reply-count {
+    color: var(--fg-muted);
+  }
   /* Issue #389: delete-confirm modal — mirrors the picker-card chrome
      so the two modals read as one family. */
   .delete-modal-scrim {

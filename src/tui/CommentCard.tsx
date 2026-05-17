@@ -10,7 +10,12 @@ interface CommentCardProps {
    *  highlight reads from `activeNodeId`. */
   isCurrent: boolean;
   replies?: Comment[];
-  repliesCollapsed?: boolean;
+  /** PRD #397 / ADR 0038. When true, the Card collapses to a single
+   *  one-liner row (chevron + author kind + file:line + first 60 chars
+   *  of the parent body + `💬 N` reply count). The in-flight reply pill
+   *  still renders below the one-liner so the user keeps the honest
+   *  signal even after hiding the Thread. */
+  collapsed?: boolean;
   replyLock?: ReplyLock | null;
   now?: number;
   /** 1-based position in the top-level nav order. null when not in
@@ -23,6 +28,18 @@ interface CommentCardProps {
    *  when `activeNodeId === comment.id`; a reply is highlighted when
    *  `activeNodeId === reply.id`. */
   activeNodeId?: string | null;
+}
+
+// PRD #397 / ADR 0038 — body preview cap on the collapsed one-liner.
+// Matches the GitHub minimize-comment preview length. Newlines fold to
+// spaces so the one-liner never wraps mid-collapse; trailing ellipsis
+// signals truncation when the body is longer.
+const COLLAPSED_PREVIEW_MAX = 60;
+
+function collapsedBodyPreview(body: string): string {
+  const oneLine = body.replace(/\s+/g, " ").trim();
+  if (oneLine.length <= COLLAPSED_PREVIEW_MAX) return oneLine;
+  return `${oneLine.slice(0, COLLAPSED_PREVIEW_MAX - 1)}…`;
 }
 
 function rangeLabel(ann: Comment): string {
@@ -81,17 +98,54 @@ export function CommentCard({
   comment,
   isCurrent,
   replies,
-  repliesCollapsed,
+  collapsed,
   replyLock,
   now,
   navIndex,
   navTotal,
   activeNodeId,
 }: CommentCardProps) {
-  const visibleReplies = repliesCollapsed ? [] : replies ?? [];
-  const hiddenCount = repliesCollapsed ? replies?.length ?? 0 : 0;
+  const visibleReplies = collapsed ? [] : replies ?? [];
   const showPill =
     replyLock && pillTargetsThisCard(comment, replies, replyLock);
+  // PRD #397 / ADR 0038 — collapsed one-liner. Watcher-delivered lock
+  // pills still render below the one-liner ("honest signal over tidy
+  // hiding"). `💬 N` counts every live Reply under the projection so
+  // `[deleted]` stubs still tick the count (the Thread still has
+  // nodes).
+  if (collapsed) {
+    const replyCount = replies?.length ?? 0;
+    const preview = collapsedBodyPreview(comment.body);
+    return (
+      <box
+        id={`comment-${comment.id}`}
+        borderStyle={isCurrent ? "heavy" : "single"}
+        borderColor={theme.fg.accent}
+        backgroundColor={isCurrent ? theme.bg.accentCurrent.tui : theme.bg.accentSubtle.tui}
+        flexDirection="column"
+        paddingX={1}
+      >
+        <box flexDirection="row" flexWrap="wrap">
+          {isCurrent ? (
+            <text fg={theme.fg.accent} bold>{"● "}</text>
+          ) : null}
+          <text fg={theme.fg.muted}>{"▸ "}</text>
+          {navIndex != null && navTotal != null && navTotal > 0 ? (
+            <text fg={theme.fg.muted} bold>{`${navIndex} / ${navTotal} `}</text>
+          ) : null}
+          <text fg={authorKindColor(comment.author_kind)} bold>
+            {`[${comment.author_kind}]`}
+          </text>
+          <text fg={theme.fg.accent} bold>{` ${comment.file}:${rangeLabel(comment)}`}</text>
+          <text fg={theme.fg.muted}>{`  "${preview}"`}</text>
+          {replyCount > 0 ? (
+            <text fg={theme.fg.muted}>{`  💬 ${replyCount}`}</text>
+          ) : null}
+        </box>
+        {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
+      </box>
+    );
+  }
   // ADR 0037 — within-Card active-node highlight. The Card chrome
   // (heavy border + accent background) still tracks `isCurrent` (any
   // node in the Thread is the cursor), but the `●` glyph and tinted
@@ -174,13 +228,6 @@ export function CommentCard({
           </box>
         );
       })}
-      {hiddenCount > 0 && (
-        <box marginTop={1} paddingLeft={2}>
-          <text fg={theme.fg.muted}>
-            {`[${hiddenCount} ${hiddenCount === 1 ? "reply" : "replies"} collapsed — c to expand]`}
-          </text>
-        </box>
-      )}
       {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
     </box>
   );

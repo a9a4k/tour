@@ -98,6 +98,7 @@ import {
   cursorFromComment,
   cursorAtFirstFileRow,
   cursorOnInteractive,
+  findThreadByNode,
   type Cursor,
 } from "../core/cursor-state.js";
 import {
@@ -196,7 +197,7 @@ interface DiffPaneFileProps {
     boundaryRef: BoundaryRef,
   ) => void;
   onCardClick: (commentId: string) => void;
-  repliesCollapsed: boolean;
+  collapsedThreads: ReadonlySet<string>;
   replyLock: ReplyLock | null;
   now: number;
   navIndexById: ReadonlyMap<string, number>;
@@ -223,7 +224,7 @@ function DiffPaneFile({
   onCursorClick,
   onInteractiveClick,
   onCardClick,
-  repliesCollapsed,
+  collapsedThreads,
   replyLock,
   now,
   navIndexById,
@@ -246,7 +247,7 @@ function DiffPaneFile({
       onCursorClick={onCursorClick}
       onInteractiveClick={onInteractiveClick}
       onCardClick={onCardClick}
-      repliesCollapsed={repliesCollapsed}
+      collapsedThreads={collapsedThreads}
       replyLock={replyLock}
       now={now}
       navIndexById={navIndexById}
@@ -283,7 +284,6 @@ function App(props: AppProps) {
   // `SMOOTH_SCROLL_DEFAULT_DURATION_MS + 50ms`; that state change forces
   // a re-render where the probe sees the settled scrollTop.
   const [scrollPending, setScrollPending] = useState(false);
-  const [repliesCollapsed, setRepliesCollapsed] = useState(false);
   // Tour-session store (PRD #207 slice 1, issue #209; bundle / replyLock
   // moved to the store in issue #211). The store is the single source of
   // truth for bundle + replyLock + picker + tourList; the TUI dispatches
@@ -329,6 +329,7 @@ function App(props: AppProps) {
   const deleteConfirm = sessionState.deleteConfirm;
   const collapsedFolders = sessionState.collapsedFolders;
   const collapsedOverrides = sessionState.collapsedOverrides;
+  const collapsedThreads = sessionState.collapsedThreads;
   const layout = sessionState.layout;
   // PRD #343 / ADR 0031 / issue #344: paneFocus replaces the retired
   // `sidebarFocused: useState(true)`. The cross-surface slice in
@@ -823,6 +824,17 @@ function App(props: AppProps) {
           hasReply: false,
         })
       : { visible: false, enabled: false };
+  // PRD #397 / ADR 0038. The diff-mode `C` legend flips by the cursored
+  // Card's collapse state. Resolves the cursor's id to a top-level root
+  // through `findThreadByNode` so a cursor on a Reply still reads its
+  // Thread's collapse state correctly.
+  const currentThreadRootId = (() => {
+    if (!cursor || cursor.kind !== "card") return null;
+    const found = findThreadByNode(cursor.commentId, threads);
+    return found?.thread.root.id ?? cursor.commentId;
+  })();
+  const currentThreadCollapsed =
+    currentThreadRootId !== null && collapsedThreads.has(currentThreadRootId);
   const footerHints = composeFooterHints({
     replyAgent: props.replyAgent,
     showSendHint: sendHintVerdict.visible,
@@ -830,6 +842,7 @@ function App(props: AppProps) {
     // emits a shorter sidebar-relevant string; diff mode shows the full
     // legend with `Esc: sidebar` replacing the retired `Tab: pane`.
     paneFocus,
+    currentThreadCollapsed,
   });
   // Action-target preview line (PRD #192 / ADR 0022). Renders the
   // cursor's `r` target so the user knows what `r` will do before
@@ -1268,6 +1281,17 @@ function App(props: AppProps) {
     // composer mounts — the user sees the card on-screen when the next
     // render lands (auto-recall, PRD #192 user story 14).
     if (!cursorCardComment) return;
+    // PRD #397 / ADR 0038. Modifying action seam — auto-expand the
+    // Thread before mounting the composer so the existing Replies stay
+    // visible above the new draft. `thread.expand` is a no-op when the
+    // id isn't in `collapsedThreads`, so this is cheap on the common
+    // (already-expanded) path. Resolves the cursored node's id to the
+    // top-level Comment id even when the cursor sits on a Reply.
+    const found = findThreadByNode(cursorCardComment.id, threads);
+    const rootId = found?.thread.root.id ?? cursorCardComment.id;
+    if (collapsedThreads.has(rootId)) {
+      store.dispatch({ type: "thread.expand", id: rootId });
+    }
     const sb = diffScrollRef.current;
     if (sb) scrollChildIntoView(sb, `comment-${cursorCardComment.id}`);
     const target = buildReplyComposer({ currentComment: cursorCardComment });
@@ -1309,6 +1333,14 @@ function App(props: AppProps) {
       return;
     }
     if (!sendTargetVal) return;
+    // PRD #397 / ADR 0038. Modifying action seam — auto-expand the
+    // Thread before dispatching the agent reply so the user can watch
+    // the in-flight pill and the agent's reply land in context.
+    const found = findThreadByNode(cursorCardComment.id, threads);
+    const rootId = found?.thread.root.id ?? cursorCardComment.id;
+    if (collapsedThreads.has(rootId)) {
+      store.dispatch({ type: "thread.expand", id: rootId });
+    }
     setFooterStatus(null);
     store.dispatch({
       type: "send-to-agent",
@@ -1597,9 +1629,21 @@ function App(props: AppProps) {
       case "prev-comment":
         gotoPrevComment();
         return;
-      case "toggle-replies-collapse":
-        setRepliesCollapsed((v) => !v);
+      case "toggle-thread-collapse": {
+        // PRD #397 / ADR 0038. Per-Thread collapse — the global
+        // `Shift+C` replies-collapse gesture is retired. Only acts when
+        // the cursor sits on a Card (keymap gates the binding to the
+        // diff pane, but a non-card cursor is still a silent no-op).
+        // Toggle the cursored Card's top-level Comment id. When the
+        // cursor sits on a Reply, the projection helper folds it onto
+        // the root id (matches the validator's cursor-on-reply
+        // projection in `core/cursor-state.ts`).
+        if (!cursor || cursor.kind !== "card") return;
+        const root = findThreadByNode(cursor.commentId, threads);
+        const targetId = root?.thread.root.id ?? cursor.commentId;
+        store.dispatch({ type: "thread.toggle", id: targetId });
         return;
+      }
       case "toggle-layout": {
         // Issue #303: capture the cursor row's pre-toggle position so the
         // layout-change useEffect below can pin it at the same on-screen
@@ -1900,6 +1944,17 @@ function App(props: AppProps) {
         // ADR 0037 (Slice A). Defence in depth: guard cursor shape even
         // though the keymap already gates on `cursorOnCard`.
         if (!cursor || cursor.kind !== "card") return;
+        // PRD #397 / ADR 0038. Destructive-cascade action seam — `d`
+        // refuses to act on a collapsed Thread. The user must expand
+        // first so the Replies they're about to cascade-delete are
+        // visible before confirmation. Resolve the cursored node's id
+        // to the top-level root before checking the set.
+        const found = findThreadByNode(cursor.commentId, threads);
+        const rootId = found?.thread.root.id ?? cursor.commentId;
+        if (collapsedThreads.has(rootId)) {
+          setFooterStatus("d: — (Thread collapsed, expand to delete)");
+          return;
+        }
         store.dispatch({ type: "deleteConfirm.open", targetId: cursor.commentId });
         return;
       }
@@ -2164,7 +2219,7 @@ function App(props: AppProps) {
                           onCursorClick={onCursorClick}
                           onInteractiveClick={onInteractiveClick}
                           onCardClick={onCardClick}
-                          repliesCollapsed={repliesCollapsed}
+                          collapsedThreads={collapsedThreads}
                           replyLock={replyLock}
                           now={now}
                           navIndexById={nav.navIndexById}

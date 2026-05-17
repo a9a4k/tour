@@ -581,6 +581,66 @@ describe("deriveTourSessionView — cursor slice", () => {
   });
 });
 
+describe("deriveTourSessionView — cursor projection on collapsed Thread (PRD #397 / ADR 0038)", () => {
+  it("CardAnchor on a Reply id whose parent Thread is collapsed projects to the parent's id", () => {
+    const top = ann({ id: "t1", file: "a.ts" });
+    const reply = ann({
+      id: "r1",
+      replies_to: "t1",
+      created_at: "2026-05-12T00:00:01Z",
+    });
+    const view = expectOk(
+      deriveTourSessionView(okBundle({ comments: [top, reply] }), {
+        ...initialTourSessionState(),
+        cursor: cardCursor("r1"),
+        collapsedThreads: new Set(["t1"]),
+      }),
+    );
+    expect(view.cursor.anchor).not.toBeNull();
+    expect(view.cursor.anchor!.kind).toBe("card");
+    if (view.cursor.anchor!.kind !== "card") throw new Error("narrow");
+    expect(view.cursor.anchor!.commentId).toBe("t1");
+    expect(view.cursor.cardId).toBe("t1");
+    expect(view.cursor.cardComment?.id).toBe("t1");
+  });
+
+  it("CardAnchor on the parent of a collapsed Thread is unchanged (no projection needed)", () => {
+    const top = ann({ id: "t1", file: "a.ts" });
+    const reply = ann({
+      id: "r1",
+      replies_to: "t1",
+      created_at: "2026-05-12T00:00:01Z",
+    });
+    const view = expectOk(
+      deriveTourSessionView(okBundle({ comments: [top, reply] }), {
+        ...initialTourSessionState(),
+        cursor: cardCursor("t1"),
+        collapsedThreads: new Set(["t1"]),
+      }),
+    );
+    expect(view.cursor.anchor).toEqual(cardCursor("t1"));
+  });
+
+  it("CardAnchor on a Reply id whose Thread is NOT collapsed is unchanged (reply id preserved)", () => {
+    const top = ann({ id: "t1", file: "a.ts" });
+    const reply = ann({
+      id: "r1",
+      replies_to: "t1",
+      created_at: "2026-05-12T00:00:01Z",
+    });
+    const view = expectOk(
+      deriveTourSessionView(okBundle({ comments: [top, reply] }), {
+        ...initialTourSessionState(),
+        cursor: cardCursor("r1"),
+        collapsedThreads: new Set<string>(),
+      }),
+    );
+    expect(view.cursor.anchor!.kind).toBe("card");
+    if (view.cursor.anchor!.kind !== "card") throw new Error("narrow");
+    expect(view.cursor.anchor!.commentId).toBe("r1");
+  });
+});
+
 describe("deriveTourSessionView — watcher-reload preservation", () => {
   it("cursor anchor on a card survives a bundle refresh that retains the comment", () => {
     const t1 = ann({ id: "t1", file: "a.ts", line_end: 1 });

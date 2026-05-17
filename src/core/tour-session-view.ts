@@ -272,9 +272,10 @@ function deriveCursorSlice(
   files: ReadonlyArray<BundleFile>,
   comments: ReadonlyArray<Comment>,
   threads: ReadonlyArray<Thread>,
+  collapsedThreads: ReadonlySet<string>,
 ): CursorSlice {
   const flatRowsArr = [...flatRowsList];
-  const anchor = validateCursor(cursor, flatRowsArr, files, threads);
+  const anchor = validateCursor(cursor, flatRowsArr, files, threads, collapsedThreads);
   const onCard = anchor !== null && anchor.kind === "card";
   const onInteractive =
     anchor !== null && anchor.kind === "row" && !!anchor.interactive;
@@ -321,6 +322,7 @@ export function deriveTourSessionView(
     bundle.files,
     bundle.comments,
     navBase.threads,
+    state.collapsedThreads,
   );
   return {
     kind: "ok",
@@ -416,9 +418,10 @@ export function useTourSessionView(
             (bundle as OkBundle).files,
             comments,
             navBase.threads,
+            state.collapsedThreads,
           )
         : null,
-    [isOk, cursor, rowsSlice, bundle, comments, navBase.threads],
+    [isOk, cursor, rowsSlice, bundle, comments, navBase.threads, state.collapsedThreads],
   );
 
   if (!isOk) {

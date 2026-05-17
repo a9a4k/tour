@@ -81,6 +81,7 @@ export type CursorAction =
   | { type: "comment-at-cursor" }
   | { type: "open-reply-on-card" }
   | { type: "send-on-card" }
+  | { type: "toggle-thread-collapse" }
   | { type: "nav-next-comment" }
   | { type: "nav-prev-comment" }
   | { type: "toggle-layout" }
@@ -145,6 +146,15 @@ export function dispatchCursorKey(
 
   // Layout toggle moved from `l` to Shift-L (ADR 0012, mirrors ADR 0011).
   if (e.shiftKey && e.key === "L") return { type: "toggle-layout" };
+
+  // PRD #397 / ADR 0038. `Shift+C` toggles per-Thread collapse on the
+  // cursored Card. Silent no-op when paneFocus is sidebar (the user
+  // must Esc back to the diff first; auto-flipping would lose the
+  // target). When the cursor isn't on a Card, the App-side handler
+  // surfaces a footer status.
+  if (e.shiftKey && e.key === "C") {
+    return { type: "toggle-thread-collapse" };
+  }
 
   // `T` (Shift+t) opens picker (ADR 0030 — capital = global). PRD #335 /
   // ADR 0029 promoted `t → T` in lockstep with the `a → c` cutover.
