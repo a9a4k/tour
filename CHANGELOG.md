@@ -79,6 +79,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Cursor follows the freshly-created Comment after a composer submit
+  (issue #401).** Pre-fix, `composer.submitted` emitted a
+  `scrollToComment` intent (scroll-only) and an
+  `optimisticInsertComment` intent (bundle fold) but never touched
+  the cursor slice — so focus stayed on the composer's pre-submit
+  anchor (the parent Card for a reply, or the diff row for a
+  top-level comment) and the user had to manually navigate to the
+  new Card. The reducer now re-anchors the cursor to the new
+  Comment via the shared `setCursor` helper (`placement: "center"`,
+  `behavior: "instant"`), which emits `scrollCursorTarget` and
+  `mirrorAnnUrl` under the hood — same adapter call path as the
+  legacy `scrollToComment` intent, so the visible landing
+  (centred, instant, with the TUI's post-submit retry budget) is
+  unchanged. `preferredSide` on the new `CardAnchor` is inherited
+  from the pre-submit cursor so an `h`/`l` choice made before
+  submission survives. The `scrollToComment` intent type and its
+  runtime handler are gone — this branch was its only emitter and
+  `scrollCursorTarget` already covers the same adapter call.
+  Behaviour is identical on TUI and webapp (shared reducer).
+
 - **TUI: collapsed Thread is a single `j`/`k` cursor stop (issue #398,
   PRD #397 / ADR 0038).** `moveCursor` now consults `collapsedThreads`
   before walking the in-Card reply nodes added by ADR 0037 — when the

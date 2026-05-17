@@ -189,7 +189,7 @@ export function createTuiTourSessionAdapter(
             settle();
             return;
           }
-          // Target not in DOM yet (post-submit `scrollToComment` fires
+          // Target not in DOM yet (post-submit `scrollCursorTarget` fires
           // synchronously inside `composer.submitted`, before the watcher
           // delivers the freshly-written card). Retry until the bundle
           // refreshes or the budget runs out.

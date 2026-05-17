@@ -1405,11 +1405,15 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r3.intents).toEqual([]);
   });
 
-  it("composer.submitted on submitting → closed; emits scrollToComment + optimisticInsertComment", () => {
+  it("composer.submitted on submitting → closed; re-anchors the cursor and emits the landing intents", () => {
     // Issue #392: the bundle fold no longer happens inline. The reducer
     // emits `optimisticInsertComment` so the runtime queues a separate
     // `bundle.commentInserted` dispatch on the next microtask — two React
     // commits, decoupled from the composer-overlay unmount.
+    // Issue #401: the reducer also re-anchors the cursor to the new
+    // Comment via the shared `setCursor` helper, which emits the
+    // scroll-and-mirror intents (center / instant, same adapter call
+    // path as the legacy `scrollToComment`).
     let s = stateWithTourLoaded();
     s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
     s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
@@ -1417,8 +1421,19 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     const ann = mkComment({ id: "fresh-ann-1" });
     const r = reduce(s, { type: "composer.submitted", comment: ann });
     expect(r.state.composer).toEqual({ kind: "closed" });
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "fresh-ann-1",
+      preferredSide: "additions",
+    });
     expect(r.intents).toEqual([
-      { type: "scrollToComment", commentId: "fresh-ann-1" },
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "fresh-ann-1" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "mirrorAnnUrl", commentId: "fresh-ann-1" },
       { type: "optimisticInsertComment", comment: ann },
     ]);
   });
@@ -1597,7 +1612,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       expect(r.state.composer).toEqual({ kind: "closed" });
     });
 
-    it("emits optimisticInsertComment in addition to scrollToComment so the runtime can defer the fold", () => {
+    it("emits optimisticInsertComment alongside the cursor-landing intents so the runtime can defer the fold", () => {
       let s = stateWithTourLoaded();
       s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
       s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
@@ -1605,12 +1620,18 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       const ann = mkComment({ id: "fresh-1" });
       const r = reduce(s, { type: "composer.submitted", comment: ann });
       expect(r.intents).toEqual([
-        { type: "scrollToComment", commentId: "fresh-1" },
+        {
+          type: "scrollCursorTarget",
+          target: { kind: "card", commentId: "fresh-1" },
+          placement: "center",
+          behavior: "instant",
+        },
+        { type: "mirrorAnnUrl", commentId: "fresh-1" },
         { type: "optimisticInsertComment", comment: ann },
       ]);
     });
 
-    it("emits the same intent pair regardless of bundle slice state (runtime owns the bundle guard)", () => {
+    it("emits the same intent stream regardless of bundle slice state (runtime owns the bundle guard)", () => {
       // The reducer no longer peeks at the bundle. The `bundle.commentInserted`
       // dispatch the runtime schedules is the home of the bundle-resolved
       // check. This keeps the reducer's branch shape uniform across
@@ -1632,9 +1653,181 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       expect(r.state.composer).toEqual({ kind: "closed" });
       expect(r.state.bundle).toEqual({ kind: "loading" });
       expect(r.intents).toEqual([
-        { type: "scrollToComment", commentId: "fresh-but-bundleless" },
+        {
+          type: "scrollCursorTarget",
+          target: { kind: "card", commentId: "fresh-but-bundleless" },
+          placement: "center",
+          behavior: "instant",
+        },
+        { type: "mirrorAnnUrl", commentId: "fresh-but-bundleless" },
         { type: "optimisticInsertComment", comment: ann },
       ]);
+    });
+  });
+
+  // Issue #401: after a successful submit, the cursor re-anchors to the
+  // freshly-created Comment so focus follows the new Card. Replaces the
+  // legacy `scrollToComment` intent with a `cursor.set` to a CardAnchor —
+  // the `setCursor` helper emits `scrollCursorTarget` (center / instant)
+  // under the hood so the visible landing is unchanged. Reply-composer
+  // and top-level-composer paths share the same landing semantics.
+  describe("composer.submitted re-anchors the cursor to the new Comment (issue #401)", () => {
+    it("reply-composer submit lands the cursor on the new Comment as a CardAnchor", () => {
+      const parent = mkComment({ id: "parent-1" });
+      const b: TourBundle = {
+        kind: "snapshot-lost",
+        tour: tour({ id: "tour-a" }),
+        comments: [parent],
+      };
+      let s = reduce(initialTourSessionState(), {
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: b,
+      }).state;
+      // Cursor parked on the parent Card (matches the reply-composer's
+      // typical pre-submit anchor).
+      s = reduce(s, {
+        type: "cursor.set",
+        anchor: { kind: "card", commentId: "parent-1", preferredSide: "additions" },
+      }).state;
+      s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
+      s = reduce(s, { type: "composer.setBody", body: "reply" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: reply });
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "reply-1",
+        preferredSide: "additions",
+      });
+    });
+
+    it("top-level submit from a RowAnchor lands the cursor on the new Comment as a CardAnchor", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, {
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "foo.ts",
+          side: "additions",
+          lineNumber: 10,
+          preferredSide: "additions",
+        },
+      }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "draft" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkComment({ id: "fresh-top-level-1" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "fresh-top-level-1",
+        preferredSide: "additions",
+      });
+    });
+
+    it("preferredSide on the new CardAnchor is inherited from the pre-submit cursor", () => {
+      let s = stateWithTourLoaded();
+      // Park on a RowAnchor whose preferredSide is "deletions" (e.g. an
+      // `h` flip on the diff before opening the composer).
+      s = reduce(s, {
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "foo.ts",
+          side: "deletions",
+          lineNumber: 10,
+          preferredSide: "deletions",
+        },
+      }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkComment({ id: "fresh-2" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "fresh-2",
+        preferredSide: "deletions",
+      });
+    });
+
+    it("preferredSide falls back to 'additions' when the prior cursor was null", () => {
+      let s = stateWithTourLoaded();
+      // Cursor is null on a fresh load (lazy materialization).
+      expect(s.cursor).toBeNull();
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkComment({ id: "fresh-3" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "fresh-3",
+        preferredSide: "additions",
+      });
+    });
+
+    it("emits scrollCursorTarget center/instant + mirrorAnnUrl + optimisticInsertComment (no scrollToComment)", () => {
+      let s = stateWithTourLoaded();
+      s = reduce(s, {
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "foo.ts",
+          side: "additions",
+          lineNumber: 10,
+          preferredSide: "additions",
+        },
+      }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const ann = mkComment({ id: "fresh-4" });
+      const r = reduce(s, { type: "composer.submitted", comment: ann });
+      expect(r.intents).toEqual([
+        {
+          type: "scrollCursorTarget",
+          target: { kind: "card", commentId: "fresh-4" },
+          placement: "center",
+          behavior: "instant",
+        },
+        { type: "mirrorAnnUrl", commentId: "fresh-4" },
+        { type: "optimisticInsertComment", comment: ann },
+      ]);
+    });
+
+    it("composer.failed leaves the cursor untouched (cursor only updates on the success branch)", () => {
+      let s = stateWithTourLoaded();
+      const cursorBefore: Cursor = {
+        kind: "row",
+        file: "foo.ts",
+        side: "additions",
+        lineNumber: 10,
+        preferredSide: "additions",
+      };
+      s = reduce(s, { type: "cursor.set", anchor: cursorBefore }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+      s = reduce(s, { type: "composer.submit" }).state;
+      const r = reduce(s, { type: "composer.failed", error: "boom" });
+      expect(r.state.cursor).toEqual(cursorBefore);
+    });
+
+    it("composer.close leaves the cursor untouched", () => {
+      let s = stateWithTourLoaded();
+      const cursorBefore: Cursor = {
+        kind: "row",
+        file: "foo.ts",
+        side: "additions",
+        lineNumber: 10,
+        preferredSide: "additions",
+      };
+      s = reduce(s, { type: "cursor.set", anchor: cursorBefore }).state;
+      s = reduce(s, { type: "composer.open", target: topLevelTarget() }).state;
+      s = reduce(s, { type: "composer.setBody", body: "x" }).state;
+      const r = reduce(s, { type: "composer.close" });
+      expect(r.state.cursor).toEqual(cursorBefore);
     });
   });
 
@@ -2392,7 +2585,6 @@ describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
     expect(intents).toEqual([{ type: "revalidateCursor" }]);
     expect(intents.every((i) => !i.type.startsWith("composer."))).toBe(true);
     expect(intents.every((i) => i.type !== "submitComment")).toBe(true);
-    expect(intents.every((i) => i.type !== "scrollToComment")).toBe(true);
   });
 
   it("with no cursor set, bundle.refreshed still leaves composer untouched and emits no intents at all", () => {

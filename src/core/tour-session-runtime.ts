@@ -113,12 +113,6 @@ export class TourSessionRuntime {
             this.adapter.scrollToRow(intent.target, intent.placement, intent.behavior);
           }
           return;
-        case "scrollToComment":
-          // Post-submit landing (composer.submitted → scrollToComment):
-          // fresh card materialises into view; always center + instant
-          // (PRD #348 — same shape as cursor.materialize).
-          this.adapter.scrollToCard(intent.commentId, "center", "instant");
-          return;
         case "optimisticInsertComment":
           // Issue #392: split the optimistic bundle fold off the same
           // render cycle that closes the composer overlay. The bug:
@@ -249,8 +243,9 @@ export class TourSessionRuntime {
   // (or attaches the live bundle for top-level) via the shared
   // `buildWriteCommentInput` builder so both surfaces converge on the
   // same `WriteCommentInput` shape. On success dispatches
-  // `composer.submitted` (the reducer emits `scrollToComment`); on
-  // rejection dispatches `composer.failed`.
+  // `composer.submitted` (the reducer re-anchors the cursor to the new
+  // Comment, which emits `scrollCursorTarget`); on rejection dispatches
+  // `composer.failed`.
   private handleSubmitComment(
     tourId: string,
     target: ComposerTarget,

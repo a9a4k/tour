@@ -4,7 +4,7 @@ import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { ReplyLock } from "./reply-lock.js";
 import type { Comment, Tour } from "./types.js";
 import type { Cursor } from "./cursor-state.js";
-import { isCardAnchor, isRowAnchor } from "./cursor-state.js";
+import { cursorFromComment, isCardAnchor, isRowAnchor, preferredSideOf } from "./cursor-state.js";
 import type { PaneFocus, PaneFocusAction } from "./pane-focus-state.js";
 import { reducePaneFocus } from "./pane-focus-state.js";
 import type {
@@ -247,7 +247,6 @@ export type Intent =
   | { type: "mirrorAnnUrl"; commentId: string | null }
   | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
   | { type: "optimisticInsertComment"; comment: Comment }
-  | { type: "scrollToComment"; commentId: string }
   | { type: "scrollToComposer"; target: ComposerTarget }
   | { type: "requestReply"; tourId: string; commentId: string }
   | { type: "deleteComment"; tourId: string; targetId: string };
@@ -569,27 +568,38 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       return enterSubmitting(state, "open");
 
     case "composer.submitted": {
-      // Submitting → closed; emit `scrollToComment` so the freshly-
-      // created comment card scrolls into view (replaces the TUI's
-      // `pendingScrollCommentId` useState per PRD #234).
+      // Submitting → closed; re-anchor the cursor to the freshly-created
+      // Comment so focus follows the new Card (issue #401). The
+      // `setCursor` helper emits `scrollCursorTarget` (center / instant)
+      // under the hood — same adapter call as the legacy `scrollToComment`
+      // intent, so the visible landing is unchanged. `preferredSide` is
+      // inherited from the pre-submit cursor so an `h`/`l` choice made
+      // before submission survives.
       //
       // Issue #322 (preserved by issue #392): the freshly-created
       // Comment must land in the bundle before the SSE-driven
       // `bundle.refreshed` round-trip (~500-600 ms on large tours).
-      // Issue #392 splits *how*: this branch no longer folds the
-      // comment inline. It emits `optimisticInsertComment` instead,
-      // which the runtime defers (via a small post-paint timer) and
-      // dispatches `bundle.commentInserted` separately. Two React
-      // commits, ordered: (1) composer overlay unmounts here;
-      // (2) ~50 ms later, after opentui has reflowed, the bundle
-      // gains the new CommentRow. Without the gap, opentui's yoga
-      // layout pass leaves the affected file's content empty — the
-      // diff-pane-blank-after-submit symptom from the issue.
+      // Issue #392 splits *how*: this branch doesn't fold the comment
+      // inline. It emits `optimisticInsertComment`, which the runtime
+      // defers (via a small post-paint timer) and dispatches
+      // `bundle.commentInserted` separately. Two React commits, ordered:
+      // (1) composer overlay unmounts here; (2) ~50 ms later, after
+      // opentui has reflowed, the bundle gains the new CommentRow.
+      // Without the gap, opentui's yoga layout pass leaves the affected
+      // file's content empty — the diff-pane-blank-after-submit symptom
+      // from the issue.
       if (state.composer.kind !== "submitting") return { state, intents: NO_INTENTS };
+      const stateClosed: TourSessionState = { ...state, composer: { kind: "closed" } };
+      const landed = setCursor(
+        stateClosed,
+        cursorFromComment(action.comment, preferredSideOf(state.cursor)),
+        "center",
+        "instant",
+      );
       return {
-        state: { ...state, composer: { kind: "closed" } },
+        state: landed.state,
         intents: [
-          { type: "scrollToComment", commentId: action.comment.id },
+          ...landed.intents,
           { type: "optimisticInsertComment", comment: action.comment },
         ],
       };

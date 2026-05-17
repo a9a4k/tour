@@ -1371,7 +1371,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("scrollToComment intent → adapter.scrollToCard(id, 'center')", () => {
+    it("composer.submitted re-anchors the cursor and routes to adapter.scrollToCard(id, 'center', 'instant') (issue #401)", () => {
       const store = storeWithTour(null);
       const ann: Comment = {
         id: "a-new",
@@ -1390,8 +1390,10 @@ describe("TourSessionRuntime", () => {
       const stop = runtime.start();
       store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle });
 
-      // composer.submitted dispatch emits scrollToComment (the reducer
-      // requires composer to be in `submitting` for the transition).
+      // composer.submitted dispatches re-anchor the cursor to the new
+      // Comment via setCursor, which emits scrollCursorTarget — the
+      // runtime routes that to adapter.scrollToCard(id, "center", "instant").
+      // The reducer requires composer to be in `submitting` for the transition.
       store.dispatch({
         type: "composer.open",
         target: {

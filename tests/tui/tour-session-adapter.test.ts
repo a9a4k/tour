@@ -250,7 +250,7 @@ describe("createTuiTourSessionAdapter — null scrollbox ref", () => {
   });
 });
 
-// Issue #301: the post-submit `scrollToComment` retry-budget loop fires
+// Issue #301: the post-submit `scrollCursorTarget` retry-budget loop fires
 // inside `composer.submitted`, before the watcher's `bundle.refreshed`
 // delivers the freshly-written card to the DOM. Each retry waits one
 // macrotask for the DOM to catch up. Without `animate: false`, every
