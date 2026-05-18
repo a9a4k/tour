@@ -7,6 +7,7 @@ import type { Cursor } from "./cursor-state.js";
 import {
   cursorFromComment,
   findThreadByNode,
+  hasLiveReply,
   isCardAnchor,
   isRowAnchor,
   preferredSideOf,
@@ -1122,10 +1123,6 @@ function structuralCursorIntents(
 // expansion cluster via `withExpansion` (issue #309).
 function revalidateIfCursor(state: TourSessionState): Intent[] {
   return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
-}
-
-function hasLiveReply(commentId: string, comments: ReadonlyArray<Comment>): boolean {
-  return comments.some((c) => c.replies_to === commentId && c.deleted === undefined);
 }
 
 // Issue #407. The bulk `Shift+C` toggle reshapes the document by potentially

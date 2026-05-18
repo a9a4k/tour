@@ -119,10 +119,10 @@ export function validateCursorStructural(
   return bundle.files.some((f) => f.name === cursor.file) ? cursor : null;
 }
 
-function hasLiveReply(
+export function hasLiveReply(
   commentId: string,
   comments: ReadonlyArray<Comment>,
-  options: { treatDeletedCommentId?: string },
+  options: { treatDeletedCommentId?: string } = {},
 ): boolean {
   return comments.some(
     (c) =>
