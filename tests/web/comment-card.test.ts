@@ -648,6 +648,38 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
     expect(lastId).toBe(r2.id);
   });
 
+  it("Reply button seats cursor on the leaf, not the parent (ADR 0037 mouse-path parity)", () => {
+    // Pre-fix the handler dispatched `onCardClick(comment.id)` — the
+    // parent's id, always. With cursor-on-reply now reachable (issue
+    // #411), that seat downgraded the cursor back to the parent on
+    // every Reply-button click. Seat on the leaf (replyTargetForOpen)
+    // so the cursor follows the same node the composer attaches to.
+    const r1 = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const r2 = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
+    const clicks: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: agentTop,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+        onCardClick: (id: string) => clicks.push(id),
+      }),
+    );
+    const btn = container.querySelector(".reply-button") as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    act(() => {
+      btn?.click();
+    });
+    // The handler fires exactly one onCardClick — with the leaf's id.
+    expect(clicks).toEqual([r2.id]);
+    expect(clicks).not.toContain(agentTop.id);
+  });
+
   it("Send button fires onSendToAgent with the latest human leaf's id (not an older human sibling's)", () => {
     let lastId: string | null = null;
     const older = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
@@ -674,6 +706,40 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
       btn?.click();
     });
     expect(lastId).toBe(latest.id);
+  });
+
+  it("Send button seats cursor on the leaf, not the parent (ADR 0037 mouse-path parity)", () => {
+    // Symmetric with the Reply-button pin above. Pre-fix the handler
+    // dispatched `onCardClick(comment.id)` — the parent's id, always.
+    // With cursor-on-reply reachable (issue #411), that seat
+    // downgraded the cursor on every Request-reply click. Seat on
+    // the leaf (sendLeafId, the latest human leaf) so the cursor
+    // follows the same node the dispatch targets.
+    const older = humanReplyAt("ann-r-old", "2026-05-08T00:00:01Z");
+    const latest = humanReplyAt("ann-r-new", "2026-05-08T00:00:02Z");
+    const clicks: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: agentTop,
+        replies: [older, latest],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+        onCardClick: (id: string) => clicks.push(id),
+      }),
+    );
+    const btn = container.querySelector(
+      ".send-to-agent-button",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    act(() => {
+      btn?.click();
+    });
+    expect(clicks).toEqual([latest.id]);
+    expect(clicks).not.toContain(agentTop.id);
   });
 
   it("keeps the lock-held disabled + tooltip on the single rendered Send button", () => {

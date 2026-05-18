@@ -2921,9 +2921,13 @@ export function CommentCard({
               className="reply-button"
               onClick={(e) => {
                 e.stopPropagation();
-                // Land the cursor on this card so a follow-up keyboard `r`
-                // / `R` targets it (PRD #192 / ADR 0022 slice 2).
-                onCardClick?.(comment.id);
+                // Seat the cursor on the same node the composer will
+                // attach to — the Thread's leaf (PRD #192 / ADR 0022
+                // slice 2 + ADR 0037 mouse-path parity). Pre-ADR-0037
+                // this seated on the parent's id ("the only card
+                // stop"), which downgraded a cursor-on-reply state
+                // back to the parent when the user clicked Reply.
+                onCardClick?.(replyTargetForOpen);
                 onOpenReply(replyTargetForOpen);
               }}
             >
@@ -2938,7 +2942,12 @@ export function CommentCard({
               title={sendTooltip}
               onClick={(e) => {
                 e.stopPropagation();
-                onCardClick?.(comment.id);
+                // Seat the cursor on the same node the dispatch will
+                // target — the latest human leaf (PRD #181 / ADR 0021
+                // + ADR 0037 mouse-path parity). Pre-ADR-0037 this
+                // seated on the parent's id, downgrading a cursor-
+                // on-reply state when the user clicked Request reply.
+                onCardClick?.(sendLeafId);
                 if (sendVerdict.enabled) onSendToAgent(sendLeafId);
               }}
             >
