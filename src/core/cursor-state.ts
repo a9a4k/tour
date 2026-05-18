@@ -1,4 +1,5 @@
 import type { Comment } from "./types.js";
+import type { TourBundle } from "./tour-bundle.js";
 import type { FlatRow, DiffFlatRow, InteractiveFlatRow, CardFlatRow } from "./flat-rows.js";
 import type { InteractiveSubKind, BoundaryRef } from "./diff-rows.js";
 import type { Thread } from "./threads.js";
@@ -93,6 +94,25 @@ export function isRowAnchor(c: Cursor | null): c is RowAnchor {
 
 export function isCardAnchor(c: Cursor | null): c is CardAnchor {
   return c !== null && c.kind === "card";
+}
+
+/**
+ * Structural cursor validity: checks whether the cursor can still resolve
+ * against the bundle substrate, independent of projection state such as
+ * folds, expansion, or flat-row visibility.
+ */
+export function validateCursorStructural(
+  cursor: Cursor | null,
+  bundle: TourBundle,
+): Cursor | null {
+  if (cursor === null) return null;
+  if (bundle.kind !== "ok") return null;
+  if (cursor.kind === "card") {
+    const comment = bundle.comments.find((c) => c.id === cursor.commentId);
+    if (!comment || comment.deleted !== undefined) return null;
+    return cursor;
+  }
+  return bundle.files.some((f) => f.name === cursor.file) ? cursor : null;
 }
 
 /** preferredSide of a cursor, or "additions" when there's nothing to read

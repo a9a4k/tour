@@ -372,14 +372,6 @@ function App(props: AppProps) {
   const cursorCardId = cursorSlice?.cardId ?? null;
   const cursorCardComment = cursorSlice?.cardComment ?? null;
   const sendTargetVal = "sendTarget" in nav ? nav.sendTarget : null;
-  // Maps a `Cursor | null` onto the store's `cursor.set` / `cursor.clear`
-  // shape — the action union has no combined "set-or-clear" variant.
-  // Callers that need a same-ref short-circuit (motion helpers, intent
-  // listener) layer it on top.
-  const dispatchAnchorOrClear = (next: Cursor | null) => {
-    if (next === null) store.dispatch({ type: "cursor.clear" });
-    else store.dispatch({ type: "cursor.set", anchor: next });
-  };
   // Reveal a file's collapsed ancestors then return its post-reveal row
   // index. Per-path toggles are idempotent so a racing dispatch can only
   // fold-then-unfold, never lose a user-requested reveal.
@@ -681,17 +673,6 @@ function App(props: AppProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topLevel, bundle.tour.id]);
-
-  // Reconcile the raw cursor with the view's validated anchor. The view
-  // prunes a CardAnchor whose comment was deleted and snaps a RowAnchor
-  // whose specific row vanished (issue #231 / PRD #229 + #232 rules).
-  useEffect(() => {
-    if (cursor === null) return;
-    if (cursorSlice && cursorSlice.anchor !== cursor) {
-      dispatchAnchorOrClear(cursorSlice.anchor);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursorSlice]);
 
   // Layout-toggle re-scroll. Issue #296 migrated cursor-driven scrolling
   // to the reducer's `scrollCursorTarget` intent path (anchor-kind-
@@ -1239,7 +1220,8 @@ function App(props: AppProps) {
   // `scrollCursorTarget`, which we don't want on a noop motion).
   const dispatchCursor = (next: Cursor | null) => {
     if (next === cursor) return;
-    dispatchAnchorOrClear(next);
+    if (next === null) store.dispatch({ type: "cursor.clear" });
+    else store.dispatch({ type: "cursor.set", anchor: next });
   };
 
   // Shared file-row select handler for the sidebar — invoked by both the

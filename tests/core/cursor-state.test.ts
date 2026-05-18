@@ -7,6 +7,7 @@ import {
   preferredSideOf,
   setCursorSide,
   validateCursor,
+  validateCursorStructural,
   resolveCursorRowIdx,
   cursorFromComment,
   cursorAtFirstFileRow,
@@ -20,6 +21,7 @@ import {
 } from "../../src/core/cursor-state.js";
 import type { FlatRow } from "../../src/core/flat-rows.js";
 import type { Comment } from "../../src/core/types.js";
+import type { BundleFile, TourBundle } from "../../src/core/tour-bundle.js";
 
 function flat(parts: {
   file: string;
@@ -96,6 +98,59 @@ function ann(o: Partial<Comment> & Pick<Comment, "id" | "side" | "line_start" | 
     author_kind: o.author_kind ?? "agent",
     replies_to: o.replies_to,
     created_at: o.created_at ?? "2026-01-01T00:00:00Z",
+  };
+}
+
+function bundleFile(name: string): BundleFile {
+  return {
+    name,
+    type: "change",
+    hunks: [],
+    classification: { collapsed: false },
+    orphanWindows: [],
+  };
+}
+
+function structuralBundle(args: {
+  comments?: Comment[];
+  files?: BundleFile[];
+} = {}): TourBundle {
+  return {
+    kind: "ok",
+    tour: {
+      id: "tour-structural",
+      title: "T",
+      status: "open",
+      created_at: "2026-05-18T00:00:00Z",
+      closed_at: "",
+      head_sha: "h",
+      base_sha: "b",
+      head_source: "h",
+      base_source: "b",
+      wip_snapshot: false,
+    },
+    comments: args.comments ?? [],
+    diff: "",
+    files: args.files ?? [],
+  };
+}
+
+function snapshotLostBundle(): TourBundle {
+  return {
+    kind: "snapshot-lost",
+    tour: {
+      id: "tour-lost",
+      title: "T",
+      status: "open",
+      created_at: "2026-05-18T00:00:00Z",
+      closed_at: "",
+      head_sha: "h",
+      base_sha: "b",
+      head_source: "h",
+      base_source: "b",
+      wip_snapshot: false,
+    },
+    comments: [],
   };
 }
 
@@ -622,6 +677,74 @@ describe("validateCursor", () => {
       const c: CardAnchor = { kind: "card", commentId: "a1", preferredSide: "additions" };
       expect(validateCursor(c, [])).toBeNull();
     });
+  });
+});
+
+describe("validateCursorStructural", () => {
+  it("returns null for a null cursor", () => {
+    expect(validateCursorStructural(null, structuralBundle())).toBeNull();
+  });
+
+  it("keeps a CardAnchor whose comment exists and is live", () => {
+    const c: CardAnchor = { kind: "card", commentId: "c1", preferredSide: "additions" };
+    const live = ann({
+      id: "c1",
+      file: "a.ts",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+    });
+    expect(validateCursorStructural(c, structuralBundle({ comments: [live] }))).toBe(c);
+  });
+
+  it("clears a CardAnchor whose comment is deleted", () => {
+    const c: CardAnchor = { kind: "card", commentId: "c1", preferredSide: "additions" };
+    const deleted = {
+      ...ann({
+        id: "c1",
+        file: "a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+      }),
+      deleted: { at: "2026-05-18T00:00:00Z" },
+    };
+    expect(validateCursorStructural(c, structuralBundle({ comments: [deleted] }))).toBeNull();
+  });
+
+  it("clears a CardAnchor whose comment id is missing", () => {
+    const c: CardAnchor = { kind: "card", commentId: "missing", preferredSide: "additions" };
+    expect(validateCursorStructural(c, structuralBundle({ comments: [] }))).toBeNull();
+  });
+
+  it("keeps a RowAnchor whose file exists in the bundle", () => {
+    const c = row({
+      file: "a.ts",
+      lineNumber: 7,
+      side: "additions",
+      preferredSide: "additions",
+    });
+    expect(validateCursorStructural(c, structuralBundle({ files: [bundleFile("a.ts")] }))).toBe(c);
+  });
+
+  it("clears a RowAnchor whose file is missing from the bundle", () => {
+    const c = row({
+      file: "gone.ts",
+      lineNumber: 7,
+      side: "additions",
+      preferredSide: "additions",
+    });
+    expect(validateCursorStructural(c, structuralBundle({ files: [bundleFile("a.ts")] }))).toBeNull();
+  });
+
+  it("clears any non-null cursor against a snapshot-lost bundle", () => {
+    const c = row({
+      file: "a.ts",
+      lineNumber: 7,
+      side: "additions",
+      preferredSide: "additions",
+    });
+    expect(validateCursorStructural(c, snapshotLostBundle())).toBeNull();
   });
 });
 

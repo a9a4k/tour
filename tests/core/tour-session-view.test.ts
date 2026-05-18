@@ -501,25 +501,6 @@ describe("deriveTourSessionView — rows slice", () => {
 });
 
 describe("deriveTourSessionView — cursor slice", () => {
-  // The killer fixture (PRD #242, issue #243): a CardAnchor pointing at an
-  // comment that's been deleted resolves to null, currentIdx folds to 0,
-  // and every cursor predicate reads as "not on a card".
-  it("CardAnchor → deleted comment: anchor null, predicates off, currentIdx 0", () => {
-    const view = expectOk(
-      deriveTourSessionView(okBundle({ comments: [] }), {
-        ...initialTourSessionState(),
-        cursor: cardCursor("deleted-id"),
-      }),
-    );
-    expect(view.cursor.anchor).toBeNull();
-    expect(view.cursor.onCard).toBe(false);
-    expect(view.cursor.onInteractive).toBe(false);
-    expect(view.cursor.cardId).toBeNull();
-    expect(view.cursor.cardComment).toBeNull();
-    expect(view.cursor.rowIdx).toBe(-1);
-    expect(view.nav.currentIdx).toBe(0);
-  });
-
   it("CardAnchor on a live comment: onCard true, cardId set, cardComment resolved", () => {
     const t1 = ann({ id: "t1", file: "a.ts", line_end: 1 });
     const view = expectOk(
@@ -668,16 +649,4 @@ describe("deriveTourSessionView — watcher-reload preservation", () => {
     expect(after.cursor.cardComment?.id).toBe("t1");
   });
 
-  it("cursor on a card whose comment disappears from the refreshed bundle resolves to null", () => {
-    const state: TourSessionState = {
-      ...initialTourSessionState(),
-      cursor: cardCursor("t1"),
-    };
-    const view = expectOk(
-      deriveTourSessionView(okBundle({ comments: [] }), state),
-    );
-    expect(view.cursor.anchor).toBeNull();
-    expect(view.cursor.cardComment).toBeNull();
-    expect(state.cursor).toEqual(cardCursor("t1")); // raw state unchanged
-  });
 });

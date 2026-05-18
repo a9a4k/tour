@@ -987,7 +987,7 @@ describe("TourSessionRuntime", () => {
     });
   });
 
-  describe("revalidateCursor intent (PRD #278 slice 5)", () => {
+  describe("structural cursor validity across bundle.refreshed (issue #413 / PRD #412)", () => {
     function commentOnA(id: string): Comment {
       return {
         id,
@@ -1016,7 +1016,7 @@ describe("TourSessionRuntime", () => {
       };
     }
 
-    it("dispatches cursor.clear when a stale CardAnchor's comment has been deleted", () => {
+    it("clears a stale CardAnchor when the refreshed bundle drops its comment", () => {
       const store = storeWithTour("tour-a");
       const initialBundle = bundleWithFileA("tour-a", [commentOnA("t1")]);
       const adapter = createFakeAdapter();
@@ -1027,9 +1027,9 @@ describe("TourSessionRuntime", () => {
       store.dispatch({ type: "cursor.set", anchor: cardCursor("t1") });
       expect(store.getState().cursor).toEqual(cardCursor("t1"));
 
-      // Refresh the bundle with t1 removed → card row vanishes from flatRows.
-      // The reducer emits revalidateCursor; the runtime handles it and
-      // dispatches cursor.clear because the CardAnchor no longer resolves.
+      // Refresh the bundle with t1 removed. The reducer owns structural
+      // validation now, so the cursor is cleared by the bundle.refreshed
+      // transition itself.
       store.dispatch({
         type: "bundle.refreshed",
         bundle: bundleWithFileA("tour-a", []),
@@ -1039,7 +1039,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("dispatches cursor.set with the snapped anchor when a stale RowAnchor's specific row vanished but the file still has rows", () => {
+    it("keeps a RowAnchor when its file remains, even if that exact row is projection-hidden", () => {
       const store = storeWithTour("tour-a");
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -1050,12 +1050,11 @@ describe("TourSessionRuntime", () => {
         tourId: "tour-a",
         bundle: bundleWithFileA("tour-a"),
       });
-      // RowAnchor at a line the diff doesn't have — the file is in the
-      // bundle and has rows, but line 999 is missing, so validateCursor
-      // snaps to the file's first row (a.ts line 1).
+      // RowAnchor at a line the diff doesn't have. Structural validation
+      // only checks that a.ts remains in the bundle; projection validation
+      // stays in the view.
       store.dispatch({ type: "cursor.set", anchor: rowCursor("a.ts", 999) });
 
-      // Trigger bundle.refreshed (same bundle shape) so revalidateCursor fires.
       store.dispatch({
         type: "bundle.refreshed",
         bundle: bundleWithFileA("tour-a"),
@@ -1067,7 +1066,7 @@ describe("TourSessionRuntime", () => {
       expect(next.kind).toBe("row");
       if (next.kind !== "row") throw new Error("unreachable");
       expect(next.file).toBe("a.ts");
-      expect(next.lineNumber).toBe(1);
+      expect(next.lineNumber).toBe(999);
       stop();
     });
 

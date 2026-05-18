@@ -1096,8 +1096,8 @@ describe("reduce — expansion slice (slice 2 foundation)", () => {
   });
 });
 
-describe("reduce — bundle.refreshed → revalidateCursor wiring", () => {
-  it("bundle.refreshed with cursor === null emits no revalidateCursor intent", () => {
+describe("reduce — structural cursor validation on bundle.refreshed (issue #413 / PRD #412)", () => {
+  it("bundle.refreshed with cursor === null leaves cursor null and emits no intents", () => {
     const r = reduce(initialTourSessionState(), {
       type: "bundle.refreshed",
       bundle: mkBundle("a"),
@@ -1105,13 +1105,68 @@ describe("reduce — bundle.refreshed → revalidateCursor wiring", () => {
     expect(r.intents).toEqual([]);
   });
 
-  it("bundle.refreshed with cursor !== null emits a revalidateCursor intent", () => {
+  it("clears a RowAnchor whose file disappeared from the refreshed bundle", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts", lineNumber: 42 }),
     }).state;
     const r = reduce(s, { type: "bundle.refreshed", bundle: mkBundle("a") });
-    expect(r.intents).toEqual([{ type: "revalidateCursor" }]);
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([]);
+  });
+
+  it("clears a CardAnchor whose comment is deleted in the refreshed bundle", () => {
+    const live = mkComment({ id: "ann-1", file: "foo.ts" });
+    const deleted = { ...live, deleted: { at: "2026-05-18T00:00:00Z" } };
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: { ...okBundle("a", [bundleFile("foo.ts")]), comments: [live] },
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "ann-1" }) }).state;
+    const r = reduce(s, {
+      type: "bundle.refreshed",
+      bundle: { ...okBundle("a", [bundleFile("foo.ts")]), comments: [deleted] },
+    });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+  });
+
+  it("preserves valid RowAnchor and CardAnchor cursors without revalidateCursor intents", () => {
+    const ann = mkComment({ id: "ann-1", file: "foo.ts" });
+    const bundle = { ...okBundle("a", [bundleFile("foo.ts")]), comments: [ann] };
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle,
+    }).state;
+    const row = rowAnchor({ file: "foo.ts", lineNumber: 42 });
+    s = reduce(s, { type: "cursor.set", anchor: row }).state;
+    const rowRefresh = reduce(s, { type: "bundle.refreshed", bundle });
+    expect(rowRefresh.state.cursor).toBe(row);
+    expect(rowRefresh.intents).toEqual([]);
+
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "ann-1" }) }).state;
+    const cardRefresh = reduce(s, { type: "bundle.refreshed", bundle });
+    expect(cardRefresh.state.cursor).toEqual(cardAnchor({ commentId: "ann-1" }));
+    expect(cardRefresh.intents).toEqual([]);
+  });
+
+  it("emits sidebar selection when a kept CardAnchor resolves to a renamed file", () => {
+    const before = mkComment({ id: "ann-1", file: "old.ts" });
+    const after = mkComment({ id: "ann-1", file: "new.ts" });
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: { ...okBundle("a", [bundleFile("old.ts")]), comments: [before] },
+    }).state;
+    s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "ann-1" }) }).state;
+    const r = reduce(s, {
+      type: "bundle.refreshed",
+      bundle: { ...okBundle("a", [bundleFile("new.ts")]), comments: [after] },
+    });
+    expect(r.state.cursor).toEqual(cardAnchor({ commentId: "ann-1" }));
+    expect(r.intents).toEqual([{ type: "selectSidebarFile", file: "new.ts" }]);
   });
 
   it("tour.switched does not emit revalidateCursor (cursor was reset to null)", () => {
@@ -1129,12 +1184,7 @@ describe("reduce — bundle.refreshed → revalidateCursor wiring", () => {
   });
 });
 
-describe("cross-async killer fixture — watcher reload snaps cursor to file's first row", () => {
-  // The slice-2 architecture earns its keep here: a watcher reload arrives,
-  // the cursor's row vanishes from the new bundle, the surface drains the
-  // revalidateCursor intent by calling validateCursor against fresh flat-
-  // rows + files, and the resulting snap is reproducible as a synchronous
-  // fixture — no React / OpenTUI / JSDOM rendering required.
+describe("cross-async fixture — watcher reload keeps projection out of reducer state", () => {
   function diffRow(file: string, line: number): FlatRow {
     return {
       kind: "diff",
@@ -1147,10 +1197,16 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
     };
   }
 
-  it("cursor on file foo line 42 → bundle.refreshed → surface snaps via validateCursor → cursor.set lands on file's first row, with deterministic action + intent stream", () => {
+  it("cursor on a still-present file survives bundle.refreshed even if the specific row is hidden from flatRows", () => {
     const store = new TourSessionStore();
     const intents: Intent[] = [];
     store.onIntent((i) => intents.push(i));
+    store.dispatch({
+      type: "tour.switched",
+      tourId: "a",
+      bundle: okBundle("a", [bundleFile("foo.ts")]),
+    });
+    intents.length = 0;
 
     // Seed: cursor pinned to (foo, line 42, additions).
     const initialAnchor: Cursor = rowAnchor({
@@ -1173,43 +1229,23 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
     ]);
     intents.length = 0;
 
-    // Bundle.refreshed arrives (watcher reload). The new bundle's flat-rows
-    // for foo.ts no longer contain line 42 — the row vanished.
-    const refreshedBundle = mkBundle("a");
+    const refreshedBundle = okBundle("a", [bundleFile("foo.ts")]);
     store.dispatch({ type: "bundle.refreshed", bundle: refreshedBundle });
 
-    // Intent stream: just the revalidateCursor signal — the reducer doesn't
-    // know what flat-rows look like, so the surface owns the resolution.
-    expect(intents).toEqual([{ type: "revalidateCursor" }]);
-    intents.length = 0;
+    expect(store.getState().cursor).toBe(initialAnchor);
+    expect(intents).toEqual([]);
 
-    // Simulate the surface drain: rebuild flat-rows from the new bundle
-    // (line 1 still present, line 42 gone), call validateCursor with files
-    // also containing foo.ts. The pure helper picks the file's first
-    // surviving row.
     const newFlatRows: FlatRow[] = [diffRow("foo.ts", 1), diffRow("foo.ts", 2)];
     const files: ReadonlyArray<{ name: string }> = [{ name: "foo.ts" }];
-    const snapped = validateCursor(store.getState().cursor, newFlatRows, files);
-    expect(snapped).toEqual(rowAnchor({ file: "foo.ts", lineNumber: 1 }));
-    // Sanity check against the dedicated first-row helper.
-    expect(cursorAtFirstFileRow("foo.ts", newFlatRows)).toEqual(snapped);
-
-    // Surface dispatches the snap.
-    if (snapped !== null) store.dispatch({ type: "cursor.set", anchor: snapped });
-
-    // Final state + intent stream is fully deterministic.
-    expect(store.getState().cursor).toEqual(snapped);
-    expect(intents).toEqual([
-      {
-        type: "scrollCursorTarget",
-        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 1 },
-        placement: "nearest",
-        behavior: "smooth",
-      },
-    ]);
+    expect(validateCursor(store.getState().cursor, newFlatRows, files)).toEqual(
+      rowAnchor({ file: "foo.ts", lineNumber: 1 }),
+    );
+    expect(cursorAtFirstFileRow("foo.ts", newFlatRows)).toEqual(
+      rowAnchor({ file: "foo.ts", lineNumber: 1 }),
+    );
   });
 
-  it("when the cursor's file vanishes entirely, validateCursor returns null and the surface dispatches cursor.clear (Card-leaving null mirror not emitted for a Row→null path)", () => {
+  it("when the cursor's file vanishes entirely, bundle.refreshed clears state.cursor directly", () => {
     const store = new TourSessionStore();
     const intents: Intent[] = [];
     store.onIntent((i) => intents.push(i));
@@ -1219,18 +1255,7 @@ describe("cross-async killer fixture — watcher reload snaps cursor to file's f
     });
     intents.length = 0;
     store.dispatch({ type: "bundle.refreshed", bundle: mkBundle("a") });
-    expect(intents).toEqual([{ type: "revalidateCursor" }]);
-    intents.length = 0;
-
-    // foo.ts removed from the new bundle.
-    const newFlatRows: FlatRow[] = [diffRow("bar.ts", 1)];
-    const files: ReadonlyArray<{ name: string }> = [{ name: "bar.ts" }];
-    const snapped = validateCursor(store.getState().cursor, newFlatRows, files);
-    // No "snap to next file" because the cursor's file isn't in `files`.
-    expect(snapped).toBeNull();
-    store.dispatch({ type: "cursor.clear" });
     expect(store.getState().cursor).toBeNull();
-    // Prior was a RowAnchor → no mirrorAnnUrl emitted.
     expect(intents).toEqual([]);
   });
 
@@ -1288,6 +1313,14 @@ function stateWithTourLoaded(tourId: string = "tour-a"): TourSessionState {
     type: "tour.switched",
     tourId,
     bundle: mkBundle(tourId),
+  }).state;
+}
+
+function stateWithOkTourLoaded(tourId: string = "tour-a"): TourSessionState {
+  return reduce(initialTourSessionState(), {
+    type: "tour.switched",
+    tourId,
+    bundle: okBundle(tourId, [bundleFile("foo.ts")]),
   }).state;
 }
 
@@ -1464,7 +1497,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
   // `bundle.comments`. Append-if-absent semantics are preserved;
   // cursor lands on the new Comment with the supplied `preferredSide`.
   describe("bundle.commentInsertedWithLanding atomic fold + cursor landing (issue #322 + #392 + #405)", () => {
-    it("appends the new comment to a resolved snapshot-lost bundle's comments array AND lands the cursor on it", () => {
+    it("appends to a resolved snapshot-lost bundle but does not land an invalid cursor", () => {
       let s = stateWithTourLoaded();
       const ann = mkComment({ id: "fresh-ann-1" });
       const r = reduce(s, {
@@ -1478,22 +1511,8 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         // Variant is preserved across the optimistic fold.
         expect(r.state.bundle.value.kind).toBe("snapshot-lost");
       }
-      // Cursor lands on the new Comment atomically with the fold.
-      expect(r.state.cursor).toEqual({
-        kind: "card",
-        commentId: "fresh-ann-1",
-        preferredSide: "additions",
-      });
-      // setCursor emits the scroll + mirror intents.
-      expect(r.intents).toEqual([
-        {
-          type: "scrollCursorTarget",
-          target: { kind: "card", commentId: "fresh-ann-1" },
-          placement: "center",
-          behavior: "instant",
-        },
-        { type: "mirrorAnnUrl", commentId: "fresh-ann-1" },
-      ]);
+      expect(r.state.cursor).toBeNull();
+      expect(r.intents).toEqual([]);
     });
 
     it("appends the new comment to a resolved ok-bundle's comments array (preserves diff + files)", () => {
@@ -1524,8 +1543,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     it("reply path produces the same fold (parent retained, reply appended) and lands cursor on the reply", () => {
       const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
-        kind: "snapshot-lost",
-        tour: tour({ id: "tour-a" }),
+        ...okBundle("tour-a", [bundleFile("foo.ts")]),
         comments: [parent],
       };
       let s = reduce(initialTourSessionState(), {
@@ -1552,7 +1570,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     });
 
     it("preferredSide is carried through to the new CardAnchor", () => {
-      let s = stateWithTourLoaded();
+      let s = stateWithOkTourLoaded();
       const ann = mkComment({ id: "fresh-with-side" });
       const r = reduce(s, {
         type: "bundle.commentInsertedWithLanding",
@@ -1567,7 +1585,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     });
 
     it("is idempotent on the fold: a second insert for the same id does not duplicate (cursor still re-lands)", () => {
-      let s = stateWithTourLoaded();
+      let s = stateWithOkTourLoaded();
       const ann = mkComment({ id: "dedup-1" });
       s = reduce(s, {
         type: "bundle.commentInsertedWithLanding",
@@ -1776,8 +1794,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     it("reply-composer submit emits applyPostSubmitLanding with the new Comment + parent's preferredSide", () => {
       const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
-        kind: "snapshot-lost",
-        tour: tour({ id: "tour-a" }),
+        ...okBundle("tour-a", [bundleFile("foo.ts")]),
         comments: [parent],
       };
       let s = reduce(initialTourSessionState(), {
@@ -1818,7 +1835,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     });
 
     it("top-level submit from a RowAnchor lands the cursor on the new Comment via the deferred dispatch", () => {
-      let s = stateWithTourLoaded();
+      let s = stateWithOkTourLoaded();
       s = reduce(s, {
         type: "cursor.set",
         anchor: {
@@ -1847,7 +1864,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     });
 
     it("preferredSide on the new CardAnchor is inherited from the pre-submit cursor (intent payload + deferred landing)", () => {
-      let s = stateWithTourLoaded();
+      let s = stateWithOkTourLoaded();
       // Park on a RowAnchor whose preferredSide is "deletions" (e.g. an
       // `h` flip on the diff before opening the composer).
       s = reduce(s, {
@@ -1941,8 +1958,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       // it — so no intermediate state has cursor-points-at-orphan-id.
       const parent = mkComment({ id: "parent-1" });
       const b: TourBundle = {
-        kind: "snapshot-lost",
-        tour: tour({ id: "tour-a" }),
+        ...okBundle("tour-a", [bundleFile("foo.ts")]),
         comments: [parent],
       };
       let s = reduce(initialTourSessionState(), {
@@ -3025,9 +3041,9 @@ describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
     expect(store.getState().composer).toBe(composerBefore);
     expect(store.getState().composer).toEqual({ kind: "open", target, body: "draft text" });
 
-    // Intent stream contains revalidateCursor (slice 2 carryover) and
-    // nothing composer-related.
-    expect(intents).toEqual([{ type: "revalidateCursor" }]);
+    // Structural cursor validation is reducer-owned now; valid cursors
+    // emit no revalidation or composer-related intents on refresh.
+    expect(intents).toEqual([]);
     expect(intents.every((i) => !i.type.startsWith("composer."))).toBe(true);
     expect(intents.every((i) => i.type !== "submitComment")).toBe(true);
   });
@@ -3318,7 +3334,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
     });
   });
 
-  it("reply-only (parent is [deleted] stub + ≥1 surviving sibling): cursor on doomed Reply → snaps to parent stub id", () => {
+  it("reply-only with deleted parent stub: cursor on doomed Reply clears instead of snapping to a deleted stub", () => {
     const parentStub: Comment = {
       ...mkComment({ id: "p1" }),
       deleted: { at: "2026-05-13T00:00:00Z" },
@@ -3329,30 +3345,19 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
     s = withCardCursor(s, "r1", "deletions");
     s = inSubmitting(s, "r1");
     const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
-    expect(r.state.cursor).toEqual({
-      kind: "card",
-      commentId: "p1",
-      preferredSide: "deletions",
-    });
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
-  it("parent-stub: cursor on doomed parent with ≥1 surviving Reply → cursor unchanged (same parent id)", () => {
+  it("parent-stub: cursor on doomed parent with ≥1 surviving Reply clears optimistically", () => {
     const parent = mkComment({ id: "p1" });
     const r1 = mkComment({ id: "r1", replies_to: "p1" });
     let s = stateWithComments([parent, r1]);
     s = withCardCursor(s, "p1", "deletions");
-    const cursorBefore = s.cursor;
     s = inSubmitting(s, "p1");
     const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "p1" });
-    expect(r.state.cursor).toEqual({
-      kind: "card",
-      commentId: "p1",
-      preferredSide: "deletions",
-    });
-    // Same-ref short-circuit: cursor id didn't change, so the slice is the same value.
-    expect(r.state.cursor).toBe(cursorBefore);
-    // No mirrorAnnUrl — the ann id under cursor did not change.
-    expect(r.intents).toEqual([]);
+    expect(r.state.cursor).toBeNull();
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
   it("thread-vanishes (parent alone, no replies): cursor on doomed parent → cursor clears; emits mirrorAnnUrl null", () => {

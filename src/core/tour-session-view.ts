@@ -88,9 +88,9 @@ export interface TreeSlice {
 }
 
 export interface CursorSlice {
-  /** state.cursor pruned against the live flatRowsList — a CardAnchor to a
-   *  deleted comment resolves to null; a RowAnchor in a folded-but-still-
-   *  in-bundle file is preserved. */
+  /** state.cursor after projection validation against the live flatRowsList.
+   *  Structural validity is a reducer invariant; this layer only handles
+   *  currently invisible anchors from folds / expansion / collapsed Threads. */
   anchor: Cursor | null;
   onCard: boolean;
   onInteractive: boolean;

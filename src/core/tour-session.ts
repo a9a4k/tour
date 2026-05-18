@@ -11,6 +11,7 @@ import {
   isRowAnchor,
   preferredSideOf,
   threadRootIdOf,
+  validateCursorStructural,
 } from "./cursor-state.js";
 import { buildThreads } from "./threads.js";
 import type { PaneFocus, PaneFocusAction } from "./pane-focus-state.js";
@@ -371,10 +372,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // Same-tour bundle update (watcher reload / SSE comment-changed).
       // Replaces the bundle slice in place; intentionally does NOT touch
       // picker / replyLock / currentTourId — the user is still on the same
-      // tour, so the Tour-switch reset cascade must not fire. Emits
-      // `revalidateCursor` iff the cursor slice is non-null so the surface
-      // can recompute its substrate-derived flat-rows and snap/clear the
-      // anchor against the new bundle.
+      // tour, so the Tour-switch reset cascade must not fire. Structural
+      // cursor validity is enforced here against the inbound bundle; projection
+      // validity (fold / expansion visibility) stays in the view.
       //
       // PRD #278 slice 1: orphan-window seeding is folded into the reducer.
       // The expansion slice unions with `bundle.files[*].orphanWindows` via
@@ -394,14 +394,22 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         state.collapsedThreads,
         action.bundle.comments,
       );
+      const cursor = validateCursorStructural(state.cursor, action.bundle);
+      const cursorIntents = structuralCursorIntents(
+        state.cursor,
+        cursor,
+        state.bundle.kind === "ok" ? state.bundle.value : null,
+        action.bundle,
+      );
       return {
         state: {
           ...state,
           bundle: { kind: "ok", value: action.bundle },
           expansion,
           collapsedThreads,
+          cursor,
         },
-        intents: revalidateIfCursor(state),
+        intents: cursorIntents,
       };
     }
 
@@ -554,8 +562,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "expansion.seedFromOrphans":
       // No revalidateCursor: this action runs during `bundle.refreshed` /
-      // `tour.switched`, both of which own their own cursor revalidation
-      // (or reset). The action is also a no-op outside those paths.
+      // `tour.switched`, which own structural validation / reset. The action
+      // is also a no-op outside those paths.
       return withExpansion(state, expansionSeedFromOrphans(state.expansion, action.windows));
 
     case "composer.open":
@@ -592,9 +600,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // dispatch / React commit as the fold. Issue #401 originally moved
       // the cursor in this branch, but the in-between cycle left a
       // CardAnchor pointing at a Comment that wasn't in `bundle.comments`
-      // yet — `validateCursor` (driven by the cursor-reconcile useEffect
-      // in App.tsx) projected it to null, and the cursor was cleared
-      // before the deferred fold landed.
+      // yet — structural validation would clear it before the deferred fold
+      // landed.
       //
       // Issue #322 (preserved by issue #392): the freshly-created
       // Comment must land in the bundle before the SSE-driven
@@ -630,9 +637,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // Issue #392 + #405: the deferred optimistic fold AND the cursor
       // re-anchor land in the same dispatch / React commit. This closes
       // the race in which the cursor briefly pointed at a Comment id
-      // that wasn't yet in `bundle.comments` — `validateCursor` would
-      // project to null and the App's cursor-reconcile useEffect would
-      // clear the cursor.
+      // that wasn't yet in `bundle.comments`.
       //
       // Bundle fold semantics are unchanged from the prior
       // `bundle.commentInserted`: append-if-absent on a resolved
@@ -653,12 +658,22 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
               value: { ...inner, comments: [...inner.comments, action.comment] },
             },
           };
-      return setCursor(
-        folded,
-        cursorFromComment(action.comment, action.preferredSide),
-        "center",
-        "instant",
-      );
+      const foldedBundle =
+        folded.bundle.kind === "ok" ? folded.bundle.value : inner;
+      const landing = cursorFromComment(action.comment, action.preferredSide);
+      const cursor = validateCursorStructural(landing, foldedBundle);
+      if (cursor === null) {
+        return {
+          state: { ...folded, cursor: null },
+          intents: structuralCursorIntents(
+            state.cursor,
+            null,
+            state.bundle.value,
+            foldedBundle,
+          ),
+        };
+      }
+      return setCursor(folded, cursor, "center", "instant");
     }
 
     case "composer.failed": {
@@ -785,10 +800,25 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
                 preferredSide: cursor.preferredSide,
               };
       }
-      if (nextCursor === cursor) return noSnap;
+      const optimisticBundle = bundleWithOptimisticDelete(
+        state.bundle.value,
+        action.targetId,
+      );
+      const structurallyValidCursor = validateCursorStructural(
+        nextCursor,
+        optimisticBundle,
+      );
+      if (structurallyValidCursor === cursor) return noSnap;
       return {
-        state: { ...state, cursor: nextCursor, deleteConfirm: closedDc },
-        intents: [{ type: "mirrorAnnUrl", commentId: nextCursor?.commentId ?? null }],
+        state: { ...state, cursor: structurallyValidCursor, deleteConfirm: closedDc },
+        intents: [
+          {
+            type: "mirrorAnnUrl",
+            commentId: isCardAnchor(structurallyValidCursor)
+              ? structurallyValidCursor.commentId
+              : null,
+          },
+        ],
       };
     }
 
@@ -1037,13 +1067,57 @@ function pruneCollapsedThreads(
   return changed ? next : (collapsed as Set<string>);
 }
 
-// Returns the standard `revalidateCursor` intent list iff a non-null cursor
-// is present. Shared by every reducer branch that mutates flat-rows-shape
-// state in a way that can orphan `state.cursor`: `bundle.refreshed`, the
-// four `folds.*` branches, and the `expansion.*` cluster via
-// `withExpansion` (issue #309). The surface drains the intent by
-// re-deriving the view and snapping (or clearing) the anchor via
-// `validateCursor`.
+function resolvedCursorFile(
+  cursor: Cursor | null,
+  bundle: TourBundle | null,
+): string | null {
+  if (cursor === null || bundle === null || bundle.kind !== "ok") return null;
+  if (cursor.kind === "row") {
+    return bundle.files.some((f) => f.name === cursor.file) ? cursor.file : null;
+  }
+  const comment = bundle.comments.find((c) => c.id === cursor.commentId);
+  return comment && comment.deleted === undefined ? comment.file : null;
+}
+
+function structuralCursorIntents(
+  prevCursor: Cursor | null,
+  nextCursor: Cursor | null,
+  prevBundle: TourBundle | null,
+  nextBundle: TourBundle,
+): Intent[] {
+  const intents: Intent[] = [];
+  const prevAnnId = isCardAnchor(prevCursor) ? prevCursor.commentId : null;
+  const nextAnnId = isCardAnchor(nextCursor) ? nextCursor.commentId : null;
+  if (prevAnnId !== nextAnnId) {
+    intents.push({ type: "mirrorAnnUrl", commentId: nextAnnId });
+  }
+  const prevFile = resolvedCursorFile(prevCursor, prevBundle);
+  const nextFile = resolvedCursorFile(nextCursor, nextBundle);
+  if (nextFile !== null && nextFile !== prevFile) {
+    intents.push({ type: "selectSidebarFile", file: nextFile });
+  }
+  return intents;
+}
+
+function bundleWithOptimisticDelete(
+  bundle: TourBundle,
+  targetId: string,
+): TourBundle {
+  if (bundle.kind !== "ok") return bundle;
+  return {
+    ...bundle,
+    comments: bundle.comments.map((c) =>
+      c.id === targetId
+        ? { ...c, deleted: c.deleted ?? { at: "optimistic" } }
+        : c,
+    ),
+  };
+}
+
+// Returns the projection revalidation intent iff a non-null cursor is
+// present. Shared by reducer branches that mutate flat-rows-shape state
+// without changing bundle structure: folds, Thread collapse, and the
+// expansion cluster via `withExpansion` (issue #309).
 function revalidateIfCursor(state: TourSessionState): Intent[] {
   return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
 }
