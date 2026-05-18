@@ -91,4 +91,4 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Triage labels: `docs/agents/triage-labels.md`
 - Domain docs: `docs/agents/domain.md`
 - Releasing: `docs/releasing.md`
-- Local companion repo paths: `.agents/local-repos.json` (machine-local, ignored). Copy `.agents/local-repos.example.json` to create it, then run `pnpm run doctor`.
+- Local companion repo paths: `.agents/local-repos.json`
