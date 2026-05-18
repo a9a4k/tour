@@ -2517,10 +2517,14 @@ interface CommentCardProps {
   // Null/undefined → the "Request reply" affordance is hidden.
   replyAgent?: string | null;
   onSendToAgent?: (commentId: string) => void;
-  // Cursor-landing callback (PRD #192 / ADR 0022 slice 2). Fires when the
-  // user clicks anywhere on the card so the cursor follows the click — a
-  // subsequent keyboard `r` / `R` then targets the same card. Receives the
-  // top-level comment id (the cursor stop), not any clicked Reply id.
+  // Cursor-landing callback (PRD #192 / ADR 0022 slice 2; broadened by
+  // issue #411 / ADR 0037 mouse-path parity). Fires when the user clicks
+  // anywhere on the card so the cursor follows the click — a subsequent
+  // keyboard `r` / `R` then targets the same node. Receives the comment id
+  // under the click: the top-level comment id when the click lands on the
+  // parent header / body or on the collapsed one-liner, or a Reply id when
+  // the click lands inside a `.ann-reply` div (ADR 0037 broadened cursor
+  // stops to include Reply ids).
   onCardClick?: (commentId: string) => void;
   // Issue #383 / ADR 0035: clicking the filename in the header is a
   // distinct affordance — moves the cursor onto the card AND opens the
@@ -2836,6 +2840,16 @@ export function CommentCard({
                 key={r.id}
                 ref={(el) => registerRef?.(r.id, el)}
                 id={`comment-${r.id}`}
+                onClick={(event) => {
+                  // Issue #411 / ADR 0037 mouse-path parity. Without this
+                  // handler the click bubbles up to the `.comment-block`
+                  // wrapper's onClick which fires `onCardClick(parent.id)` —
+                  // the cursor would land on the parent regardless of where
+                  // inside the Thread the click landed. stopPropagation
+                  // prevents the wrapper from also firing.
+                  event.stopPropagation();
+                  onCardClick?.(r.id);
+                }}
               >
                 <div className="ann-header">
                   <span className={`author-kind ${r.author_kind}`}>

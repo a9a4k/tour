@@ -1025,6 +1025,109 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
     expect(calls).toEqual(["r2"]);
   });
 
+  // Issue #411 — clicking inside a `.ann-reply` div lands the cursor on
+  // the reply's id (not the parent). The reply-click handler must call
+  // `event.stopPropagation()` so the surrounding wrapper's onClick does
+  // NOT also fire with the parent id; otherwise both fire and the last-
+  // dispatched (the wrapper) wins.
+  it("clicking inside a `.ann-reply` div fires onCardClick with the reply's id (issue #411)", () => {
+    const parent = { ...baseComment, id: "p" };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "reply 1",
+      replies_to: parent.id,
+    };
+    const r2: Comment = {
+      ...baseComment,
+      id: "r2",
+      body: "reply 2",
+      replies_to: parent.id,
+    };
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [r1, r2],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: (id: string) => calls.push(id),
+      }),
+    );
+    const reply2 = container.querySelector("#comment-r2") as HTMLElement;
+    expect(reply2).not.toBeNull();
+    act(() => {
+      reply2.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    // The wrapper would have dispatched the parent's id if propagation
+    // weren't stopped; the per-reply handler must dispatch only the
+    // reply's id.
+    expect(calls).toEqual(["r2"]);
+  });
+
+  it("clicking inside the parent body still fires onCardClick with the parent's id (issue #411)", () => {
+    const parent = { ...baseComment, id: "p" };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "reply 1",
+      replies_to: parent.id,
+    };
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [r1],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: (id: string) => calls.push(id),
+      }),
+    );
+    const parentBlock = container.querySelector(
+      ".comment-block",
+    ) as HTMLElement;
+    const parentBody = parentBlock.querySelector(
+      ":scope > .ann-body",
+    ) as HTMLElement;
+    act(() => {
+      parentBody.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual(["p"]);
+  });
+
+  it("clicking a reply's trash button does NOT also fire onCardClick (existing stopPropagation, issue #411 regression)", () => {
+    const parent = { ...baseComment, id: "p" };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "reply 1",
+      replies_to: parent.id,
+    };
+    const cardCalls: string[] = [];
+    const deleteCalls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [r1],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: (id: string) => cardCalls.push(id),
+        onDeleteClick: (id: string) => deleteCalls.push(id),
+      }),
+    );
+    const trash = container.querySelector(
+      ".ann-reply .ann-trash-button",
+    ) as HTMLButtonElement;
+    act(() => {
+      trash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(deleteCalls).toEqual(["r1"]);
+    expect(cardCalls).toEqual([]);
+  });
+
   it("renders the parent card as a `[deleted]` stub when comment.deleted is set", () => {
     const stubbed: Comment = {
       ...baseComment,

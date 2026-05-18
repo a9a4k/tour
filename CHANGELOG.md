@@ -26,6 +26,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: clicking a reply byline lands the cursor on that reply
+  (issue #411 — ADR 0037 mouse-path parity).** ADR 0037 broadened
+  `CardAnchor.commentId` to "any Comment id in the Thread — parent or
+  Reply". The keyboard `j` / `k` walker (#404) and the within-Card
+  visual surface (#408 / #409) both honoured the new model, but the
+  mouse path still resolved to the parent — clicks anywhere inside a
+  `.ann-reply` div bubbled up to the surrounding `.comment-block`
+  wrapper which dispatched `onCardClick(parent.id)`. Two input
+  gestures targeting the same DOM node (keyboard `j` + reply-click)
+  produced different cursor states. Each `.ann-reply` div now carries
+  its own `onClick` that fires `onCardClick(r.id)` and calls
+  `event.stopPropagation()` so the wrapper handler doesn't double-
+  fire. Clicks on the parent header / body, the collapsed one-liner,
+  the filename link, the chevron, and per-node trash / action-row
+  buttons are unchanged (the latter group already calls
+  `stopPropagation`). No reducer, `moveCursor`, or `sendTarget`
+  change — the dispatch wire matches the keyboard `j` / `k` path.
+
 - **`k` from row-below-Card walks Replies (issue #410 — ADR 0037
   symmetric traversal).** The in-Thread walker (ADR 0037) walked
   Replies correctly when the cursor was already on a Card, and `j`

@@ -2089,6 +2089,85 @@ describe("App within-Card active-node surface (issue #408 — ADR 0037 webapp pa
   });
 });
 
+// Issue #411 / ADR 0037 mouse-path gap. The keyboard `j` / `k` walker
+// (#404) and the within-Card visual surface (#408 / #409) already land
+// the cursor on a reply's id. The mouse path was still wired to the
+// parent only — every click inside a `.ann-reply` div bubbled up to
+// the wrapper's `onClick` which dispatched `onCardClick(parent.id)`.
+// These pins exercise the new per-reply click handler so a click on
+// any `.ann-reply` lands `state.cursor = CardAnchor(replyId, …)`,
+// the `?ann=` URL hash flips to the reply id, and the within-Card
+// active-node class moves to the clicked reply.
+describe("App reply-click lands cursor on reply id (issue #411 — ADR 0037 mouse-path parity)", () => {
+  it("clicking inside a `.ann-reply` div lands the cursor on the reply's id (not the parent)", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+    // Bundle-load re-anchor lands on the parent.
+    expect(annFromHash()).toBe("ann-parent");
+
+    const reply2 = container.querySelector(
+      "#comment-ann-reply-2",
+    ) as HTMLElement;
+    expect(reply2).not.toBeNull();
+    await act(async () => {
+      reply2.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    // `?ann=` hash now carries the clicked reply's id.
+    expect(annFromHash()).toBe("ann-reply-2");
+
+    // Within-Card active-node class moved to reply-2; parent header /
+    // reply-1 lost it. Card chrome stays lit.
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-parent"]`,
+    );
+    const parentHeader = parentBlock!.querySelector(":scope > .ann-header");
+    const reply1 = container.querySelector("#comment-ann-reply-1");
+    expect(parentBlock!.classList.contains("current")).toBe(true);
+    expect(parentHeader!.classList.contains("active-node")).toBe(false);
+    expect(reply1!.classList.contains("active-node")).toBe(false);
+    expect(reply2.classList.contains("active-node")).toBe(true);
+  });
+
+  it("clicking the parent header / body (outside any `.ann-reply`) keeps today's behaviour: cursor lands on the parent", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+    // Start with cursor on reply-1 so a parent-body click is observable.
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    const parentBlock = container.querySelector(
+      `[data-comment-id="ann-parent"]`,
+    );
+    const parentBody = parentBlock!.querySelector(
+      ":scope > .ann-body",
+    ) as HTMLElement;
+    expect(parentBody).not.toBeNull();
+    await act(async () => {
+      parentBody.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(annFromHash()).toBe("ann-parent");
+  });
+});
+
 // Issue #406 / ADR 0038 amended. The per-Thread collapse gesture moved
 // from `Shift+C` to `Enter` on a Card; `Shift+C` is now the global
 // "collapse all / expand all Threads" toggle. These pins exercise the
