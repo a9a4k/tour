@@ -631,8 +631,8 @@ function App(props: AppProps) {
   // tree, and materialise the cursor on `topLevel[0]` as a CardAnchor so
   // the user lands on the first comment card with the same surface
   // contract the webapp gets from ADR 0022's URL-anchored mount. The
-  // cursor-follow useEffect handles the viewport scroll once the cursor
-  // slice changes — no parallel scroll plumbing.
+  // The reducer's `scrollCursorTarget` intent handles the viewport scroll
+  // once the cursor slice changes — no parallel scroll plumbing.
   //
   // Empty tours keep the lazy-materialization rule (no comment to
   // seed on; cursor stays null and the sidebar tree is the home anchor).
@@ -1023,9 +1023,8 @@ function App(props: AppProps) {
       type: "cursor.set",
       anchor: cursorFromComment(ann, preferredSideOf(cursor)),
     });
-    // Cursor-follow useEffect handles the scroll-into-view via the
-    // reducer's `scrollCursorTarget` intent — no parallel scroll call
-    // here (would race the centred scroller).
+    // The reducer's `scrollCursorTarget` intent handles the scroll-into-view
+    // — no parallel scroll call here (would race the centred scroller).
   };
 
   // PRD #397 / ADR 0038. Header chevron click on a Card (collapsed `▸`
@@ -1779,10 +1778,10 @@ function App(props: AppProps) {
         dispatchCursor(result.cursor);
         if (result.scrollTop !== sb.scrollTop) {
           // Issue #294 Slice 1 / #299: j/k crossing the edge margin tweens
-          // the one-row shift. The cursor-follow useEffect's block:nearest
-          // scroll is a no-op for j/k (the new row sits at the edge,
-          // already in viewport), so this direct scroll is the only
-          // animation hook for the gesture.
+          // the one-row shift. The reducer's block:nearest scroll intent is
+          // a no-op for j/k (the new row sits at the edge, already in
+          // viewport), so this direct scroll is the only animation hook for
+          // the gesture.
           animatedScrollTo(sb, result.scrollTop);
         }
         return;

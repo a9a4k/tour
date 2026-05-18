@@ -22,8 +22,8 @@ import type { Tour, Comment } from "../../src/core/types.js";
  *
  * On-load contract:
  *  - non-empty Tour: cursor.materialize lands on `topLevel[0]` as a
- *    CardAnchor; the cursor-follow useEffect then scrolls the card into
- *    view (no new scroll plumbing needed).
+ *    CardAnchor; the reducer emits `scrollCursorTarget` so the runtime can
+ *    scroll the card into view (no new scroll plumbing needed).
  *  - empty Tour: cursor stays null (no target to seed; the App-shell
  *    gates the materialize call on `topLevel.length > 0`).
  *  - snapshot-lost: cursor stays null (`initialCursor` returns null when
@@ -182,7 +182,7 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
     expect(r.intents).toEqual([]);
   });
 
-  it("seed emits scrollCursorTarget so the cursor-follow useEffect scrolls the card into view", () => {
+  it("seed emits scrollCursorTarget so the runtime can scroll the card into view", () => {
     const a = ann({
       id: "a1",
       file: "a.ts",
