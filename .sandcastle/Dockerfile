@@ -24,17 +24,18 @@ ARG AGENT_GID=1000
 
 # Rename the base image's "node" user to "agent" and align UID/GID.
 RUN groupmod -o -g $AGENT_GID node && usermod -o -u $AGENT_UID -g $AGENT_GID -d /home/agent -m -l agent node
-USER ${AGENT_UID}:${AGENT_GID}
 
-# Install Claude Code CLI
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install Codex CLI (run as root before USER agent)
+RUN npm install -g @openai/codex
+
+USER ${AGENT_UID}:${AGENT_GID}
 
 # Install bun (runtime that `tour` ships with — required by integration tests
 # that spawn `bun <CLI> serve …`; without it those tests fail with ENOENT).
 RUN curl -fsSL https://bun.sh/install | bash
 
-# Add Claude and bun to PATH
-ENV PATH="/home/agent/.local/bin:/home/agent/.bun/bin:$PATH"
+# Add bun to PATH
+ENV PATH="/home/agent/.bun/bin:$PATH"
 
 WORKDIR /home/agent
 
