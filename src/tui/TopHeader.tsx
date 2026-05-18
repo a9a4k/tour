@@ -13,13 +13,6 @@ interface TopHeaderTuiProps {
   // / webapp parity #233). Zero totals render no indicator. Pure-addition
   // / pure-deletion tours render only the non-zero side.
   tourStats: DiffStats;
-  // Reply-agent header chip retired — the agent name now lives on the
-  // footer hint (`R: request reply`), the in-flight pill, the agent-
-  // reply byline, and (for any future surface) the configured-at-launch
-  // env. Prop stays in the type for caller-side backwards-compat: any
-  // remaining caller passing `replyAgent` is harmless (we no longer
-  // render it). ADR 0021 addendum amended.
-  replyAgent?: string;
   onOpenPicker: () => void;
   onPrevComment: () => void;
   onNextComment: () => void;

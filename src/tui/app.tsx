@@ -2008,7 +2008,6 @@ function App(props: AppProps) {
         currentCommentIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         tourStats={tourStats}
-        replyAgent={props.replyAgent}
         onOpenPicker={() => void openPicker()}
         onPrevComment={gotoPrevComment}
         onNextComment={gotoNextComment}
