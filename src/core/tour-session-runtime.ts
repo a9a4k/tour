@@ -166,6 +166,9 @@ export class TourSessionRuntime {
           this.adapter.mirrorAnnUrl(intent.commentId);
           return;
         case "selectSidebarFile":
+          // Nullable reducer intent means "no cursor file"; the existing
+          // adapter seam only reveals concrete file rows.
+          if (intent.file === null) return;
           // Sidebar selection only — issue #310 split out the implicit
           // `folds.setOverride { value: false }` that turned a `j`/`k`
           // traversal into a classifier-collapsed file into an unwanted

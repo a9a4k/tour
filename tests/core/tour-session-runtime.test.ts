@@ -1628,6 +1628,30 @@ describe("TourSessionRuntime", () => {
       expect(store.getState().collapsedOverrides["src/a.ts"]).toBe(true);
       stop();
     });
+
+    it("selectSidebarFile { file: null } does not call adapter.revealFileInSidebar", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "cursor.set",
+        anchor: {
+          kind: "row",
+          file: "src/a.ts",
+          side: "additions",
+          lineNumber: 1,
+          preferredSide: "additions",
+        },
+      });
+      adapter.revealFileCalls.length = 0;
+
+      store.dispatch({ type: "cursor.clear" });
+
+      expect(adapter.revealFileCalls).toEqual([]);
+      stop();
+    });
   });
 
   // ADR 0036 Slice D / issue #388 — deleteComment intent realisation.

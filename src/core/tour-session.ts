@@ -258,7 +258,7 @@ export type Intent =
       placement: ScrollPlacement;
       behavior: ScrollMotion;
     }
-  | { type: "selectSidebarFile"; file: string }
+  | { type: "selectSidebarFile"; file: string | null }
   | { type: "mirrorAnnUrl"; commentId: string | null }
   | { type: "submitComment"; tourId: string; target: ComposerTarget; body: string }
   | {
@@ -483,9 +483,11 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "cursor.clear": {
       if (state.cursor === null) return { state, intents: NO_INTENTS };
-      const intents: Intent[] = isCardAnchor(state.cursor)
-        ? [{ type: "mirrorAnnUrl", commentId: null }]
-        : NO_INTENTS;
+      const bundle = state.bundle.kind === "ok" ? state.bundle.value : null;
+      const intents: Intent[] = [...sidebarFollowIntents(state.cursor, null, bundle)];
+      if (isCardAnchor(state.cursor)) {
+        intents.push({ type: "mirrorAnnUrl", commentId: null });
+      }
       return { state: { ...state, cursor: null }, intents };
     }
 
@@ -1072,12 +1074,24 @@ function resolvedCursorFile(
   cursor: Cursor | null,
   bundle: TourBundle | null,
 ): string | null {
-  if (cursor === null || bundle === null || bundle.kind !== "ok") return null;
+  if (cursor === null) return null;
   if (cursor.kind === "row") {
-    return bundle.files.some((f) => f.name === cursor.file) ? cursor.file : null;
+    return cursor.file;
   }
+  if (bundle === null || bundle.kind !== "ok") return null;
   const comment = bundle.comments.find((c) => c.id === cursor.commentId);
   return comment && comment.deleted === undefined ? comment.file : null;
+}
+
+function sidebarFollowIntents(
+  prevCursor: Cursor | null,
+  nextCursor: Cursor | null,
+  bundle: TourBundle | null,
+): Intent[] {
+  const prevFile = resolvedCursorFile(prevCursor, bundle);
+  const nextFile = resolvedCursorFile(nextCursor, bundle);
+  if (prevFile === nextFile) return NO_INTENTS;
+  return [{ type: "selectSidebarFile", file: nextFile }];
 }
 
 function structuralCursorIntents(
@@ -1169,17 +1183,17 @@ function enterSubmitting(
 // and derives the visual-side-effect intent stream from the (prev, next)
 // pair. `scrollCursorTarget` always fires (the cursor moved, so the
 // surface re-centers it). `selectSidebarFile` fires when the resolved
-// file changed — only RowAnchors have a resolvable file, so a Card→Card
-// or Row→Card move doesn't reveal anything. The intent is sidebar-
-// selection only — issue #310 split `revealSidebarFile` (force-uncollapse +
-// sidebar select) into two semantics so a `j` traversal into a classifier-
-// collapsed file no longer dispatches a `folds.setOverride { value: false }`
-// the user never asked for. Issue #313 extends the same rule to sidebar
-// click — explicit-reveal is now reserved for comment jumps (n/p,
-// `?ann=` restore), which dispatch `folds.setOverride` themselves
-// alongside the `cursor.set`. `mirrorAnnUrl` fires when the comment-id
-// under the cursor changed (entering, leaving, or switching cards) so the
-// webapp `?ann=` URL stays in sync.
+// file changed — RowAnchors resolve directly through `cursor.file`, and
+// CardAnchors resolve through the loaded bundle's Comment file. The intent
+// is sidebar-selection only — issue #310 split `revealSidebarFile`
+// (force-uncollapse + sidebar select) into two semantics so a `j`
+// traversal into a classifier-collapsed file no longer dispatches a
+// `folds.setOverride { value: false }` the user never asked for. Issue
+// #313 extends the same rule to sidebar click — explicit force-unfold is
+// reserved for comment jumps (n/p, `?ann=` restore), which dispatch
+// `folds.setOverride` themselves alongside the `cursor.set`. `mirrorAnnUrl`
+// fires when the comment-id under the cursor changed (entering, leaving, or
+// switching cards) so the webapp `?ann=` URL stays in sync.
 function setCursor(
   state: TourSessionState,
   next: Cursor,
@@ -1189,11 +1203,8 @@ function setCursor(
   const intents: Intent[] = [
     { type: "scrollCursorTarget", target: scrollTargetOf(next), placement, behavior },
   ];
-  const prevFile = isRowAnchor(state.cursor) ? state.cursor.file : null;
-  const nextFile = isRowAnchor(next) ? next.file : null;
-  if (nextFile !== null && nextFile !== prevFile) {
-    intents.push({ type: "selectSidebarFile", file: nextFile });
-  }
+  const bundle = state.bundle.kind === "ok" ? state.bundle.value : null;
+  intents.push(...sidebarFollowIntents(state.cursor, next, bundle));
   const prevAnnId = isCardAnchor(state.cursor) ? state.cursor.commentId : null;
   const nextAnnId = isCardAnchor(next) ? next.commentId : null;
   if (prevAnnId !== nextAnnId) {

@@ -752,22 +752,6 @@ function App(props: AppProps) {
     return (): void => clearTimeout(handle);
   }, [sidebarWidth]);
 
-  // Sidebar follows the cursor's file. RowAnchor → cursor.file directly;
-  // CardAnchor → view.cursor.cardComment.file. Deps key off the
-  // resolved file so in-file j/k motion leaves the sidebar untouched.
-  const cursorFile: string | null =
-    cursor === null ? null
-    : cursor.kind === "row" ? cursor.file
-    : cursorCardComment?.file ?? null;
-  useEffect(() => {
-    if (!cursorFile) return;
-    const rowIdx = revealAndLocateFile(cursorFile, tree, collapsedFolders, commentCounts);
-    if (rowIdx !== null && rowIdx !== safeRowIdx) {
-      setSelectedRowIdx(rowIdx);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursorFile]);
-
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
   // semantics — already-visible rows don't move).

@@ -686,7 +686,31 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         placement: "nearest",
         behavior: "smooth",
       },
+      { type: "selectSidebarFile", file: null },
       { type: "mirrorAnnUrl", commentId: "ann-7" },
+    ]);
+  });
+
+  it("cursor.set from null to CardAnchor emits sidebar selection for the comment file", () => {
+    const ann = mkComment({ id: "ann-1", file: "a.ts" });
+    const s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: { ...okBundle("tour-a", [bundleFile("a.ts")]), comments: [ann] },
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-1" },
+        placement: "nearest",
+        behavior: "smooth",
+      },
+      { type: "selectSidebarFile", file: "a.ts" },
+      { type: "mirrorAnnUrl", commentId: "ann-1" },
     ]);
   });
 
@@ -707,6 +731,63 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         behavior: "smooth",
       },
       { type: "selectSidebarFile", file: "foo.ts" },
+      { type: "mirrorAnnUrl", commentId: null },
+    ]);
+  });
+
+  it("cursor.set from CardAnchor in file A to CardAnchor in file A emits no sidebar selection", () => {
+    const ann1 = mkComment({ id: "ann-1", file: "a.ts" });
+    const ann2 = mkComment({ id: "ann-2", file: "a.ts" });
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: { ...okBundle("tour-a", [bundleFile("a.ts")]), comments: [ann1, ann2] },
+    }).state;
+    s = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-2" }),
+    });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-2" },
+        placement: "nearest",
+        behavior: "smooth",
+      },
+      { type: "mirrorAnnUrl", commentId: "ann-2" },
+    ]);
+  });
+
+  it("cursor.set from CardAnchor in file A to RowAnchor in file B emits sidebar selection for file B", () => {
+    const ann = mkComment({ id: "ann-1", file: "a.ts" });
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: {
+        ...okBundle("tour-a", [bundleFile("a.ts"), bundleFile("b.ts")]),
+        comments: [ann],
+      },
+    }).state;
+    s = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "b.ts", lineNumber: 4 }),
+    });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "b.ts", side: "additions", lineNumber: 4 },
+        placement: "nearest",
+        behavior: "smooth",
+      },
+      { type: "selectSidebarFile", file: "b.ts" },
       { type: "mirrorAnnUrl", commentId: null },
     ]);
   });
@@ -750,24 +831,33 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     ]);
   });
 
-  it("cursor.clear sets the slice to null and emits no intents when prior was a RowAnchor", () => {
+  it("cursor.clear sets the slice to null and clears sidebar selection when prior was a RowAnchor", () => {
     const s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts" }),
     }).state;
     const r = reduce(s, { type: "cursor.clear" });
     expect(r.state.cursor).toBeNull();
-    expect(r.intents).toEqual([]);
+    expect(r.intents).toEqual([{ type: "selectSidebarFile", file: null }]);
   });
 
-  it("cursor.clear after a CardAnchor emits mirrorAnnUrl { commentId: null }", () => {
-    const s = reduce(initialTourSessionState(), {
+  it("cursor.clear after a CardAnchor clears sidebar selection and emits mirrorAnnUrl { commentId: null }", () => {
+    const ann = mkComment({ id: "ann-1", file: "a.ts" });
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: { ...okBundle("tour-a", [bundleFile("a.ts")]), comments: [ann] },
+    }).state;
+    s = reduce(s, {
       type: "cursor.set",
       anchor: cardAnchor({ commentId: "ann-1" }),
     }).state;
     const r = reduce(s, { type: "cursor.clear" });
     expect(r.state.cursor).toBeNull();
-    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+    expect(r.intents).toEqual([
+      { type: "selectSidebarFile", file: null },
+      { type: "mirrorAnnUrl", commentId: null },
+    ]);
   });
 
   it("cursor.clear on a null cursor is a no-op (same state ref, no intents)", () => {
@@ -853,6 +943,28 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
         placement: "center",
         behavior: "instant",
       },
+      { type: "mirrorAnnUrl", commentId: "ann-5" },
+    ]);
+  });
+
+  it("cursor.materialize from null to CardAnchor emits sidebar selection for the comment file", () => {
+    const ann = mkComment({ id: "ann-5", file: "a.ts" });
+    const s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: { ...okBundle("tour-a", [bundleFile("a.ts")]), comments: [ann] },
+    }).state;
+    const anchor = cardAnchor({ commentId: "ann-5" });
+    const r = reduce(s, { type: "cursor.materialize", anchor });
+    expect(r.state.cursor).toBe(anchor);
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-5" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "selectSidebarFile", file: "a.ts" },
       { type: "mirrorAnnUrl", commentId: "ann-5" },
     ]);
   });
