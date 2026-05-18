@@ -1244,7 +1244,7 @@ describe("reduce — structural cursor validation on bundle.refreshed (issue #41
     expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
-  it("preserves valid RowAnchor and CardAnchor cursors without revalidateCursor intents", () => {
+  it("preserves valid RowAnchor and CardAnchor cursors and emits revalidateCursor", () => {
     const ann = mkComment({ id: "ann-1", file: "foo.ts" });
     const bundle = { ...okBundle("a", [bundleFile("foo.ts")]), comments: [ann] };
     let s = reduce(initialTourSessionState(), {
@@ -1256,12 +1256,12 @@ describe("reduce — structural cursor validation on bundle.refreshed (issue #41
     s = reduce(s, { type: "cursor.set", anchor: row }).state;
     const rowRefresh = reduce(s, { type: "bundle.refreshed", bundle });
     expect(rowRefresh.state.cursor).toBe(row);
-    expect(rowRefresh.intents).toEqual([]);
+    expect(rowRefresh.intents).toEqual([{ type: "revalidateCursor" }]);
 
     s = reduce(s, { type: "cursor.set", anchor: cardAnchor({ commentId: "ann-1" }) }).state;
     const cardRefresh = reduce(s, { type: "bundle.refreshed", bundle });
     expect(cardRefresh.state.cursor).toEqual(cardAnchor({ commentId: "ann-1" }));
-    expect(cardRefresh.intents).toEqual([]);
+    expect(cardRefresh.intents).toEqual([{ type: "revalidateCursor" }]);
   });
 
   it("emits sidebar selection when a kept CardAnchor resolves to a renamed file", () => {
@@ -1278,7 +1278,10 @@ describe("reduce — structural cursor validation on bundle.refreshed (issue #41
       bundle: { ...okBundle("a", [bundleFile("new.ts")]), comments: [after] },
     });
     expect(r.state.cursor).toEqual(cardAnchor({ commentId: "ann-1" }));
-    expect(r.intents).toEqual([{ type: "selectSidebarFile", file: "new.ts" }]);
+    expect(r.intents).toEqual([
+      { type: "selectSidebarFile", file: "new.ts" },
+      { type: "revalidateCursor" },
+    ]);
   });
 
   it("tour.switched does not emit revalidateCursor (cursor was reset to null)", () => {
@@ -1296,7 +1299,7 @@ describe("reduce — structural cursor validation on bundle.refreshed (issue #41
   });
 });
 
-describe("cross-async fixture — watcher reload keeps projection out of reducer state", () => {
+describe("cross-async fixture — watcher reload revalidates projection through the runtime", () => {
   function diffRow(file: string, line: number): FlatRow {
     return {
       kind: "diff",
@@ -1309,7 +1312,7 @@ describe("cross-async fixture — watcher reload keeps projection out of reducer
     };
   }
 
-  it("cursor on a still-present file survives bundle.refreshed even if the specific row is hidden from flatRows", () => {
+  it("bundle.refreshed emits revalidateCursor when a still-present file keeps a RowAnchor structurally valid", () => {
     const store = new TourSessionStore();
     const intents: Intent[] = [];
     store.onIntent((i) => intents.push(i));
@@ -1345,7 +1348,7 @@ describe("cross-async fixture — watcher reload keeps projection out of reducer
     store.dispatch({ type: "bundle.refreshed", bundle: refreshedBundle });
 
     expect(store.getState().cursor).toBe(initialAnchor);
-    expect(intents).toEqual([]);
+    expect(intents).toEqual([{ type: "revalidateCursor" }]);
 
     const newFlatRows: FlatRow[] = [diffRow("foo.ts", 1), diffRow("foo.ts", 2)];
     const files: ReadonlyArray<{ name: string }> = [{ name: "foo.ts" }];
@@ -3446,7 +3449,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
     });
   });
 
-  it("reply-only with deleted parent stub: cursor on doomed Reply clears instead of snapping to a deleted stub", () => {
+  it("reply-only with deleted parent stub: cursor on doomed Reply snaps to the parent stub when a sibling survives", () => {
     const parentStub: Comment = {
       ...mkComment({ id: "p1" }),
       deleted: { at: "2026-05-13T00:00:00Z" },
@@ -3457,19 +3460,27 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
     s = withCardCursor(s, "r1", "deletions");
     s = inSubmitting(s, "r1");
     const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "r1" });
-    expect(r.state.cursor).toBeNull();
-    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "p1",
+      preferredSide: "deletions",
+    });
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: "p1" }]);
   });
 
-  it("parent-stub: cursor on doomed parent with ≥1 surviving Reply clears optimistically", () => {
+  it("parent-stub: cursor on doomed parent with ≥1 surviving Reply stays on the parent stub", () => {
     const parent = mkComment({ id: "p1" });
     const r1 = mkComment({ id: "r1", replies_to: "p1" });
     let s = stateWithComments([parent, r1]);
     s = withCardCursor(s, "p1", "deletions");
     s = inSubmitting(s, "p1");
+    const commentsBefore = s.bundle.kind === "ok" ? s.bundle.value.comments : null;
     const r = reduce(s, { type: "deleteConfirm.succeeded", targetId: "p1" });
-    expect(r.state.cursor).toBeNull();
-    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+    expect(r.state.cursor).toBe(s.cursor);
+    expect(r.state.bundle.kind).toBe("ok");
+    if (r.state.bundle.kind !== "ok") throw new Error("unreachable");
+    expect(r.state.bundle.value.comments).toBe(commentsBefore);
+    expect(r.intents).toEqual([]);
   });
 
   it("thread-vanishes (parent alone, no replies): cursor on doomed parent → cursor clears; emits mirrorAnnUrl null", () => {

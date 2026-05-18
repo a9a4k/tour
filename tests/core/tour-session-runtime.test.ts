@@ -1039,7 +1039,7 @@ describe("TourSessionRuntime", () => {
       stop();
     });
 
-    it("keeps a RowAnchor when its file remains, even if that exact row is projection-hidden", () => {
+    it("snaps a RowAnchor to the file's first row when bundle.refreshed keeps the file but reshapes the row away", () => {
       const store = storeWithTour("tour-a");
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
@@ -1051,9 +1051,11 @@ describe("TourSessionRuntime", () => {
         bundle: bundleWithFileA("tour-a"),
       });
       // RowAnchor at a line the diff doesn't have. Structural validation
-      // only checks that a.ts remains in the bundle; projection validation
-      // stays in the view.
+      // keeps it through bundle.refreshed because a.ts remains in the
+      // bundle; the emitted revalidateCursor intent then runs projection
+      // validation and dispatches the snapped cursor back into state.
       store.dispatch({ type: "cursor.set", anchor: rowCursor("a.ts", 999) });
+      adapter.scrollRowCalls.length = 0;
 
       store.dispatch({
         type: "bundle.refreshed",
@@ -1061,12 +1063,29 @@ describe("TourSessionRuntime", () => {
       });
 
       const next = store.getState().cursor;
-      expect(next).not.toBeNull();
-      if (next === null) throw new Error("unreachable");
-      expect(next.kind).toBe("row");
-      if (next.kind !== "row") throw new Error("unreachable");
-      expect(next.file).toBe("a.ts");
-      expect(next.lineNumber).toBe(999);
+      expect(next).toEqual({
+        kind: "row",
+        file: "a.ts",
+        lineNumber: 1,
+        side: "deletions",
+        preferredSide: "additions",
+      });
+      const view = deriveTourSessionView(bundleWithFileA("tour-a"), store.getState());
+      expect(view.kind).toBe("ok");
+      if (view.kind !== "ok") throw new Error("unreachable");
+      expect(store.getState().cursor).toEqual(view.cursor.anchor);
+      expect(adapter.scrollRowCalls).toEqual([
+        {
+          anchor: {
+            kind: "row",
+            file: "a.ts",
+            side: "deletions",
+            lineNumber: 1,
+          },
+          mode: "nearest",
+          behavior: "smooth",
+        },
+      ]);
       stop();
     });
 

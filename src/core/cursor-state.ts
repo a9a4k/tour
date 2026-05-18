@@ -104,15 +104,32 @@ export function isCardAnchor(c: Cursor | null): c is CardAnchor {
 export function validateCursorStructural(
   cursor: Cursor | null,
   bundle: TourBundle,
+  options: { treatDeletedCommentId?: string } = {},
 ): Cursor | null {
   if (cursor === null) return null;
   if (bundle.kind !== "ok") return null;
   if (cursor.kind === "card") {
     const comment = bundle.comments.find((c) => c.id === cursor.commentId);
-    if (!comment || comment.deleted !== undefined) return null;
+    if (!comment) return null;
+    const deleted =
+      comment.deleted !== undefined || comment.id === options.treatDeletedCommentId;
+    if (deleted && !hasLiveReply(comment.id, bundle.comments, options)) return null;
     return cursor;
   }
   return bundle.files.some((f) => f.name === cursor.file) ? cursor : null;
+}
+
+function hasLiveReply(
+  commentId: string,
+  comments: ReadonlyArray<Comment>,
+  options: { treatDeletedCommentId?: string },
+): boolean {
+  return comments.some(
+    (c) =>
+      c.replies_to === commentId &&
+      c.deleted === undefined &&
+      c.id !== options.treatDeletedCommentId,
+  );
 }
 
 /** preferredSide of a cursor, or "additions" when there's nothing to read

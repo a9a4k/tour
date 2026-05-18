@@ -401,6 +401,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         state.bundle.kind === "ok" ? state.bundle.value : null,
         action.bundle,
       );
+      if (cursor !== null) cursorIntents.push({ type: "revalidateCursor" });
       return {
         state: {
           ...state,
@@ -803,13 +804,10 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
                 preferredSide: cursor.preferredSide,
               };
       }
-      const optimisticBundle = bundleWithOptimisticDelete(
-        state.bundle.value,
-        action.targetId,
-      );
       const structurallyValidCursor = validateCursorStructural(
         nextCursor,
-        optimisticBundle,
+        state.bundle.value,
+        { treatDeletedCommentId: action.targetId },
       );
       if (structurallyValidCursor === cursor) return noSnap;
       return {
@@ -1080,7 +1078,11 @@ function resolvedCursorFile(
   }
   if (bundle === null || bundle.kind !== "ok") return null;
   const comment = bundle.comments.find((c) => c.id === cursor.commentId);
-  return comment && comment.deleted === undefined ? comment.file : null;
+  if (!comment) return null;
+  if (comment.deleted === undefined || hasLiveReply(comment.id, bundle.comments)) {
+    return comment.file;
+  }
+  return null;
 }
 
 function sidebarFollowIntents(
@@ -1114,27 +1116,16 @@ function structuralCursorIntents(
   return intents;
 }
 
-function bundleWithOptimisticDelete(
-  bundle: TourBundle,
-  targetId: string,
-): TourBundle {
-  if (bundle.kind !== "ok") return bundle;
-  return {
-    ...bundle,
-    comments: bundle.comments.map((c) =>
-      c.id === targetId
-        ? { ...c, deleted: c.deleted ?? { at: "optimistic" } }
-        : c,
-    ),
-  };
-}
-
 // Returns the projection revalidation intent iff a non-null cursor is
 // present. Shared by reducer branches that mutate flat-rows-shape state
 // without changing bundle structure: folds, Thread collapse, and the
 // expansion cluster via `withExpansion` (issue #309).
 function revalidateIfCursor(state: TourSessionState): Intent[] {
   return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
+}
+
+function hasLiveReply(commentId: string, comments: ReadonlyArray<Comment>): boolean {
+  return comments.some((c) => c.replies_to === commentId && c.deleted === undefined);
 }
 
 // Issue #407. The bulk `Shift+C` toggle reshapes the document by potentially

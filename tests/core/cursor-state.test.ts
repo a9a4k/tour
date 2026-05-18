@@ -697,7 +697,32 @@ describe("validateCursorStructural", () => {
     expect(validateCursorStructural(c, structuralBundle({ comments: [live] }))).toBe(c);
   });
 
-  it("clears a CardAnchor whose comment is deleted", () => {
+  it("keeps a CardAnchor whose deleted parent still has a live Reply stub", () => {
+    const c: CardAnchor = { kind: "card", commentId: "c1", preferredSide: "additions" };
+    const deletedParent = {
+      ...ann({
+        id: "c1",
+        file: "a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+      }),
+      deleted: { at: "2026-05-18T00:00:00Z" },
+    };
+    const liveReply = ann({
+      id: "r1",
+      replies_to: "c1",
+      file: "a.ts",
+      side: "additions",
+      line_start: 1,
+      line_end: 1,
+    });
+    expect(
+      validateCursorStructural(c, structuralBundle({ comments: [deletedParent, liveReply] })),
+    ).toBe(c);
+  });
+
+  it("clears a CardAnchor whose deleted comment has no live Reply stub", () => {
     const c: CardAnchor = { kind: "card", commentId: "c1", preferredSide: "additions" };
     const deleted = {
       ...ann({
@@ -710,6 +735,34 @@ describe("validateCursorStructural", () => {
       deleted: { at: "2026-05-18T00:00:00Z" },
     };
     expect(validateCursorStructural(c, structuralBundle({ comments: [deleted] }))).toBeNull();
+  });
+
+  it("clears a CardAnchor whose only Reply stub descendant is also deleted", () => {
+    const c: CardAnchor = { kind: "card", commentId: "c1", preferredSide: "additions" };
+    const deletedParent = {
+      ...ann({
+        id: "c1",
+        file: "a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+      }),
+      deleted: { at: "2026-05-18T00:00:00Z" },
+    };
+    const deletedReply = {
+      ...ann({
+        id: "r1",
+        replies_to: "c1",
+        file: "a.ts",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+      }),
+      deleted: { at: "2026-05-18T00:00:01Z" },
+    };
+    expect(
+      validateCursorStructural(c, structuralBundle({ comments: [deletedParent, deletedReply] })),
+    ).toBeNull();
   });
 
   it("clears a CardAnchor whose comment id is missing", () => {
