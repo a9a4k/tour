@@ -189,7 +189,30 @@ export function moveCursor(
   const step = direction === "down" ? 1 : -1;
   const next = idx + step;
   if (next < 0 || next >= flatRows.length) return cursor;
-  return cursorFromRow(flatRows[next], preferredSideOf(cursor));
+  // Issue #410 — `k` mirrors the in-Thread walker on bottom boundary
+  // entry. Stepping up onto a Card row with live, expanded Replies lands
+  // on the last Reply (in append order), not the parent. From there the
+  // in-Thread walker handles every subsequent `k` press (Reply N-1, …,
+  // Reply 1, parent, exit upward). Top-entry (`j` onto a Card going
+  // down) keeps landing on the parent — that direction was already
+  // symmetric with the existing exit-from-last-reply.
+  const target = flatRows[next];
+  if (direction === "up" && target.kind === "card" && threads) {
+    const found = findThreadByNode(target.commentId, threads);
+    if (
+      found &&
+      found.thread.replies.length > 0 &&
+      !collapsedThreads?.has(found.thread.root.id)
+    ) {
+      const lastReply = found.thread.replies[found.thread.replies.length - 1];
+      return {
+        kind: "card",
+        commentId: lastReply.id,
+        preferredSide: preferredSideOf(cursor),
+      };
+    }
+  }
+  return cursorFromRow(target, preferredSideOf(cursor));
 }
 
 /**

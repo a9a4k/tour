@@ -1295,6 +1295,102 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
     });
   });
 
+  // Issue #410 — `k` from the row immediately below a Card with N live
+  // Replies must land on Reply N (the last Reply in append order), not
+  // on the parent. Without this, the in-Thread walker (ADR 0037) never
+  // sees the Replies on bottom-entry and the `Nj` / `Nk` motion-
+  // invertibility invariant breaks for any Thread with replies.
+  describe("moveCursor with thread context — `k` from row-below-Card lands on last Reply (issue #410)", () => {
+    it("`k` from the row below a Card with 3 Replies lands on Reply 3", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      const c: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 6,
+        side: "additions",
+        preferredSide: "additions",
+      });
+      const next = moveCursor(c, "up", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "r3", preferredSide: "additions" });
+    });
+
+    it("`k` from the row below a Card with 0 Replies lands on the parent (unchanged)", () => {
+      const threads = [{ root: parent, replies: [] }];
+      const c: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 6,
+        side: "additions",
+        preferredSide: "additions",
+      });
+      const next = moveCursor(c, "up", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "p1", preferredSide: "additions" });
+    });
+
+    it("`k` from the row below a collapsed Thread lands on the parent (unchanged, ADR 0038)", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      const collapsedThreads = new Set(["p1"]);
+      const c: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 6,
+        side: "additions",
+        preferredSide: "additions",
+      });
+      const next = moveCursor(c, "up", rowsWithCard, threads, collapsedThreads);
+      expect(next).toEqual({ kind: "card", commentId: "p1", preferredSide: "additions" });
+    });
+
+    it("`j` from the row above a Card with N Replies still lands on the parent (top-entry unchanged)", () => {
+      const threads = [{ root: parent, replies: [r1, r2, r3] }];
+      const c: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 5,
+        side: "additions",
+        preferredSide: "additions",
+      });
+      const next = moveCursor(c, "down", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "p1", preferredSide: "additions" });
+    });
+
+    it("invertibility — `j × (N+2)` then `k × (N+2)` returns to the starting row for a Thread of 2 Replies", () => {
+      const threads = [{ root: parent, replies: [r1, r2] }];
+      const start: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 5,
+        side: "additions",
+        preferredSide: "additions",
+      });
+      // 2 replies → 4 j-presses walks row(5) → parent → r1 → r2 → row(6).
+      let cursor: Cursor | null = start;
+      for (let i = 0; i < 4; i++) cursor = moveCursor(cursor, "down", rowsWithCard, threads);
+      if (!isRowAnchor(cursor)) throw new Error("narrow");
+      expect(cursor.lineNumber).toBe(6);
+      for (let i = 0; i < 4; i++) cursor = moveCursor(cursor, "up", rowsWithCard, threads);
+      expect(cursor).toEqual(start);
+    });
+
+    it("preserves preferredSide when landing on the last Reply via row-below `k` entry", () => {
+      const threads = [{ root: parent, replies: [r1, r2] }];
+      const c: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 6,
+        side: "deletions",
+        preferredSide: "deletions",
+      });
+      const next = moveCursor(c, "up", rowsWithCard, threads);
+      expect(next).toEqual({ kind: "card", commentId: "r2", preferredSide: "deletions" });
+    });
+
+    it("without thread context, `k` from row-below-Card lands on the parent (back-compat)", () => {
+      const c: RowAnchor = row({
+        file: "x.txt",
+        lineNumber: 6,
+        side: "additions",
+        preferredSide: "additions",
+      });
+      const next = moveCursor(c, "up", rowsWithCard);
+      expect(next).toEqual({ kind: "card", commentId: "p1", preferredSide: "additions" });
+    });
+  });
+
   describe("nextCard / prevCard with thread context — `n`/`p` continues top-level only", () => {
     const parentA = ann({
       id: "pA",

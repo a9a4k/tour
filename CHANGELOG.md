@@ -26,6 +26,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`k` from row-below-Card walks Replies (issue #410 — ADR 0037
+  symmetric traversal).** The in-Thread walker (ADR 0037) walked
+  Replies correctly when the cursor was already on a Card, and `j`
+  from the row above a Card correctly entered the parent first. But
+  `k` from the row immediately below a Card landed on the parent
+  regardless of Reply count, skipping every Reply on bottom-entry —
+  breaking ADR 0037's "k mirrors symmetrically" promise and the
+  editor-standard `Nj` + `Nk` = identity invariant for any Thread
+  carrying ≥1 Reply. `moveCursor` now lands on the last Reply (in
+  append order) when stepping upward onto a Card row whose Thread is
+  expanded and has live Replies; from there the in-Thread walker
+  handles every subsequent `k` press (Reply N-1, …, Reply 1, parent,
+  exit upward). Collapsed Threads keep their "parent is the only
+  stop" semantics (ADR 0038); 0-reply Threads land on the parent as
+  before; top-entry via `j` is unchanged. Fix lives entirely in the
+  shared `core/cursor-state.ts` helper — no keymap or surface-side
+  wiring changes; both surfaces inherit it through their existing
+  `moveCursor` call sites.
+
 - **Webapp: within-Card cursor cue lights the active node (issue #408 /
   ADR 0037 webapp parity).** The `j` / `k` in-Card walker (#404) lands
   the cursor on a reply id but the webapp previously rendered no
