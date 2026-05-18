@@ -26,6 +26,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Webapp: trash button on Replies under a `[deleted]` parent stub is
+  reachable again.** The `.comment-block.deleted-stub .ann-trash-button`
+  CSS rule used a descendant combinator and hid every `.ann-trash-button`
+  inside the stubbed Card — including those rendered inside surviving
+  `.ann-reply` children. The rule was also redundant: the parent's own
+  trash button is gated out at the React layer (`onDeleteClick &&
+  !isDeletedStub` on the parent header), and deleted Replies never reach
+  the projection (events-fold drops them), so a `.ann-reply.deleted-stub`
+  selector never matches. Both selectors removed; the comment above the
+  block now documents why the React-level guard is the single source
+  of truth.
+
 - **Webapp: clicking a reply byline lands the cursor on that reply
   (issue #411 — ADR 0037 mouse-path parity).** ADR 0037 broadened
   `CardAnchor.commentId` to "any Comment id in the Thread — parent or

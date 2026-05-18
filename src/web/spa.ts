@@ -512,15 +512,14 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   /* Issue #389: [deleted] stub rendering for parents whose body is
      gone but whose surviving replies still appear underneath. The card
      keeps its anchor + chrome but the body slot is replaced by a muted
-     italic placeholder; the trash icon is suppressed on stubs (nothing
-     to delete a second time). */
+     italic placeholder. The parent's own trash button is suppressed at
+     the React layer (the CommentCard guard on onDeleteClick combines
+     with !isDeletedStub); a CSS rule here would scope by descendant
+     and hide surviving replies' trash buttons too, blocking their
+     delete affordance. */
   .comment-block.deleted-stub .ann-body {
     color: var(--fg-muted);
     font-style: italic;
-  }
-  .comment-block.deleted-stub .ann-trash-button,
-  .comment-block .ann-reply.deleted-stub .ann-trash-button {
-    display: none;
   }
   /* PRD #397 / ADR 0038: per-Thread collapse. The header chevron is the
      mouse-driven counterpart of Shift+C; the one-liner Card shape
