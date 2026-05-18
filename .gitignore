@@ -3,6 +3,7 @@ node_modules/
 dist/
 .tour/
 .kanban/
+.agents/local-repos.json
 .npmrc
 package-lock.json
 .*.bun-build

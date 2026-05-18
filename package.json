@@ -36,6 +36,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "doctor": "bun scripts/doctor-local-repos.ts",
+    "doctor:local-repos": "bun scripts/doctor-local-repos.ts",
     "cli": "bun src/main.ts",
     "build:darwin-arm64": "bun scripts/build-binary.ts bun-darwin-arm64 dist/binaries/darwin-arm64/tour",
     "build:darwin-x64": "bun scripts/build-binary.ts bun-darwin-x64   dist/binaries/darwin-x64/tour",

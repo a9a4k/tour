@@ -1,0 +1,12 @@
+{
+  "repos": {
+    "agent-browser": "~/code/agent-browser",
+    "revdiff": "~/code/revdiff",
+    "sandcastle": "~/code/sandcastle",
+    "hunk": "~/code/hunk",
+    "pierre": "~/code/pierre",
+    "opentui": "~/code/opentui",
+    "lazygit": "~/code/lazygit",
+    "homebrew-tap": "~/code/homebrew-tap"
+  }
+}
