@@ -309,15 +309,18 @@ export function setCursorSide(
 }
 
 /**
- * Snap a cursor to the nearest still-valid anchor after the row sequence
- * changes (fold/unfold, layout toggle, bundle reload). For a RowAnchor:
- * preserved when its anchor still resolves; snapped to the file's first
- * row when the file still has any row but the specific row vanished;
+ * Snap a cursor to the nearest still-visible anchor after projection-only
+ * row sequence changes (fold/unfold, layout toggle, Thread collapse). For
+ * a RowAnchor: preserved when its anchor still resolves; snapped to the
+ * file's first row when the file still has any row but the specific row
+ * vanished;
  * preserved when `files` is provided and the cursor's file is in `files`
  * but has no rows in flatRows (the file is folded — uncollapsing restores
  * the anchor); returns null otherwise. For a CardAnchor: preserved when
  * its commentId is still in the flat-row stream; returns null otherwise
  * — cards have no "snap to file's first row" fallback (PRD #192).
+ * Structural bundle validity is handled before projection by
+ * `validateCursorStructural` in the reducer.
  *
  * Reconciled with the webapp's prior `validateWebappCursor` (issue #232):
  * the "preserve cursor when file is in the bundle but has no visible rows"

@@ -649,17 +649,18 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       const alreadyPresent = inner.comments.some(
         (a) => a.id === action.comment.id,
       );
+      const foldedBundle = alreadyPresent
+        ? inner
+        : { ...inner, comments: [...inner.comments, action.comment] };
       const folded: TourSessionState = alreadyPresent
         ? state
         : {
             ...state,
             bundle: {
               kind: "ok",
-              value: { ...inner, comments: [...inner.comments, action.comment] },
+              value: foldedBundle,
             },
           };
-      const foldedBundle =
-        folded.bundle.kind === "ok" ? folded.bundle.value : inner;
       const landing = cursorFromComment(action.comment, action.preferredSide);
       const cursor = validateCursorStructural(landing, foldedBundle);
       if (cursor === null) {

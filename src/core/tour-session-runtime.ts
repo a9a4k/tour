@@ -325,13 +325,12 @@ export class TourSessionRuntime {
     this.store.dispatch({ type: "deleteConfirm.succeeded", targetId });
   }
 
-  // Realises the `revalidateCursor` intent (PRD #278 slice 5). Fires
-  // synchronously inside `bundle.refreshed`'s dispatch — React hasn't
-  // re-rendered, so any surface closure over the prior flat-rows would be
-  // stale. The runtime reads `store.getState()` directly and re-derives the
-  // view pure-fn against the fresh bundle + state, then dispatches
-  // `cursor.set` (anchor changed) / `cursor.clear` (anchor went null) /
-  // no-op (anchor still resolves to the same ref).
+  // Realises the `revalidateCursor` intent (PRD #278 slice 5). Projection
+  // reshapes can fire before React re-renders, so any surface closure over
+  // the prior flat-rows would be stale. The runtime reads `store.getState()`
+  // directly and re-derives the view pure-fn against the fresh bundle + state,
+  // then dispatches `cursor.set` (anchor changed), `cursor.clear` (anchor went
+  // null), or no-ops (anchor still resolves to the same ref).
   private handleRevalidateCursor(): void {
     const state = this.store.getState();
     const cursor = state.cursor;
