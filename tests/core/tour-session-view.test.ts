@@ -48,6 +48,7 @@ function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
     author_kind: o.author_kind ?? "human",
     replies_to: o.replies_to,
     created_at: o.created_at ?? "2026-05-12T00:00:00Z",
+    deleted: o.deleted,
   };
 }
 
