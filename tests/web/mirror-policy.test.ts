@@ -23,8 +23,8 @@ const topLevel = [annA, annB];
 const TOUR = "tour-X";
 
 describe("decideMirrorUrl (issue #198)", () => {
-  // Tour-load defer: cursor is briefly null before the re-anchor effect
-  // seeds it from `#<ann-id>`. The mirror must NOT strip-then-restore the
+  // Tour-load defer: cursor is briefly null before the URL-open seed path
+  // seats it from `#<ann-id>`. The mirror must NOT strip-then-restore the
   // valid comment id in a single cycle (preserves Issue #180 / PRD UX 26).
   it("skip when cursor is null and topLevel is non-empty (tour-load defer)", () => {
     expect(decideMirrorUrl(null, topLevel, TOUR)).toEqual({ kind: "skip" });
