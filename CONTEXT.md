@@ -116,6 +116,10 @@ _Avoid_: status bar, hint bar, key hints, help strip
 Syntax highlighting of Diff content. Tokenisation lives in `core/syntax-highlight.ts` and is engine-shared (Shiki + Oniguruma) across both surfaces; the contract is `tokenize(content, lang) → TokenLine[]` where `TokenLine = { chunks: { text, color?, bold?, italic?, underline? }[] }` (one TokenLine per source line). Surface-specific paint adapters fan out from this shape — the webapp emits inline-styled HTML spans (`src/web/client/syntax-paint.ts`), the TUI emits OpenTUI `StyledText` chunks (`src/tui/syntax-paint.ts`). Grammar coverage is the full Shiki bundled set (~200 languages) via `shiki/bundle/full`; the `EXT_TO_LANG` map in `core/syntax-highlight.ts` is the single curated mapping from file extension to bundled grammar id, and files whose extension isn't in the map fall to plain text. Grammars load lazily per-lang on first view of a file; the per-`(content, lang)` memo + per-lang `subscribe` machinery flips the React tree from plain-text fallback to styled output once the grammar resolves. The italic-comment overlay applies in `core/` (Shiki's `github-dark-default` does not emit italic on comment scopes; `core/syntax-highlight.ts` promotes `italic: true` on tokens whose TextMate scope contains `comment`) so both surfaces gain the same comment treatment. The TUI requires a truecolor terminal (`COLORTERM=truecolor|24bit`) for colour rendering and falls back to plain text otherwise — wrongly-mapped 256-colour rendering is foreclosed (unhighlighted is preferable to wrongly-highlighted). See ADR 0033 (cross-surface tokeniser, alternatives, tradeoffs) and ADR 0009 (per-cell `DiffLine` rendering shape; ADR 0009's `<code>`-renderable consequence is superseded by ADR 0033).
 _Avoid_: syntax (overloaded with diff syntax / row syntax), colourisation, theming (theming is the palette concern, separate)
 
+**Text selection**:
+Native mouse selection of rendered Tour text for ordinary clipboard copy, distinct from the Tour **Cursor** and from `y`'s structured yank target; Tour preserves platform-native drag / double-click / triple-click semantics instead of reimplementing them.
+_Avoid_: selection (ambiguous with Cursor), highlight (ambiguous with syntax Highlighting and Comment range tint), yank (the `y` keybinding is a separate structured copy action)
+
 ## Relationships
 
 - A **Tour** has exactly one **Head** and one **Base**, both stored as SHAs.
@@ -124,6 +128,9 @@ _Avoid_: syntax (overloaded with diff syntax / row syntax), colourisation, themi
 - A **Reply** is a Comment that points at another Comment in the same Tour via `replies_to`.
 - A **Thread** is a top-level Comment plus its chain of Replies; lives entirely inside one Tour.
 - A **Working-tree snapshot** acts as a synthetic **Head** when an agent creates a Tour of uncommitted work.
+- **Text selection** is a native copy affordance layered over the rendered surface. The webapp keeps immediate single-click Cursor movement even when the first click becomes part of a later double-click; the second click must not clear or override the browser's native selected text. Drag selection must not activate Tour controls on mouse-up.
+- **Text selection** covers content text (Diff code, hunk text, Comment and Reply bodies, location stamps, file paths, sidebar labels) but excludes pure chrome (gutters, diff symbols, cursor glyphs, bullets, chevrons, buttons, badges, layout controls, footer hints).
+- In the TUI, finishing a mouse **Text selection** copies the selected text immediately through the existing clipboard transport and flashes a footer status.
 
 ## Example dialogue
 
