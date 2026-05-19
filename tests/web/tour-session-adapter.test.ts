@@ -231,6 +231,44 @@ describe("createWebTourSessionAdapter.captureAnchor/applyAnchor", () => {
     expect(scrollBy).toHaveBeenCalledWith({ top: 25, behavior: "instant" });
   });
 
+  it("captures a file card top for no-cursor resize anchoring", async () => {
+    const fileBlock = document.createElement("div");
+    let top = 30;
+    fileBlock.getBoundingClientRect = () =>
+      ({
+        top,
+        bottom: top + 40,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const scrollBy = vi.fn();
+    Object.defineProperty(window, "scrollBy", {
+      value: scrollBy,
+      configurable: true,
+    });
+    const adapter = makeAdapter({
+      callbacks: {
+        findFileBlock: (name) => (name === "src/a.ts" ? fileBlock : null),
+        setSelectedFile: () => {},
+        revealFileAncestors: () => {},
+      },
+    });
+
+    const token = adapter.captureAnchor("file-card-src/a.ts");
+    expect(token).not.toBeNull();
+    top = 10;
+    adapter.applyAnchor(token!);
+    await Promise.resolve();
+    await flushRaf();
+
+    expect(scrollBy).toHaveBeenCalledWith({ top: -20, behavior: "instant" });
+  });
+
   it("returns null when the row cannot be measured", () => {
     const adapter = makeAdapter({ commentRefs: new Map() });
 

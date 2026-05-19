@@ -257,7 +257,7 @@ describe("createTuiTourSessionAdapter.captureAnchor/applyAnchor", () => {
       viewportHeight: 50,
       scrollTop: 100,
       scrollHeight: 500,
-      child: { id: "target", y: 110, height: 10 },
+      child: { id: "target", y: 10, height: 10 },
     });
     const adapter = makeAdapter(sb);
     const token = adapter.captureAnchor("target");
@@ -265,11 +265,12 @@ describe("createTuiTourSessionAdapter.captureAnchor/applyAnchor", () => {
 
     const target = sb.content.findDescendantById("target");
     if (!target) throw new Error("missing target");
-    target.y = 140;
+    target.y = 40;
     adapter.applyAnchor(token!);
     await flushMacrotask();
 
     expect(sb.scrollTo).toHaveBeenCalledTimes(1);
+    expect(sb.scrollTo).toHaveBeenCalledWith(130);
   });
 
   it("returns null when the row cannot be measured", () => {

@@ -84,11 +84,14 @@ export function createWebTourSessionAdapter(
     if (rowId.startsWith("comment-")) {
       return deps.commentRefs.current.get(rowId.slice("comment-".length)) ?? null;
     }
+    const cbs = deps.callbacksRef.current;
+    if (!cbs) return null;
+    if (rowId.startsWith("file-card-")) {
+      return cbs.findFileBlock(rowId.slice("file-card-".length));
+    }
     const match = /^diff-row-(.*)-(additions|deletions)-(\d+)$/.exec(rowId);
     if (!match) return null;
     const [, file, side, lineNumber] = match;
-    const cbs = deps.callbacksRef.current;
-    if (!cbs) return null;
     const block = cbs.findFileBlock(file);
     if (!block) return null;
     return block.querySelector<HTMLElement>(

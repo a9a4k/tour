@@ -73,6 +73,10 @@ import {
   clampSidebarWidthManualPx,
   computeAutoFitWidthPx,
 } from "./sidebar-width.js";
+import {
+  resizeReanchorTarget,
+  type ResizeReanchorTarget,
+} from "./resize-reanchor-target.js";
 import { Footer } from "./Footer.js";
 import { composeFooterHints, type EnterHintCursor } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
@@ -693,6 +697,16 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     },
     [],
   );
+  const resizeAnchorRowId = useCallback(
+    (
+      target: ResizeReanchorTarget,
+      flatRows: ReadonlyArray<FlatRow>,
+    ): string | null => {
+      if (target.kind === "file") return `file-card-${target.path}`;
+      return cursorAnchorRowId(target.cursor, flatRows);
+    },
+    [cursorAnchorRowId],
+  );
 
   // Issue #323: auto-fit the sidebar on every tour switch. Runs at
   // most once per `tour.id` (gated by `lastFittedTourIdRef`); folder
@@ -705,8 +719,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (lastFittedTourIdRef.current === id) return;
     if (view.tree.visibleRows.length === 0) return;
     lastFittedTourIdRef.current = id;
+    const target = resizeReanchorTarget({
+      cursor,
+      flatRows: view.rows.flatRowsList,
+      activeFile: selectedFile,
+    });
     const rowId =
-      cursor !== null ? cursorAnchorRowId(cursor, view.rows.flatRowsList) : null;
+      target !== null ? resizeAnchorRowId(target, view.rows.flatRowsList) : null;
     const reanchor =
       rowId !== null ? tourSessionAdapter.captureAnchor(rowId) : null;
     const fitted = computeAutoFitWidthPx(
@@ -714,7 +733,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       window.innerWidth,
     );
     store.dispatch({ type: "sidebar.autoFit", width: fitted, reanchor });
-  }, [view, cursor, cursorAnchorRowId, store, tourSessionAdapter]);
+  }, [view, cursor, selectedFile, resizeAnchorRowId, store, tourSessionAdapter]);
 
   // Drag uses the manual clamp; the reducer emits a reanchor intent when
   // capture succeeds and falls back to cursor scroll when it does not.
@@ -723,15 +742,29 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
       const next = clampSidebarWidthManualPx(rawWidth, vw);
       if (next === sidebarWidth) return;
-      const rowId =
-        view.kind === "ok" && cursor !== null
-          ? cursorAnchorRowId(cursor, view.rows.flatRowsList)
-          : null;
+      let rowId: string | null = null;
+      if (view.kind === "ok") {
+        const target = resizeReanchorTarget({
+          cursor,
+          flatRows: view.rows.flatRowsList,
+          activeFile: selectedFile,
+        });
+        rowId =
+          target !== null ? resizeAnchorRowId(target, view.rows.flatRowsList) : null;
+      }
       const reanchor =
         rowId !== null ? tourSessionAdapter.captureAnchor(rowId) : null;
       store.dispatch({ type: "sidebar.resize", width: next, reanchor });
     },
-    [sidebarWidth, view, cursor, cursorAnchorRowId, store, tourSessionAdapter],
+    [
+      sidebarWidth,
+      view,
+      cursor,
+      selectedFile,
+      resizeAnchorRowId,
+      store,
+      tourSessionAdapter,
+    ],
   );
 
   const handleSidebarResizeStart = useCallback(() => {

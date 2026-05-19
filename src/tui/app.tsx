@@ -465,7 +465,13 @@ function App(props: AppProps) {
   }, [replyLock]);
 
   const tourSessionAdapter = useMemo(() => {
-    if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeComment || !props.deleteComment) {
+    if (
+      !props.cwd ||
+      !props.loadTour ||
+      !props.loadReplyLock ||
+      !props.writeComment ||
+      !props.deleteComment
+    ) {
       return null;
     }
     return createTuiTourSessionAdapter({
@@ -481,7 +487,15 @@ function App(props: AppProps) {
       setScrollPending,
       replyAgent: props.replyAgent,
     });
-  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeComment, props.deleteComment, props.replyAgent]);
+  }, [
+    store,
+    props.cwd,
+    props.loadTour,
+    props.loadReplyLock,
+    props.writeComment,
+    props.deleteComment,
+    props.replyAgent,
+  ]);
 
   // Tour-session runtime (PRD #278 slices 2-6). Subscribes to the watcher
   // via the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
