@@ -2978,8 +2978,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bundle.failed`), `scrollPickerRow` (→ DOM `scrollIntoView`), and
   `mirrorUrl` (→ `history.pushState`). The mount-time `/api/tours`
   fetch dispatches `tourList.loading` / `.loaded` / `.failed`. The
-  `popstate` listener dispatches `bundle.loading` + triggers the
-  bundle fetcher rather than mutating local React state. CONTEXT-
+  `popstate` listener dispatches the legacy bundle-load action +
+  triggers the bundle fetcher rather than mutating local React state. CONTEXT-
   pinned Tour-switch reset rules for the slice-1 slots (picker
   closed, reply-lock reset, layout preserved) are sourced from the
   reducer's `bundle.loaded` branch; slots not yet in the reducer

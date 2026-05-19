@@ -307,7 +307,7 @@ function App(props: AppProps) {
   );
   const sessionState = useTourSession(store);
   // Bundle / replyLock read from the store. During the in-flight window
-  // of a tour switch (picker.commit → bundle.loading → tour.switched), the
+  // of a tour switch (picker.commit → loadTour → tour.switched), the
   // store's bundle slice transiently goes to `loading`; we keep showing
   // the previous resolved bundle via a tiny render-time cache so the diff
   // pane doesn't flash blank between commit and load. `tour.switched`

@@ -541,7 +541,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: undefined,
+      });
       await flush();
 
       expect(adapter.bundleCalls).toEqual(["tour-a"]);
@@ -635,7 +639,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: undefined,
+      });
       await flush();
 
       expect(adapter.bundleCalls).toEqual(["tour-a"]);
@@ -653,7 +661,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: undefined,
+      });
       await flush();
 
       expect(adapter.lockCalls).toEqual(["tour-a"]);
@@ -676,7 +688,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: undefined,
+      });
       // Switch to tour-b before tour-a's fetch resolves.
       store.dispatch({
         type: "tour.switched",
@@ -712,7 +728,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: undefined,
+      });
       // Switch to tour-b before tour-a's fetch rejects.
       store.dispatch({
         type: "tour.switched",
@@ -751,7 +771,11 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
-      store.dispatch({ type: "bundle.loading", tourId: "tour-a" });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: undefined,
+      });
       // Let fetchBundle resolve and tour.switched dispatch run.
       await Promise.resolve();
       await Promise.resolve();

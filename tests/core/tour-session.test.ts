@@ -212,9 +212,14 @@ describe("reduce — picker slice", () => {
 });
 
 describe("reduce — bundle slice", () => {
-  it("bundle.loading sets currentTourId and bundle = loading, emits loadTour", () => {
-    const r = reduce(initialTourSessionState(), { type: "bundle.loading", tourId: "x" });
+  it("tour.openedFromUrl for a different tour without annId loads that tour", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "tour.openedFromUrl",
+      tourId: "x",
+      annId: undefined,
+    });
     expect(r.state.currentTourId).toBe("x");
+    expect(r.state.pendingAnnId).toBeNull();
     expect(r.state.bundle).toEqual({ kind: "loading" });
     expect(r.intents).toEqual([{ type: "loadTour", tourId: "x" }]);
   });
@@ -585,8 +590,9 @@ describe("reduce — bundle slice", () => {
 
   it("bundle.failed puts bundle into err(...) and leaves currentTourId in place", () => {
     const after = reduce(initialTourSessionState(), {
-      type: "bundle.loading",
+      type: "tour.openedFromUrl",
       tourId: "x",
+      annId: undefined,
     }).state;
     const r = reduce(after, { type: "bundle.failed", tourId: "x", error: "boom" });
     expect(r.state.bundle).toEqual({ kind: "err", error: "boom" });
@@ -639,8 +645,9 @@ describe("selectors", () => {
     expect(isBundleResolved(initialTourSessionState())).toBeNull();
     // Loading bundle slice → not resolved.
     const loadingState = reduce(initialTourSessionState(), {
-      type: "bundle.loading",
+      type: "tour.openedFromUrl",
       tourId: "x",
+      annId: undefined,
     }).state;
     expect(isBundleResolved(loadingState)).toBeNull();
     // Failed bundle slice → not resolved.

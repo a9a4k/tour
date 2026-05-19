@@ -166,7 +166,6 @@ export type Action =
   | { type: "picker.close" }
   | { type: "picker.move"; delta: number }
   | { type: "picker.commit" }
-  | { type: "bundle.loading"; tourId: string }
   | { type: "tour.openedFromUrl"; tourId: string; annId?: string }
   | { type: "bundle.refreshed"; bundle: TourBundle }
   | {
@@ -371,19 +370,6 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         ],
       };
     }
-
-    case "bundle.loading":
-      // Legacy direct load path. URL-driven opens use `tour.openedFromUrl`
-      // so an optional annId can survive the async fetch boundary.
-      return {
-        state: {
-          ...state,
-          bundle: { kind: "loading" },
-          currentTourId: action.tourId,
-          pendingAnnId: null,
-        },
-        intents: [{ type: "loadTour", tourId: action.tourId }],
-      };
 
     case "tour.openedFromUrl":
       if (action.tourId === state.currentTourId) {
