@@ -1,4 +1,5 @@
 import type {
+  AnchorToken,
   ScrollRowAnchor,
   TourEventHandler,
   TourSessionAdapter,
@@ -42,6 +43,21 @@ function browserBehaviorOf(motion: ScrollMotion): ScrollBehavior {
   return motion === "smooth" ? "smooth" : "instant";
 }
 
+type WebAnchorToken = AnchorToken & {
+  readonly rowId: string;
+  readonly top: number;
+};
+
+function scheduleAfterCommit(fn: () => void): void {
+  queueMicrotask(() => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(fn);
+      return;
+    }
+    setTimeout(fn, 0);
+  });
+}
+
 // Mirror of the view's `isFileFolded || isClassifierCollapsed` rule —
 // true when the file's diff rows aren't rendered. (issue #324)
 function isFileBodyHidden(
@@ -63,6 +79,23 @@ function isFileBodyHidden(
 export function createWebTourSessionAdapter(
   deps: WebTourSessionAdapterDeps,
 ): TourSessionAdapter {
+  function findAnchorElement(rowId: string): HTMLElement | null {
+    if (typeof document === "undefined") return null;
+    if (rowId.startsWith("comment-")) {
+      return deps.commentRefs.current.get(rowId.slice("comment-".length)) ?? null;
+    }
+    const match = /^diff-row-(.*)-(additions|deletions)-(\d+)$/.exec(rowId);
+    if (!match) return null;
+    const [, file, side, lineNumber] = match;
+    const cbs = deps.callbacksRef.current;
+    if (!cbs) return null;
+    const block = cbs.findFileBlock(file);
+    if (!block) return null;
+    return block.querySelector<HTMLElement>(
+      `.tour-row-gutter[data-side="${side}"][data-line-number="${lineNumber}"]`,
+    );
+  }
+
   return {
     fetchBundle: async (id) => {
       const res = await fetch(`/api/tours/${id}`);
@@ -231,6 +264,25 @@ export function createWebTourSessionAdapter(
       if (typeof document === "undefined") return;
       const el = document.querySelector(`[data-picker-row-idx="${idx}"]`);
       el?.scrollIntoView({ block: "nearest" });
+    },
+    captureAnchor: (rowId: string) => {
+      const el = findAnchorElement(rowId);
+      if (!el) return null;
+      return { rowId, top: el.getBoundingClientRect().top } as WebAnchorToken;
+    },
+    applyAnchor: (token: AnchorToken) => {
+      const { rowId, top } = token as WebAnchorToken;
+      scheduleAfterCommit(() => {
+        if (typeof window === "undefined") return;
+        const el = findAnchorElement(rowId);
+        if (!el) return;
+        const delta = el.getBoundingClientRect().top - top;
+        if (delta !== 0) window.scrollBy({ top: delta, behavior: "instant" });
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+          el.scrollIntoView({ behavior: "instant", block: "center" });
+        }
+      });
     },
     revealFileInSidebar: (file: string) => {
       const cbs = deps.callbacksRef.current;

@@ -92,6 +92,7 @@ function makeAdapter(sb: FakeScrollBox | null, opts: { setScrollPending?: (pendi
     writeComment: async () => {
       throw new Error("unused");
     },
+    deleteComment: async () => {},
     diffScrollBoxRef: { current: sb as unknown as ScrollBoxRenderable | null },
     pickerScrollBoxRef: { current: null },
     setSelectedRowIdx: () => {},
@@ -247,6 +248,40 @@ describe("createTuiTourSessionAdapter — null scrollbox ref", () => {
     );
     await flushMacrotask();
     // No throw, no scroll — the absent ref is the pre-mount guard.
+  });
+});
+
+describe("createTuiTourSessionAdapter.captureAnchor/applyAnchor", () => {
+  it("captures and reapplies the same row y across a reflow", async () => {
+    const sb = makeScrollBox({
+      viewportHeight: 50,
+      scrollTop: 100,
+      scrollHeight: 500,
+      child: { id: "target", y: 110, height: 10 },
+    });
+    const adapter = makeAdapter(sb);
+    const token = adapter.captureAnchor("target");
+    expect(token).not.toBeNull();
+
+    const target = sb.content.findDescendantById("target");
+    if (!target) throw new Error("missing target");
+    target.y = 140;
+    adapter.applyAnchor(token!);
+    await flushMacrotask();
+
+    expect(sb.scrollTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when the row cannot be measured", () => {
+    const sb = makeScrollBox({
+      viewportHeight: 50,
+      scrollTop: 100,
+      scrollHeight: 500,
+      child: { id: "target", y: 110, height: 10 },
+    });
+    const adapter = makeAdapter(sb);
+
+    expect(adapter.captureAnchor("missing")).toBeNull();
   });
 });
 

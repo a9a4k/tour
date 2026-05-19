@@ -30,6 +30,9 @@ export type TourEventHandler = (event: TourEvent) => void;
 // a named type so the adapter signature reads naturally.
 export type ScrollRowAnchor = Extract<ScrollCursorTarget, { kind: "row" }>;
 
+declare const anchorTokenBrand: unique symbol;
+export type AnchorToken = { readonly [anchorTokenBrand]: "AnchorToken" };
+
 // The seam between the runtime and each renderer substrate. The runtime
 // depends only on this interface; concrete implementations live next to
 // each surface (`src/tui/tour-session-adapter.ts`,
@@ -56,6 +59,8 @@ export interface TourSessionAdapter {
    *  textarea focus). Dispatched by `composer.recall`. */
   scrollToComposer(target: ComposerTarget): void;
   scrollToPickerRow(idx: number): void;
+  captureAnchor(rowId: string): AnchorToken | null;
+  applyAnchor(token: AnchorToken): void;
   revealFileInSidebar(file: string): void;
   mirrorTourUrl(id: string): void;
   mirrorAnnUrl(id: string | null): void;
@@ -158,6 +163,9 @@ export class TourSessionRuntime {
           return;
         case "scrollToComposer":
           this.adapter.scrollToComposer(intent.target);
+          return;
+        case "reanchorApply":
+          this.adapter.applyAnchor(intent.token);
           return;
         case "mirrorUrl":
           this.adapter.mirrorTourUrl(intent.tourId);

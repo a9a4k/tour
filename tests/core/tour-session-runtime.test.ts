@@ -10,6 +10,7 @@ import { deriveTourSessionView } from "../../src/core/tour-session-view.js";
 import {
   TourSessionRuntime,
   type ScrollRowAnchor,
+  type AnchorToken,
   type TourEvent,
   type TourEventHandler,
   type TourSessionAdapter,
@@ -110,6 +111,7 @@ interface FakeAdapter extends TourSessionAdapter {
   }>;
   scrollComposerCalls: Array<ComposerTarget>;
   scrollPickerCalls: number[];
+  applyAnchorCalls: unknown[];
   revealFileCalls: string[];
   mirrorTourCalls: string[];
   mirrorAnnCalls: Array<string | null>;
@@ -138,6 +140,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const scrollRowCalls: FakeAdapter["scrollRowCalls"] = [];
   const scrollComposerCalls: FakeAdapter["scrollComposerCalls"] = [];
   const scrollPickerCalls: number[] = [];
+  const applyAnchorCalls: unknown[] = [];
   const revealFileCalls: string[] = [];
   const mirrorTourCalls: string[] = [];
   const mirrorAnnCalls: Array<string | null> = [];
@@ -153,6 +156,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     scrollRowCalls,
     scrollComposerCalls,
     scrollPickerCalls,
+    applyAnchorCalls,
     revealFileCalls,
     mirrorTourCalls,
     mirrorAnnCalls,
@@ -209,6 +213,10 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     },
     scrollToPickerRow: (idx) => {
       scrollPickerCalls.push(idx);
+    },
+    captureAnchor: () => null,
+    applyAnchor: (token) => {
+      applyAnchorCalls.push(token);
     },
     revealFileInSidebar: (file) => {
       revealFileCalls.push(file);
@@ -1387,6 +1395,19 @@ describe("TourSessionRuntime", () => {
         },
       ]);
       expect(adapter.scrollCardCalls).toEqual([]);
+      stop();
+    });
+
+    it("reanchorApply intent → adapter.applyAnchor with the same opaque token", () => {
+      const store = storeWithTour("tour-a");
+      const adapter = createFakeAdapter();
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      const token = {} as AnchorToken;
+
+      store.dispatch({ type: "layout.set", layout: "split", reanchor: token });
+
+      expect(adapter.applyAnchorCalls).toEqual([token]);
       stop();
     });
 

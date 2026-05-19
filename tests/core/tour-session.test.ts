@@ -17,6 +17,7 @@ import {
   type TourSummary,
 } from "../../src/core/tour-session.js";
 import type { PickerRow } from "../../src/core/tour-list.js";
+import type { AnchorToken } from "../../src/core/tour-session-runtime.js";
 import type { TourBundle, BundleFile } from "../../src/core/tour-bundle.js";
 import type { Tour, Comment } from "../../src/core/types.js";
 import type { Cursor, RowAnchor, CardAnchor } from "../../src/core/cursor-state.js";
@@ -127,6 +128,7 @@ describe("initialTourSessionState", () => {
       collapsedFolders: new Set(),
       collapsedOverrides: {},
       collapsedThreads: new Set(),
+      sidebarWidth: 0,
       paneFocus: "sidebar",
     });
   });
@@ -2980,6 +2982,33 @@ describe("reduce — layout slice (slice 3 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
+  it("layout.set with a reanchor token emits reanchorApply by reference", () => {
+    const token = {} as AnchorToken;
+    const r = reduce(initialTourSessionState(), {
+      type: "layout.set",
+      layout: "split",
+      reanchor: token,
+    });
+    expect(r.state.layout).toBe("split");
+    expect(r.intents).toEqual([{ type: "reanchorApply", token }]);
+  });
+
+  it("layout.set without a reanchor token falls back to nearest smooth cursor scroll", () => {
+    const before = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: rowAnchor({ file: "foo.ts", lineNumber: 7 }),
+    }).state;
+    const r = reduce(before, { type: "layout.set", layout: "split" });
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "row", file: "foo.ts", side: "additions", lineNumber: 7 },
+        placement: "nearest",
+        behavior: "smooth",
+      },
+    ]);
+  });
+
   it("layout.set is a same-state-ref no-op when the layout is unchanged", () => {
     const before = initialTourSessionState();
     expect(before.layout).toBe("unified");
@@ -3001,6 +3030,46 @@ describe("reduce — layout slice (slice 3 foundation)", () => {
     expect(r.state.composer).toBe(s.composer);
     expect(r.state.collapsedFolders).toBe(s.collapsedFolders);
     expect(r.state.collapsedOverrides).toBe(s.collapsedOverrides);
+  });
+});
+
+describe("reduce — sidebar width slice", () => {
+  it("sidebar.resize writes width and emits reanchorApply when a token is present", () => {
+    const token = {} as AnchorToken;
+    const r = reduce(initialTourSessionState(), {
+      type: "sidebar.resize",
+      width: 42,
+      reanchor: token,
+    });
+    expect(r.state.sidebarWidth).toBe(42);
+    expect(r.intents).toEqual([{ type: "reanchorApply", token }]);
+  });
+
+  it("sidebar.resize without a token falls back to cursor scroll", () => {
+    const before = reduce(initialTourSessionState(), {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+    const r = reduce(before, { type: "sidebar.resize", width: 280 });
+    expect(r.state.sidebarWidth).toBe(280);
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-1" },
+        placement: "nearest",
+        behavior: "smooth",
+      },
+    ]);
+  });
+
+  it("sidebar.autoFit resets the stored width for a new tour fit", () => {
+    const resized = reduce(initialTourSessionState(), {
+      type: "sidebar.resize",
+      width: 90,
+    }).state;
+    const r = reduce(resized, { type: "sidebar.autoFit", width: 36 });
+    expect(r.state.sidebarWidth).toBe(36);
+    expect(r.intents).toEqual([]);
   });
 });
 

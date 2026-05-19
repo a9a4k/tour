@@ -197,6 +197,47 @@ describe("createWebTourSessionAdapter.scrollToRow — (placement, behavior) forw
   });
 });
 
+describe("createWebTourSessionAdapter.captureAnchor/applyAnchor", () => {
+  it("captures a card top and reapplies it asynchronously after reflow", async () => {
+    const card = document.createElement("div");
+    let top = 50;
+    card.getBoundingClientRect = () =>
+      ({
+        top,
+        bottom: top + 20,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 20,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const scrollBy = vi.fn();
+    Object.defineProperty(window, "scrollBy", {
+      value: scrollBy,
+      configurable: true,
+    });
+    const adapter = makeAdapter({ commentRefs: new Map([["ann1", card]]) });
+
+    const token = adapter.captureAnchor("comment-ann1");
+    expect(token).not.toBeNull();
+    top = 75;
+    adapter.applyAnchor(token!);
+    expect(scrollBy).not.toHaveBeenCalled();
+    await Promise.resolve();
+    await flushRaf();
+
+    expect(scrollBy).toHaveBeenCalledWith({ top: 25, behavior: "instant" });
+  });
+
+  it("returns null when the row cannot be measured", () => {
+    const adapter = makeAdapter({ commentRefs: new Map() });
+
+    expect(adapter.captureAnchor("comment-missing")).toBeNull();
+  });
+});
+
 describe("createWebTourSessionAdapter.requestReply — non-2xx rejection (Issue #291)", () => {
   it("rejects with the parsed error body when the server returns 409 lock-held", async () => {
     globalThis.fetch = vi.fn(() =>

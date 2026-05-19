@@ -108,11 +108,8 @@ import {
 } from "../core/diff-pane-motion.js";
 import type { BoundaryRef, InteractiveSubKind } from "../core/diff-rows.js";
 import {
-  applyPreserveScreenY,
-  captureScreenYSnapshot,
   computeCardViewportPosition,
   scrollChildIntoView,
-  type ScreenYSnapshot,
 } from "./scroll-into-view.js";
 import {
   animatedScrollChildIntoView,
@@ -301,6 +298,7 @@ function App(props: AppProps) {
         currentTourId: props.bundle.tour.id,
         bundle: { kind: "ok", value: props.bundle },
         replyLock: { kind: "ok", value: props.replyLock ?? null },
+        sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
         expansion: seedFromOrphans(
           emptyExpansion(),
           props.bundle.kind === "ok" ? flattenOrphanWindows(props.bundle.files) : [],
@@ -335,6 +333,7 @@ function App(props: AppProps) {
   const collapsedOverrides = sessionState.collapsedOverrides;
   const collapsedThreads = sessionState.collapsedThreads;
   const layout = sessionState.layout;
+  const sidebarWidth = sessionState.sidebarWidth;
   // PRD #343 / ADR 0031 / issue #344: paneFocus replaces the retired
   // `sidebarFocused: useState(true)`. The cross-surface slice in
   // `core/tour-session.ts` is the single source of truth; the surface
@@ -446,36 +445,10 @@ function App(props: AppProps) {
   // re-seed — user motion taken before a watcher reload survives.
   const seededTourIdRef = useRef<string | null>(null);
 
-  // Sidebar width (issue #312). Per-tour auto-fit + `[`/`]` resize.
-  // `lastFittedTourIdRef` mirrors `seededTourIdRef`'s once-per-tour
-  // guard: auto-fit runs on every tour switch but NOT on
-  // `bundle.refreshed` of the same tour (a mid-session refit would be
-  // jarring). The fit effect lives below the row-derivation pipeline
-  // so `visibleRows` is in scope.
-  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
+  // Sidebar width (issue #416). Per-tour auto-fit + `[`/`]` resize now
+  // lives in the Tour-session store so resize reanchors flow through the
+  // same reducer/runtime seam as layout toggles.
   const lastFittedTourIdRef = useRef<string | null>(null);
-
-  // Issue #303 preserve-cursor-on-layout-toggle: pre-toggle snapshot of the
-  // cursor row's position. Populated synchronously inside the toggle-layout
-  // case below, BEFORE `layout.set` dispatches; consumed by the layout-
-  // change useEffect after OpenTUI has laid out the new layout. The id is
-  // the layout-invariant FlatRow id (so a paired-context cursor on either
-  // side resolves to the same node in both split and unified).
-  const layoutToggleSnapshotRef = useRef<{
-    rowId: string;
-    snap: ScreenYSnapshot;
-  } | null>(null);
-
-  // Issue #318 (upgraded): pre-resize snapshot of the re-anchor target's
-  // on-screen y. Stashed synchronously in the `[`/`]` keypress handler
-  // BEFORE `setSidebarWidth` so the capture reads the old layout; consumed
-  // by the resize-apply useEffect after OpenTUI has laid out the new pane
-  // width. Same pattern as `layoutToggleSnapshotRef` (#303) — the only
-  // difference is the trigger (sidebar width, not layout mode).
-  const resizeSnapshotRef = useRef<{
-    rowId: string;
-    snap: ScreenYSnapshot;
-  } | null>(null);
 
   // `bundle.tour` / `bundle.comments` are present in both bundle
   // kinds; the view's ok-branch namespaces gate the rest.
@@ -491,17 +464,11 @@ function App(props: AppProps) {
     return () => clearInterval(handle);
   }, [replyLock]);
 
-  // Tour-session runtime (PRD #278 slices 2-6). Subscribes to the watcher
-  // via the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
-  // on tour events; realises every intent the reducer emits (loadTour,
-  // submitComment, scroll / mirror / reveal). The runtime re-subscribes
-  // itself when `currentTourId` changes (tour-switch), so this effect
-  // runs once at mount and tears down at unmount.
-  useEffect(() => {
+  const tourSessionAdapter = useMemo(() => {
     if (!props.cwd || !props.loadTour || !props.loadReplyLock || !props.writeComment || !props.deleteComment) {
-      return;
+      return null;
     }
-    const adapter = createTuiTourSessionAdapter({
+    return createTuiTourSessionAdapter({
       cwd: props.cwd,
       store,
       loadTour: props.loadTour,
@@ -514,14 +481,24 @@ function App(props: AppProps) {
       setScrollPending,
       replyAgent: props.replyAgent,
     });
+  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeComment, props.deleteComment, props.replyAgent]);
+
+  // Tour-session runtime (PRD #278 slices 2-6). Subscribes to the watcher
+  // via the adapter and dispatches `bundle.refreshed` / `replyLock.loaded`
+  // on tour events; realises every intent the reducer emits (loadTour,
+  // submitComment, scroll / mirror / reveal). The runtime re-subscribes
+  // itself when `currentTourId` changes (tour-switch), so this effect
+  // runs once at mount and tears down at unmount.
+  useEffect(() => {
+    if (!tourSessionAdapter) return;
     // `viewOptions` matches the TUI's `useTourSessionView` call so the
     // runtime's `revalidateCursor` handler (PRD #278 slice 5) validates
     // the cursor against the same flat-rows the surface renders.
-    const runtime = new TourSessionRuntime(store, adapter, {
+    const runtime = new TourSessionRuntime(store, tourSessionAdapter, {
       hunkHeaderCursorStop: false,
     });
     return runtime.start();
-  }, [store, props.cwd, props.loadTour, props.loadReplyLock, props.writeComment, props.deleteComment, props.replyAgent]);
+  }, [store, tourSessionAdapter]);
 
   // Sorted file list for diff-pane render order. `view.rows.plannedRowsByFile`
   // is keyed by name; we still need the ordered file list for the JSX.
@@ -674,84 +651,6 @@ function App(props: AppProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topLevel, bundle.tour.id]);
 
-  // Layout-toggle re-scroll. Issue #296 migrated cursor-driven scrolling
-  // to the reducer's `scrollCursorTarget` intent path (anchor-kind-
-  // agnostic: `placement` discriminates `nearest` vs `center`), so the
-  // surface no longer owns a `[cursor, layout]` effect. `layout.set`
-  // doesn't emit `scrollCursorTarget` (out of scope per the issue), so
-  // this layout-only effect re-fires the same scroll helpers the
-  // adapter would call on a `nearest` intent — preserves the
-  // "Shift-L re-scrolls cursor into view" rule (CONTEXT.md TUI Cursor).
-  //
-  // Issue #250: defer the scroll call to the next macrotask via
-  // `setTimeout(0)`. React's commit runs synchronously, but OpenTUI's
-  // Yoga relayout for the newly-rendered rows runs on a later render
-  // tick. Reading positions inside this effect synchronously sees a
-  // stale layout (most visible when Shift-L flips layout while the
-  // cursor is on a card: position math against the previous layout's
-  // content frame parks the viewport on a strip where only comment
-  // cards live, hiding every diff row). `setTimeout(0)` is what
-  // reliably lands the callback after OpenTUI's render tick — verified
-  // empirically. `requestAnimationFrame` does NOT work here: in
-  // bun/node it shims to `setImmediate` (or similar) and fires BEFORE
-  // OpenTUI's render tick, which keeps the bug. Do not "improve" this
-  // back to rAF.
-  useEffect(() => {
-    if (!diffScrollRef.current || !cursor) return;
-    const sb = diffScrollRef.current;
-    // Issue #303: when the user toggled layout via `shift+L`, the keymap
-    // handler stashed a pre-toggle snapshot. Apply it once OpenTUI has
-    // laid out the new layout (setTimeout(0) defers past the render
-    // tick) so the cursor row lands at the same on-screen y. Falls back
-    // to the historic `scrollChildIntoView` when no snapshot is present
-    // (initial mount, programmatic layout change, no cursor at toggle
-    // time) — both paths are culling-safe via `refreshLayoutChain`.
-    const pending = layoutToggleSnapshotRef.current;
-    layoutToggleSnapshotRef.current = null;
-    const handle = setTimeout(() => {
-      if (pending) {
-        const applied = applyPreserveScreenY(sb, pending.rowId, pending.snap);
-        if (applied) return;
-        // Row not found in the new layout — fall through to the default
-        // scroll-into-view fallback so the cursor at least lands visible.
-      }
-      // `scrollChildIntoView` is culling-safe under `viewportCulling=true`;
-      // it refreshes the layout chain before reading positions, so a
-      // cross-file scroll lands on the right file instead of a stale one.
-      const targetId =
-        cursor.kind === "card"
-          ? `comment-${cursor.commentId}`
-          : `diff-row-${cursor.file}-${cursor.side}-${cursor.lineNumber}`;
-      animatedScrollChildIntoView(sb, targetId);
-    }, 0);
-    return (): void => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout]);
-
-  // Issue #318 (upgraded): after `[`/`]` resize, OpenTUI re-flows
-  // comment cards to the new pane width. The keypress handler
-  // captured the target row's on-screen y before triggering the
-  // re-render; this effect applies it via `preserveScreenY` once Yoga
-  // has measured the new card heights. `setTimeout(0)` defers past the
-  // render tick for the same reason as the layout-toggle effect above
-  // (rAF on bun fires before OpenTUI's render tick). Falls through to
-  // `scrollChildIntoView` when the target id isn't resolvable in the
-  // post-resize tree (degenerate; shouldn't happen for resize since
-  // row identity is layout-invariant — kept as defensive parity with
-  // the layout-toggle path).
-  useEffect(() => {
-    const sb = diffScrollRef.current;
-    if (!sb) return;
-    const pending = resizeSnapshotRef.current;
-    resizeSnapshotRef.current = null;
-    if (!pending) return;
-    const handle = setTimeout(() => {
-      const applied = applyPreserveScreenY(sb, pending.rowId, pending.snap);
-      if (!applied) scrollChildIntoView(sb, pending.rowId);
-    }, 0);
-    return (): void => clearTimeout(handle);
-  }, [sidebarWidth]);
-
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest
   // semantics — already-visible rows don't move).
@@ -778,7 +677,7 @@ function App(props: AppProps) {
       (path) => countDiffStats(plannedRowsByFile.get(path) ?? []),
       renderer.terminalWidth,
     );
-    setSidebarWidth(fitted);
+    store.dispatch({ type: "sidebar.autoFit", width: fitted });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundle.tour.id, visibleRows]);
 
@@ -1446,17 +1345,9 @@ function App(props: AppProps) {
     // tour picker. The adjustment is session-local — the next tour
     // switch re-runs auto-fit and the override doesn't carry over.
     //
-    // Issue #318 (upgraded to preserveScreenY per follow-up review):
-    // a width change reflows comment cards, drifting the diff
-    // viewport's visual position. `scrollChildIntoView(block:nearest)`
-    // alone wasn't enough — it no-ops when the row is still in viewport
-    // (so card-height deltas above the cursor walked it within the
-    // viewport) and snaps to the nearer edge when the row falls out
-    // (so held-down `]` drifted the cursor toward an edge). Mirror
-    // the layout-toggle pattern (#303): capture the target's on-screen
-    // y BEFORE `setSidebarWidth` schedules the re-render, then apply
-    // it in the resize-apply useEffect once Yoga has re-measured.
-    // No-op when the clamp pinned the width (no reflow).
+    // Issue #416: capture the target before dispatch so the adapter can
+    // preserve its screen-y after the sidebar-width reflow. No-op when
+    // the clamp pinned the width.
     if (!key.ctrl && !key.shift && (key.name === "[" || key.name === "]")) {
       const delta = key.name === "[" ? -SIDEBAR_RESIZE_STEP : SIDEBAR_RESIZE_STEP;
       const next = clampSidebarWidthManual(
@@ -1465,18 +1356,15 @@ function App(props: AppProps) {
       );
       setFooterStatus(`sidebar: ${next} cols`);
       if (next !== sidebarWidth) {
-        const sb = diffScrollRef.current;
         const targetId = resizeReanchorTargetId({
           cursor,
           flatRows: flatRowsList,
           activeFile,
         });
-        if (sb && targetId !== null) {
-          const snap = captureScreenYSnapshot(sb, targetId);
-          if (snap) resizeSnapshotRef.current = { rowId: targetId, snap };
-        }
+        const reanchor =
+          targetId !== null ? tourSessionAdapter?.captureAnchor(targetId) ?? null : null;
+        store.dispatch({ type: "sidebar.resize", width: next, reanchor });
       }
-      setSidebarWidth(next);
       return;
     }
 
@@ -1648,18 +1536,18 @@ function App(props: AppProps) {
         return;
       }
       case "toggle-layout": {
-        // Issue #303: capture the cursor row's pre-toggle position so the
-        // layout-change useEffect below can pin it at the same on-screen
-        // y after the diff re-flows. The capture must happen BEFORE the
-        // dispatch — the snapshot reads `sb.scrollTop` and the row's
-        // content-y on the pre-toggle layout. No cursor → no snapshot →
-        // the toggle behaves as before (no preserve).
-        const sb = diffScrollRef.current;
-        if (sb && cursor && rowsSlice) {
+        // Issue #416: capture the cursor row before dispatch so the
+        // adapter can preserve its screen-y after the layout reflow.
+        if (cursor && rowsSlice) {
           const rowId = cursorRowDomId(cursor, rowsSlice.flatRowsList);
           if (rowId) {
-            const snap = captureScreenYSnapshot(sb, rowId);
-            if (snap) layoutToggleSnapshotRef.current = { rowId, snap };
+            const reanchor = tourSessionAdapter?.captureAnchor(rowId) ?? null;
+            store.dispatch({
+              type: "layout.set",
+              layout: layout === "split" ? "unified" : "split",
+              reanchor,
+            });
+            return;
           }
         }
         store.dispatch({

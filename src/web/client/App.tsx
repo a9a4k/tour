@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Comment, BundleFile, TourBundle, TourSummary } from "./types.js";
 import { fileIcon } from "./file-icon.js";
 import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
@@ -73,10 +73,6 @@ import {
   clampSidebarWidthManualPx,
   computeAutoFitWidthPx,
 } from "./sidebar-width.js";
-import {
-  resizeReanchorTarget,
-  type ResizeReanchorTarget,
-} from "./resize-reanchor-target.js";
 import { Footer } from "./Footer.js";
 import { composeFooterHints, type EnterHintCursor } from "../../core/footer-hints.js";
 import { seedPaneFocus } from "../../core/pane-focus-state.js";
@@ -159,6 +155,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     storeRef.current = new TourSessionStore({
       ...initialTourSessionState(),
       currentTourId: readTourFromUrl(initialTourId),
+      sidebarWidth: SIDEBAR_DEFAULT_PX,
     });
   }
   const store = storeRef.current;
@@ -268,51 +265,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // `paneFocus.setSidebar` / `paneFocus.setDiff`; the bundle-load seed
   // effect dispatches one of the set actions based on `seedPaneFocus`.
   const paneFocus = sessionState.paneFocus;
+  const sidebarWidth = sessionState.sidebarWidth;
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const sidebarRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-  // Issue #303 preserve-cursor-on-layout-toggle: pre-toggle snapshot of the
-  // cursor row's viewport-y. Populated synchronously inside the toggle-
-  // layout case below, BEFORE `layout.set` dispatches; consumed by the
-  // layout-change useLayoutEffect after React commits the new layout
-  // but BEFORE the browser paints, so the user sees no jump. The snapshot
-  // stores only the screen-y; we re-locate the row after the commit
-  // against the new DOM (row identity changes when the planner emits a
-  // different row sequence). When the row isn't relocatable in the new
-  // layout (rare — interactive rows, paired-deletion cursor against an
-  // unrendered side), the effect skips the adjustment.
-  const layoutToggleSnapshotRef = useRef<{ top: number } | null>(null);
-  // Issue #323: stateful sidebar width. Seeded from SIDEBAR_DEFAULT_PX
-  // (280, matching the pre-#323 hard-coded value) and overwritten by:
-  //   1. Auto-fit on every tour switch (`tour.id` change with non-empty
-  //      visible rows). Manual drag does NOT carry over across tours —
-  //      session-local, mirrors the TUI semantics.
-  //   2. The drag handle's `pointermove` frames during a user drag.
-  // Both writers wrap their write in capture + applyPreserveScreenY so
-  // the cursor row's on-screen y is pinned across the reflow. Without
-  // the wire, a comment card above the cursor reflows when the
-  // diff pane narrows and the cursor walks up or down the screen.
-  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_PX);
   const [isResizing, setIsResizing] = useState<boolean>(false);
   // Tour id the auto-fit effect last ran against. Gated so folder
   // expand / collapse within a tour does NOT re-fit (the row list
   // changes but the user expects the width to stay put). Mirrors the
   // TUI's `lastFittedTourIdRef`.
   const lastFittedTourIdRef = useRef<string | null>(null);
-  // Issue #323: pre-resize snapshot of the re-anchor target's
-  // on-screen y. Populated synchronously inside the drag handler (and
-  // the auto-fit effect) BEFORE `setSidebarWidth` triggers React's
-  // re-render; consumed by the resize-apply useLayoutEffect after
-  // React commits the new width. Same pattern as
-  // `layoutToggleSnapshotRef` — the only difference is the trigger.
-  // Issue #327 added the `target` descriptor so the apply path can
-  // re-resolve the same logical target post-reflow; priority owned by
-  // `resizeReanchorTarget`.
-  const resizeSnapshotRef = useRef<{
-    top: number;
-    target: ResizeReanchorTarget;
-  } | null>(null);
   // Refs holding the latest React-state inputs the intent handlers need.
   // The intent listener fires synchronously inside `store.dispatch`, BEFORE
   // React re-renders, so the listener's closure captures stale values. The
@@ -324,6 +287,16 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     revealFileAncestors: (file: string) => void;
     findFileBlock: (name: string) => HTMLElement | null;
   } | null>(null);
+
+  const tourSessionAdapter = useMemo(
+    () =>
+      createWebTourSessionAdapter({
+        store,
+        commentRefs,
+        callbacksRef: intentInputsRef,
+      }),
+    [store],
+  );
 
   // Tour-session runtime (PRD #278 slices 2-6). Subscribes to SSE via the
   // web adapter and dispatches `bundle.refreshed` / `replyLock.loaded` on
@@ -337,14 +310,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // intent fires. React runs useEffects in declaration order; reversing
   // the order drops the first intent and the bundle never loads.
   useEffect(() => {
-    const adapter = createWebTourSessionAdapter({
-      store,
-      commentRefs,
-      callbacksRef: intentInputsRef,
-    });
-    const runtime = new TourSessionRuntime(store, adapter);
+    const runtime = new TourSessionRuntime(store, tourSessionAdapter);
     return runtime.start();
-  }, [store]);
+  }, [store, tourSessionAdapter]);
 
   // Mount-time: fetch tour list via store dispatches, auto-pick on bare URL,
   // and kick off the initial bundle load if a tour-id was already seeded
@@ -625,46 +593,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     }
   }, [paneFocus, sidebarSelectedPath]);
 
-  // Issue #303: pin the cursor row at the same on-screen y-coordinate
-  // across a layout toggle (shift+L / header `LayoutToggle`). The
-  // pre-toggle snapshot was captured by `setLayoutChoice` before the
-  // `layout.set` dispatch; here, after React commits the new layout
-  // but BEFORE the browser paints, we re-locate the cursor row, measure
-  // its new viewport-y, and `window.scrollBy(delta)` so it lands at the
-  // captured y. useLayoutEffect (not useEffect) is load-bearing: a
-  // post-paint adjustment would flash the user's eye to the wrong row
-  // for one frame.
-  //
-  // Fallback rules (from the issue brief):
-  //  • No snapshot (no cursor at toggle time, or row not findable
-  //    pre-toggle) → behave as before #303.
-  //  • Row not in the new layout's DOM (cursor anchor doesn't resolve in
-  //    the new flat-rows, or its FlatRow is an interactive row) → skip
-  //    the preserve. The default toggle motion remains.
-  //  • Scroll adjustment pushed past a document bound → the browser
-  //    clamps `window.scrollBy` automatically. If the row's still off-
-  //    screen after the clamp, fall back to
-  //    `scrollIntoView({ block: "center" })`.
-  useLayoutEffect(() => {
-    const snap = layoutToggleSnapshotRef.current;
-    if (!snap) return;
-    layoutToggleSnapshotRef.current = null;
-    if (!cursor || view.kind !== "ok") return;
-    if (typeof window === "undefined") return;
-    const el = findCursorRowEl(cursor, view.rows.flatRowsList);
-    if (!el) return;
-    const newTop = el.getBoundingClientRect().top;
-    const delta = newTop - snap.top;
-    if (delta !== 0) {
-      window.scrollBy({ top: delta, behavior: "instant" });
-    }
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
-      el.scrollIntoView({ behavior: "instant", block: "center" });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout]);
-
   const restoreFocusAfterPicker = useCallback(() => {
     const back = triggerRef.current ?? pickerButtonRef.current;
     requestAnimationFrame(() => back?.focus());
@@ -753,91 +681,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return document.querySelector<HTMLElement>(`[data-file="${cssEscapeFile(name)}"]`);
   }, []);
 
-  // Issue #303 preserve-cursor-on-layout-toggle: resolve a cursor anchor
-  // to the DOM element that hosts its row. Card cursors return the
-  // comment card wrapper (registered in `commentRefs`). Diff
-  // cursors project through `resolveCursorRowIdx` to the FlatRow, then
-  // query the `.tour-row` element by its layout-invariant `data-row-id`
-  // attribute — emitted by `<DiffRow>` from leftLineNumber / rightLineNumber
-  // via the same mapping as `flatRowFromLines`. The attribute is identical
-  // across split and unified, so the same selector resolves in both layouts
-  // even for paired-context cursors on the deletions side (where the
-  // gutter's `data-side` reflects `preferredSide` and would otherwise miss).
-  // Interactive rows return null (no clean DOM hook today; preserve-y
-  // skips them, falling back to today's behaviour).
-  const findCursorRowEl = useCallback(
-    (c: Cursor, flatRows: ReadonlyArray<FlatRow>): HTMLElement | null => {
-      if (typeof document === "undefined") return null;
-      if (c.kind === "card") {
-        return commentRefs.current.get(c.commentId) ?? null;
-      }
+  const cursorAnchorRowId = useCallback(
+    (c: Cursor, flatRows: ReadonlyArray<FlatRow>): string | null => {
+      if (c.kind === "card") return `comment-${c.commentId}`;
       const idx = resolveCursorRowIdx(c, flatRows);
       if (idx === -1) return null;
       const r = flatRows[idx];
-      if (r.kind === "card") return commentRefs.current.get(r.commentId) ?? null;
+      if (r.kind === "card") return `comment-${r.commentId}`;
       if (r.kind === "interactive") return null;
-      const block = findFileBlock(r.file);
-      if (!block) return null;
-      const rowId = `${r.side}-${r.lineNumber}`;
-      return block.querySelector<HTMLElement>(
-        `.tour-row[data-row-id="${rowId}"]`,
-      );
+      return `diff-row-${r.file}-${r.side}-${r.lineNumber}`;
     },
-    [findFileBlock],
+    [],
   );
-
-  // Issue #323: sidebar-width-change preserveScreenY. The auto-fit
-  // effect and the drag handler both write `resizeSnapshotRef` BEFORE
-  // calling `setSidebarWidth`; this useLayoutEffect re-reads the
-  // target's new on-screen y after React commits the width change but
-  // BEFORE the browser paints, and scrolls by the delta so the target
-  // stays put. Same algorithm as the layout-toggle effect above — the
-  // only difference is the trigger (sidebarWidth, not layout).
-  // Target resolution (cursor → active-file, issue #327) is owned by
-  // `resizeReanchorTarget`; this effect just re-resolves the descriptor.
-  useLayoutEffect(() => {
-    const snap = resizeSnapshotRef.current;
-    if (!snap) return;
-    resizeSnapshotRef.current = null;
-    if (view.kind !== "ok") return;
-    if (typeof window === "undefined") return;
-    const el =
-      snap.target.kind === "cursor"
-        ? findCursorRowEl(snap.target.cursor, view.rows.flatRowsList)
-        : findFileBlock(snap.target.path);
-    if (!el) return;
-    const newTop = el.getBoundingClientRect().top;
-    const delta = newTop - snap.top;
-    if (delta !== 0) {
-      window.scrollBy({ top: delta, behavior: "instant" });
-    }
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
-      el.scrollIntoView({ behavior: "instant", block: "center" });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sidebarWidth]);
-
-  // Issue #327: shared capture helper for both resize writers (auto-fit
-  // effect and drag handler). Priority owned by `resizeReanchorTarget`.
-  const captureResizeSnapshot = useCallback(() => {
-    if (view.kind !== "ok") return;
-    const target = resizeReanchorTarget({
-      cursor,
-      flatRows: view.rows.flatRowsList,
-      activeFile: selectedFile,
-    });
-    if (!target) return;
-    const el =
-      target.kind === "cursor"
-        ? findCursorRowEl(target.cursor, view.rows.flatRowsList)
-        : findFileBlock(target.path);
-    if (!el) return;
-    resizeSnapshotRef.current = {
-      top: el.getBoundingClientRect().top,
-      target,
-    };
-  }, [cursor, view, selectedFile, findCursorRowEl, findFileBlock]);
 
   // Issue #323: auto-fit the sidebar on every tour switch. Runs at
   // most once per `tour.id` (gated by `lastFittedTourIdRef`); folder
@@ -850,27 +705,33 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (lastFittedTourIdRef.current === id) return;
     if (view.tree.visibleRows.length === 0) return;
     lastFittedTourIdRef.current = id;
-    captureResizeSnapshot();
+    const rowId =
+      cursor !== null ? cursorAnchorRowId(cursor, view.rows.flatRowsList) : null;
+    const reanchor =
+      rowId !== null ? tourSessionAdapter.captureAnchor(rowId) : null;
     const fitted = computeAutoFitWidthPx(
       view.tree.visibleRows,
       window.innerWidth,
     );
-    setSidebarWidth(fitted);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+    store.dispatch({ type: "sidebar.autoFit", width: fitted, reanchor });
+  }, [view, cursor, cursorAnchorRowId, store, tourSessionAdapter]);
 
-  // Drag uses the manual clamp (see `clampSidebarWidthManualPx`); the
-  // capture-before-commit / apply-after-commit pattern is owned by
-  // `resizeSnapshotRef` + the resize-apply useLayoutEffect above.
+  // Drag uses the manual clamp; the reducer emits a reanchor intent when
+  // capture succeeds and falls back to cursor scroll when it does not.
   const handleSidebarResize = useCallback(
     (rawWidth: number) => {
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
       const next = clampSidebarWidthManualPx(rawWidth, vw);
       if (next === sidebarWidth) return;
-      captureResizeSnapshot();
-      setSidebarWidth(next);
+      const rowId =
+        view.kind === "ok" && cursor !== null
+          ? cursorAnchorRowId(cursor, view.rows.flatRowsList)
+          : null;
+      const reanchor =
+        rowId !== null ? tourSessionAdapter.captureAnchor(rowId) : null;
+      store.dispatch({ type: "sidebar.resize", width: next, reanchor });
     },
-    [sidebarWidth, captureResizeSnapshot],
+    [sidebarWidth, view, cursor, cursorAnchorRowId, store, tourSessionAdapter],
   );
 
   const handleSidebarResizeStart = useCallback(() => {
@@ -888,13 +749,13 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onResize = () => {
-      setSidebarWidth((w) =>
-        clampSidebarWidthManualPx(w, window.innerWidth),
-      );
+      const width = store.getState().sidebarWidth;
+      const next = clampSidebarWidthManualPx(width, window.innerWidth);
+      if (next !== width) store.dispatch({ type: "sidebar.resize", width: next });
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [store]);
 
   // Keep the intent-handler input ref fresh. The listener fires
   // synchronously inside store.dispatch, BEFORE React re-renders, so its
@@ -1458,11 +1319,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           return;
         }
         case "toggle-layout": {
-          // Issue #303: `setLayoutChoice` snapshots the cursor row's
-          // pre-toggle viewport-y before dispatching; the layout-change
-          // useLayoutEffect below pins the row at the same screen-y after
-          // React commits the new layout. The header LayoutToggle button
-          // routes through the same callback so both paths preserve.
+          // `setLayoutChoice` captures before dispatch so the adapter can
+          // preserve cursor screen-y after the layout reflow.
           setLayoutChoice(store.getState().layout === "split" ? "unified" : "split");
           return;
         }
@@ -1963,18 +1821,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const setLayoutChoice = useCallback(
     (next: Layout) => {
-      // Issue #303: capture the cursor row's pre-toggle viewport-y so the
-      // layout-change useLayoutEffect can pin the row at the same screen-y
-      // after React commits the new layout. Mirrors the keymap-driven
-      // toggle path — the header LayoutToggle button reaches the same
-      // dispatch.
-      if (cursor && view.kind === "ok") {
-        const el = findCursorRowEl(cursor, view.rows.flatRowsList);
-        if (el) layoutToggleSnapshotRef.current = { top: el.getBoundingClientRect().top };
-      }
-      store.dispatch({ type: "layout.set", layout: next });
+      const rowId =
+        cursor !== null && view.kind === "ok"
+          ? cursorAnchorRowId(cursor, view.rows.flatRowsList)
+          : null;
+      const reanchor =
+        rowId !== null ? tourSessionAdapter.captureAnchor(rowId) : null;
+      store.dispatch({ type: "layout.set", layout: next, reanchor });
     },
-    [store, cursor, view, findCursorRowEl],
+    [store, cursor, view, cursorAnchorRowId, tourSessionAdapter],
   );
 
   if (!bundleLoaded && !tourList) {
@@ -3192,4 +3047,3 @@ function SequencePill({ idx, total, onPrev, onNext }: SequencePillProps): React.
     </div>
   );
 }
-

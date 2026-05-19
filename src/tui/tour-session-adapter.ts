@@ -1,6 +1,7 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { TourWatcher } from "../core/watcher.js";
 import type {
+  AnchorToken,
   ScrollRowAnchor,
   TourEventHandler,
   TourSessionAdapter,
@@ -22,7 +23,13 @@ import {
   revealAncestors,
   revealAndLocate,
 } from "../core/file-tree.js";
-import { centerChildInView, scrollChildIntoView } from "./scroll-into-view.js";
+import {
+  applyPreserveScreenY,
+  captureScreenYSnapshot,
+  centerChildInView,
+  scrollChildIntoView,
+  type ScreenYSnapshot,
+} from "./scroll-into-view.js";
 import {
   animatedCenterChildInView,
   animatedScrollChildIntoView,
@@ -68,6 +75,11 @@ export interface TuiTourSessionAdapterDeps {
 // within a few ms in practice — 20 retries at the default macrotask
 // cadence covers a worst-case ~1s window before we silently give up.
 const POST_SUBMIT_SCROLL_RETRY_BUDGET = 20;
+
+type TuiAnchorToken = AnchorToken & {
+  readonly rowId: string;
+  readonly snapshot: ScreenYSnapshot;
+};
 
 // `TourSessionAdapter` implemented against the TUI substrate (OpenTUI
 // ScrollBox + TourWatcher + props.* callbacks). URL-mirror methods are
@@ -245,6 +257,22 @@ export function createTuiTourSessionAdapter(
       const sb = deps.pickerScrollBoxRef.current;
       if (!sb) return;
       scrollChildIntoView(sb, `picker-row-${idx}`);
+    },
+    captureAnchor: (rowId: string) => {
+      const sb = deps.diffScrollBoxRef.current;
+      if (!sb) return null;
+      const snapshot = captureScreenYSnapshot(sb, rowId);
+      if (!snapshot) return null;
+      return { rowId, snapshot } as TuiAnchorToken;
+    },
+    applyAnchor: (token: AnchorToken) => {
+      const { rowId, snapshot } = token as TuiAnchorToken;
+      scheduleScroll(() => {
+        const sb = deps.diffScrollBoxRef.current;
+        if (!sb) return;
+        const applied = applyPreserveScreenY(sb, rowId, snapshot);
+        if (!applied) scrollChildIntoView(sb, rowId);
+      });
     },
     revealFileInSidebar: (file: string) => {
       const state = deps.store.getState();

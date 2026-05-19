@@ -17,6 +17,7 @@ import {
 import { buildThreads } from "./threads.js";
 import type { PaneFocus, PaneFocusAction } from "./pane-focus-state.js";
 import { reducePaneFocus } from "./pane-focus-state.js";
+import type { AnchorToken } from "./tour-session-runtime.js";
 import type {
   BoundaryRef,
   ExpandMode,
@@ -142,6 +143,7 @@ export interface TourSessionState {
   // preserved across bundle.refreshed except for ids no longer in
   // top-level (cascade-delete drop).
   collapsedThreads: Set<string>;
+  sidebarWidth: number;
   // Cross-surface pane focus (PRD #343 / ADR 0031 / issue #344). Sibling
   // to `cursor`; routes keyboard input between the sidebar tree and the
   // diff pane on both surfaces. Initial value is "sidebar" — matching the
@@ -218,7 +220,9 @@ export type Action =
   | { type: "thread.toggle"; id: string }
   | { type: "thread.collapseAll" }
   | { type: "thread.expandAll" }
-  | { type: "layout.set"; layout: Layout }
+  | { type: "layout.set"; layout: Layout; reanchor?: AnchorToken | null }
+  | { type: "sidebar.resize"; width: number; reanchor?: AnchorToken | null }
+  | { type: "sidebar.autoFit"; width: number; reanchor?: AnchorToken | null }
   | { type: "send-to-agent"; tourId: string; commentId: string }
   | PaneFocusAction;
 
@@ -268,6 +272,7 @@ export type Intent =
       preferredSide: "additions" | "deletions";
     }
   | { type: "scrollToComposer"; target: ComposerTarget }
+  | { type: "reanchorApply"; token: AnchorToken }
   | { type: "requestReply"; tourId: string; commentId: string }
   | { type: "deleteComment"; tourId: string; targetId: string };
 
@@ -291,6 +296,7 @@ export function initialTourSessionState(): TourSessionState {
     collapsedFolders: new Set<string>(),
     collapsedOverrides: {},
     collapsedThreads: new Set<string>(),
+    sidebarWidth: 0,
     paneFocus: "sidebar",
   };
 }
@@ -986,7 +992,19 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "layout.set":
       if (state.layout === action.layout) return { state, intents: NO_INTENTS };
-      return { state: { ...state, layout: action.layout }, intents: NO_INTENTS };
+      return {
+        state: { ...state, layout: action.layout },
+        intents: reflowIntents(state, action.reanchor),
+      };
+
+    case "sidebar.resize":
+    case "sidebar.autoFit": {
+      if (state.sidebarWidth === action.width) return { state, intents: NO_INTENTS };
+      return {
+        state: { ...state, sidebarWidth: action.width },
+        intents: reflowIntents(state, action.reanchor),
+      };
+    }
 
     case "paneFocus.setSidebar":
     case "paneFocus.setDiff":
@@ -1123,6 +1141,22 @@ function structuralCursorIntents(
 // expansion cluster via `withExpansion` (issue #309).
 function revalidateIfCursor(state: TourSessionState): Intent[] {
   return state.cursor === null ? NO_INTENTS : [{ type: "revalidateCursor" }];
+}
+
+function reflowIntents(
+  state: TourSessionState,
+  reanchor: AnchorToken | null | undefined,
+): Intent[] {
+  if (reanchor) return [{ type: "reanchorApply", token: reanchor }];
+  if (state.cursor === null) return NO_INTENTS;
+  return [
+    {
+      type: "scrollCursorTarget",
+      target: scrollTargetOf(state.cursor),
+      placement: "nearest",
+      behavior: "smooth",
+    },
+  ];
 }
 
 // Issue #407. The bulk `Shift+C` toggle reshapes the document by potentially
