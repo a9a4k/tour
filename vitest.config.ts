@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     testTimeout: 15000,
+    // Several integration files spawn Bun subprocesses; unbounded worker
+    // fan-out can exhaust memory in constrained CI/sandbox environments.
+    maxWorkers: 2,
   },
   // The TUI source uses opentui's JSX intrinsics (`<box>`, `<text>`, ...) and
   // is loaded into vitest via esbuild. Default classic JSX expects `React` in
