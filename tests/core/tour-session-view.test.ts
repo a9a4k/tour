@@ -286,10 +286,21 @@ describe("deriveTourSessionView — nav slice", () => {
     expect(view.nav.repliesByRoot.has("missing-id")).toBe(false);
   });
 
-  it("currentIdx is 1-based when the cursor is on a card, 0 otherwise", () => {
+  it("currentIdx is the 1-based parent Thread index for card cursors, 0 otherwise", () => {
     const t1 = ann({ id: "t1" });
     const t2 = ann({ id: "t2", created_at: "2026-05-12T00:00:01Z" });
-    const bundle = okBundle({ comments: [t1, t2] });
+    const reply = ann({
+      id: "r1",
+      replies_to: "t2",
+      created_at: "2026-05-12T00:00:02Z",
+    });
+    const deletedReply = ann({
+      id: "r2",
+      replies_to: "t2",
+      created_at: "2026-05-12T00:00:03Z",
+      deleted: { at: "2026-05-12T00:00:04Z" },
+    });
+    const bundle = okBundle({ comments: [t1, t2, reply, deletedReply] });
 
     const onT2 = expectOk(
       deriveTourSessionView(bundle, {
@@ -299,10 +310,48 @@ describe("deriveTourSessionView — nav slice", () => {
     );
     expect(onT2.nav.currentIdx).toBe(2);
 
+    const onReply = expectOk(
+      deriveTourSessionView(bundle, {
+        ...initialTourSessionState(),
+        cursor: cardCursor("r1"),
+      }),
+    );
+    expect(onReply.nav.currentIdx).toBe(2);
+
+    const onDeletedReplyStub = expectOk(
+      deriveTourSessionView(bundle, {
+        ...initialTourSessionState(),
+        cursor: cardCursor("r2"),
+      }),
+    );
+    expect(onDeletedReplyStub.nav.currentIdx).toBe(2);
+
+    const rowCursor = expectOk(
+      deriveTourSessionView(bundle, {
+        ...initialTourSessionState(),
+        cursor: {
+          kind: "row",
+          file: "a.ts",
+          lineNumber: 1,
+          side: "additions",
+          preferredSide: "additions",
+        },
+      }),
+    );
+    expect(rowCursor.nav.currentIdx).toBe(0);
+
     const nullCursor = expectOk(
       deriveTourSessionView(bundle, initialTourSessionState()),
     );
     expect(nullCursor.nav.currentIdx).toBe(0);
+
+    const missingCard = expectOk(
+      deriveTourSessionView(bundle, {
+        ...initialTourSessionState(),
+        cursor: cardCursor("missing-id"),
+      }),
+    );
+    expect(missingCard.nav.currentIdx).toBe(0);
   });
 
   it("sendTarget mirrors the latest-human-leaf rule", () => {

@@ -4,7 +4,11 @@ import type { BundleFile, TourBundle } from "./tour-bundle.js";
 import type { FileClassification } from "./file-classifier.js";
 import type { FileContentPair } from "./file-content-provider.js";
 import type { Cursor } from "./cursor-state.js";
-import { resolveCursorRowIdx, validateCursor } from "./cursor-state.js";
+import {
+  resolveCursorRowIdx,
+  threadRootIdOf,
+  validateCursor,
+} from "./cursor-state.js";
 import {
   buildTree,
   compress,
@@ -64,9 +68,8 @@ export interface NavBase {
 }
 
 export interface NavSlice extends NavBase {
-  /** 1-based index of the cursor's top-level Comment when the cursor is
-   *  on a card; 0 otherwise (null cursor, row cursor, card to deleted
-   *  comment). */
+  /** 1-based index of the cursor's parent Thread when the cursor is on
+   *  a card node; 0 otherwise (null cursor, row cursor, stale card). */
   currentIdx: number;
   /** Latest-human-leaf rule — null when the cursor isn't on a card, or
    *  the latest turn in the focused Thread is agent-authored. */
@@ -173,8 +176,8 @@ function deriveNavSlice(
 ): NavSlice {
   let currentIdx = 0;
   if (cursor && cursor.kind === "card") {
-    const idx = base.topLevel.findIndex((a) => a.id === cursor.commentId);
-    if (idx !== -1) currentIdx = idx + 1;
+    const rootId = threadRootIdOf(cursor.commentId, base.threads);
+    currentIdx = base.navIndexById.get(rootId) ?? 0;
   }
   const target = sendTarget(cursor, base.threads);
   return {
