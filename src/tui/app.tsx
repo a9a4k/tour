@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCliRenderer } from "@opentui/core";
-import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
+import {
+  createRoot,
+  useKeyboard,
+  useRenderer,
+  useSelectionHandler,
+} from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { Tour, Comment } from "../core/types.js";
 import type { FileDiffMetadata } from "../core/diff-model.js";
@@ -120,6 +125,7 @@ import { resizeReanchorTargetId } from "./resize-reanchor-target.js";
 import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 import type { EnterHintCursor } from "../core/footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
+import { copyFinishedTextSelection } from "./text-selection-copy.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
 import { spawnTerminalEditor } from "./terminal-editor-spawn.js";
@@ -406,11 +412,11 @@ function App(props: AppProps) {
   // typically <20ms. 50ms threshold keeps the user-story-6 round-trip
   // gesture (Esc → scan → Esc back) safe while killing the phantom.
   const lastEscAtRef = useRef<number>(0);
-  // Issue #326: tracks the pending `Copied <path>` footer-flash timer so
-  // a fresh `y` press cancels the prior pending clear and the unmount
-  // effect can stop it. Restoration is via a functional setter at the
-  // case site so a newer status (set after our flash) survives.
-  const yankFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Issue #326 / #431: tracks the pending clipboard footer-flash timer so
+  // a fresh `y` press or finished Text selection cancels the prior pending
+  // clear and the unmount effect can stop it. Restoration is via a
+  // functional setter so a newer status (set after our flash) survives.
+  const clipboardFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // PRD #349 / ADR 0032 / issue #352: success-flash timer for the
   // "Opened <file>:<line>" footer status. Mirrors the yank timer (1200ms
   // auto-clear) — fresh `o` press cancels prior pending clear; unmount
@@ -426,13 +432,26 @@ function App(props: AppProps) {
   );
   useEffect(
     () => (): void => {
-      if (yankFooterTimerRef.current !== null) {
-        clearTimeout(yankFooterTimerRef.current);
+      if (clipboardFooterTimerRef.current !== null) {
+        clearTimeout(clipboardFooterTimerRef.current);
       }
     },
     [],
   );
   const renderer = useRenderer();
+  const flashClipboardFooterStatus = (message: string): void => {
+    setFooterStatus(message);
+    if (clipboardFooterTimerRef.current !== null) {
+      clearTimeout(clipboardFooterTimerRef.current);
+    }
+    clipboardFooterTimerRef.current = setTimeout(() => {
+      clipboardFooterTimerRef.current = null;
+      setFooterStatus((cur) => (cur === message ? null : cur));
+    }, 1200);
+  };
+  useSelectionHandler((selection) => {
+    copyFinishedTextSelection(selection, renderer, flashClipboardFooterStatus);
+  });
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const pickerScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -1716,18 +1735,8 @@ function App(props: AppProps) {
           comments,
           bundleFiles,
         });
-        const flash = (message: string): void => {
-          setFooterStatus(message);
-          if (yankFooterTimerRef.current !== null) {
-            clearTimeout(yankFooterTimerRef.current);
-          }
-          yankFooterTimerRef.current = setTimeout(() => {
-            yankFooterTimerRef.current = null;
-            setFooterStatus((cur) => (cur === message ? null : cur));
-          }, 1200);
-        };
         if (target.kind === "none") {
-          flash(
+          flashClipboardFooterStatus(
             target.reason === "no-selection"
               ? "y: no selection"
               : "y: no cursor",
@@ -1736,11 +1745,11 @@ function App(props: AppProps) {
         }
         if (target.kind === "path") {
           yankToClipboard(target.path, renderer);
-          flash(`Copied ${target.path}`);
+          flashClipboardFooterStatus(`Copied ${target.path}`);
           return;
         }
         yankToClipboard(target.text, renderer);
-        flash(`Copied "${truncateForPreview(target.text)}"`);
+        flashClipboardFooterStatus(`Copied "${truncateForPreview(target.text)}"`);
         return;
       }
       case "open-in-editor": {
