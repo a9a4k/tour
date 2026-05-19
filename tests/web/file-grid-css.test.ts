@@ -909,6 +909,14 @@ describe("FILE_GRID_CSS — gutter + symbol + code typography unified (#241)", (
     expect(body).toMatch(/padding:\s*0\s+\d+px/);
     expect(body).toMatch(/user-select:\s*none/);
   });
+
+  it("opts diff code cells and hunk text into native text selection while keeping chrome out", () => {
+    expect(ruleBody(".tour-row-cell")).toMatch(/user-select:\s*text/);
+    expect(ruleBody(".tour-hunk-header-text")).toMatch(/user-select:\s*text/);
+    expect(ruleBody(".tour-row-gutter")).toMatch(/user-select:\s*none/);
+    expect(ruleBody(".tour-row-symbol")).toMatch(/user-select:\s*none/);
+    expect(ruleBody(".tour-hunk-header-button")).toMatch(/user-select:\s*none/);
+  });
 });
 
 describe("FILE_GRID_CSS — code cell typography (#240, was #239)", () => {

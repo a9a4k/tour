@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useRef } from "react";
 import type { BoundaryRef, InteractiveSubKind } from "../../core/diff-rows.js";
 import type { ReplyLock } from "../../core/reply-lock.js";
 import { CommentCard } from "./App.js";
@@ -89,6 +89,77 @@ const ROW_STYLE: React.CSSProperties = {
 const BANNER_STYLE: React.CSSProperties = {
   gridColumn: "1 / -1",
 };
+
+const TEXT_SELECTION_DRAG_THRESHOLD_PX = 3;
+
+function useSelectableTextClick(
+  onClick?: (e: React.MouseEvent) => void,
+): {
+  onMouseDown: (e: React.MouseEvent) => void;
+  onMouseMove: (e: React.MouseEvent) => void;
+  onClick: (e: React.MouseEvent) => void;
+} {
+  const gesture = useRef<{ x: number; y: number; dragged: boolean } | null>(
+    null,
+  );
+  const cleanupDocumentListeners = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => cleanupDocumentListeners.current?.();
+  }, []);
+
+  const markMoved = (clientX: number, clientY: number) => {
+    const start = gesture.current;
+    if (!start) return;
+    const dx = Math.abs(clientX - start.x);
+    const dy = Math.abs(clientY - start.y);
+    if (
+      dx > TEXT_SELECTION_DRAG_THRESHOLD_PX ||
+      dy > TEXT_SELECTION_DRAG_THRESHOLD_PX
+    ) {
+      start.dragged = true;
+    }
+  };
+
+  return {
+    onMouseDown: (e) => {
+      cleanupDocumentListeners.current?.();
+      cleanupDocumentListeners.current = null;
+      if (e.button !== 0) {
+        gesture.current = null;
+        return;
+      }
+      gesture.current = { x: e.clientX, y: e.clientY, dragged: false };
+      const onDocumentMouseMove = (event: MouseEvent) => {
+        markMoved(event.clientX, event.clientY);
+      };
+      const onDocumentMouseUp = () => {
+        cleanupDocumentListeners.current?.();
+        cleanupDocumentListeners.current = null;
+      };
+      window.addEventListener("mousemove", onDocumentMouseMove);
+      window.addEventListener("mouseup", onDocumentMouseUp, { once: true });
+      cleanupDocumentListeners.current = () => {
+        window.removeEventListener("mousemove", onDocumentMouseMove);
+        window.removeEventListener("mouseup", onDocumentMouseUp);
+      };
+    },
+    onMouseMove: (e) => {
+      markMoved(e.clientX, e.clientY);
+    },
+    onClick: (e) => {
+      cleanupDocumentListeners.current?.();
+      cleanupDocumentListeners.current = null;
+      const dragged = gesture.current?.dragged ?? false;
+      gesture.current = null;
+      if (dragged) {
+        e.stopPropagation();
+        return;
+      }
+      onClick?.(e);
+    },
+  };
+}
 
 function impliedSideFromKind(kind: DiffRowKind): Side | null {
   if (kind === "addition" || kind === "change-addition") return "additions";
@@ -219,6 +290,7 @@ function DiffRowImpl(props: DiffRowProps): React.JSX.Element {
 
   const handleColumnClick = (side: Side) => (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (e.detail > 1) return;
     onClick?.(side);
   };
 
@@ -458,6 +530,7 @@ function CodeCell({
   const classes = ["tour-row-cell"];
   if (isCursor) classes.push("is-cursor");
   if (isInRange) classes.push("in-range");
+  const clickHandlers = useSelectableTextClick(onClick);
   // `aria-hidden` so the row-level aria-label is the sole utterance per
   // ADR 0034's A11y section. The code cell carries no `tabIndex`, so
   // hiding it from the a11y tree doesn't remove any keyboard-reachable
@@ -467,7 +540,9 @@ function CodeCell({
       className={classes.join(" ")}
       data-side={side}
       aria-hidden="true"
-      onClick={onClick}
+      onMouseDown={clickHandlers.onMouseDown}
+      onMouseMove={clickHandlers.onMouseMove}
+      onClick={clickHandlers.onClick}
     >
       {html !== undefined ? (
         <span
@@ -515,6 +590,7 @@ function Column({
   const cellClasses = ["tour-row-cell"];
   if (isCursor) cellClasses.push("is-cursor");
   if (isInRange) cellClasses.push("in-range");
+  const clickHandlers = useSelectableTextClick(onClick);
   // Issue #320: `tabIndex={-1}` keeps the button out of Tab order (the
   // keyboard `a` shortcut is the canonical keyboard path); `stopPropagation`
   // stops the cell's row-click handler from seeding the cursor before the
@@ -549,7 +625,13 @@ function Column({
       <span className={symbolClasses.join(" ")} data-side={side} aria-hidden="true">
         {symbol}
       </span>
-      <span className={cellClasses.join(" ")} data-side={side} onClick={onClick}>
+      <span
+        className={cellClasses.join(" ")}
+        data-side={side}
+        onMouseDown={clickHandlers.onMouseDown}
+        onMouseMove={clickHandlers.onMouseMove}
+        onClick={clickHandlers.onClick}
+      >
         {html !== undefined ? (
           <span
             className="tour-row-code"

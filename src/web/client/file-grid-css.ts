@@ -375,6 +375,7 @@ export const FILE_GRID_CSS = `
 
   .tour-row-cell {
     min-width: 0;
+    user-select: text;
   }
 
   /* Two-tone line-type backgrounds (issue 247): the gutter + symbol
@@ -538,6 +539,7 @@ export const FILE_GRID_CSS = `
     flex: 1 1 auto;
     padding: 6px 16px;
     min-width: 0;
+    user-select: text;
   }
 
   .tour-hunk-header-range {

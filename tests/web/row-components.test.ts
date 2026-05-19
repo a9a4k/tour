@@ -1195,6 +1195,75 @@ describe("<DiffRow>", () => {
     expect(calls).toEqual(["deletions", "additions"]);
   });
 
+  it("keeps single-click cursor movement immediate but ignores the second click of a native text-selection double-click", () => {
+    const calls: Array<"additions" | "deletions"> = [];
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "selectable code",
+        rightText: "selectable code",
+        isCursor: false,
+        onClick: (side: "additions" | "deletions") => calls.push(side),
+      }),
+    );
+    const code = c.querySelector(
+      '.tour-row [data-side="additions"] .tour-row-code',
+    ) as HTMLElement;
+
+    act(() => {
+      code.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      code.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 }));
+    });
+
+    expect(calls).toEqual(["additions"]);
+  });
+
+  it("does not activate a diff row click after dragging over selectable code text", () => {
+    const calls: Array<"additions" | "deletions"> = [];
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "selectable code",
+        rightText: "selectable code",
+        isCursor: false,
+        onClick: (side: "additions" | "deletions") => calls.push(side),
+      }),
+    );
+    const code = c.querySelector(
+      '.tour-row [data-side="additions"] .tour-row-code',
+    ) as HTMLElement;
+
+    act(() => {
+      code.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+        }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("mousemove", {
+          bubbles: true,
+          clientX: 24,
+          clientY: 10,
+        }),
+      );
+      code.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, button: 0 }),
+      );
+      code.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    });
+
+    expect(calls).toEqual([]);
+  });
+
   it("clicking the gutter cell in split layout seeds the cursor on the gutter's side", () => {
     const calls: Array<"additions" | "deletions"> = [];
     const c = mount(
