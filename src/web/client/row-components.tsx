@@ -96,7 +96,6 @@ function useSelectableTextClick(
   onClick?: (e: React.MouseEvent) => void,
 ): {
   onMouseDown: (e: React.MouseEvent) => void;
-  onMouseMove: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
 } {
   const gesture = useRef<{ x: number; y: number; dragged: boolean } | null>(
@@ -104,11 +103,14 @@ function useSelectableTextClick(
   );
   const cleanupDocumentListeners = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    return () => cleanupDocumentListeners.current?.();
-  }, []);
+  const stopTrackingGesture = () => {
+    cleanupDocumentListeners.current?.();
+    cleanupDocumentListeners.current = null;
+  };
 
-  const markMoved = (clientX: number, clientY: number) => {
+  useEffect(() => stopTrackingGesture, []);
+
+  const markDraggedIfPastThreshold = (clientX: number, clientY: number) => {
     const start = gesture.current;
     if (!start) return;
     const dx = Math.abs(clientX - start.x);
@@ -123,20 +125,16 @@ function useSelectableTextClick(
 
   return {
     onMouseDown: (e) => {
-      cleanupDocumentListeners.current?.();
-      cleanupDocumentListeners.current = null;
+      stopTrackingGesture();
       if (e.button !== 0) {
         gesture.current = null;
         return;
       }
       gesture.current = { x: e.clientX, y: e.clientY, dragged: false };
       const onDocumentMouseMove = (event: MouseEvent) => {
-        markMoved(event.clientX, event.clientY);
+        markDraggedIfPastThreshold(event.clientX, event.clientY);
       };
-      const onDocumentMouseUp = () => {
-        cleanupDocumentListeners.current?.();
-        cleanupDocumentListeners.current = null;
-      };
+      const onDocumentMouseUp = () => stopTrackingGesture();
       window.addEventListener("mousemove", onDocumentMouseMove);
       window.addEventListener("mouseup", onDocumentMouseUp, { once: true });
       cleanupDocumentListeners.current = () => {
@@ -144,12 +142,8 @@ function useSelectableTextClick(
         window.removeEventListener("mouseup", onDocumentMouseUp);
       };
     },
-    onMouseMove: (e) => {
-      markMoved(e.clientX, e.clientY);
-    },
     onClick: (e) => {
-      cleanupDocumentListeners.current?.();
-      cleanupDocumentListeners.current = null;
+      stopTrackingGesture();
       const dragged = gesture.current?.dragged ?? false;
       gesture.current = null;
       if (dragged) {
@@ -541,7 +535,6 @@ function CodeCell({
       data-side={side}
       aria-hidden="true"
       onMouseDown={clickHandlers.onMouseDown}
-      onMouseMove={clickHandlers.onMouseMove}
       onClick={clickHandlers.onClick}
     >
       {html !== undefined ? (
@@ -629,7 +622,6 @@ function Column({
         className={cellClasses.join(" ")}
         data-side={side}
         onMouseDown={clickHandlers.onMouseDown}
-        onMouseMove={clickHandlers.onMouseMove}
         onClick={clickHandlers.onClick}
       >
         {html !== undefined ? (
