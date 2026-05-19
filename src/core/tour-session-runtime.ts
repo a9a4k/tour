@@ -72,8 +72,7 @@ export interface TourSessionAdapter {
  * realises intents and tour events as reducer dispatches.
  *
  * Slice 2 (PRD #278) wired the watcher path. Slice 3 wires the `loadTour`
- * intent — emitted by `picker.commit` and by `bundle.loading` (the action
- * popstate / auto-pick / initial mount dispatch).
+ * intent; URL-driven opens now enter through `tour.openedFromUrl`.
  */
 export class TourSessionRuntime {
   private intentUnsub: (() => void) | null = null;
@@ -250,8 +249,14 @@ export class TourSessionRuntime {
       this.store.dispatch({ type: "bundle.failed", tourId, error });
       return;
     }
-    if (this.store.getState().currentTourId !== tourId) return;
-    this.store.dispatch({ type: "tour.switched", tourId, bundle });
+    const state = this.store.getState();
+    if (state.currentTourId !== tourId) return;
+    this.store.dispatch({
+      type: "tour.switched",
+      tourId,
+      bundle,
+      ...(state.pendingAnnId !== null ? { annId: state.pendingAnnId } : {}),
+    });
 
     let lock: ReplyLock | null;
     try {

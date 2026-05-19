@@ -130,6 +130,7 @@ describe("initialTourSessionState", () => {
       collapsedThreads: new Set(),
       sidebarWidth: 0,
       paneFocus: "sidebar",
+      pendingAnnId: null,
     });
   });
 });
@@ -215,6 +216,64 @@ describe("reduce — bundle slice", () => {
     expect(r.state.currentTourId).toBe("x");
     expect(r.state.bundle).toEqual({ kind: "loading" });
     expect(r.intents).toEqual([{ type: "loadTour", tourId: "x" }]);
+  });
+
+  it("tour.openedFromUrl for a different tour stashes annId, loads that tour, and emits loadTour", () => {
+    const r = reduce(
+      { ...initialTourSessionState(), currentTourId: "old-tour" },
+      { type: "tour.openedFromUrl", tourId: "new-tour", annId: "ann-2" },
+    );
+
+    expect(r.state.currentTourId).toBe("new-tour");
+    expect(r.state.pendingAnnId).toBe("ann-2");
+    expect(r.state.bundle).toEqual({ kind: "loading" });
+    expect(r.intents).toEqual([{ type: "loadTour", tourId: "new-tour" }]);
+  });
+
+  it("tour.openedFromUrl for the same tour with annId moves the cursor without loading", () => {
+    const ann = mkComment({ id: "ann-2", file: "bar.ts" });
+    const bundle = { ...okBundle("tour-a", [bundleFile("bar.ts")]), comments: [ann] };
+    const before: TourSessionState = {
+      ...initialTourSessionState(),
+      currentTourId: "tour-a",
+      bundle: { kind: "ok", value: bundle },
+    };
+
+    const r = reduce(before, {
+      type: "tour.openedFromUrl",
+      tourId: "tour-a",
+      annId: "ann-2",
+    });
+
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "ann-2",
+      preferredSide: "additions",
+    });
+    expect(r.state.bundle).toBe(before.bundle);
+    expect(r.intents).toEqual([
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-2" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "selectSidebarFile", file: "bar.ts" },
+      { type: "mirrorAnnUrl", commentId: "ann-2" },
+    ]);
+  });
+
+  it("tour.openedFromUrl for the same tour without annId is a no-op", () => {
+    const before = { ...initialTourSessionState(), currentTourId: "tour-a" };
+
+    const r = reduce(before, {
+      type: "tour.openedFromUrl",
+      tourId: "tour-a",
+      annId: undefined,
+    });
+
+    expect(r.state).toBe(before);
+    expect(r.intents).toEqual([]);
   });
 
   it("bundle.refreshed replaces the bundle slice in place and leaves picker / replyLock / currentTourId / layout untouched", () => {
@@ -348,6 +407,20 @@ describe("reduce — bundle slice", () => {
     expect(r.state.cursor).toBeNull();
     expect(r.state.paneFocus).toBe("sidebar");
     expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+  });
+
+  it("tour.switched clears pendingAnnId after seeding", () => {
+    const b = mkBundle("a");
+    const before = { ...initialTourSessionState(), pendingAnnId: "ann-1" };
+
+    const r = reduce(before, {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: b,
+      annId: "ann-1",
+    });
+
+    expect(r.state.pendingAnnId).toBeNull();
   });
 
   it("tour.switched with matching annId seeds that top-level Comment", () => {

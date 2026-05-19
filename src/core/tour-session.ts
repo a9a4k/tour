@@ -152,6 +152,7 @@ export interface TourSessionState {
   // overrides via `paneFocus.setDiff` in the bundle-load seed-effect when
   // the Tour has top-level Comments.
   paneFocus: PaneFocus;
+  pendingAnnId: string | null;
 }
 
 export type Action =
@@ -160,6 +161,7 @@ export type Action =
   | { type: "picker.move"; delta: number }
   | { type: "picker.commit" }
   | { type: "bundle.loading"; tourId: string }
+  | { type: "tour.openedFromUrl"; tourId: string; annId?: string }
   | { type: "bundle.refreshed"; bundle: TourBundle }
   | {
       type: "bundle.commentInsertedWithLanding";
@@ -299,6 +301,7 @@ export function initialTourSessionState(): TourSessionState {
     collapsedThreads: new Set<string>(),
     sidebarWidth: 0,
     paneFocus: "sidebar",
+    pendingAnnId: null,
   };
 }
 
@@ -353,6 +356,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           picker: { kind: "closed" },
           bundle: { kind: "loading" },
           currentTourId: tourId,
+          pendingAnnId: null,
         },
         intents: [
           { type: "loadTour", tourId },
@@ -362,14 +366,44 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     }
 
     case "bundle.loading":
-      // Emits `loadTour` so the surface entry points (popstate / auto-pick /
-      // initial mount) can route through the Tour-session runtime instead of
-      // calling their own fetcher. `picker.commit` separately emits its own
-      // `loadTour` (alongside `mirrorUrl`) — it does NOT dispatch
-      // `bundle.loading` so there's no double-emit. PRD #278 slice 3.
+      // Legacy direct load path. URL-driven opens use `tour.openedFromUrl`
+      // so an optional annId can survive the async fetch boundary.
       return {
         state: {
           ...state,
+          bundle: { kind: "loading" },
+          currentTourId: action.tourId,
+          pendingAnnId: null,
+        },
+        intents: [{ type: "loadTour", tourId: action.tourId }],
+      };
+
+    case "tour.openedFromUrl":
+      if (action.tourId === state.currentTourId) {
+        if (action.annId === undefined) return { state, intents: NO_INTENTS };
+        const bundle = state.bundle.kind === "ok" ? state.bundle.value : null;
+        if (bundle === null) return { state, intents: NO_INTENTS };
+        const next = validateCursorStructural(
+          {
+            kind: "card",
+            commentId: action.annId,
+            preferredSide: preferredSideOf(state.cursor),
+          },
+          bundle,
+        );
+        if (next === null) {
+          if (state.cursor === null) return { state, intents: NO_INTENTS };
+          return {
+            state: { ...state, cursor: null },
+            intents: structuralCursorIntents(state.cursor, null, bundle, bundle),
+          };
+        }
+        return setCursor(state, next, "center", "instant");
+      }
+      return {
+        state: {
+          ...state,
+          pendingAnnId: action.annId ?? null,
           bundle: { kind: "loading" },
           currentTourId: action.tourId,
         },
@@ -461,6 +495,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           collapsedOverrides: {},
           collapsedThreads: new Set<string>(),
           paneFocus: seed.paneFocus,
+          pendingAnnId: null,
         },
         intents: seed.intents,
       };

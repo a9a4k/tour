@@ -3,6 +3,7 @@ import {
   TourSessionStore,
   initialTourSessionState,
   isBundleResolved,
+  type Action,
   type ComposerTarget,
   type TourSessionState,
 } from "../../src/core/tour-session.js";
@@ -51,6 +52,22 @@ function okBundle(id: string, comments: Comment[] = []): TourBundle {
     comments,
     diff: "",
     files: [],
+  };
+}
+
+function comment(id: string, overrides: Partial<Comment> = {}): Comment {
+  return {
+    id,
+    file: overrides.file ?? "a.ts",
+    side: overrides.side ?? "additions",
+    line_start: overrides.line_start ?? 1,
+    line_end: overrides.line_end ?? 1,
+    body: overrides.body ?? "body",
+    author: overrides.author ?? "human",
+    author_kind: overrides.author_kind ?? "human",
+    created_at: overrides.created_at ?? "2026-05-14T00:00:00Z",
+    ...(overrides.replies_to !== undefined ? { replies_to: overrides.replies_to } : {}),
+    ...(overrides.deleted !== undefined ? { deleted: overrides.deleted } : {}),
   };
 }
 
@@ -522,6 +539,93 @@ describe("TourSessionRuntime", () => {
       expect(store.getState().bundle).toEqual({ kind: "ok", value: fresh });
       expect(store.getState().currentTourId).toBe("tour-a");
       expect(store.getState().replyLock).toEqual({ kind: "ok", value: lock });
+      stop();
+    });
+
+    it("passes pendingAnnId through to tour.switched when the bundle resolves", async () => {
+      const store = storeWithTour(null);
+      const annA = comment("ann-a", { file: "a.ts" });
+      const annB = comment("ann-b", { file: "b.ts" });
+      const fresh = okBundle("tour-a", [annA, annB]);
+      const adapter = createFakeAdapter({ bundleByTour: { "tour-a": fresh } });
+      const dispatched: Action[] = [];
+      const originalDispatch = store.dispatch;
+      (store as unknown as { dispatch: (action: Action) => void }).dispatch = (action) => {
+        dispatched.push(action);
+        originalDispatch(action);
+      };
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: "ann-b",
+      });
+      await flush();
+
+      expect(dispatched).toContainEqual({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: fresh,
+        annId: "ann-b",
+      });
+      stop();
+    });
+
+    it("omits annId from tour.switched when pendingAnnId is null", async () => {
+      const store = storeWithTour(null);
+      const fresh = okBundle("tour-a");
+      const adapter = createFakeAdapter({ bundleByTour: { "tour-a": fresh } });
+      const dispatched: Action[] = [];
+      const originalDispatch = store.dispatch;
+      (store as unknown as { dispatch: (action: Action) => void }).dispatch = (action) => {
+        dispatched.push(action);
+        originalDispatch(action);
+      };
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({ type: "tour.openedFromUrl", tourId: "tour-a" });
+      await flush();
+
+      const switched = dispatched.find((action) => action.type === "tour.switched");
+      expect(switched).toEqual({
+        type: "tour.switched",
+        tourId: "tour-a",
+        bundle: fresh,
+      });
+      stop();
+    });
+
+    it("round-trips tour.openedFromUrl through loadTour, seed, and adapter intents", async () => {
+      const store = storeWithTour(null);
+      const annA = comment("ann-a", { file: "a.ts" });
+      const annB = comment("ann-b", { file: "b.ts" });
+      const fresh = okBundle("tour-a", [annA, annB]);
+      const adapter = createFakeAdapter({ bundleByTour: { "tour-a": fresh } });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: "tour-a",
+        annId: "ann-b",
+      });
+      await flush();
+
+      expect(adapter.bundleCalls).toEqual(["tour-a"]);
+      expect(store.getState().cursor).toEqual({
+        kind: "card",
+        commentId: "ann-b",
+        preferredSide: "additions",
+      });
+      expect(store.getState().pendingAnnId).toBeNull();
+      expect(adapter.revealFileCalls).toEqual(["b.ts"]);
+      expect(adapter.scrollCardCalls).toEqual([
+        { id: "ann-b", mode: "center", behavior: "instant" },
+      ]);
+      expect(adapter.mirrorAnnCalls).toEqual(["ann-b"]);
       stop();
     });
 

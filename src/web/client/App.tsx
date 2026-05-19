@@ -63,7 +63,6 @@ import { tourDiffStats } from "../../core/diff-stats.js";
 import { headerSourcePair } from "../../core/header-source-pair.js";
 import { EXPANSION_STEP } from "./row-components.js";
 import { FILE_GRID_CSS } from "./file-grid-css.js";
-import { decideReanchor } from "./re-anchor-policy.js";
 import { readTourFromLocation, readAnnFromLocation } from "./url-routing.js";
 import { recallCardIntoView } from "./auto-recall.js";
 import { foldToggleAction } from "../../core/fold-toggle.js";
@@ -145,20 +144,19 @@ function readAnnFromUrl(): string | null {
 }
 
 export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
-  const initialAnnRef = useRef<string | null>(readAnnFromUrl());
   // Tour-session store (PRD #207 slice 1, issue #210; bundle hoisted into
-  // the store in issue #211). One store per SPA mount, seeded with the
-  // URL-resolved tour id so the initial render sees the right
-  // currentTourId. The store's `bundle` slice is the rendering source of
-  // truth: `tour.switched` lands on picker.commit / popstate / auto-pick
-  // resolves (applies the CONTEXT-pinned reset cascade);
+  // the store in issue #211). One store per SPA mount. URL-derived
+  // tour-open state enters through `tour.openedFromUrl` at mount/popstate
+  // so the reducer can thread `annId` through the async load. The store's
+  // `bundle` slice is the rendering source of truth: `tour.switched` lands
+  // on picker.commit / popstate / auto-pick resolves (applies the
+  // CONTEXT-pinned reset cascade);
   // `bundle.refreshed` lands on SSE comment-changed (same-tour
   // refresh; no resets).
   const storeRef = useRef<TourSessionStore | null>(null);
   if (storeRef.current === null) {
     storeRef.current = new TourSessionStore({
       ...initialTourSessionState(),
-      currentTourId: readTourFromUrl(initialTourId),
       sidebarWidth: SIDEBAR_DEFAULT_PX,
     });
   }
@@ -309,7 +307,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // itself when `currentTourId` changes, so this effect runs once at mount
   // and tears down at unmount.
   //
-  // Registered BEFORE the mount-time bundle.loading dispatch so the
+  // Registered BEFORE the mount-time tour.openedFromUrl dispatch so the
   // runtime's `onIntent` subscription is live when the initial loadTour
   // intent fires. React runs useEffects in declaration order; reversing
   // the order drops the first intent and the bundle never loads.
@@ -319,9 +317,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   }, [store, tourSessionAdapter]);
 
   // Mount-time: fetch tour list via store dispatches, auto-pick on bare URL,
-  // and kick off the initial bundle load if a tour-id was already seeded
-  // from the URL. `bundle.loading` emits `loadTour` (PRD #278 slice 3) so
-  // the runtime owns the fetch / dispatch chain.
+  // and kick off the initial bundle load from the URL/default id.
+  // `tour.openedFromUrl` emits `loadTour` and preserves the transient
+  // URL annId for the reducer-owned seed.
   useEffect(() => {
     store.dispatch({ type: "tourList.loading" });
     void (async () => {
@@ -335,7 +333,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         if (store.getState().currentTourId === null && tours.length > 0) {
           const auto = pickAutoTour(tours);
           const autoId = auto?.id ?? tours[tours.length - 1].id;
-          store.dispatch({ type: "bundle.loading", tourId: autoId });
+          store.dispatch({
+            type: "tour.openedFromUrl",
+            tourId: autoId,
+            annId: undefined,
+          });
         }
       } catch (err) {
         store.dispatch({
@@ -345,12 +347,16 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       }
     })();
 
-    // URL-seeded initial bundle load. picker.commit / popstate / auto-pick
-    // all dispatch bundle.loading themselves; this branch handles the
-    // single case where currentTourId was non-null at mount.
-    const initial = store.getState().currentTourId;
+    // URL-seeded initial bundle load. `tour.openedFromUrl` owns the
+    // transient annId so the loaded-bundle seed lands directly on the
+    // requested card.
+    const initial = readTourFromUrl(initialTourId);
     if (initial !== null) {
-      store.dispatch({ type: "bundle.loading", tourId: initial });
+      store.dispatch({
+        type: "tour.openedFromUrl",
+        tourId: initial,
+        annId: readAnnFromUrl() ?? undefined,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -358,33 +364,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   useEffect(() => {
     const onPop = () => {
       const fromUrl = readTourFromUrl(null);
-      const current = store.getState().currentTourId;
-      if (fromUrl !== null && fromUrl !== current) {
-        // Preserve the popped fragment across the reducer-owned tour-open
-        // seed, whose mirrorAnnUrl intent may rewrite the URL before the
-        // loaded-bundle restore effect runs.
-        initialAnnRef.current = readAnnFromUrl();
-        // popstate is the equivalent of a picker-commit (issue #210): the
-        // session action sets bundle = loading + currentTourId and emits a
-        // `loadTour` intent that the runtime realises through the adapter.
-        // No mirrorUrl — popstate is following the URL, not writing it.
-        store.dispatch({ type: "bundle.loading", tourId: fromUrl });
-      }
-      // Mirror `?ann=` / `#<ann-id>` back into the cursor on browser
-      // back / forward (PRD #192 / ADR 0022 slice 2). The mount-time
-      // restorer is the authoritative seed when the user changes Tour;
-      // popstate within the same Tour needs an explicit cursor write
-      // since cursorCardId won't change otherwise.
-      const annFromUrl = readAnnFromUrl();
-      if (annFromUrl !== null) {
-        const prev = store.getState().cursor;
+      if (fromUrl !== null) {
         store.dispatch({
-          type: "cursor.set",
-          anchor: {
-            kind: "card",
-            commentId: annFromUrl,
-            preferredSide: preferredSideOf(prev),
-          },
+          type: "tour.openedFromUrl",
+          tourId: fromUrl,
+          annId: readAnnFromUrl() ?? undefined,
         });
       }
     };
@@ -503,54 +487,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     },
     [cursor, view, revealFileAncestors, store],
   );
-
-  // Re-anchor cursor to a top-level Comment card on bundle load (PRD #192
-  // / ADR 0022; issue #197 Bug B). When the URL carries `?ann=<id>` (or its
-  // `#<ann-id>` fragment shape from Issue #179), resolve it to a top-level
-  // Comment; a stale id (deleted, hand-edited, or pointing at a Reply)
-  // falls back to the first top-level Comment. Gated on the loaded
-  // Tour matching the routing Tour id so the in-flight Tour-switch window
-  // doesn't anchor the new URL's `ann=` against the previous Tour's
-  // comments. The policy discriminator is `cursor === null` (not
-  // `cursorCardId === null`) — a RowAnchor cursor from a `j`/`k` press
-  // is a noop, so row motion survives the same render. The cursor.set
-  // dispatch fires the mirrorAnnUrl intent which keeps `?ann=` in sync;
-  // url-restore anchors only fire the URL write as a no-op since the URL
-  // already matches.
-  useEffect(() => {
-    if (!tourMeta || tourMeta.id !== tourId) return;
-    // Re-anchor reads top-level comments from `view.nav` — NavBase lives
-    // on both branches (issue #246), so snapshot-lost bundles still get
-    // initial-selection / sidebar-reveal effects when comments are present.
-    const topLevel = view.nav.topLevel;
-    if (topLevel.length === 0) {
-      setSelectedFile((curr) => (curr === null ? curr : null));
-      return;
-    }
-    const annFromUrl = initialAnnRef.current ?? readAnnFromUrl();
-    initialAnnRef.current = null;
-    const action = decideReanchor(
-      cursor,
-      annFromUrl,
-      topLevel,
-      view.nav.threads,
-    );
-    if (action.kind === "noop") return;
-    // Fresh landing (URL `?ann=` restore or stale-fallback to first
-    // comment): cursor.set carries `placement: "center"` so the
-    // scrollCursorTarget intent frames the card mid-viewport. Behavior
-    // defaults to `instant` (the reducer's `center → instant` mapping
-    // per issue #348) — there's no prior frame of reference to preserve.
-    // `j`/`k`/click sites omit placement and fall back to `nearest +
-    // smooth`; `n`/`p` sites pass `center + smooth` explicitly.
-    store.dispatch({
-      type: "cursor.set",
-      anchor: cursorFromComment(action.target, preferredSideOf(cursor)),
-      placement: "center",
-    });
-    setSelectedFile(action.target.file);
-    revealFileAncestors(action.target.file);
-  }, [tourMeta, tourId, view, cursor, revealFileAncestors, store]);
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
