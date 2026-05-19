@@ -21,12 +21,12 @@ let originalFetch: typeof fetch;
 
 type AdapterCallbacks = {
   findFileBlock: (name: string) => HTMLElement | null;
-  revealFileAncestors: (file: string) => void;
+  revealFileInSidebar: (file: string) => void;
 };
 
 const noopCallbacks: AdapterCallbacks = {
   findFileBlock: () => document.createElement("div"),
-  revealFileAncestors: () => {},
+  revealFileInSidebar: () => {},
 };
 
 function makeAdapter(
@@ -136,7 +136,7 @@ describe("createWebTourSessionAdapter.scrollToRow — (placement, behavior) forw
     const adapter = makeAdapter({
       callbacks: {
         findFileBlock: () => fileBlock,
-        revealFileAncestors: () => {},
+        revealFileInSidebar: () => {},
       },
     });
 
@@ -156,7 +156,7 @@ describe("createWebTourSessionAdapter.scrollToRow — (placement, behavior) forw
     const adapter = makeAdapter({
       callbacks: {
         findFileBlock: () => fileBlock,
-        revealFileAncestors: () => {},
+        revealFileInSidebar: () => {},
       },
     });
 
@@ -176,7 +176,7 @@ describe("createWebTourSessionAdapter.scrollToRow — (placement, behavior) forw
     const adapter = makeAdapter({
       callbacks: {
         findFileBlock: () => fileBlock,
-        revealFileAncestors: () => {},
+        revealFileInSidebar: () => {},
       },
     });
 
@@ -249,7 +249,7 @@ describe("createWebTourSessionAdapter.captureAnchor/applyAnchor", () => {
     const adapter = makeAdapter({
       callbacks: {
         findFileBlock: (name) => (name === "src/a.ts" ? fileBlock : null),
-        revealFileAncestors: () => {},
+        revealFileInSidebar: () => {},
       },
     });
 

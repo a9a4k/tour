@@ -304,7 +304,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // of the most recent commit," which is what we want — only the store
   // slice changed in this dispatch.
   const intentInputsRef = useRef<{
-    revealFileAncestors: (file: string) => void;
+    revealFileInSidebar: (file: string) => void;
     findFileBlock: (name: string) => HTMLElement | null;
   } | null>(null);
 
@@ -427,7 +427,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return m;
   }, [parsedFiles]);
 
-  const revealFileAncestors = useCallback(
+  const revealFileInSidebar = useCallback(
     (filePath: string) => {
       setSidebarSelectedPath(filePath);
       if (view.kind !== "ok") return;
@@ -482,7 +482,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         file: ann.file,
         value: false,
       });
-      revealFileAncestors(ann.file);
+      revealFileInSidebar(ann.file);
       store.dispatch({
         type: "cursor.set",
         anchor: target,
@@ -490,7 +490,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         behavior: "smooth",
       });
     },
-    [cursor, view, revealFileAncestors, store],
+    [cursor, view, revealFileInSidebar, store],
   );
 
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
@@ -719,7 +719,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // closure can't see post-dispatch state — but it can read the values
   // from the most recent commit via this ref.
   intentInputsRef.current = {
-    revealFileAncestors,
+    revealFileInSidebar,
     findFileBlock,
   };
 
@@ -1840,6 +1840,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const footerAllThreadsCollapsed =
     footerAnyThreads &&
     footerTopLevel.every((c) => sessionState.collapsedThreads.has(c.id));
+  const sidebarVisibilityLabel = sidebarVisible ? "Hide sidebar" : "Show sidebar";
 
   return (
     <>
@@ -1848,8 +1849,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           <button
             type="button"
             className="picker-button sidebar-visibility-button"
-            aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-            title={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+            aria-label={sidebarVisibilityLabel}
+            title={sidebarVisibilityLabel}
             onClick={() => store.dispatch({ type: "sidebarVisible.toggle" })}
           >
             {sidebarVisible ? (
