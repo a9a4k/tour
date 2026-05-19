@@ -40,7 +40,12 @@ describe("TUI_FOOTER_HINTS", () => {
     expect(TUI_FOOTER_HINTS).toContain("j/k: move");
     expect(TUI_FOOTER_HINTS).toContain("n/p: nav");
     expect(TUI_FOOTER_HINTS).toContain("r: reply");
+    expect(TUI_FOOTER_HINTS).toContain("B: hide sidebar");
     expect(TUI_FOOTER_HINTS).toContain("q: quit");
+  });
+
+  it("flips the B hint when the sidebar is hidden", () => {
+    expect(composeFooterHints({ sidebarVisible: false })).toContain("B: show sidebar");
   });
 
   // Issue #312: `[`/`]` resize the sidebar by ±2 cols within

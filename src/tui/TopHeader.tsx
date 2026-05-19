@@ -13,6 +13,8 @@ interface TopHeaderTuiProps {
   // / webapp parity #233). Zero totals render no indicator. Pure-addition
   // / pure-deletion tours render only the non-zero side.
   tourStats: DiffStats;
+  sidebarVisible: boolean;
+  onToggleSidebarVisibility: () => void;
   onOpenPicker: () => void;
   onPrevComment: () => void;
   onNextComment: () => void;
@@ -37,6 +39,8 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
     currentCommentIdx,
     topLevelTotal,
     tourStats,
+    sidebarVisible,
+    onToggleSidebarVisibility,
     onOpenPicker,
     onPrevComment,
     onNextComment,
@@ -46,6 +50,10 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
   return (
     <box width="100%" flexDirection="row" flexWrap="wrap" paddingX={1}>
       <box flexDirection="row" alignItems="center" flexShrink={1}>
+        <SidebarVisibilityButtonTui
+          visible={sidebarVisible}
+          onToggle={onToggleSidebarVisibility}
+        />
         <HamburgerButtonTui onOpen={onOpenPicker} />
         <box flexDirection="row" alignItems="center" paddingX={1} flexShrink={1}>
           <text
@@ -79,6 +87,23 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
         <box width={1} />
         <LayoutToggleTui layout={layout} onSplit={onSplit} onUnified={onUnified} />
       </box>
+    </box>
+  );
+}
+
+interface SidebarVisibilityButtonTuiProps {
+  visible: boolean;
+  onToggle: () => void;
+}
+
+function SidebarVisibilityButtonTui({ visible, onToggle }: SidebarVisibilityButtonTuiProps) {
+  return (
+    <box flexDirection="row">
+      <text fg={theme.fg.muted}>{"["}</text>
+      <text fg={theme.fg.default} onMouseDown={onToggle}>
+        {visible ? "⇤" : "⇥"}
+      </text>
+      <text fg={theme.fg.muted}>{"]"}</text>
     </box>
   );
 }

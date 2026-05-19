@@ -334,6 +334,7 @@ function App(props: AppProps) {
   const collapsedThreads = sessionState.collapsedThreads;
   const layout = sessionState.layout;
   const sidebarWidth = sessionState.sidebarWidth;
+  const sidebarVisible = sessionState.sidebarVisible;
   // PRD #343 / ADR 0031 / issue #344: paneFocus replaces the retired
   // `sidebarFocused: useState(true)`. The cross-surface slice in
   // `core/tour-session.ts` is the single source of truth; the surface
@@ -678,6 +679,7 @@ function App(props: AppProps) {
     // emits a shorter sidebar-relevant string; diff mode shows the full
     // legend with `Esc: sidebar` replacing the retired `Tab: pane`.
     paneFocus,
+    sidebarVisible,
     enterHintCursor,
     allThreadsCollapsed,
     anyThreads,
@@ -1354,6 +1356,7 @@ function App(props: AppProps) {
         composerOpen: composer.kind !== "closed",
         pickerOpen: sessionState.picker.kind === "open",
         deleteConfirmOpen: deleteConfirm.kind !== "closed",
+        sidebarVisible,
       },
     );
 
@@ -1384,6 +1387,12 @@ function App(props: AppProps) {
         // picker is open). Tab / Shift-Tab and their prior actions
         // (`toggle-pane`, `focus-sidebar`) are retired.
         store.dispatch({ type: "paneFocus.toggle" });
+        return;
+      case "show-sidebar-and-focus":
+        store.dispatch({ type: "sidebarVisible.showAndFocus" });
+        return;
+      case "toggle-sidebar-visibility":
+        store.dispatch({ type: "sidebarVisible.toggle" });
         return;
       case "close-modal":
         // Defense in depth: in production the App-shell's modal
@@ -1823,6 +1832,10 @@ function App(props: AppProps) {
         currentCommentIdx={("currentIdx" in nav ? nav.currentIdx : 0) - 1}
         topLevelTotal={topLevel.length}
         tourStats={tourStats}
+        sidebarVisible={sidebarVisible}
+        onToggleSidebarVisibility={() =>
+          store.dispatch({ type: "sidebarVisible.toggle" })
+        }
         onOpenPicker={() => void openPicker()}
         onPrevComment={gotoPrevComment}
         onNextComment={gotoNextComment}
@@ -1841,6 +1854,7 @@ function App(props: AppProps) {
       {/* Main layout */}
       <box flexGrow={1} width="100%" flexDirection="row">
         {/* Sidebar */}
+        {sidebarVisible && (
         <box
           width={sidebarWidth}
           borderStyle="single"
@@ -1980,6 +1994,7 @@ function App(props: AppProps) {
             })}
           </scrollbox>
         </box>
+        )}
 
         {/* Diff pane */}
         <box

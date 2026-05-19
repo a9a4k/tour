@@ -17,6 +17,7 @@ const sidebar: KeymapContext = {
   pickerOpen: false,
   deleteConfirmOpen: false,
   cursorOnDeletedStub: false,
+  sidebarVisible: true,
 };
 const sidebarFolder: KeymapContext = {
   sidebarFocused: true,
@@ -28,6 +29,7 @@ const sidebarFolder: KeymapContext = {
   pickerOpen: false,
   deleteConfirmOpen: false,
   cursorOnDeletedStub: false,
+  sidebarVisible: true,
 };
 const diffPane: KeymapContext = {
   sidebarFocused: false,
@@ -39,6 +41,7 @@ const diffPane: KeymapContext = {
   pickerOpen: false,
   deleteConfirmOpen: false,
   cursorOnDeletedStub: false,
+  sidebarVisible: true,
 };
 const diffPaneInteractive: KeymapContext = {
   sidebarFocused: false,
@@ -50,6 +53,7 @@ const diffPaneInteractive: KeymapContext = {
   pickerOpen: false,
   deleteConfirmOpen: false,
   cursorOnDeletedStub: false,
+  sidebarVisible: true,
 };
 const diffPaneOnCard: KeymapContext = {
   sidebarFocused: false,
@@ -61,6 +65,7 @@ const diffPaneOnCard: KeymapContext = {
   pickerOpen: false,
   deleteConfirmOpen: false,
   cursorOnDeletedStub: false,
+  sidebarVisible: true,
 };
 const sidebarOnCard: KeymapContext = {
   sidebarFocused: true,
@@ -72,6 +77,7 @@ const sidebarOnCard: KeymapContext = {
   pickerOpen: false,
   deleteConfirmOpen: false,
   cursorOnDeletedStub: false,
+  sidebarVisible: true,
 };
 
 describe("dispatchKey", () => {
@@ -113,10 +119,23 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("escape"), diffPaneOnCard).type).toBe("pane-focus-toggle");
   });
 
+  it("Esc with sidebar hidden shows and focuses the sidebar after modal-unwind", () => {
+    expect(
+      dispatchKey(k("escape"), { ...diffPane, sidebarVisible: false }).type,
+    ).toBe("show-sidebar-and-focus");
+  });
+
   it("Esc with composer open returns close-modal (modal-unwind precedence)", () => {
     expect(dispatchKey(k("escape"), { ...diffPane, composerOpen: true }).type).toBe(
       "close-modal",
     );
+    expect(
+      dispatchKey(k("escape"), {
+        ...diffPane,
+        composerOpen: true,
+        sidebarVisible: false,
+      }).type,
+    ).toBe("close-modal");
     expect(dispatchKey(k("escape"), { ...sidebar, composerOpen: true }).type).toBe(
       "close-modal",
     );
@@ -129,6 +148,13 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("escape"), { ...sidebar, pickerOpen: true }).type).toBe(
       "close-modal",
     );
+    expect(
+      dispatchKey(k("escape"), {
+        ...diffPane,
+        pickerOpen: true,
+        sidebarVisible: false,
+      }).type,
+    ).toBe("close-modal");
   });
 
   it("Esc with the delete-confirm modal open returns close-modal (ADR 0036 Slice D)", () => {
@@ -137,6 +163,13 @@ describe("dispatchKey", () => {
     ).toBe("close-modal");
     expect(
       dispatchKey(k("escape"), { ...sidebar, deleteConfirmOpen: true }).type,
+    ).toBe("close-modal");
+    expect(
+      dispatchKey(k("escape"), {
+        ...diffPane,
+        deleteConfirmOpen: true,
+        sidebarVisible: false,
+      }).type,
     ).toBe("close-modal");
   });
 
@@ -153,6 +186,16 @@ describe("dispatchKey", () => {
   it("Ctrl+Esc is not consumed as pane-focus-toggle (modifier guard)", () => {
     expect(dispatchKey(k("escape", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("escape", { ctrl: true }), diffPane).type).toBe("noop");
+  });
+
+  it("capital B toggles sidebar visibility while lowercase b remains half-page-up", () => {
+    expect(dispatchKey(k("b", { shift: true }), sidebar).type).toBe(
+      "toggle-sidebar-visibility",
+    );
+    expect(dispatchKey(k("b", { shift: true }), diffPane).type).toBe(
+      "toggle-sidebar-visibility",
+    );
+    expect(dispatchKey(k("b"), diffPane).type).toBe("half-page-diff-up");
   });
 
   it("Enter on a folder row in sidebar dispatches toggle-folder (PRD #343)", () => {
@@ -188,7 +231,8 @@ describe("dispatchKey", () => {
         composerOpen: false,
         pickerOpen: false,
         deleteConfirmOpen: false,
-  cursorOnDeletedStub: false,
+        cursorOnDeletedStub: false,
+        sidebarVisible: true,
       }).type,
     ).toBe("noop");
   });
@@ -246,7 +290,8 @@ describe("dispatchKey", () => {
         composerOpen: false,
         pickerOpen: false,
         deleteConfirmOpen: false,
-  cursorOnDeletedStub: false,
+        cursorOnDeletedStub: false,
+        sidebarVisible: true,
       }).type,
     ).toBe("noop");
   });
@@ -280,11 +325,6 @@ describe("dispatchKey", () => {
   it("Ctrl+b is not consumed as half-page-up (modifier guard)", () => {
     expect(dispatchKey(k("b", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("b", { ctrl: true }), diffPane).type).toBe("noop");
-  });
-
-  it("Shift+B (capital) is not consumed as half-page-up (modifier guard)", () => {
-    expect(dispatchKey(k("b", { shift: true }), sidebar).type).toBe("noop");
-    expect(dispatchKey(k("b", { shift: true }), diffPane).type).toBe("noop");
   });
 
   it("Ctrl+Space is not consumed as page-diff", () => {

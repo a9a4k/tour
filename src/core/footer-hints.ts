@@ -71,10 +71,19 @@ export interface ComposeFooterHintsOptions {
   // to collapse (the gesture is a labelled no-op). Default true so
   // call sites that haven't migrated keep emitting the hint.
   anyThreads?: boolean;
+  sidebarVisible?: boolean;
 }
 
 export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   const paneFocus: PaneFocus = opts.paneFocus ?? "diff";
+  const sidebarVisibilityHint =
+    opts.sidebarVisible === undefined && opts.surface !== "tui"
+      ? null
+      : opts.sidebarVisible === false
+        ? "B: show sidebar"
+        : "B: hide sidebar";
+  const sidebarVisibilityFragment =
+    sidebarVisibilityHint === null ? "" : `  ·  ${sidebarVisibilityHint}`;
   if (opts.surface === "tui" && paneFocus === "sidebar") {
     // Sidebar-mode legend (PRD #343 / ADR 0031 / issue #345). Shorter
     // than the diff-mode legend — only sidebar-navigable keys and the
@@ -84,7 +93,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // issue #352: `o: open` slots next to `y` since both are
     // "side-effect on cursor's file."
     return (
-      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit`
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout${sidebarVisibilityFragment}  ·  T: picker  ·  Esc: diff  ·  q: quit`
     );
   }
   if (opts.surface === "web" && paneFocus === "sidebar") {
@@ -97,7 +106,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // cursor's file"). Send-hint gated off here for the same reason as
     // the TUI sidebar branch.
     return (
-      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff`
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  y: yank  ·  o: open  ·  L: layout${sidebarVisibilityFragment}  ·  T: picker  ·  Esc: diff`
     );
   }
   // Issue #390: the agent name is intentionally NOT interpolated into the
@@ -160,6 +169,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       "o: open",
       "Space: page (Shift: up)",
       "L: layout",
+      ...(sidebarVisibilityHint ? [sidebarVisibilityHint] : []),
       "T: picker",
       "Esc: sidebar",
       "[/]: width",
@@ -187,6 +197,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     ...(enterFragment ? [enterFragment] : []),
     ...(collapseHint ? [collapseHint] : []),
     "L: layout",
+    ...(sidebarVisibilityHint ? [sidebarVisibilityHint] : []),
     "T: picker",
     "Esc: sidebar",
   ];

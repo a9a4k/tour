@@ -102,6 +102,24 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("Esc: sidebar");
   });
 
+  it("diff-mode legend shows the current sidebar visibility action while keeping `Esc: sidebar`", () => {
+    const visible = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      sidebarVisible: true,
+    });
+    expect(visible).toContain("B: hide sidebar");
+    expect(visible).toContain("Esc: sidebar");
+
+    const hidden = composeFooterHints({
+      surface: "tui",
+      paneFocus: "diff",
+      sidebarVisible: false,
+    });
+    expect(hidden).toContain("B: show sidebar");
+    expect(hidden).toContain("Esc: sidebar");
+  });
+
   it("diff-mode legend retains today's other persistent hints", () => {
     // Issue #406 / ADR 0038 amended: `Enter:` is now contextual on the
     // cursor; pass `enterHintCursor: "interactive"` to retain
@@ -127,6 +145,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).toContain("o: open");
     expect(out).toContain("Space: page");
     expect(out).toContain("L: layout");
+    expect(out).toContain("B: hide sidebar");
     expect(out).toContain("T: picker");
     expect(out).toContain("[/]: width");
     expect(out).toContain("q: quit");
@@ -186,7 +205,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
   it("sidebar-mode legend emits the documented pane-relevant string", () => {
     const out = composeFooterHints({ surface: "tui", paneFocus: "sidebar" });
     expect(out).toBe(
-      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout  ·  T: picker  ·  Esc: diff  ·  q: quit",
+      "j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout  ·  B: hide sidebar  ·  T: picker  ·  Esc: diff  ·  q: quit",
     );
   });
 
@@ -238,6 +257,23 @@ describe("composeFooterHints (core, surface: web)", () => {
     expect(composeFooterHints({ surface: "web" })).toBe(
       "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  y: yank  ·  o: open  ·  C: collapse all  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
+  });
+
+  it("web diff-mode legend flips the B hint when the sidebar is hidden and keeps `Esc: sidebar`", () => {
+    const visible = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      sidebarVisible: true,
+    });
+    expect(visible).toContain("B: hide sidebar");
+
+    const out = composeFooterHints({
+      surface: "web",
+      paneFocus: "diff",
+      sidebarVisible: false,
+    });
+    expect(out).toContain("B: show sidebar");
+    expect(out).toContain("Esc: sidebar");
   });
 
   it("inserts `R: request reply` after `r: reply` when reply-agent is configured (no agent name on the label)", () => {

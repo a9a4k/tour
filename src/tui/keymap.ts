@@ -39,11 +39,14 @@ export interface KeymapContext {
   /** Whether the delete-confirm modal is open (ADR 0036 Slice D / issue
    *  #388). Same modal-unwind precedence as `composerOpen`. */
   deleteConfirmOpen: boolean;
+  sidebarVisible: boolean;
 }
 
 export type KeyAction =
   | { type: "quit" }
   | { type: "pane-focus-toggle" }
+  | { type: "show-sidebar-and-focus" }
+  | { type: "toggle-sidebar-visibility" }
   | { type: "close-modal" }
   | { type: "move-file-down" }
   | { type: "move-file-up" }
@@ -100,6 +103,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     if (ctx.composerOpen || ctx.pickerOpen || ctx.deleteConfirmOpen) {
       return { type: "close-modal" };
     }
+    if (!ctx.sidebarVisible) return { type: "show-sidebar-and-focus" };
     return { type: "pane-focus-toggle" };
   }
 
@@ -145,6 +149,9 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   }
   if (!key.ctrl && key.shift && key.name === "t") {
     return { type: "open-picker" };
+  }
+  if (!key.ctrl && key.shift && key.name === "b") {
+    return { type: "toggle-sidebar-visibility" };
   }
   if (!ctx.sidebarFocused && !key.ctrl && key.shift && key.name === "c") {
     return { type: "toggle-all-threads-collapse" };

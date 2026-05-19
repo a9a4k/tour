@@ -86,6 +86,8 @@ function render(
     currentCommentIdx: 0,
     topLevelTotal: 3,
     tourStats: { additions: 0, deletions: 0 },
+    sidebarVisible: true,
+    onToggleSidebarVisibility: () => {},
     onOpenPicker: () => {},
     onPrevComment: () => {},
     onNextComment: () => {},
@@ -194,6 +196,28 @@ describe("TopHeaderTui (issue #93)", () => {
     const inRight = walk(right).some((e) => e.type === HamburgerButtonTui);
     expect(inLeft).toBe(true);
     expect(inRight).toBe(false);
+  });
+
+  it("renders the sidebar visibility control before the hamburger", () => {
+    const root = render({ sidebarVisible: true });
+    const [left] = childrenOf(root).filter(isElement);
+    const texts = walk(left).filter((e) => e.type === "text").map(textChildOf);
+    expect(texts.indexOf("⇤")).toBeGreaterThanOrEqual(0);
+    expect(texts.indexOf("≡")).toBeGreaterThanOrEqual(0);
+    expect(texts.indexOf("⇤")).toBeLessThan(texts.indexOf("≡"));
+  });
+
+  it("flips the sidebar visibility glyph and forwards its click handler", () => {
+    const onToggleSidebarVisibility = vi.fn();
+    const root = render({ sidebarVisible: false, onToggleSidebarVisibility });
+    const glyph = walk(root).find(
+      (e) => e.type === "text" && e.props.children === "⇥",
+    );
+    expect(glyph).toBeDefined();
+    const handler = glyph!.props["onMouseDown"];
+    expect(typeof handler).toBe("function");
+    (handler as () => void)();
+    expect(onToggleSidebarVisibility).toHaveBeenCalledTimes(1);
   });
 
   it("forwards onOpenPicker to the HamburgerButtonTui", () => {

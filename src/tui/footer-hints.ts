@@ -39,6 +39,7 @@ export interface FooterHintOptions {
   /** Issue #406. Drop the `C` hint when there are no top-level Threads
    *  (Shift+C is a labelled footer no-op then). */
   anyThreads?: boolean;
+  sidebarVisible?: boolean;
 }
 
 export function composeFooterHints(opts: FooterHintOptions = {}): string {

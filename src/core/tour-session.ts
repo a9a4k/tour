@@ -145,6 +145,7 @@ export interface TourSessionState {
   // top-level (cascade-delete drop).
   collapsedThreads: Set<string>;
   sidebarWidth: number;
+  sidebarVisible: boolean;
   // Cross-surface pane focus (PRD #343 / ADR 0031 / issue #344). Sibling
   // to `cursor`; routes keyboard input between the sidebar tree and the
   // diff pane on both surfaces. Initial value is "sidebar" — matching the
@@ -231,6 +232,9 @@ export type Action =
   | { type: "layout.set"; layout: Layout; reanchor?: AnchorToken | null }
   | { type: "sidebar.resize"; width: number; reanchor?: AnchorToken | null }
   | { type: "sidebar.autoFit"; width: number; reanchor?: AnchorToken | null }
+  | { type: "sidebarVisible.set"; value: boolean }
+  | { type: "sidebarVisible.toggle" }
+  | { type: "sidebarVisible.showAndFocus" }
   | { type: "send-to-agent"; tourId: string; commentId: string }
   | PaneFocusAction;
 
@@ -305,6 +309,7 @@ export function initialTourSessionState(): TourSessionState {
     collapsedOverrides: {},
     collapsedThreads: new Set<string>(),
     sidebarWidth: 0,
+    sidebarVisible: true,
     paneFocus: "sidebar",
     pendingAnnId: null,
     selectedFile: null,
@@ -1040,6 +1045,39 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
     }
 
+    case "sidebarVisible.set": {
+      if (state.sidebarVisible === action.value) return { state, intents: NO_INTENTS };
+      return {
+        state: {
+          ...state,
+          sidebarVisible: action.value,
+          paneFocus: action.value ? state.paneFocus : "diff",
+        },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "sidebarVisible.toggle": {
+      const sidebarVisible = !state.sidebarVisible;
+      return {
+        state: {
+          ...state,
+          sidebarVisible,
+          paneFocus: sidebarVisible ? state.paneFocus : "diff",
+        },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "sidebarVisible.showAndFocus":
+      if (state.sidebarVisible && state.paneFocus === "sidebar") {
+        return { state, intents: NO_INTENTS };
+      }
+      return {
+        state: { ...state, sidebarVisible: true, paneFocus: "sidebar" },
+        intents: NO_INTENTS,
+      };
+
     case "paneFocus.setSidebar":
     case "paneFocus.setDiff":
     case "paneFocus.toggle": {
@@ -1049,6 +1087,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // seed-effect conditional. Same-ref short-circuit when the action
       // is a no-op (idempotent set on the current pane).
       const next = reducePaneFocus(state.paneFocus, action);
+      if (!state.sidebarVisible && next === "sidebar") {
+        return { state, intents: NO_INTENTS };
+      }
       if (next === state.paneFocus) return { state, intents: NO_INTENTS };
       return { state: { ...state, paneFocus: next }, intents: NO_INTENTS };
     }

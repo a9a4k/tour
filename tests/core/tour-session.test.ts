@@ -129,6 +129,7 @@ describe("initialTourSessionState", () => {
       collapsedOverrides: {},
       collapsedThreads: new Set(),
       sidebarWidth: 0,
+      sidebarVisible: true,
       paneFocus: "sidebar",
       pendingAnnId: null,
       selectedFile: null,
@@ -3512,6 +3513,91 @@ describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
 });
 
 describe("reduce — paneFocus slice (PRD #343 / ADR 0031 / issue #344)", () => {
+  it("sidebarVisible.toggle hides the sidebar and snaps sidebar focus to diff", () => {
+    const before = initialTourSessionState();
+    expect(before.sidebarVisible).toBe(true);
+    expect(before.paneFocus).toBe("sidebar");
+
+    const r = reduce(before, { type: "sidebarVisible.toggle" });
+
+    expect(r.state.sidebarVisible).toBe(false);
+    expect(r.state.paneFocus).toBe("diff");
+    expect(r.intents).toEqual([]);
+  });
+
+  it("sidebarVisible.toggle from diff focus hides without changing focus, then shows without auto-focusing sidebar", () => {
+    const visibleDiff = reduce(initialTourSessionState(), { type: "paneFocus.setDiff" }).state;
+
+    const hidden = reduce(visibleDiff, { type: "sidebarVisible.toggle" }).state;
+    expect(hidden.sidebarVisible).toBe(false);
+    expect(hidden.paneFocus).toBe("diff");
+
+    const shown = reduce(hidden, { type: "sidebarVisible.toggle" }).state;
+    expect(shown.sidebarVisible).toBe(true);
+    expect(shown.paneFocus).toBe("diff");
+  });
+
+  it("sidebarVisible.set mirrors toggle semantics and preserves tree state", () => {
+    const before: TourSessionState = {
+      ...initialTourSessionState(),
+      collapsedFolders: new Set(["src", "tests"]),
+      collapsedOverrides: { "src/a.ts": false },
+      selectedFile: "src/a.ts",
+    };
+
+    const hidden = reduce(before, { type: "sidebarVisible.set", value: false }).state;
+    expect(hidden.sidebarVisible).toBe(false);
+    expect(hidden.paneFocus).toBe("diff");
+    expect(hidden.collapsedFolders).toBe(before.collapsedFolders);
+    expect(hidden.collapsedOverrides).toBe(before.collapsedOverrides);
+    expect(hidden.selectedFile).toBe("src/a.ts");
+
+    const shown = reduce(hidden, { type: "sidebarVisible.set", value: true }).state;
+    expect(shown.sidebarVisible).toBe(true);
+    expect(shown.paneFocus).toBe("diff");
+    expect(shown.collapsedFolders).toBe(before.collapsedFolders);
+    expect(shown.collapsedOverrides).toBe(before.collapsedOverrides);
+    expect(shown.selectedFile).toBe("src/a.ts");
+  });
+
+  it("sidebarVisible.showAndFocus is the Esc hidden-sidebar transition", () => {
+    const hidden = reduce(initialTourSessionState(), {
+      type: "sidebarVisible.set",
+      value: false,
+    }).state;
+
+    const r = reduce(hidden, { type: "sidebarVisible.showAndFocus" });
+
+    expect(r.state.sidebarVisible).toBe(true);
+    expect(r.state.paneFocus).toBe("sidebar");
+    expect(r.intents).toEqual([]);
+  });
+
+  it("paneFocus actions cannot focus the sidebar while sidebarVisible is false", () => {
+    const hidden = reduce(initialTourSessionState(), {
+      type: "sidebarVisible.set",
+      value: false,
+    }).state;
+
+    expect(reduce(hidden, { type: "paneFocus.setSidebar" }).state).toBe(hidden);
+    expect(reduce(hidden, { type: "paneFocus.toggle" }).state).toBe(hidden);
+  });
+
+  it("tour.switched preserves sidebar visibility across tours", () => {
+    const hidden = reduce(initialTourSessionState(), {
+      type: "sidebarVisible.set",
+      value: false,
+    }).state;
+
+    const switched = reduce(hidden, {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: mkBundle("tour-a"),
+    }).state;
+
+    expect(switched.sidebarVisible).toBe(false);
+  });
+
   it("paneFocus.setDiff flips the slice and emits no intents", () => {
     const before = initialTourSessionState();
     expect(before.paneFocus).toBe("sidebar");
