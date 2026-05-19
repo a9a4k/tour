@@ -50,6 +50,10 @@ function visibleText(tree: unknown): string {
   return strings.join("");
 }
 
+function textElements(tree: unknown): AnyElement[] {
+  return flatten(tree).filter((el) => el.type === "text");
+}
+
 const comment: Comment = {
   id: "ann-1",
   file: "x.txt",
@@ -63,6 +67,40 @@ const comment: Comment = {
 };
 
 describe("CommentCard selection cues", () => {
+  it("keeps Comment and Reply body Text selectable while excluding cursor/header chrome", () => {
+    const reply: Comment = {
+      ...comment,
+      id: "ann-2",
+      body: "reply body",
+      replies_to: comment.id,
+    };
+    const tree = CommentCard({
+      comment,
+      replies: [reply],
+      isCurrent: true,
+      activeNodeId: reply.id,
+      navIndex: 1,
+      navTotal: 3,
+      onToggleCollapse: () => {},
+    });
+    const texts = textElements(tree);
+    const body = texts.find((t) => t.props["children"] === "hello");
+    const replyBody = texts.find((t) => t.props["children"] === "reply body");
+
+    expect(body).toBeDefined();
+    expect(body!.props["selectable"]).toBeUndefined();
+    expect(replyBody).toBeDefined();
+    expect(replyBody!.props["selectable"]).toBeUndefined();
+
+    for (const chrome of ["▾ ", "1 / 3 ", "[human]", "● "]) {
+      const nodes = texts.filter((t) => t.props["children"] === chrome);
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) {
+        expect(node.props["selectable"]).toBe(false);
+      }
+    }
+  });
+
   it("uses a heavy border on the selected card", () => {
     const tree = CommentCard({ comment, isCurrent: true });
     expect(outerBoxOf(tree).props["borderStyle"]).toBe("heavy");

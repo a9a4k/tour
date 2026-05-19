@@ -178,7 +178,7 @@ export function DiffLine({
     <box flexDirection="row" width={width} minHeight={1} alignItems="flex-start">
       <box width={1} alignSelf="stretch" flexShrink={0} overflow="hidden">
         {gutterAccent && (
-          <text position="absolute" fg={ACCENT_FG}>
+          <text position="absolute" fg={ACCENT_FG} selectable={false}>
             {ACCENT_STRIPE_GLYPHS}
           </text>
         )}
@@ -190,9 +190,9 @@ export function DiffLine({
         backgroundColor={gutterBg}
       >
         {showCursorGlyph && (
-          <text height={1} flexShrink={0} fg={CURSOR_FG}>{CURSOR_GLYPH}</text>
+          <text height={1} flexShrink={0} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
         )}
-        <text height={1} flexShrink={0} fg={gutterFg}>{gutterText}</text>
+        <text height={1} flexShrink={0} fg={gutterFg} selectable={false}>{gutterText}</text>
       </box>
       {showStyled ? (
         // Same wrapping rationale as the plain-text branch below: bg

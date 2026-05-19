@@ -43,6 +43,27 @@ function render(props: Partial<Parameters<typeof DiffLine>[0]> = {}): AnyElement
 }
 
 describe("DiffLine layout", () => {
+  it("keeps gutter and cursor chrome out of Text selection while content stays selectable", () => {
+    const root = render({ cursorActive: true });
+    const kids = childrenOf(root).filter(isElement);
+    const gutterCell = kids[1]!;
+    const contentCell = kids[2]!;
+
+    const gutterTexts = childrenOf(gutterCell).filter(
+      (c) => isElement(c) && c.type === "text",
+    ) as AnyElement[];
+    expect(gutterTexts).toHaveLength(2);
+    for (const text of gutterTexts) {
+      expect(text.props["selectable"]).toBe(false);
+    }
+
+    const contentTexts = childrenOf(contentCell).filter(
+      (c) => isElement(c) && c.type === "text",
+    ) as AnyElement[];
+    expect(contentTexts).toHaveLength(1);
+    expect(contentTexts[0]!.props["selectable"]).toBeUndefined();
+  });
+
   it("accent cell stretches to full row height (no fixed height={1})", () => {
     const root = render({ gutterAccent: true });
     const kids = childrenOf(root).filter(isElement);

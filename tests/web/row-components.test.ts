@@ -1221,6 +1221,33 @@ describe("<DiffRow>", () => {
     expect(calls).toEqual(["additions"]);
   });
 
+  it("does not add a custom Tour action on native text-selection triple-clicks", () => {
+    const calls: Array<"additions" | "deletions"> = [];
+    const c = mount(
+      createElement(DiffRow, {
+        kind: "context",
+        layout: "split",
+        leftLineNumber: 5,
+        rightLineNumber: 5,
+        leftText: "selectable code",
+        rightText: "selectable code",
+        isCursor: false,
+        onClick: (side: "additions" | "deletions") => calls.push(side),
+      }),
+    );
+    const code = c.querySelector(
+      '.tour-row [data-side="additions"] .tour-row-code',
+    ) as HTMLElement;
+
+    act(() => {
+      code.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      code.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 }));
+      code.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 3 }));
+    });
+
+    expect(calls).toEqual(["additions"]);
+  });
+
   it("does not activate a diff row click after dragging over selectable code text", () => {
     const calls: Array<"additions" | "deletions"> = [];
     const c = mount(

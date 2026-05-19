@@ -46,7 +46,7 @@ export function FileHeader(props: FileHeaderProps): ReactElement {
           paddingRight={1}
           onMouseDown={onMouseDown}
         >
-          <text fg={theme.fg.muted}>{EXPAND_ALL_GLYPH}</text>
+          <text fg={theme.fg.muted} selectable={false}>{EXPAND_ALL_GLYPH}</text>
         </box>
       )}
     </box>

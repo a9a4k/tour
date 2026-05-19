@@ -137,25 +137,25 @@ export function CommentCard({
       >
         <box flexDirection="row" flexWrap="wrap">
           {isCurrent ? (
-            <text fg={theme.fg.accent} bold>{"● "}</text>
+            <text fg={theme.fg.accent} bold selectable={false}>{"● "}</text>
           ) : null}
           {onToggleCollapse ? (
             <box onMouseDown={() => onToggleCollapse(comment.id)}>
-              <text fg={theme.fg.muted}>{"▸ "}</text>
+              <text fg={theme.fg.muted} selectable={false}>{"▸ "}</text>
             </box>
           ) : (
-            <text fg={theme.fg.muted}>{"▸ "}</text>
+            <text fg={theme.fg.muted} selectable={false}>{"▸ "}</text>
           )}
           {navIndex != null && navTotal != null && navTotal > 0 ? (
-            <text fg={theme.fg.muted} bold>{`${navIndex} / ${navTotal} `}</text>
+            <text fg={theme.fg.muted} bold selectable={false}>{`${navIndex} / ${navTotal} `}</text>
           ) : null}
-          <text fg={authorKindColor(comment.author_kind)} bold>
+          <text fg={authorKindColor(comment.author_kind)} bold selectable={false}>
             {`[${comment.author_kind}]`}
           </text>
           <text fg={theme.fg.accent} bold>{` ${comment.file}:${rangeLabel(comment)}`}</text>
           <text fg={theme.fg.muted}>{`  "${preview}"`}</text>
           {replyCount > 0 ? (
-            <text fg={theme.fg.muted}>{`  💬 ${replyCount}`}</text>
+            <text fg={theme.fg.muted} selectable={false}>{`  💬 ${replyCount}`}</text>
           ) : null}
         </box>
         {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
@@ -184,23 +184,23 @@ export function CommentCard({
     >
       <box flexDirection="row" flexWrap="wrap">
         {parentActive ? (
-          <text fg={theme.fg.accent} bold>
+          <text fg={theme.fg.accent} bold selectable={false}>
             {"● "}
           </text>
         ) : null}
         {onToggleCollapse ? (
           <box onMouseDown={() => onToggleCollapse(comment.id)}>
-            <text fg={theme.fg.muted}>{"▾ "}</text>
+            <text fg={theme.fg.muted} selectable={false}>{"▾ "}</text>
           </box>
         ) : (
-          <text fg={theme.fg.muted}>{"▾ "}</text>
+          <text fg={theme.fg.muted} selectable={false}>{"▾ "}</text>
         )}
         {navIndex != null && navTotal != null && navTotal > 0 ? (
-          <text fg={theme.fg.muted} bold>
+          <text fg={theme.fg.muted} bold selectable={false}>
             {`${navIndex} / ${navTotal} `}
           </text>
         ) : null}
-        <text fg={authorKindColor(comment.author_kind)} bold>
+        <text fg={authorKindColor(comment.author_kind)} bold selectable={false}>
           {`[${comment.author_kind}]`}
         </text>
         <text fg={theme.fg.accent} bold>
@@ -228,11 +228,11 @@ export function CommentCard({
           >
             <box flexDirection="row" flexWrap="wrap">
               {replyActive ? (
-                <text fg={theme.fg.accent} bold>
+                <text fg={theme.fg.accent} bold selectable={false}>
                   {"● "}
                 </text>
               ) : null}
-              <text fg={authorKindColor(r.author_kind)} bold>
+              <text fg={authorKindColor(r.author_kind)} bold selectable={false}>
                 {`[${r.author_kind}]`}
               </text>
               {r.author !== r.author_kind ? (

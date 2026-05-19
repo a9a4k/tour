@@ -55,6 +55,25 @@ describe("FileHeader (issue #297 — per-file Expand-all in file-header chrome)"
     expect(texts).toContain(" M x.txt ");
   });
 
+  it("keeps the file label selectable and excludes the expand-all glyph from Text selection", () => {
+    const tree = FileHeader({
+      fileName: "x.txt",
+      label: " M x.txt ",
+      hasMultipleHiddenGaps: true,
+    });
+    const label = textElements(tree).find(
+      (t) => t.props["children"] === " M x.txt ",
+    );
+    const expandGlyph = textElements(tree).find(
+      (t) => t.props["children"] === EXPAND_ALL_GLYPH,
+    );
+
+    expect(label).toBeDefined();
+    expect(label!.props["selectable"]).toBeUndefined();
+    expect(expandGlyph).toBeDefined();
+    expect(expandGlyph!.props["selectable"]).toBe(false);
+  });
+
   // Issue #298: the chrome affordance is gated on ≥ 2 hidden gaps;
   // single-gap and zero-gap files leave it hidden so the per-hunk
   // banner button (or standalone expand-down for file-bottom) is the
