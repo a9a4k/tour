@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Comment, BundleFile, TourBundle, TourSummary } from "./types.js";
 import { fileIcon } from "./file-icon.js";
-import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon } from "./icons.js";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileDirectoryFillIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+} from "./icons.js";
 import { CommentMarkdown } from "./markdown/CommentMarkdown.js";
 import { TourPicker } from "./TourPicker.js";
 import { buildPickerRows, pickAutoTour } from "../../core/tour-list.js";
@@ -280,6 +286,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // folded into the reducer's `tour.switched` branch.
   const paneFocus = sessionState.paneFocus;
   const sidebarWidth = sessionState.sidebarWidth;
+  const sidebarVisible = sessionState.sidebarVisible;
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pickerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -422,6 +429,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const revealFileAncestors = useCallback(
     (filePath: string) => {
+      setSidebarSelectedPath(filePath);
       if (view.kind !== "ok") return;
       const ancestors = revealAncestors(view.tree.root, filePath);
       if (ancestors.length === 0) return;
@@ -1165,10 +1173,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         case "open-picker":
           openPicker();
           return;
+        case "toggle-sidebar-visibility":
+          store.dispatch({ type: "sidebarVisible.toggle" });
+          return;
         case "pane-focus-toggle":
-          // PRD #343 / ADR 0031 / issue #346: Esc toggles paneFocus
-          // (modal-unwind already routed through close-modal above).
-          store.dispatch({ type: "paneFocus.toggle" });
+          // PRD #423 / ADR 0038: Esc means "give me sidebar." When the
+          // sidebar is hidden, show and focus it in one transition;
+          // otherwise keep the existing pane-focus flip.
+          store.dispatch(
+            sidebarVisible
+              ? { type: "paneFocus.toggle" }
+              : { type: "sidebarVisible.showAndFocus" },
+          );
           return;
         case "close-modal":
           // Defense in depth: in production the inline composer
@@ -1551,6 +1567,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     store,
     flashFooterStatus,
     paneFocus,
+    sidebarVisible,
     effectiveSidebarSelectedPath,
     selectFile,
     toggleFolder,
@@ -1829,6 +1846,19 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       <div className="tour-header">
         <div className="tour-header-left">
           <button
+            type="button"
+            className="picker-button sidebar-visibility-button"
+            aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+            title={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+            onClick={() => store.dispatch({ type: "sidebarVisible.toggle" })}
+          >
+            {sidebarVisible ? (
+              <SidebarCollapseIcon size={16} />
+            ) : (
+              <SidebarExpandIcon size={16} />
+            )}
+          </button>
+          <button
             ref={pickerButtonRef}
             type="button"
             className="picker-button"
@@ -1878,20 +1908,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       <div className="app-body">
         {view.kind === "snapshot-lost" ? (
           <>
-            <aside
-              className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
-              style={{ width: sidebarWidth }}
-              aria-label="Files"
-              data-pane-focus={paneFocus === "sidebar" ? "sidebar" : undefined}
-            >
-              <div className="sidebar-scroll" />
-              <SidebarResizeHandle
-                width={sidebarWidth}
-                onResize={handleSidebarResize}
-                onResizeStart={handleSidebarResizeStart}
-                onResizeEnd={handleSidebarResizeEnd}
-              />
-            </aside>
+            {sidebarVisible && (
+              <aside
+                className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
+                style={{ width: sidebarWidth }}
+                aria-label="Files"
+                data-pane-focus={paneFocus === "sidebar" ? "sidebar" : undefined}
+              >
+                <div className="sidebar-scroll" />
+                <SidebarResizeHandle
+                  width={sidebarWidth}
+                  onResize={handleSidebarResize}
+                  onResizeStart={handleSidebarResizeStart}
+                  onResizeEnd={handleSidebarResizeEnd}
+                />
+              </aside>
+            )}
             <main className="app-main">
               <div className="banner">
                 Snapshot lost — comments preserved but diff cannot be displayed
@@ -1920,52 +1952,54 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           </>
         ) : (
           <>
-            <aside
-              className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
-              style={{ width: sidebarWidth }}
-              aria-label="Files"
-              // PRD #343 / ADR 0031 / issue #346: pane-focus accent
-              // border on the sidebar container when keyboard input
-              // targets the file tree. CSS owns the actual border
-              // styling — this attribute is the read-side hook.
-              data-pane-focus={paneFocus === "sidebar" ? "sidebar" : undefined}
-            >
-              <div className="sidebar-scroll" role="tree" aria-label="Files">
-                {view.tree.visibleRows.map((row) =>
-                  row.kind === "folder" ? (
-                    <FolderRow
-                      key={`d:${row.path}`}
-                      row={row}
-                      onToggle={toggleFolder}
-                      onActivate={onSidebarRowClick}
-                      registerRef={registerSidebarRef}
-                      // PRD #343 / ADR 0031 / issue #346: roving
-                      // tabindex — exactly one row has tabindex=0 at
-                      // any time (the sidebar keyboard cursor), all
-                      // others are tabindex=-1. Browser Tab walks the
-                      // sidebar in a single stop.
-                      isTabStop={effectiveSidebarSelectedPath === row.path}
-                    />
-                  ) : (
-                    <FileRow
-                      key={`f:${row.path}`}
-                      row={row}
-                      selected={selectedFile === row.path}
-                      registerRef={registerSidebarRef}
-                      onSelect={selectFile}
-                      onActivate={onSidebarRowClick}
-                      isTabStop={effectiveSidebarSelectedPath === row.path}
-                    />
-                  ),
-                )}
-              </div>
-              <SidebarResizeHandle
-                width={sidebarWidth}
-                onResize={handleSidebarResize}
-                onResizeStart={handleSidebarResizeStart}
-                onResizeEnd={handleSidebarResizeEnd}
-              />
-            </aside>
+            {sidebarVisible && (
+              <aside
+                className={`app-sidebar${isResizing ? " is-resizing" : ""}`}
+                style={{ width: sidebarWidth }}
+                aria-label="Files"
+                // PRD #343 / ADR 0031 / issue #346: pane-focus accent
+                // border on the sidebar container when keyboard input
+                // targets the file tree. CSS owns the actual border
+                // styling — this attribute is the read-side hook.
+                data-pane-focus={paneFocus === "sidebar" ? "sidebar" : undefined}
+              >
+                <div className="sidebar-scroll" role="tree" aria-label="Files">
+                  {view.tree.visibleRows.map((row) =>
+                    row.kind === "folder" ? (
+                      <FolderRow
+                        key={`d:${row.path}`}
+                        row={row}
+                        onToggle={toggleFolder}
+                        onActivate={onSidebarRowClick}
+                        registerRef={registerSidebarRef}
+                        // PRD #343 / ADR 0031 / issue #346: roving
+                        // tabindex — exactly one row has tabindex=0 at
+                        // any time (the sidebar keyboard cursor), all
+                        // others are tabindex=-1. Browser Tab walks the
+                        // sidebar in a single stop.
+                        isTabStop={effectiveSidebarSelectedPath === row.path}
+                      />
+                    ) : (
+                      <FileRow
+                        key={`f:${row.path}`}
+                        row={row}
+                        selected={selectedFile === row.path}
+                        registerRef={registerSidebarRef}
+                        onSelect={selectFile}
+                        onActivate={onSidebarRowClick}
+                        isTabStop={effectiveSidebarSelectedPath === row.path}
+                      />
+                    ),
+                  )}
+                </div>
+                <SidebarResizeHandle
+                  width={sidebarWidth}
+                  onResize={handleSidebarResize}
+                  onResizeStart={handleSidebarResizeStart}
+                  onResizeEnd={handleSidebarResizeEnd}
+                />
+              </aside>
+            )}
             <main className="app-main">
               <style>{FILE_GRID_CSS}</style>
               {Array.from(view.rows.plannedRowsByFile, ([fileName, rows]) => {
@@ -2083,6 +2117,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Threads exist.
           anyThreads: footerAnyThreads,
           allThreadsCollapsed: footerAllThreadsCollapsed,
+          sidebarVisible,
         })}
       />
       {sessionState.picker.kind === "open" ? (

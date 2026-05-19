@@ -251,6 +251,13 @@ describe("dispatchCursorKey: comment navigation (β-coupling)", () => {
     });
   });
 
+  it("B (Shift+b) → toggle-sidebar-visibility, while bare b stays unbound on the webapp", () => {
+    expect(dispatchCursorKey(key({ key: "B", shiftKey: true }), baseCtx)).toEqual({
+      type: "toggle-sidebar-visibility",
+    });
+    expect(dispatchCursorKey(key({ key: "b" }), baseCtx)).toEqual({ type: "noop" });
+  });
+
   // PRD #335 / ADR 0029 + ADR 0030 promoted `t → T` so the global-state
   // binding follows the lowercase=cursor / capital=global rule. Bare `t`
   // is now unbound — hard cutover, no alias.
@@ -285,6 +292,9 @@ describe("dispatchCursorKey: suppression rules", () => {
     expect(
       dispatchCursorKey(key({ key: "T", shiftKey: true }), ctx),
     ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "B", shiftKey: true }), ctx),
+    ).toEqual({ type: "noop" });
   });
 
   it("picker open → all keys noop (picker owns input)", () => {
@@ -297,6 +307,9 @@ describe("dispatchCursorKey: suppression rules", () => {
     ).toEqual({ type: "noop" });
     expect(
       dispatchCursorKey(key({ key: "T", shiftKey: true }), ctx),
+    ).toEqual({ type: "noop" });
+    expect(
+      dispatchCursorKey(key({ key: "B", shiftKey: true }), ctx),
     ).toEqual({ type: "noop" });
   });
 
@@ -549,6 +562,12 @@ describe("dispatchCursorKey: sidebar-mode key surface (PRD #343 / issue #346)", 
     expect(dispatchCursorKey(key({ key: "T", shiftKey: true }), ctx)).toEqual({
       type: "open-picker",
     });
+  });
+
+  it("Shift+B toggles sidebar visibility in sidebar mode too", () => {
+    expect(
+      dispatchCursorKey(key({ key: "B", shiftKey: true }), sidebarCtx("file")),
+    ).toEqual({ type: "toggle-sidebar-visibility" });
   });
 
   it("Enter with no selectedRowKind falls back to select-file (defensive)", () => {

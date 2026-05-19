@@ -8,4 +8,6 @@ export {
   FileDirectoryFillIcon,
   FileMovedIcon,
   FileRemovedIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
 } from "@primer/octicons-react";

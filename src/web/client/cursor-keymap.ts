@@ -87,6 +87,7 @@ export type CursorAction =
   | { type: "nav-prev-comment" }
   | { type: "toggle-layout" }
   | { type: "open-picker" }
+  | { type: "toggle-sidebar-visibility" }
   // PRD #349 / ADR 0032 / issue #353: bare lowercase `o` → spawn the
   // configured editor on the server's side via POST /api/tours/<id>/
   // open-in-editor. Fires above the composer-open gate (matches n/p) so
@@ -162,6 +163,10 @@ export function dispatchCursorKey(
   // `T` (Shift+t) opens picker (ADR 0030 — capital = global). PRD #335 /
   // ADR 0029 promoted `t → T` in lockstep with the `a → c` cutover.
   if (e.shiftKey && e.key === "T") return { type: "open-picker" };
+
+  // PRD #423 / ADR 0038: capital `B` is the pure-visibility sidebar
+  // toggle. Lowercase `b` stays unbound on the webapp.
+  if (e.shiftKey && e.key === "B") return { type: "toggle-sidebar-visibility" };
 
   // PRD #356 / issue #358: context-aware `y` yank. Bare lowercase `y`
   // dispatches `yank-at-cursor` in BOTH pane modes — ADR 0031's auto-

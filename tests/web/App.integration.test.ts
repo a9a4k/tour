@@ -1393,6 +1393,28 @@ const noCommentBundle = {
   files: bundle.files,
 };
 
+const twoCommentTourId = "2026-05-15-010000-sidebar-hidden-reveal";
+const barComment = {
+  ...comment,
+  id: "ann-2",
+  file: "src/bar.ts",
+  line_start: 3,
+  line_end: 3,
+  body: "second comment",
+  created_at: "2026-05-13T00:00:01Z",
+};
+const twoCommentBundle = {
+  kind: "ok" as const,
+  tour: {
+    ...tourSummary,
+    id: twoCommentTourId,
+    title: "Two-comment sidebar reveal tour",
+  },
+  comments: [comment, barComment],
+  diff,
+  files: bundle.files,
+};
+
 function stubPaneFocusFetch(id: string, b: typeof bundle) {
   return vi.fn((input: RequestInfo | URL) => {
     const u = typeof input === "string" ? input : input.toString();
@@ -1558,6 +1580,116 @@ describe("App cross-surface pane focus (PRD #343 / issue #346)", () => {
 
     aside = container.querySelector(".app-sidebar");
     expect(aside!.getAttribute("data-pane-focus")).not.toBe("sidebar");
+  });
+
+  it("sidebar visibility button, Esc, and B keybinding drive the webapp sidebar", async () => {
+    globalThis.fetch = stubPaneFocusFetch(noCommentTourId, noCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: noCommentTourId }));
+    });
+    await flush();
+
+    const left = container.querySelector(".tour-header-left");
+    expect(left).not.toBeNull();
+    const leftButtons = Array.from(left!.querySelectorAll("button"));
+    expect(leftButtons.length).toBeGreaterThanOrEqual(2);
+    expect(leftButtons[0]!.getAttribute("aria-label")).toBe("Hide sidebar");
+    expect(leftButtons[1]!.getAttribute("aria-label")).toBe("Switch tour");
+    const urlBefore = window.location.href;
+
+    await act(async () => {
+      (leftButtons[0] as HTMLButtonElement).click();
+    });
+    await flush();
+
+    expect(container.querySelector(".app-sidebar")).toBeNull();
+    expect(window.location.href).toBe(urlBefore);
+    let legend = container.querySelector("footer.app-footer");
+    expect(legend!.textContent).toContain("B: show sidebar");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
+
+    let aside = container.querySelector(".app-sidebar");
+    expect(aside).not.toBeNull();
+    expect(window.location.href).toBe(urlBefore);
+    expect(aside!.getAttribute("data-pane-focus")).toBe("sidebar");
+    expect(container.querySelectorAll('[role="treeitem"][tabindex="0"]').length).toBe(1);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "B", shiftKey: true, bubbles: true }),
+      );
+    });
+    await flush();
+
+    expect(container.querySelector(".app-sidebar")).toBeNull();
+    expect(window.location.href).toBe(urlBefore);
+    legend = container.querySelector("footer.app-footer");
+    expect(legend!.textContent).toContain("B: show sidebar");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "b", bubbles: true }),
+      );
+    });
+    await flush();
+
+    expect(container.querySelector(".app-sidebar")).toBeNull();
+  });
+
+  it("hidden-sidebar comment jumps update the later-unhidden sidebar row", async () => {
+    globalThis.fetch = stubPaneFocusFetch(twoCommentTourId, twoCommentBundle);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: twoCommentTourId }));
+    });
+    await flush();
+
+    const barRow = container.querySelector<HTMLButtonElement>(
+      '.file-entry[title="src/bar.ts"]',
+    );
+    expect(barRow).not.toBeNull();
+    await act(async () => {
+      barRow!.click();
+    });
+    await flush();
+
+    const toggle = container.querySelector<HTMLButtonElement>(
+      ".sidebar-visibility-button",
+    );
+    expect(toggle).not.toBeNull();
+    await act(async () => {
+      toggle!.click();
+    });
+    await flush();
+    expect(container.querySelector(".app-sidebar")).toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+    });
+    await flush();
+    expect(container.querySelector(".app-sidebar")).toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const tabStop = container.querySelector<HTMLElement>(
+      '[role="treeitem"][tabindex="0"]',
+    );
+    expect(tabStop).not.toBeNull();
+    expect(tabStop!.getAttribute("title")).toBe("src/foo.ts");
   });
 
   it("sidebar j moves the roving tabindex to the next visible row", async () => {
