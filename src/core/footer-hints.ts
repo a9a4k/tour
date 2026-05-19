@@ -71,17 +71,25 @@ export interface ComposeFooterHintsOptions {
   // to collapse (the gesture is a labelled no-op). Default true so
   // call sites that haven't migrated keep emitting the hint.
   anyThreads?: boolean;
+  // Undefined keeps the existing web legend unchanged; the TUI treats
+  // undefined as the initial visible state so its default legend includes
+  // the new `B: hide sidebar` hint.
   sidebarVisible?: boolean;
+}
+
+function composeSidebarVisibilityHint(opts: ComposeFooterHintsOptions): string | null {
+  if (opts.sidebarVisible === undefined && opts.surface !== "tui") {
+    return null;
+  }
+  if (opts.sidebarVisible === false) {
+    return "B: show sidebar";
+  }
+  return "B: hide sidebar";
 }
 
 export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
   const paneFocus: PaneFocus = opts.paneFocus ?? "diff";
-  const sidebarVisibilityHint =
-    opts.sidebarVisible === undefined && opts.surface !== "tui"
-      ? null
-      : opts.sidebarVisible === false
-        ? "B: show sidebar"
-        : "B: hide sidebar";
+  const sidebarVisibilityHint = composeSidebarVisibilityHint(opts);
   const sidebarVisibilityFragment =
     sidebarVisibilityHint === null ? "" : `  ·  ${sidebarVisibilityHint}`;
   if (opts.surface === "tui" && paneFocus === "sidebar") {

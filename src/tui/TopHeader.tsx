@@ -23,9 +23,10 @@ interface TopHeaderTuiProps {
 }
 
 // Single-line header per parent PRD #91 / #93. Two flex children inside
-// the row — left cluster (hamburger + title + sources) anchored to the
-// left edge, right cluster (tour-level diff stats + comment-nav pill +
-// layout toggle, in that reading order per issue #277) pushed right via
+// the row — left cluster (sidebar visibility + hamburger + title +
+// sources) anchored to the left edge, right cluster (tour-level diff
+// stats + comment-nav pill + layout toggle, in that reading order per
+// issue #277) pushed right via
 // marginLeft="auto". `flexWrap="wrap"` is a safety net for sub-100-col
 // terminals where the row itself can't fit. Title and sources clip with
 // truncate + maxWidth so a long title can never push controls off-screen.
