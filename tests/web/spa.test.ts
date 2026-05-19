@@ -236,6 +236,15 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tree-icon\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
+  it("limits sidebar Text selection to file and folder labels (Issue #430)", () => {
+    const out = html();
+    expect(out).toMatch(/\.file-name\s*\{[^}]*user-select:\s*text/);
+    expect(out).toMatch(/\.folder-name\s*\{[^}]*user-select:\s*text/);
+    expect(out).toMatch(/\.tree-icon\s*\{[^}]*user-select:\s*none/);
+    expect(out).toMatch(/\.status-icon\s*\{[^}]*user-select:\s*none/);
+    expect(out).toMatch(/\.badge\s*\{[^}]*user-select:\s*none/);
+  });
+
   it("lays out the tour-header as a wrapping flex row with two clusters (Issue #92)", () => {
     const out = html();
     expect(out).toMatch(/\.tour-header\s*\{[^}]*display:\s*flex/);

@@ -132,14 +132,15 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--fg-muted);
+    user-select: text;
   }
-  .tree-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--fg-muted); }
-  .status-icon { width: 16px; height: 16px; flex-shrink: 0; color: currentColor; }
+  .tree-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--fg-muted); user-select: none; }
+  .status-icon { width: 16px; height: 16px; flex-shrink: 0; color: currentColor; user-select: none; }
   .status-icon.added { color: #3fb950; }
   .status-icon.modified { color: #d29922; }
   .status-icon.deleted { color: #f85149; }
   .status-icon.renamed { color: #a371f7; }
-  .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
   .reason-tag { color: var(--fg-muted); font-size: 11px; font-style: italic; }
   .rename-path {
     color: var(--fg-muted);
@@ -160,6 +161,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     padding: 1px 6px;
     font-size: 11px;
     margin-left: auto;
+    user-select: none;
   }
   .app-main { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
   .banner {

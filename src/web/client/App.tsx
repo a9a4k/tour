@@ -2232,6 +2232,51 @@ interface FolderRowProps {
   isTabStop?: boolean;
 }
 
+const TEXT_SELECTION_DRAG_PX = 4;
+
+function useTextSelectionClickGuard<T extends HTMLElement>() {
+  const pointerRef = useRef<{
+    startX: number;
+    startY: number;
+    ignoreNextClick: boolean;
+  } | null>(null);
+
+  const onMouseDown = useCallback((event: React.MouseEvent<T>) => {
+    if (event.button !== 0) {
+      pointerRef.current = null;
+      return;
+    }
+    pointerRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      ignoreNextClick: false,
+    };
+  }, []);
+
+  const markDrag = useCallback((event: React.MouseEvent<T>) => {
+    const pointer = pointerRef.current;
+    if (!pointer) return;
+    const dx = event.clientX - pointer.startX;
+    const dy = event.clientY - pointer.startY;
+    if (dx * dx + dy * dy >= TEXT_SELECTION_DRAG_PX * TEXT_SELECTION_DRAG_PX) {
+      pointer.ignoreNextClick = true;
+    }
+  }, []);
+
+  const shouldIgnoreClick = useCallback((event: React.MouseEvent<T>) => {
+    const ignore = event.detail > 1 || pointerRef.current?.ignoreNextClick === true;
+    pointerRef.current = null;
+    return ignore;
+  }, []);
+
+  return {
+    onMouseDown,
+    onMouseMove: markDrag,
+    onMouseUp: markDrag,
+    shouldIgnoreClick,
+  };
+}
+
 // React.memo so cursor / comment-nav state changes in App don't re-render
 // every sidebar row. Without this, the plain function rendered ~800 times per
 // comment click despite none of its props meaningfully changing.
@@ -2244,10 +2289,17 @@ export const FolderRow = React.memo(function FolderRow({
   isTabStop,
 }: FolderRowProps): React.JSX.Element {
   const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
-  const handleClick = useCallback(() => {
+  const {
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
+    shouldIgnoreClick,
+  } = useTextSelectionClickGuard<HTMLButtonElement>();
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (shouldIgnoreClick(event)) return;
     if (onActivate) onActivate(row.path, "folder");
     else onToggle(row.path);
-  }, [onActivate, onToggle, row.path]);
+  }, [onActivate, onToggle, row.path, shouldIgnoreClick]);
   const handleRef = useCallback(
     (el: HTMLButtonElement | null) => registerRef?.(row.path, el),
     [registerRef, row.path],
@@ -2260,6 +2312,9 @@ export const FolderRow = React.memo(function FolderRow({
       style={{ paddingLeft: 16 + row.depth * 16 }}
       title={row.path}
       onClick={handleClick}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
       role="treeitem"
       aria-expanded={!row.collapsed}
       aria-label={row.displayName}
@@ -2303,10 +2358,17 @@ export const FileRow = React.memo(function FileRow({
     (el: HTMLButtonElement | null) => registerRef(row.path, el),
     [registerRef, row.path],
   );
-  const handleClick = useCallback(() => {
+  const {
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
+    shouldIgnoreClick,
+  } = useTextSelectionClickGuard<HTMLButtonElement>();
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (shouldIgnoreClick(event)) return;
     if (onActivate) onActivate(row.path, "file");
     else onSelect(row.path);
-  }, [onActivate, onSelect, row.path]);
+  }, [onActivate, onSelect, row.path, shouldIgnoreClick]);
   return (
     <button
       ref={handleRef}
@@ -2315,6 +2377,9 @@ export const FileRow = React.memo(function FileRow({
       style={{ paddingLeft: 16 + row.depth * 16 }}
       title={row.path}
       onClick={handleClick}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
       role="treeitem"
       aria-selected={selected}
       aria-label={row.displayName}
