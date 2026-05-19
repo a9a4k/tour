@@ -21,21 +21,17 @@ import type { Tour, Comment } from "../../src/core/types.js";
  * viewport).
  *
  * On-load contract:
- *  - non-empty Tour: cursor.materialize lands on `topLevel[0]` as a
+ *  - non-empty Tour: `tour.switched` lands on `topLevel[0]` as a
  *    CardAnchor; the reducer emits `scrollCursorTarget` so the runtime can
  *    scroll the card into view (no new scroll plumbing needed).
- *  - empty Tour: cursor stays null (no target to seed; the App-shell
- *    gates the materialize call on `topLevel.length > 0`).
+ *  - empty Tour: cursor stays null (no target to seed).
  *  - snapshot-lost: cursor stays null (`initialCursor` returns null when
  *    flatRowsList is empty, which is the snapshot-lost projection).
- *  - same-tour bundle.refreshed: no re-seed; the App-shell's
- *    `seededTourIdRef` guards the call site, and the reducer's
- *    `cursor.materialize` is a strict no-op on a non-null cursor as a
- *    belt-and-suspenders fallback.
+ *  - same-tour bundle.refreshed: no re-seed; the tour-open seed lives only
+ *    in `tour.switched`.
  *
- * Tests assert at the state-shape level (the AC's "pure-state equivalent"
- * branch): compose `deriveTourSessionView` + `initialCursor` +
- * `cursor.materialize` exactly the way the App-shell wires them.
+ * Tests assert the legacy initialCursor/materialize primitive still behaves
+ * as the reducer-owned seed expects.
  */
 
 function tour(id: string): Tour {
@@ -114,11 +110,8 @@ function snapshotLostBundle(comments: Comment[]): TourBundle {
   };
 }
 
-// Mirrors the App-shell's tour-open seed step exactly: derive the view,
-// gate on topLevel.length > 0 (empty-tour skip preserves the lazy rule
-// for the no-target path), call initialCursor with the view's
-// nav.topLevel + rows.flatRowsList, dispatch cursor.materialize if the
-// seed resolved. Returns the resulting state.
+// Legacy pure-state helper for the initialCursor/materialize path retained
+// under the reducer-owned tour-open seed.
 function seedOnTourOpen(bundle: TourBundle, state: TourSessionState): TourSessionState {
   const view: TourSessionView = deriveTourSessionView(bundle, state);
   const topLevel = view.nav.topLevel;
@@ -171,9 +164,8 @@ describe("issue #256 — cursor materialises on tour open for non-empty tours", 
       type: "cursor.set",
       anchor: { kind: "card", commentId: "a2", preferredSide: "deletions" },
     }).state;
-    // The App-shell suppresses the re-seed via `seededTourIdRef` so the
-    // dispatch never fires on `bundle.refreshed`. The reducer's
-    // belt-and-suspenders branch returns the same state ref if it does.
+    // `bundle.refreshed` does not re-run the tour-open seed; the
+    // materialize branch remains a strict no-op on a non-null cursor.
     const r = reduce(moved, {
       type: "cursor.materialize",
       anchor: { kind: "card", commentId: "a1", preferredSide: "additions" },

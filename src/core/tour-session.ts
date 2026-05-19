@@ -34,6 +34,7 @@ import {
   expandTop as expansionExpandTop,
   seedFromOrphans as expansionSeedFromOrphans,
 } from "./expansion-state.js";
+import { computeTourOpenSeed } from "./tour-open-seed.js";
 
 // RemoteData<T> — one uniform shape for asynchronously-loaded values.
 // Replaces the three encodings used today across the surfaces:
@@ -166,7 +167,7 @@ export type Action =
       preferredSide: "additions" | "deletions";
     }
   | { type: "bundle.failed"; tourId: string; error: string }
-  | { type: "tour.switched"; tourId: string; bundle: TourBundle }
+  | { type: "tour.switched"; tourId: string; bundle: TourBundle; annId?: string }
   | { type: "replyLock.loaded"; replyLock: ReplyLock | null }
   | { type: "tourList.loading" }
   | { type: "tourList.loaded"; tours: TourSummary[] }
@@ -443,6 +444,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         action.bundle.kind === "ok"
           ? expansionSeedFromOrphans(emptyExpansion(), flattenOrphanWindows(action.bundle.files))
           : emptyExpansion();
+      const seed = computeTourOpenSeed(action.bundle, action.annId ?? null);
+      const cursor = validateCursorStructural(seed.cursor, action.bundle);
       return {
         state: {
           ...state,
@@ -450,15 +453,16 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           currentTourId: action.tourId,
           picker: { kind: "closed" },
           replyLock: { kind: "idle" },
-          cursor: null,
+          cursor,
           expansion,
           composer: { kind: "closed" },
           deleteConfirm: { kind: "closed" },
           collapsedFolders: new Set<string>(),
           collapsedOverrides: {},
           collapsedThreads: new Set<string>(),
+          paneFocus: seed.paneFocus,
         },
-        intents: NO_INTENTS,
+        intents: seed.intents,
       };
     }
 

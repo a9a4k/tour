@@ -79,7 +79,6 @@ import {
 } from "./resize-reanchor-target.js";
 import { Footer } from "./Footer.js";
 import { composeFooterHints, type EnterHintCursor } from "../../core/footer-hints.js";
-import { seedPaneFocus } from "../../core/pane-focus-state.js";
 import { resolveYankTarget } from "../../core/yank-target.js";
 import { dispatchOpenInEditor } from "./dispatch-open-in-editor.js";
 import { dispatchDeleteComment } from "./dispatch-delete-comment.js";
@@ -146,6 +145,7 @@ function readAnnFromUrl(): string | null {
 }
 
 export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
+  const initialAnnRef = useRef<string | null>(readAnnFromUrl());
   // Tour-session store (PRD #207 slice 1, issue #210; bundle hoisted into
   // the store in issue #211). One store per SPA mount, seeded with the
   // URL-resolved tour id so the initial render sees the right
@@ -266,8 +266,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // PRD #343 / ADR 0031 / issue #346: cross-surface pane focus reads
   // from the Tour-session slice. The webapp Esc handler dispatches
   // `paneFocus.toggle`; sidebar / diff clicks dispatch
-  // `paneFocus.setSidebar` / `paneFocus.setDiff`; the bundle-load seed
-  // effect dispatches one of the set actions based on `seedPaneFocus`.
+  // `paneFocus.setSidebar` / `paneFocus.setDiff`; tour-open seeding is
+  // folded into the reducer's `tour.switched` branch.
   const paneFocus = sessionState.paneFocus;
   const sidebarWidth = sessionState.sidebarWidth;
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -405,6 +405,17 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // of the parallel useMemo chain the App used to maintain. EMPTY_BUNDLE
   // keeps the hook call unconditional before the real bundle lands.
   const view: TourSessionView = useTourSessionView(store, bundle ?? EMPTY_BUNDLE);
+  const effectiveSidebarSelectedPath = useMemo(() => {
+    if (sidebarSelectedPath !== null) return sidebarSelectedPath;
+    if (view.kind !== "ok") return null;
+    if (
+      selectedFile !== null &&
+      view.tree.visibleRows.some((row) => row.kind === "file" && row.path === selectedFile)
+    ) {
+      return selectedFile;
+    }
+    return view.tree.visibleRows.find((row) => row.kind === "file")?.path ?? null;
+  }, [selectedFile, sidebarSelectedPath, view]);
 
   // tourStats re-plans every file with stable args (empty comments /
   // expansion, "split" layout) to compute the FULL-diff +N -M totals —
@@ -512,9 +523,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       setSelectedFile((curr) => (curr === null ? curr : null));
       return;
     }
+    const annFromUrl = initialAnnRef.current ?? readAnnFromUrl();
+    initialAnnRef.current = null;
     const action = decideReanchor(
       cursor,
-      readAnnFromUrl(),
+      annFromUrl,
       topLevel,
       view.nav.threads,
     );
@@ -535,37 +548,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     revealFileAncestors(action.target.file);
   }, [tourMeta, tourId, view, cursor, revealFileAncestors, store]);
 
-  // PRD #343 / ADR 0031 / issue #346: cross-surface pane-focus seed
-  // effect. Mirrors the TUI's bundle-load conditional in
-  // src/tui/app.tsx — Tour with top-level Comments → paneFocus.setDiff
-  // (cursor seeds at the first Comment); Tour without Comments →
-  // paneFocus.setSidebar (sidebar lands at the first file row). Gated
-  // on the seededTourIdRef so a same-tour bundle.refreshed doesn't
-  // re-seed over user-driven flips. Also seeds the sidebar keyboard
-  // cursor (`sidebarSelectedPath`) to the file of the first comment
-  // (diff seed) or the first file row (sidebar seed) so the roving
-  // tabindex has a starting target.
-  const paneFocusSeededTourIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!tourMeta || tourMeta.id !== tourId) return;
-    if (paneFocusSeededTourIdRef.current === tourId) return;
-    if (view.kind !== "ok") return;
-    paneFocusSeededTourIdRef.current = tourId;
-    const topLevel = view.nav.topLevel;
-    const hasComments = topLevel.length > 0;
-    store.dispatch(
-      seedPaneFocus(hasComments) === "diff"
-        ? { type: "paneFocus.setDiff" }
-        : { type: "paneFocus.setSidebar" },
-    );
-    if (hasComments) {
-      setSidebarSelectedPath(topLevel[0].file);
-    } else {
-      const firstFile = view.tree.visibleRows.find((r) => r.kind === "file");
-      setSidebarSelectedPath(firstFile?.path ?? null);
-    }
-  }, [tourMeta, tourId, view, store]);
-
   // Keep the selected sidebar row visible. block:"nearest" — already-visible
   // rows don't jump.
   useEffect(() => {
@@ -580,13 +562,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // `:focus-visible` outline shows AND `Tab` from outside lands on
   // the keyboard-selected row. When paneFocus flips to diff, blur the
   // currently-focused sidebar row so subsequent keys target the diff.
-  // Skip the focus call when the keyboard target hasn't seeded yet
-  // (initial bundle-load race — the paneFocus seed effect populates
-  // sidebarSelectedPath on its first run).
   useEffect(() => {
     if (paneFocus === "sidebar") {
-      if (sidebarSelectedPath === null) return;
-      const el = sidebarRowRefs.current.get(sidebarSelectedPath);
+      if (effectiveSidebarSelectedPath === null) return;
+      const el = sidebarRowRefs.current.get(effectiveSidebarSelectedPath);
       el?.focus({ preventScroll: false });
       return;
     }
@@ -595,7 +574,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (active instanceof HTMLElement && active.getAttribute("role") === "treeitem") {
       active.blur();
     }
-  }, [paneFocus, sidebarSelectedPath]);
+  }, [paneFocus, effectiveSidebarSelectedPath]);
 
   const restoreFocusAfterPicker = useCallback(() => {
     const back = triggerRef.current ?? pickerButtonRef.current;
@@ -1203,9 +1182,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const visibleRows =
         view.kind === "ok" ? view.tree.visibleRows : [];
       const selectedRow =
-        sidebarSelectedPath === null
+        effectiveSidebarSelectedPath === null
           ? null
-          : visibleRows.find((r) => r.path === sidebarSelectedPath) ?? null;
+          : visibleRows.find((r) => r.path === effectiveSidebarSelectedPath) ?? null;
       const action = dispatchCursorKey(
         {
           key: e.key,
@@ -1276,9 +1255,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (rows.length === 0) return;
           const down = action.type === "move-file-down";
           const idx =
-            sidebarSelectedPath === null
+            effectiveSidebarSelectedPath === null
               ? -1
-              : rows.findIndex((r) => r.path === sidebarSelectedPath);
+              : rows.findIndex((r) => r.path === effectiveSidebarSelectedPath);
           let nextIdx: number;
           if (idx === -1) {
             nextIdx = down ? 0 : rows.length - 1;
@@ -1637,7 +1616,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     store,
     flashFooterStatus,
     paneFocus,
-    sidebarSelectedPath,
+    effectiveSidebarSelectedPath,
     selectFile,
     toggleFolder,
     collapsedFolders,
@@ -2031,7 +2010,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       // any time (the sidebar keyboard cursor), all
                       // others are tabindex=-1. Browser Tab walks the
                       // sidebar in a single stop.
-                      isTabStop={sidebarSelectedPath === row.path}
+                      isTabStop={effectiveSidebarSelectedPath === row.path}
                     />
                   ) : (
                     <FileRow
@@ -2041,7 +2020,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       registerRef={registerSidebarRef}
                       onSelect={selectFile}
                       onActivate={onSidebarRowClick}
-                      isTabStop={sidebarSelectedPath === row.path}
+                      isTabStop={effectiveSidebarSelectedPath === row.path}
                     />
                   ),
                 )}

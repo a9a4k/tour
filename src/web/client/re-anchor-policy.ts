@@ -42,6 +42,10 @@ export function decideReanchor(
     return { kind: "url-restore", target };
   }
   if (cursor.kind === "card") {
+    const urlTarget = topLevel.find((a) => a.id === annFromUrl) ?? null;
+    if (urlTarget !== null && urlTarget.id !== cursor.commentId) {
+      return { kind: "url-restore", target: urlTarget };
+    }
     const isKnownNode =
       topLevel.some((a) => a.id === cursor.commentId) ||
       (threads !== undefined &&

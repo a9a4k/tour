@@ -435,15 +435,6 @@ function App(props: AppProps) {
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const pickerScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // First-paint-per-tour guard for the tour-open side effects: reveal the
-  // first comment's file in the sidebar tree, drop sidebar focus so
-  // j/k routes to the diff pane (issue #132 revision), and materialise
-  // the cursor on the first top-level comment (issue #256 — reverts
-  // ADR 0011's lazy-materialization rule for non-empty tours, restoring
-  // surface parity with the webapp's ADR 0022 URL-anchored mount). The
-  // ref is keyed on `bundle.tour.id` so `bundle.refreshed` does NOT
-  // re-seed — user motion taken before a watcher reload survives.
-  const seededTourIdRef = useRef<string | null>(null);
 
   // Sidebar width (issue #416). Per-tour auto-fit + `[`/`]` resize now
   // lives in the Tour-session store so resize reanchors flow through the
@@ -616,54 +607,11 @@ function App(props: AppProps) {
     return cls.reason === "binary";
   };
 
-  // Tour-open per-tour side effects (PRD #192 / ADR 0022; cursor seed
-  // restored by issue #256): on a non-empty tour drop sidebar focus
-  // (issue #132 revision), reveal the first comment's file in the
-  // tree, and materialise the cursor on `topLevel[0]` as a CardAnchor so
-  // the user lands on the first comment card with the same surface
-  // contract the webapp gets from ADR 0022's URL-anchored mount. The
-  // The reducer's `scrollCursorTarget` intent handles the viewport scroll
-  // once the cursor slice changes — no parallel scroll plumbing.
-  //
-  // Empty tours keep the lazy-materialization rule (no comment to
-  // seed on; cursor stays null and the sidebar tree is the home anchor).
-  // Snapshot-lost bundles fall through `initialCursor`'s null branch
-  // (empty flatRowsList), so the cursor also stays null on the no-rows
-  // path. Same-tour `bundle.refreshed` is suppressed by `seededTourIdRef`
-  // so a watcher reload doesn't re-seed over user motion; the reducer's
-  // `cursor.materialize` is a strict no-op on a non-null cursor as a
-  // belt-and-suspenders fallback.
   const topLevel = nav.topLevel;
   // ADR 0037 — Threads context for the in-Card `j`/`k` walker. Passing
   // this to `moveCursor` / `nextCard` / `prevCard` / `stepDiffPane` etc.
   // turns on reply-level cursor stops in the TUI.
   const threads = nav.threads;
-  useEffect(() => {
-    if (seededTourIdRef.current !== bundle.tour.id) {
-      seededTourIdRef.current = bundle.tour.id;
-      // PRD #343 / ADR 0031 / issue #344: paneFocus seed conditional
-      // tracks the existing cursor-seed conditional. Tour with Comments
-      // → paneFocus.setDiff (cursor seeds at the first Comment); Tour
-      // without Comments → paneFocus.setSidebar (cursor stays null;
-      // sidebar selection materializes at the first file row, which is
-      // already the post-tour.switched default).
-      if (topLevel.length === 0) {
-        store.dispatch({ type: "paneFocus.setSidebar" });
-        return;
-      }
-      const first = topLevel[0];
-      store.dispatch({ type: "paneFocus.setDiff" });
-      const seed = initialCursor({
-        topLevelComments: topLevel,
-        flatRows: flatRowsList,
-      });
-      if (seed) store.dispatch({ type: "cursor.materialize", anchor: seed });
-      const rowIdx = revealAndLocateFile(first.file, tree, collapsedFolders, commentCounts);
-      if (rowIdx === null) return;
-      setSelectedRowIdx(rowIdx);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topLevel, bundle.tour.id]);
 
   // Keep the selected sidebar row visible: whenever the row index or the row
   // list changes, ask the scrollbox to scroll the row into view (block:nearest

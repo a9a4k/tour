@@ -1356,6 +1356,8 @@ describe("TourSessionRuntime", () => {
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
+      store.dispatch({ type: "cursor.clear" });
+      adapter.mirrorAnnCalls.length = 0;
 
       store.dispatch({
         type: "cursor.set",
@@ -1429,6 +1431,7 @@ describe("TourSessionRuntime", () => {
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
       store.dispatch({ type: "tour.switched", tourId: "tour-a", bundle });
+      adapter.scrollCardCalls.length = 0;
 
       // Issue #405: composer.submitted no longer emits scrollCursorTarget
       // synchronously — the cursor write and the bundle fold land
@@ -1545,6 +1548,8 @@ describe("TourSessionRuntime", () => {
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
+      store.dispatch({ type: "cursor.clear" });
+      adapter.mirrorAnnCalls.length = 0;
 
       store.dispatch({
         type: "cursor.set",

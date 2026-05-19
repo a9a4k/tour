@@ -274,7 +274,7 @@ describe("reduce — bundle slice", () => {
     expect(r.state.replyLock).toEqual({ kind: "idle" });
     expect(r.state.cursor).toBeNull();
     expect(r.state.expansion).toEqual(new Map());
-    expect(r.intents).toEqual([]);
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
   it("tour.switched with non-empty orphanWindows in the inbound bundle seeds the expansion slice (PRD #278 slice 1)", () => {
@@ -298,7 +298,7 @@ describe("reduce — bundle slice", () => {
       up: 0,
       down: 7,
     });
-    expect(r.intents).toEqual([]);
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
   it("tour.switched with a snapshot-lost bundle resets expansion to empty (no files → nothing to seed)", () => {
@@ -306,6 +306,104 @@ describe("reduce — bundle slice", () => {
     s = reduce(s, { type: "expansion.expandFile", file: "old.ts" }).state;
     const r = reduce(s, { type: "tour.switched", tourId: "a", bundle: mkBundle("a") });
     expect(r.state.expansion).toEqual(new Map());
+  });
+
+  it("tour.switched with non-empty topLevel and no annId seeds cursor, diff focus, and first-comment intents", () => {
+    const first = mkComment({ id: "ann-1", file: "foo.ts" });
+    const b = { ...okBundle("a", [bundleFile("foo.ts")]), comments: [first] };
+
+    const r = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: b,
+    });
+
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "ann-1",
+      preferredSide: "additions",
+    });
+    expect(r.state.paneFocus).toBe("diff");
+    expect(r.intents).toEqual([
+      { type: "selectSidebarFile", file: "foo.ts" },
+      {
+        type: "scrollCursorTarget",
+        target: { kind: "card", commentId: "ann-1" },
+        placement: "center",
+        behavior: "instant",
+      },
+      { type: "mirrorAnnUrl", commentId: "ann-1" },
+    ]);
+  });
+
+  it("tour.switched with empty topLevel keeps cursor null, sidebar focus, and mirrors null ann id", () => {
+    const b = okBundle("a", [bundleFile("foo.ts")]);
+
+    const r = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: b,
+    });
+
+    expect(r.state.cursor).toBeNull();
+    expect(r.state.paneFocus).toBe("sidebar");
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
+  });
+
+  it("tour.switched with matching annId seeds that top-level Comment", () => {
+    const first = mkComment({ id: "ann-1", file: "foo.ts" });
+    const second = mkComment({ id: "ann-2", file: "bar.ts" });
+    const b = {
+      ...okBundle("a", [bundleFile("foo.ts"), bundleFile("bar.ts")]),
+      comments: [first, second],
+    };
+
+    const r = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "a",
+      bundle: b,
+      annId: "ann-2",
+    });
+
+    expect(r.state.cursor).toEqual({
+      kind: "card",
+      commentId: "ann-2",
+      preferredSide: "additions",
+    });
+    expect(r.intents).toContainEqual({
+      type: "mirrorAnnUrl",
+      commentId: "ann-2",
+    });
+  });
+
+  it("tour.switched falls back to topLevel[0] when annId points at a Reply, deleted Comment, or missing Comment", () => {
+    const first = mkComment({ id: "ann-1", file: "foo.ts" });
+    const reply = mkComment({ id: "reply-1", replies_to: "ann-1", file: "bar.ts" });
+    const deleted = mkComment({
+      id: "ann-2",
+      file: "baz.ts",
+      deleted: { at: "2026-05-19T01:00:00Z" },
+    });
+    const b = {
+      ...okBundle("a", [bundleFile("foo.ts"), bundleFile("bar.ts"), bundleFile("baz.ts")]),
+      comments: [first, reply, deleted],
+    };
+
+    for (const annId of ["reply-1", "ann-2", "missing"]) {
+      const r = reduce(initialTourSessionState(), {
+        type: "tour.switched",
+        tourId: "a",
+        bundle: b,
+        annId,
+      });
+
+      expect(r.state.cursor).toEqual({
+        kind: "card",
+        commentId: "ann-1",
+        preferredSide: "additions",
+      });
+      expect(r.intents.at(-1)).toEqual({ type: "mirrorAnnUrl", commentId: "ann-1" });
+    }
   });
 
   it("bundle.refreshed with new orphan windows unions with the existing expansion slice (per-side max — PRD #278 slice 1)", () => {
@@ -363,6 +461,24 @@ describe("reduce — bundle slice", () => {
     const beforeExpansion = s.expansion;
     const r = reduce(s, { type: "bundle.refreshed", bundle: mkBundle("a") });
     expect(r.state.expansion).toBe(beforeExpansion);
+  });
+
+  it("bundle.refreshed does not re-fire the tour-open seed", () => {
+    const ann = mkComment({ id: "ann-1", file: "foo.ts" });
+    const b = { ...okBundle("a", [bundleFile("foo.ts")]), comments: [ann] };
+    const s = {
+      ...initialTourSessionState(),
+      currentTourId: "a",
+      bundle: { kind: "ok" as const, value: b },
+      cursor: null,
+      paneFocus: "sidebar" as const,
+    };
+
+    const r = reduce(s, { type: "bundle.refreshed", bundle: b });
+
+    expect(r.state.cursor).toBeNull();
+    expect(r.state.paneFocus).toBe("sidebar");
+    expect(r.intents).toEqual([]);
   });
 
   it("bundle.failed puts bundle into err(...) and leaves currentTourId in place", () => {
@@ -700,7 +816,8 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       tourId: "tour-a",
       bundle: { ...okBundle("tour-a", [bundleFile("a.ts")]), comments: [ann] },
     }).state;
-    const r = reduce(s, {
+    const loaded = { ...s, cursor: null };
+    const r = reduce(loaded, {
       type: "cursor.set",
       anchor: cardAnchor({ commentId: "ann-1" }),
     });
@@ -957,7 +1074,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       bundle: { ...okBundle("tour-a", [bundleFile("a.ts")]), comments: [ann] },
     }).state;
     const anchor = cardAnchor({ commentId: "ann-5" });
-    const r = reduce(s, { type: "cursor.materialize", anchor });
+    const r = reduce({ ...s, cursor: null }, { type: "cursor.materialize", anchor });
     expect(r.state.cursor).toBe(anchor);
     expect(r.intents).toEqual([
       {
@@ -1286,7 +1403,7 @@ describe("reduce — structural cursor validation on bundle.refreshed (issue #41
     ]);
   });
 
-  it("tour.switched does not emit revalidateCursor (cursor was reset to null)", () => {
+  it("tour.switched emits only the null seed mirror intent on snapshot-lost bundles (no revalidateCursor)", () => {
     let s = reduce(initialTourSessionState(), {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts" }),
@@ -1296,7 +1413,7 @@ describe("reduce — structural cursor validation on bundle.refreshed (issue #41
       tourId: "a",
       bundle: mkBundle("a"),
     });
-    expect(r.intents).toEqual([]);
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
     expect(r.state.cursor).toBeNull();
   });
 });
@@ -1422,6 +1539,7 @@ function mkComment(over: Partial<Comment> & { id: string }): Comment {
     author_kind: over.author_kind ?? "agent",
     created_at: over.created_at ?? "2026-05-13T00:00:00Z",
     ...(over.replies_to !== undefined ? { replies_to: over.replies_to } : {}),
+    ...(over.deleted !== undefined ? { deleted: over.deleted } : {}),
   };
 }
 
@@ -2755,11 +2873,12 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
   });
 
   it("thread.collapseAll with null cursor emits no scroll (issue #407)", () => {
-    const s = reduce(initialTourSessionState(), {
+    const loaded = reduce(initialTourSessionState(), {
       type: "tour.switched",
       tourId: "tour-a",
       bundle: bundleWithTopLevel(["t1"]),
     }).state;
+    const s = { ...loaded, cursor: null };
     const r = reduce(s, { type: "thread.collapseAll" });
     expect(r.intents).toEqual([]);
   });
@@ -2844,11 +2963,12 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
   });
 
   it("thread.expandAll with null cursor emits no scroll (issue #407)", () => {
-    let s = reduce(initialTourSessionState(), {
+    const loaded = reduce(initialTourSessionState(), {
       type: "tour.switched",
       tourId: "tour-a",
       bundle: bundleWithTopLevel(["t1"]),
     }).state;
+    let s = { ...loaded, cursor: null };
     s = reduce(s, { type: "thread.collapse", id: "t1" }).state;
     const r = reduce(s, { type: "thread.expandAll" });
     expect(r.intents).toEqual([]);
@@ -3187,7 +3307,7 @@ describe("reduce — tour.switched reset cascade (slice 3 extension)", () => {
     expect(r.state.replyLock).toEqual({ kind: "idle" });
     expect(r.state.cursor).toBeNull();
     expect(r.state.expansion).toEqual(new Map());
-    expect(r.intents).toEqual([]);
+    expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 });
 
@@ -3466,11 +3586,12 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
       diff: "",
       files: [],
     };
-    return reduce(initialTourSessionState(), {
+    const loaded = reduce(initialTourSessionState(), {
       type: "tour.switched",
       tourId: "tour-a",
       bundle,
     }).state;
+    return { ...loaded, cursor: null };
   }
 
   function withCardCursor(
