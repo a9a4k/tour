@@ -197,7 +197,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // sidebar; null when the bundle hasn't seeded yet. Distinct from
   // `selectedFile` (which highlights the active file's diff) because the
   // sidebar cursor can sit on a folder row too. Sidebar j/k motion
-  // updates this; Enter on a file row syncs selectedFile to match.
+  // updates this; Enter on a file row moves the cursor, and the reducer
+  // mirrors selectedFile from cursor file-change transitions.
   const [sidebarSelectedPath, setSidebarSelectedPath] = useState<string | null>(null);
   // PRD #330 / ADR 0028: transient footer status surface. The cursor-keymap's
   // `r` / `R` miss branches flash a reason here; the timer auto-dismisses

@@ -155,6 +155,9 @@ export interface TourSessionState {
   // URL `ann` captured while a cross-tour load is in flight. The runtime
   // reads it when `fetchBundle` resolves and `tour.switched` clears it.
   pendingAnnId: string | null;
+  // Web sidebar active-file selection. Cursor file-change transitions and
+  // tour-open seeding mirror into this slice; same-tour bundle refreshes do
+  // not, so a user's manual sidebar selection survives watcher reloads.
   selectedFile: string | null;
 }
 

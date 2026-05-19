@@ -986,6 +986,31 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     ]);
   });
 
+  it("cursor.set from CardAnchor in file A to CardAnchor in file B updates selectedFile", () => {
+    const ann1 = mkComment({ id: "ann-1", file: "a.ts" });
+    const ann2 = mkComment({ id: "ann-2", file: "b.ts" });
+    let s = reduce(initialTourSessionState(), {
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: {
+        ...okBundle("tour-a", [bundleFile("a.ts"), bundleFile("b.ts")]),
+        comments: [ann1, ann2],
+      },
+    }).state;
+    s = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-1" }),
+    }).state;
+
+    const r = reduce(s, {
+      type: "cursor.set",
+      anchor: cardAnchor({ commentId: "ann-2" }),
+    });
+
+    expect(r.state.selectedFile).toBe("b.ts");
+    expect(r.intents).toContainEqual({ type: "selectSidebarFile", file: "b.ts" });
+  });
+
   it("cursor.set from CardAnchor in file A to RowAnchor in file B emits sidebar selection for file B", () => {
     const ann = mkComment({ id: "ann-1", file: "a.ts" });
     let s = reduce(initialTourSessionState(), {
