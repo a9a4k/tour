@@ -155,6 +155,7 @@ export interface TourSessionState {
   // URL `ann` captured while a cross-tour load is in flight. The runtime
   // reads it when `fetchBundle` resolves and `tour.switched` clears it.
   pendingAnnId: string | null;
+  selectedFile: string | null;
 }
 
 export type Action =
@@ -304,6 +305,7 @@ export function initialTourSessionState(): TourSessionState {
     sidebarWidth: 0,
     paneFocus: "sidebar",
     pendingAnnId: null,
+    selectedFile: null,
   };
 }
 
@@ -482,6 +484,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           : emptyExpansion();
       const seed = computeTourOpenSeed(action.bundle, action.annId ?? null);
       const cursor = validateCursorStructural(seed.cursor, action.bundle);
+      const selectedFile = resolvedCursorFile(cursor, action.bundle);
       return {
         state: {
           ...state,
@@ -498,6 +501,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
           collapsedThreads: new Set<string>(),
           paneFocus: seed.paneFocus,
           pendingAnnId: null,
+          selectedFile,
         },
         intents: seed.intents,
       };
@@ -537,7 +541,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (isCardAnchor(state.cursor)) {
         intents.push({ type: "mirrorAnnUrl", commentId: null });
       }
-      return { state: { ...state, cursor: null }, intents };
+      return { state: { ...state, cursor: null, selectedFile: null }, intents };
     }
 
     case "cursor.setSide": {
@@ -1267,13 +1271,19 @@ function setCursor(
     { type: "scrollCursorTarget", target: scrollTargetOf(next), placement, behavior },
   ];
   const bundle = state.bundle.kind === "ok" ? state.bundle.value : null;
+  const prevFile = resolvedCursorFile(state.cursor, bundle);
+  const nextFile = resolvedCursorFile(next, bundle);
   intents.push(...sidebarFollowIntents(state.cursor, next, bundle));
   const prevAnnId = isCardAnchor(state.cursor) ? state.cursor.commentId : null;
   const nextAnnId = isCardAnchor(next) ? next.commentId : null;
   if (prevAnnId !== nextAnnId) {
     intents.push({ type: "mirrorAnnUrl", commentId: nextAnnId });
   }
-  return { state: { ...state, cursor: next }, intents };
+  const nextState =
+    prevFile === nextFile
+      ? { ...state, cursor: next }
+      : { ...state, cursor: next, selectedFile: nextFile };
+  return { state: nextState, intents };
 }
 
 function scrollTargetOf(c: Cursor): ScrollCursorTarget {

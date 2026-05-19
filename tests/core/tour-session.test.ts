@@ -131,6 +131,7 @@ describe("initialTourSessionState", () => {
       sidebarWidth: 0,
       paneFocus: "sidebar",
       pendingAnnId: null,
+      selectedFile: null,
     });
   });
 });
@@ -237,6 +238,7 @@ describe("reduce — bundle slice", () => {
       ...initialTourSessionState(),
       currentTourId: "tour-a",
       bundle: { kind: "ok", value: bundle },
+      selectedFile: "old.ts",
     };
 
     const r = reduce(before, {
@@ -250,6 +252,7 @@ describe("reduce — bundle slice", () => {
       commentId: "ann-2",
       preferredSide: "additions",
     });
+    expect(r.state.selectedFile).toBe("bar.ts");
     expect(r.state.bundle).toBe(before.bundle);
     expect(r.intents).toEqual([
       {
@@ -382,6 +385,7 @@ describe("reduce — bundle slice", () => {
       commentId: "ann-1",
       preferredSide: "additions",
     });
+    expect(r.state.selectedFile).toBe("foo.ts");
     expect(r.state.paneFocus).toBe("diff");
     expect(r.intents).toEqual([
       { type: "selectSidebarFile", file: "foo.ts" },
@@ -406,6 +410,7 @@ describe("reduce — bundle slice", () => {
 
     expect(r.state.cursor).toBeNull();
     expect(r.state.paneFocus).toBe("sidebar");
+    expect(r.state.selectedFile).toBeNull();
     expect(r.intents).toEqual([{ type: "mirrorAnnUrl", commentId: null }]);
   });
 
@@ -552,6 +557,30 @@ describe("reduce — bundle slice", () => {
     expect(r.state.cursor).toBeNull();
     expect(r.state.paneFocus).toBe("sidebar");
     expect(r.intents).toEqual([]);
+  });
+
+  it("bundle.refreshed preserves selectedFile even when cursor validation emits sidebar selection", () => {
+    const beforeAnn = mkComment({ id: "ann-1", file: "old.ts" });
+    const afterAnn = mkComment({ id: "ann-1", file: "new.ts" });
+    const beforeBundle = {
+      ...okBundle("a", [bundleFile("old.ts")]),
+      comments: [beforeAnn],
+    };
+    const refreshedBundle = {
+      ...okBundle("a", [bundleFile("new.ts")]),
+      comments: [afterAnn],
+    };
+    const before: TourSessionState = {
+      ...initialTourSessionState(),
+      bundle: { kind: "ok", value: beforeBundle },
+      cursor: cardAnchor({ commentId: "ann-1" }),
+      selectedFile: "manual.ts",
+    };
+
+    const r = reduce(before, { type: "bundle.refreshed", bundle: refreshedBundle });
+
+    expect(r.state.selectedFile).toBe("manual.ts");
+    expect(r.intents).toContainEqual({ type: "selectSidebarFile", file: "new.ts" });
   });
 
   it("bundle.failed puts bundle into err(...) and leaves currentTourId in place", () => {
@@ -793,6 +822,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     const anchor = rowAnchor({ file: "foo.ts", lineNumber: 7, side: "additions" });
     const r = reduce(initialTourSessionState(), { type: "cursor.set", anchor });
     expect(r.state.cursor).toBe(anchor);
+    expect(r.state.selectedFile).toBe("foo.ts");
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
@@ -813,6 +843,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       type: "cursor.set",
       anchor: rowAnchor({ file: "foo.ts", lineNumber: 5 }),
     });
+    expect(r.state.selectedFile).toBe("foo.ts");
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",
@@ -832,6 +863,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
       type: "cursor.set",
       anchor: rowAnchor({ file: "bar.ts", lineNumber: 3 }),
     });
+    expect(r.state.selectedFile).toBe("bar.ts");
     expect(r.intents).toContainEqual({ type: "selectSidebarFile", file: "bar.ts" });
   });
 
@@ -1030,6 +1062,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     }).state;
     const r = reduce(s, { type: "cursor.clear" });
     expect(r.state.cursor).toBeNull();
+    expect(r.state.selectedFile).toBeNull();
     expect(r.intents).toEqual([{ type: "selectSidebarFile", file: null }]);
   });
 
@@ -1046,6 +1079,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     }).state;
     const r = reduce(s, { type: "cursor.clear" });
     expect(r.state.cursor).toBeNull();
+    expect(r.state.selectedFile).toBeNull();
     expect(r.intents).toEqual([
       { type: "selectSidebarFile", file: null },
       { type: "mirrorAnnUrl", commentId: null },
@@ -1149,6 +1183,7 @@ describe("reduce — cursor slice (slice 2 foundation)", () => {
     const anchor = cardAnchor({ commentId: "ann-5" });
     const r = reduce({ ...s, cursor: null }, { type: "cursor.materialize", anchor });
     expect(r.state.cursor).toBe(anchor);
+    expect(r.state.selectedFile).toBe("a.ts");
     expect(r.intents).toEqual([
       {
         type: "scrollCursorTarget",

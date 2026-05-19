@@ -27,7 +27,6 @@ export interface WebTourSessionAdapterDeps {
   callbacksRef: {
     current: {
       findFileBlock: (name: string) => HTMLElement | null;
-      setSelectedFile: (file: string | null) => void;
       revealFileAncestors: (file: string) => void;
     } | null;
   };
@@ -290,7 +289,6 @@ export function createWebTourSessionAdapter(
     revealFileInSidebar: (file: string) => {
       const cbs = deps.callbacksRef.current;
       if (!cbs) return;
-      cbs.setSelectedFile(file);
       cbs.revealFileAncestors(file);
     },
     mirrorTourUrl: (id: string) => {

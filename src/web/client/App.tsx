@@ -191,7 +191,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // the TUI's #211 wiring; the local `useState<ReplyLock | null>` that
   // shadowed the slice on the webapp is gone.
   const replyLock = resolvedReplyLock(sessionState);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const selectedFile = sessionState.selectedFile;
   // PRD #343 / ADR 0031 / issue #346: sidebar keyboard cursor. Tracks the
   // path of the row that owns the roving `tabindex=0` when paneFocus =
   // sidebar; null when the bundle hasn't seeded yet. Distinct from
@@ -296,7 +296,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // of the most recent commit," which is what we want — only the store
   // slice changed in this dispatch.
   const intentInputsRef = useRef<{
-    setSelectedFile: (next: string | null) => void;
     revealFileAncestors: (file: string) => void;
     findFileBlock: (name: string) => HTMLElement | null;
   } | null>(null);
@@ -385,17 +384,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     return () => window.removeEventListener("popstate", onPop);
   }, [store]);
 
-  // Tour-switch reset for sidebar selection. After PRD #234 slice 3
-  // (issue #238) the reducer's `tour.switched` branch owns every reset
-  // rule CONTEXT.md pins (picker, replyLock, cursor, expansion,
-  // composer, folds; layout preserved). `selectedFile` is the last
-  // surface-side `useState` (sidebar position, derivable from cursor,
-  // explicitly out of scope per PRD #234 / issue #238).
-  useEffect(() => {
-    if (!tourId) return;
-    setSelectedFile(null);
-  }, [tourId]);
-
   const tourMeta = bundle?.tour ?? null;
   // Tour-session view (PRD #242 / issue #245). Per-namespace memoised
   // projection from `(bundle, state)`; consumes through `view.*` instead
@@ -480,7 +468,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.commentId);
       if (!ann) return;
-      setSelectedFile(ann.file);
       store.dispatch({
         type: "folds.setOverride",
         file: ann.file,
@@ -723,7 +710,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // closure can't see post-dispatch state — but it can read the values
   // from the most recent commit via this ref.
   intentInputsRef.current = {
-    setSelectedFile,
     revealFileAncestors,
     findFileBlock,
   };
@@ -740,7 +726,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
   const selectFile = useCallback(
     (name: string) => {
-      setSelectedFile(name);
       // PRD #343 / ADR 0031 / issue #346: keep the sidebar keyboard
       // cursor in sync with file selection so a subsequent Esc into
       // sidebar mode lands the roving tabindex on the same row.
@@ -1659,7 +1644,6 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
         type: "cursor.set",
         anchor: cursorFromComment(a, preferredSideOf(store.getState().cursor)),
       });
-      setSelectedFile(a.file);
     },
     [view, store],
   );
