@@ -7,6 +7,7 @@ import type { BundleFile } from "../../src/web/client/types.js";
 import type { PlannedRow } from "../../src/core/diff-rows.js";
 import type { Cursor } from "../../src/core/cursor-state.js";
 import type { Comment } from "../../src/web/client/types.js";
+import { TEXT_SELECTABLE_CLASS } from "../../src/web/client/text-selection.js";
 
 // `<FileBlock>` is the per-file React component the Tour-owned web row
 // renderer mounts (PRD #212 slice 5). It owns the file-level grid, calls
@@ -209,6 +210,41 @@ describe("<FileBlock> — collapsed state", () => {
     });
     expect(toggled).toBe(1);
   });
+
+  it("keeps plain filename clicks immediate but suppresses collapse after a filename drag", () => {
+    let toggled = 0;
+    const c = mount(
+      createElement(
+        FileBlock,
+        defaultProps({ onToggleCollapse: () => (toggled += 1) }),
+      ),
+    );
+    const name = c.querySelector(".tour-file-name") as HTMLElement;
+    expect(name).not.toBeNull();
+
+    act(() => {
+      name.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+    });
+    expect(toggled).toBe(1);
+
+    act(() => {
+      name.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      name.dispatchEvent(
+        new MouseEvent("mousemove", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      name.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      name.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+    });
+    expect(toggled).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -329,6 +365,33 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
     const c = mount(createElement(FileBlock, defaultProps({ file })));
     const left = c.querySelector(".tour-file-header-left");
     expect(left!.querySelector(".rename-path")).not.toBeNull();
+  });
+
+  it("marks file and rename paths as selectable while leaving header chrome unmarked", () => {
+    const file: BundleFile = {
+      ...baseFile,
+      name: "new.ts",
+      prevName: "old.ts",
+    };
+    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    expect(
+      c
+        .querySelector(".tour-file-name")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      c.querySelector(".rename-path")?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      c
+        .querySelector(".tour-file-copy-button")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(false);
+    expect(
+      c
+        .querySelector(".tour-file-open-in-editor-button")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(false);
   });
 
   it("gives the copy button an accessible aria-label", () => {

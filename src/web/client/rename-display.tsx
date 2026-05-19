@@ -3,6 +3,7 @@ import {
   RENAME_PLACEHOLDER_BODY,
   formatRenameLabel,
 } from "../../core/rename-label.js";
+import { TEXT_SELECTABLE_CLASS } from "./text-selection.js";
 
 // Header path-pair pill (issue #145). Renders `<prev> → <new>` next to
 // the `reason-tag` / copy-path button in the file-block header when
@@ -18,7 +19,10 @@ export function RenameHeaderSpan({
   const label = formatRenameLabel(name, prevName);
   if (label === null) return null;
   return (
-    <span className="rename-path" data-testid="rename-path">
+    <span
+      className={`rename-path ${TEXT_SELECTABLE_CLASS}`}
+      data-testid="rename-path"
+    >
       {label}
     </span>
   );

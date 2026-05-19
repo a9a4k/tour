@@ -919,6 +919,27 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .tour-text-selectable {
+    user-select: text;
+    cursor: text;
+  }
+  .comment-block .selection-marker,
+  .comment-block .nav-index,
+  .comment-block .author-kind,
+  .comment-block .ann-collapse-chevron,
+  .comment-block .ann-trash-button,
+  .comment-block .reply-agent-byline,
+  .comment-block .ann-actions,
+  .comment-block .ann-collapsed-reply-count,
+  .tour-file-chevron,
+  .tour-file-status-icon,
+  .tour-file-copy-button,
+  .tour-file-expand-all-button,
+  .tour-file-open-in-editor-button,
+  .tour-file-stats,
+  .reason-tag {
+    user-select: none;
+  }
 </style>
 </head>
 <body>

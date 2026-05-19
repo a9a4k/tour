@@ -28,6 +28,13 @@ import {
 } from "./icons.js";
 import { fileIcon } from "./file-icon.js";
 import { countDiffStats, proportionSegments } from "../../core/diff-stats.js";
+import {
+  consumeTextSelectionDrag,
+  createTextSelectionDragState,
+  recordTextSelectionMouseDown,
+  recordTextSelectionMouseMove,
+  TEXT_SELECTABLE_CLASS,
+} from "./text-selection.js";
 
 /**
  * Per-file React component for the web row renderer. Owns the file-level
@@ -238,6 +245,7 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
   } = props;
 
   const blockRef = useRef<HTMLDivElement | null>(null);
+  const headerTextSelectionDrag = useRef(createTextSelectionDragState());
 
   const additionsLang = detectLang(file.name);
   const deletionsLang = detectLang(file.prevName ?? file.name);
@@ -341,14 +349,40 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
     if (onOpenInEditor) onOpenInEditor(file.name, 1, "additions");
   };
 
+  const handleHeaderClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (consumeTextSelectionDrag(headerTextSelectionDrag.current)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    onToggleCollapse();
+  };
+
   return (
     <div className="tour-file-outer" data-file={file.name}>
-      <div className="tour-file-header" onClick={onToggleCollapse}>
+      <div
+        className="tour-file-header"
+        onMouseDown={(event) => {
+          recordTextSelectionMouseDown(
+            headerTextSelectionDrag.current,
+            event.nativeEvent,
+          );
+        }}
+        onMouseMove={(event) => {
+          recordTextSelectionMouseMove(
+            headerTextSelectionDrag.current,
+            event.nativeEvent,
+          );
+        }}
+        onClick={handleHeaderClick}
+      >
         <div className="tour-file-header-left">
           <Chevron className="tour-file-chevron" />
           <StatusIcon className={`tour-file-status-icon ${statusClass}`} />
           <RenameHeaderSpan name={file.name} prevName={file.prevName} />
-          <span className="tour-file-name">{file.name}</span>
+          <span className={`tour-file-name ${TEXT_SELECTABLE_CLASS}`}>
+            {file.name}
+          </span>
           {/* Issue #317: copy-path button sits next to the filename (GitHub
               parity); long-path shrink behaviour lives on `.tour-file-name`.
               Issue #319: icon swap state lives at `copyState` above; layout-
