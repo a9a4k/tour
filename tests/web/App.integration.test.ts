@@ -822,9 +822,10 @@ describe("App fold-unfold restores classifier-default (issue #316)", () => {
 
 // Issue #332: dynamic send-hint matrix at the App's footer call site.
 // The fixture's first top-level comment is human-authored, so the
-// bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on a
-// human card by default — the lock/agent/cursor permutations below
-// then exercise each leg of the predicate without manual `j` walking.
+// The URL-open seed path (`tour.openedFromUrl` -> `computeTourOpenSeed`)
+// seats the cursor on a human card by default — the lock/agent/cursor
+// permutations below then exercise each leg of the predicate without
+// manual `j` walking.
 
 const sendHintTourId = "2026-05-15-000000-footer-send-hint";
 
@@ -1009,7 +1010,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
     });
     await flush();
 
-    // Bundle-load re-anchor lands on the first top-level (human) — segment present.
+    // URL-open seeding lands on the first top-level (human) — segment present.
     const footer = container.querySelector("footer.app-footer");
     expect(footer!.textContent).toContain("R: request reply");
 
@@ -1169,8 +1170,8 @@ describe("App comment-create failure status (Issue #334)", () => {
     });
     await flush();
 
-    // Bundle-load re-anchor seats the cursor on the human card. `r` opens
-    // the reply composer for that card's thread.
+    // URL-open seeding seats the cursor on the human card. `r` opens the
+    // reply composer for that card's thread.
     await act(async () => {
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "r", bubbles: true }),
@@ -1839,9 +1840,9 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
     });
     await flush();
 
-    // Bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on the
-    // first top-level Comment — the parent. The mirrorAnnUrl intent writes
-    // the parent id into window.location.hash.
+    // The URL-open seed path (`tour.openedFromUrl` -> `computeTourOpenSeed`)
+    // seats the cursor on the first top-level Comment — the parent. The
+    // mirrorAnnUrl intent writes the parent id into window.location.hash.
     expect(annFromHash()).toBe("ann-parent");
 
     await act(async () => {
@@ -2107,7 +2108,7 @@ describe("App reply-click lands cursor on reply id (issue #411 — ADR 0037 mous
       root.render(createElement(App, { initialTourId: replyWalkTourId }));
     });
     await flush();
-    // Bundle-load re-anchor lands on the parent.
+    // URL-open seeding lands on the parent.
     expect(annFromHash()).toBe("ann-parent");
 
     const reply2 = container.querySelector(
@@ -2398,8 +2399,8 @@ describe("App post-submit cursor lands on the new Reply (issue #405 race with #3
     });
     await flush();
 
-    // Bundle-load re-anchor seats the cursor on the parent Comment;
-    // its id is mirrored to the URL hash.
+    // URL-open seeding seats the cursor on the parent Comment; its id is
+    // mirrored to the URL hash.
     expect(annFromHash()).toBe("ann-human-fail");
 
     // `r` opens the reply composer for the Thread under the cursor.

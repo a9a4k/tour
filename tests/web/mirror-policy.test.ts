@@ -23,8 +23,8 @@ const topLevel = [annA, annB];
 const TOUR = "tour-X";
 
 describe("decideMirrorUrl (issue #198)", () => {
-  // Tour-load defer: cursor is briefly null before the re-anchor effect
-  // seeds it from `#<ann-id>`. The mirror must NOT strip-then-restore the
+  // Tour-load defer: cursor is briefly null before the URL-open seed path
+  // seats it from `#<ann-id>`. The mirror must NOT strip-then-restore the
   // valid comment id in a single cycle (preserves Issue #180 / PRD UX 26).
   it("skip when cursor is null and topLevel is non-empty (tour-load defer)", () => {
     expect(decideMirrorUrl(null, topLevel, TOUR)).toEqual({ kind: "skip" });
@@ -105,9 +105,9 @@ describe("decideMirrorUrl (issue #198)", () => {
 
   // CardAnchor for a comment that's no longer top-level (deleted /
   // restructured between bundle loads). The mirror still writes the URL;
-  // the re-anchor effect's stale-fallback branch handles the cursor
-  // correction. Asymmetric with decideReanchor: the mirror is a pure
-  // serialiser of the cursor's intent.
+  // `computeTourOpenSeed` / `tour.openedFromUrl` handle the cursor
+  // correction on URL-driven Tour opens. The mirror is a pure serialiser
+  // of the cursor's intent.
   it("write `/tour#ann` even when the CardAnchor id is not in topLevel (mirror is unaware of staleness)", () => {
     const cursor: Cursor = { kind: "card", commentId: "ghost", preferredSide: "additions" };
     expect(decideMirrorUrl(cursor, topLevel, TOUR)).toEqual({
