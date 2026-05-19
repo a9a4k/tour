@@ -55,6 +55,16 @@ function okBundle(id: string, comments: Comment[] = []): TourBundle {
   };
 }
 
+function recordDispatches(store: TourSessionStore): Action[] {
+  const dispatched: Action[] = [];
+  const originalDispatch = store.dispatch;
+  (store as unknown as { dispatch: (action: Action) => void }).dispatch = (action) => {
+    dispatched.push(action);
+    originalDispatch(action);
+  };
+  return dispatched;
+}
+
 function comment(id: string, overrides: Partial<Comment> = {}): Comment {
   return {
     id,
@@ -548,12 +558,7 @@ describe("TourSessionRuntime", () => {
       const annB = comment("ann-b", { file: "b.ts" });
       const fresh = okBundle("tour-a", [annA, annB]);
       const adapter = createFakeAdapter({ bundleByTour: { "tour-a": fresh } });
-      const dispatched: Action[] = [];
-      const originalDispatch = store.dispatch;
-      (store as unknown as { dispatch: (action: Action) => void }).dispatch = (action) => {
-        dispatched.push(action);
-        originalDispatch(action);
-      };
+      const dispatched = recordDispatches(store);
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 
@@ -577,12 +582,7 @@ describe("TourSessionRuntime", () => {
       const store = storeWithTour(null);
       const fresh = okBundle("tour-a");
       const adapter = createFakeAdapter({ bundleByTour: { "tour-a": fresh } });
-      const dispatched: Action[] = [];
-      const originalDispatch = store.dispatch;
-      (store as unknown as { dispatch: (action: Action) => void }).dispatch = (action) => {
-        dispatched.push(action);
-        originalDispatch(action);
-      };
+      const dispatched = recordDispatches(store);
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
 

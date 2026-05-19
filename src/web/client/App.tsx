@@ -143,6 +143,17 @@ function readAnnFromUrl(): string | null {
   return readAnnFromLocation(window.location);
 }
 
+function readTourOpenFromUrl(
+  fallback: string | null,
+): { tourId: string; annId?: string } | null {
+  const tourId = readTourFromUrl(fallback);
+  if (tourId === null) return null;
+  return {
+    tourId,
+    annId: readAnnFromUrl() ?? undefined,
+  };
+}
+
 export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
   // Tour-session store (PRD #207 slice 1, issue #210; bundle hoisted into
   // the store in issue #211). One store per SPA mount. URL-derived
@@ -350,12 +361,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     // URL-seeded initial bundle load. `tour.openedFromUrl` owns the
     // transient annId so the loaded-bundle seed lands directly on the
     // requested card.
-    const initial = readTourFromUrl(initialTourId);
+    const initial = readTourOpenFromUrl(initialTourId);
     if (initial !== null) {
       store.dispatch({
         type: "tour.openedFromUrl",
-        tourId: initial,
-        annId: readAnnFromUrl() ?? undefined,
+        ...initial,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -363,12 +373,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   useEffect(() => {
     const onPop = () => {
-      const fromUrl = readTourFromUrl(null);
+      const fromUrl = readTourOpenFromUrl(null);
       if (fromUrl !== null) {
         store.dispatch({
           type: "tour.openedFromUrl",
-          tourId: fromUrl,
-          annId: readAnnFromUrl() ?? undefined,
+          ...fromUrl,
         });
       }
     };

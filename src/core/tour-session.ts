@@ -152,6 +152,8 @@ export interface TourSessionState {
   // overrides via `paneFocus.setDiff` in the bundle-load seed-effect when
   // the Tour has top-level Comments.
   paneFocus: PaneFocus;
+  // URL `ann` captured while a cross-tour load is in flight. The runtime
+  // reads it when `fetchBundle` resolves and `tour.switched` clears it.
   pendingAnnId: string | null;
 }
 
@@ -381,8 +383,8 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "tour.openedFromUrl":
       if (action.tourId === state.currentTourId) {
         if (action.annId === undefined) return { state, intents: NO_INTENTS };
-        const bundle = state.bundle.kind === "ok" ? state.bundle.value : null;
-        if (bundle === null) return { state, intents: NO_INTENTS };
+        if (state.bundle.kind !== "ok") return { state, intents: NO_INTENTS };
+        const bundle = state.bundle.value;
         const next = validateCursorStructural(
           {
             kind: "card",
