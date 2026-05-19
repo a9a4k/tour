@@ -88,6 +88,13 @@ import { resolveYankTarget } from "../../core/yank-target.js";
 import { dispatchOpenInEditor } from "./dispatch-open-in-editor.js";
 import { dispatchDeleteComment } from "./dispatch-delete-comment.js";
 import { DeleteConfirmModal } from "./DeleteConfirmModal.js";
+import {
+  consumeTextSelectionDrag,
+  createTextSelectionDragState,
+  recordTextSelectionMouseDown,
+  recordTextSelectionMouseMove,
+  TEXT_SELECTABLE_CLASS,
+} from "./text-selection.js";
 
 // PRD #356 / issue #358: footer flash for `y` on a diff-row preview
 // truncates the displayed text to keep the legend strip readable while
@@ -2540,6 +2547,19 @@ export function CommentCard({
   ]
     .filter(Boolean)
     .join(" ");
+  const textSelectionDrag = useRef(createTextSelectionDragState());
+  const handleSelectableMouseDown = (event: React.MouseEvent) => {
+    recordTextSelectionMouseDown(textSelectionDrag.current, event.nativeEvent);
+  };
+  const handleSelectableMouseMove = (event: React.MouseEvent) => {
+    recordTextSelectionMouseMove(textSelectionDrag.current, event.nativeEvent);
+  };
+  const suppressAfterTextSelectionDrag = (event: React.MouseEvent): boolean => {
+    if (!consumeTextSelectionDrag(textSelectionDrag.current)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  };
   if (collapsed) {
     const replyCount = replies?.length ?? 0;
     return (
@@ -2547,7 +2567,12 @@ export function CommentCard({
         className={blockClass}
         ref={(el) => registerRef?.(comment.id, el)}
         data-comment-id={comment.id}
-        onClick={() => onCardClick?.(comment.id)}
+        onMouseDown={handleSelectableMouseDown}
+        onMouseMove={handleSelectableMouseMove}
+        onClick={(event) => {
+          if (suppressAfterTextSelectionDrag(event)) return;
+          onCardClick?.(comment.id);
+        }}
       >
         <div className="ann-header ann-header-collapsed">
           {isCurrent ? (
@@ -2576,8 +2601,14 @@ export function CommentCard({
           <span className={`author-kind ${comment.author_kind}`}>
             [{comment.author_kind}]
           </span>{" "}
-          <span className="ann-filename">{comment.file}:{range}</span>
-          <span className="ann-collapsed-preview">  "{collapsedPreview}"</span>
+          <span className={`ann-filename ${TEXT_SELECTABLE_CLASS}`}>
+            {comment.file}:{range}
+          </span>
+          <span className={`ann-collapsed-preview ${TEXT_SELECTABLE_CLASS}`}>
+            {"  \""}
+            {collapsedPreview}
+            {"\""}
+          </span>
           {replyCount > 0 ? (
             <span className="ann-collapsed-reply-count">  💬 {replyCount}</span>
           ) : null}
@@ -2591,7 +2622,12 @@ export function CommentCard({
       className={blockClass}
       ref={(el) => registerRef?.(comment.id, el)}
       data-comment-id={comment.id}
-      onClick={() => onCardClick?.(comment.id)}
+      onMouseDown={handleSelectableMouseDown}
+      onMouseMove={handleSelectableMouseMove}
+      onClick={(event) => {
+        if (suppressAfterTextSelectionDrag(event)) return;
+        onCardClick?.(comment.id);
+      }}
     >
       <div className={parentActive ? "ann-header active-node" : "ann-header"}>
         {/* Issue #409 follow-up: the `●` glyph rides
@@ -2633,17 +2669,18 @@ export function CommentCard({
           // before dispatching the open.
           <button
             type="button"
-            className="ann-filename-link"
+            className={`ann-filename-link ${TEXT_SELECTABLE_CLASS}`}
             aria-label={`Open ${comment.file}:${range} in editor`}
             onClick={(event) => {
               event.stopPropagation();
+              if (suppressAfterTextSelectionDrag(event)) return;
               onFileClick(comment.id, comment.file, comment.line_end);
             }}
           >
             {comment.file}:{range}
           </button>
         ) : (
-          <>{comment.file}:{range}</>
+          <span className={TEXT_SELECTABLE_CLASS}>{comment.file}:{range}</span>
         )}
         {onDeleteClick && !isDeletedStub ? (
           <button
@@ -2660,7 +2697,7 @@ export function CommentCard({
           </button>
         ) : null}
       </div>
-      <div className="ann-body">
+      <div className={`ann-body ${TEXT_SELECTABLE_CLASS}`}>
         {isDeletedStub ? (
           <span aria-label="Deleted comment placeholder">[deleted]</span>
         ) : (
@@ -2678,6 +2715,7 @@ export function CommentCard({
                 ref={(el) => registerRef?.(r.id, el)}
                 id={`comment-${r.id}`}
                 onClick={(event) => {
+                  if (suppressAfterTextSelectionDrag(event)) return;
                   // Issue #411 / ADR 0037 mouse-path parity. Without this
                   // handler the click bubbles up to the `.comment-block`
                   // wrapper's onClick which fires `onCardClick(parent.id)` —
@@ -2716,7 +2754,7 @@ export function CommentCard({
                     </button>
                   ) : null}
                 </div>
-                <div className="ann-body">
+                <div className={`ann-body ${TEXT_SELECTABLE_CLASS}`}>
                   <CommentMarkdown body={r.body} />
                 </div>
                 {replyTargetId === r.id ? (

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { CommentCard } from "../../src/web/client/App.js";
 import type { Comment } from "../../src/web/client/types.js";
 import type { ReplyLock } from "../../src/core/reply-lock.js";
+import { TEXT_SELECTABLE_CLASS } from "../../src/web/client/text-selection.js";
 
 // Collapse rule mirrors the TUI side (see tests/tui/comment-card.test.ts):
 // ADR 0016 keeps `author = author_kind` as the on-disk default, but the
@@ -159,6 +160,178 @@ describe("CommentCard header collapses redundant `author` when author === author
       }),
     );
     expect(container.querySelector(".author-kind.human")).not.toBeNull();
+  });
+});
+
+describe("CommentCard text selection", () => {
+  it("marks comment body, reply body, and location stamps as selectable while leaving action chrome unmarked", () => {
+    const reply: Comment = {
+      ...baseComment,
+      id: "ann-2",
+      body: "reply body",
+      replies_to: baseComment.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onFileClick: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+
+    expect(
+      container
+        .querySelector(".comment-block > .ann-body")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      container
+        .querySelector(`[id="comment-${reply.id}"] .ann-body`)
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      container
+        .querySelector(".ann-filename-link")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      container
+        .querySelector(".reply-button")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(false);
+  });
+
+  it("keeps plain body clicks immediate but suppresses card activation after a body drag", () => {
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: (id: string) => {
+          calls.push(id);
+        },
+      }),
+    );
+    const body = container.querySelector(".ann-body") as HTMLElement;
+    expect(body).not.toBeNull();
+
+    act(() => {
+      body.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+    });
+    expect(calls).toEqual(["ann-1"]);
+
+    act(() => {
+      body.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent("mousemove", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+    });
+    expect(calls).toEqual(["ann-1"]);
+  });
+
+  it("keeps reply body plain clicks immediate but suppresses reply activation after a reply body drag", () => {
+    const reply: Comment = {
+      ...baseComment,
+      id: "ann-2",
+      body: "reply body",
+      replies_to: baseComment.id,
+    };
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: (id: string) => {
+          calls.push(id);
+        },
+      }),
+    );
+    const body = container.querySelector(
+      `[id="comment-${reply.id}"] .ann-body`,
+    ) as HTMLElement;
+    expect(body).not.toBeNull();
+
+    act(() => {
+      body.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+    });
+    expect(calls).toEqual(["ann-2"]);
+
+    act(() => {
+      body.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent("mousemove", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+    });
+    expect(calls).toEqual(["ann-2"]);
+  });
+
+  it("keeps location-stamp clicks immediate but suppresses open-in-editor after a location-stamp drag", () => {
+    const opens: Array<[string, string, number]> = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onFileClick: (id: string, file: string, lineEnd: number) => {
+          opens.push([id, file, lineEnd]);
+        },
+      }),
+    );
+    const stamp = container.querySelector(".ann-filename-link") as HTMLElement;
+    expect(stamp).not.toBeNull();
+
+    act(() => {
+      stamp.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+    });
+    expect(opens).toEqual([["ann-1", "x.txt", 1]]);
+
+    act(() => {
+      stamp.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      stamp.dispatchEvent(
+        new MouseEvent("mousemove", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      stamp.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      stamp.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+    });
+    expect(opens).toEqual([["ann-1", "x.txt", 1]]);
   });
 });
 

@@ -56,6 +56,16 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.app-sidebar\.is-resizing[\s\S]*?user-select:\s*none/);
   });
 
+  it("styles Tour text selection content separately from comment and file-header chrome", () => {
+    const out = html();
+    expect(out).toMatch(
+      /\.tour-text-selectable\s*\{[^}]*user-select:\s*text/,
+    );
+    expect(out).toMatch(
+      /\.comment-block \.ann-actions,[\s\S]*?\.tour-file-open-in-editor-button,[\s\S]*?\.reason-tag\s*\{[^}]*user-select:\s*none/,
+    );
+  });
+
   it("emits the GitHub Dark Default token block as :root custom properties (Issue #57)", () => {
     const out = html();
     // Spot-check Tier 1 + Tier 2 tokens to lock centralization.
