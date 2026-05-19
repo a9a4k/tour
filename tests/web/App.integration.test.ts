@@ -822,9 +822,9 @@ describe("App fold-unfold restores classifier-default (issue #316)", () => {
 
 // Issue #332: dynamic send-hint matrix at the App's footer call site.
 // The fixture's first top-level comment is human-authored, so the
-// bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on a
-// human card by default — the lock/agent/cursor permutations below
-// then exercise each leg of the predicate without manual `j` walking.
+// `tour.openedFromUrl` routes through `computeTourOpenSeed`, seating the
+// cursor on a human card by default — the lock/agent/cursor permutations
+// below then exercise each leg of the predicate without manual `j` walking.
 
 const sendHintTourId = "2026-05-15-000000-footer-send-hint";
 
@@ -1839,9 +1839,9 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
     });
     await flush();
 
-    // Bundle-load re-anchor (re-anchor-policy.ts) seats the cursor on the
-    // first top-level Comment — the parent. The mirrorAnnUrl intent writes
-    // the parent id into window.location.hash.
+    // `tour.openedFromUrl` routes through `computeTourOpenSeed`, seating
+    // the cursor on the first top-level Comment — the parent. The
+    // mirrorAnnUrl intent writes the parent id into window.location.hash.
     expect(annFromHash()).toBe("ann-parent");
 
     await act(async () => {

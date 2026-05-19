@@ -105,9 +105,9 @@ describe("decideMirrorUrl (issue #198)", () => {
 
   // CardAnchor for a comment that's no longer top-level (deleted /
   // restructured between bundle loads). The mirror still writes the URL;
-  // the re-anchor effect's stale-fallback branch handles the cursor
-  // correction. Asymmetric with decideReanchor: the mirror is a pure
-  // serialiser of the cursor's intent.
+  // `computeTourOpenSeed` / `tour.openedFromUrl` handle the cursor
+  // correction on URL-driven Tour opens. The mirror is a pure serialiser
+  // of the cursor's intent.
   it("write `/tour#ann` even when the CardAnchor id is not in topLevel (mirror is unaware of staleness)", () => {
     const cursor: Cursor = { kind: "card", commentId: "ghost", preferredSide: "additions" };
     expect(decideMirrorUrl(cursor, topLevel, TOUR)).toEqual({
