@@ -436,6 +436,7 @@ function App(props: AppProps) {
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const pickerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const initialTourOpenSeededRef = useRef(false);
 
   // Sidebar width (issue #416). Per-tour auto-fit + `[`/`]` resize now
   // lives in the Tour-session store so resize reanchors flow through the
@@ -766,6 +767,24 @@ function App(props: AppProps) {
     if (currentTourId === null) return;
     setSelectedRowIdx(0);
   }, [currentTourId]);
+
+  // The CLI preloads the first bundle before React mounts, so initial TUI
+  // startup does not naturally pass through `tour.switched`. Replay that
+  // reducer transition after the runtime has subscribed so the first
+  // Comment seed emits its `scrollCursorTarget` intent.
+  useEffect(() => {
+    if (initialTourOpenSeededRef.current) return;
+    initialTourOpenSeededRef.current = true;
+    store.dispatch({
+      type: "tour.switched",
+      tourId: props.bundle.tour.id,
+      bundle: props.bundle,
+    });
+    store.dispatch({
+      type: "replyLock.loaded",
+      replyLock: props.replyLock ?? null,
+    });
+  }, [store, props.bundle, props.replyLock]);
 
   const jumpToComment = (ann: Comment) => {
     // Issue #132: explicit comment jumps (n/p) drop sidebar focus so
