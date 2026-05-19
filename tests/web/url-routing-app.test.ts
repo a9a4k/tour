@@ -258,4 +258,66 @@ describe("App URL writer (Issue #180 — bare URL is consistent with state)", ()
     expect(window.location.pathname).toBe(`/${tourId}`);
     expect(window.location.hash).toBe(`#${annA.id}`);
   });
+
+  it("popstate to another tour preserves the popped ann fragment after reducer seeding", async () => {
+    const otherTourId = "2026-05-12-000001-other";
+    const otherSummary = { ...tourSummary, id: otherTourId, title: "Other tour" };
+    const otherAnnA = { ...annA, id: "other-ann-a" };
+    const otherAnnB = { ...annB, id: "other-ann-b" };
+    const otherBundle = {
+      ...bundle,
+      tour: otherSummary,
+      comments: [otherAnnA, otherAnnB],
+    };
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([tourSummary, otherSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${tourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(bundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${otherTourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(otherBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+
+    window.history.replaceState(null, "", `/${tourId}#${annA.id}`);
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      window.history.pushState(null, "", `/${otherTourId}#${otherAnnB.id}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await flush();
+
+    expect(window.location.pathname).toBe(`/${otherTourId}`);
+    expect(window.location.hash).toBe(`#${otherAnnB.id}`);
+  });
 });

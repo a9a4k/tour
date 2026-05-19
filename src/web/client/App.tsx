@@ -360,6 +360,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       const fromUrl = readTourFromUrl(null);
       const current = store.getState().currentTourId;
       if (fromUrl !== null && fromUrl !== current) {
+        // Preserve the popped fragment across the reducer-owned tour-open
+        // seed, whose mirrorAnnUrl intent may rewrite the URL before the
+        // loaded-bundle restore effect runs.
+        initialAnnRef.current = readAnnFromUrl();
         // popstate is the equivalent of a picker-commit (issue #210): the
         // session action sets bundle = loading + currentTourId and emits a
         // `loadTour` intent that the runtime realises through the adapter.
