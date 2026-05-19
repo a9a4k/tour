@@ -13,13 +13,21 @@ export function createTextSelectionDragState(): TextSelectionDragState {
   return { active: false, dragged: false, startX: 0, startY: 0 };
 }
 
+function closestSelectableElement(target: EventTarget | null): Element | null {
+  if (target instanceof Element) {
+    return target.closest(`.${TEXT_SELECTABLE_CLASS}`);
+  }
+  if (target instanceof Node && target.parentElement) {
+    return target.parentElement.closest(`.${TEXT_SELECTABLE_CLASS}`);
+  }
+  return null;
+}
+
 export function recordTextSelectionMouseDown(
   state: TextSelectionDragState,
   event: Pick<MouseEvent, "target" | "clientX" | "clientY">,
 ): void {
-  state.active =
-    event.target instanceof Element &&
-    event.target.closest(`.${TEXT_SELECTABLE_CLASS}`) !== null;
+  state.active = closestSelectableElement(event.target) !== null;
   state.dragged = false;
   state.startX = event.clientX;
   state.startY = event.clientY;
