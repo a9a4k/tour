@@ -14,24 +14,23 @@ import {
 import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 
 type SidebarActivationEvent = Pick<MouseEvent, "stopPropagation">;
+type FolderRow = Extract<VisibleRow<DiffFile>, { kind: "folder" }>;
+type FileRow = Extract<VisibleRow<DiffFile>, { kind: "file" }>;
 
-interface SidebarRowTuiProps {
-  row: VisibleRow<DiffFile>;
+interface SidebarRowCommonProps {
   isSelected: boolean;
   sidebarFocused: boolean;
   sidebarContentWidth: number;
-  stats: FileRowStats;
   onActivate: (event?: SidebarActivationEvent) => void;
 }
 
-export function SidebarRowTui({
-  row,
-  isSelected,
-  sidebarFocused,
-  sidebarContentWidth,
-  stats,
-  onActivate,
-}: SidebarRowTuiProps) {
+type SidebarRowTuiProps = SidebarRowCommonProps & (
+  | { row: FolderRow; stats?: never }
+  | { row: FileRow; stats: FileRowStats }
+);
+
+export function SidebarRowTui(props: SidebarRowTuiProps) {
+  const { row, isSelected, sidebarFocused, sidebarContentWidth, onActivate } = props;
   const { bg, showGlyph } = sidebarCursorPaint({ isSelected, sidebarFocused });
   const rowMouseHandlers = textSelectionSafeActivation(onActivate);
 
@@ -66,8 +65,8 @@ export function SidebarRowTui({
 
   const segs = fileRowParts(
     row,
-    stats,
-    sidebarContentWidth - fileRowFixedCost(row, stats),
+    props.stats,
+    sidebarContentWidth - fileRowFixedCost(row, props.stats),
   );
   const leadingText = showGlyph ? segs.leading.slice(1) : segs.leading;
 

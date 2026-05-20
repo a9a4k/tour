@@ -77,7 +77,6 @@ describe("SidebarRowTui Text selection", () => {
       isSelected: true,
       sidebarFocused: true,
       sidebarContentWidth: 28,
-      stats: { additions: 0, deletions: 0 },
       onActivate: vi.fn(),
     });
     const folderTexts = textElements(folderTree);

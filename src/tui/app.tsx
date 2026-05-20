@@ -1905,20 +1905,23 @@ function App(props: AppProps) {
                   store.dispatch({ type: "paneFocus.setSidebar" });
                 }
               };
-              // Per-file diff stats (#265): `+N` in fg.success and `-M`
-              // in fg.danger between filename and comment badge. The
-              // stats need their own foreground colors, so the row is a
-              // flex-row box of sibling <text>s instead of one <text>.
-              // countDiffStats handles the change-row shape: new files
-              // count `+1`, deleted files count `-1`, paired-change rows
-              // count `+1 -1`. Pure-rename rows (no content change)
-              // return 0/0 and render no stats segments.
-              const stats = row.kind === "file"
-                ? countDiffStats(plannedRowsByFile.get(row.path) ?? [])
-                : { additions: 0, deletions: 0 };
+              if (row.kind === "folder") {
+                return (
+                  <SidebarRowTui
+                    key={`d:${row.path}`}
+                    row={row}
+                    isSelected={isSelected}
+                    sidebarFocused={sidebarFocused}
+                    sidebarContentWidth={sidebarContentWidth}
+                    onActivate={onRowMouseDown}
+                  />
+                );
+              }
+
+              const stats = countDiffStats(plannedRowsByFile.get(row.path) ?? []);
               return (
                 <SidebarRowTui
-                  key={`${row.kind === "folder" ? "d" : "f"}:${row.path}`}
+                  key={`f:${row.path}`}
                   row={row}
                   isSelected={isSelected}
                   sidebarFocused={sidebarFocused}
