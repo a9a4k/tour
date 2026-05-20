@@ -21,14 +21,15 @@ const CLI = join(import.meta.dirname, "../../src/main.ts");
 async function run(
   args: string[],
   cwd: string,
-  opts?: { stdin?: string },
+  opts?: { stdin?: string; tourHome?: string; timeoutMs?: number },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const tourHome = tourHomeFor(cwd);
+  const tourHome = opts?.tourHome ?? tourHomeFor(cwd);
   try {
     const child = exec("bun", [CLI, ...args], {
       cwd,
       env: { ...process.env, TOUR_HOME: tourHome },
       maxBuffer: 10 * 1024 * 1024,
+      timeout: opts?.timeoutMs,
     });
     if (opts?.stdin && child.child.stdin) {
       child.child.stdin.write(opts.stdin);
@@ -44,6 +45,12 @@ async function run(
       exitCode: e.code ?? 1,
     };
   }
+}
+
+async function createLinkedWorktree(repo: string): Promise<string> {
+  const linked = await mkdtemp(join(tmpdir(), "tour-cli-linked-"));
+  await gitCmd(["worktree", "add", linked, "-b", `linked-${Date.now()}`], repo);
+  return linked;
 }
 
 function tourHomeFor(cwd: string): string {
@@ -421,6 +428,82 @@ describe("CLI integration", () => {
       expect(Array.isArray(tours)).toBe(true);
       expect(tours.length).toBe(1);
     });
+
+    it("hides tours from another linked worktree by default and shows them with --all", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const linked = await createLinkedWorktree(repo);
+      const created = await run(
+        ["create", "--head", "HEAD", "--title", "main worktree", "--json"],
+        repo,
+        { tourHome },
+      );
+      const tour = JSON.parse(created.stdout);
+
+      const defaultList = await run(["list", "--json"], linked, { tourHome });
+      expect(defaultList.exitCode).toBe(0);
+      expect(JSON.parse(defaultList.stdout)).toEqual([]);
+
+      const allList = await run(["list", "--all", "--json"], linked, { tourHome });
+      expect(allList.exitCode).toBe(0);
+      expect(JSON.parse(allList.stdout).map((t: { id: string }) => t.id)).toEqual([
+        tour.id,
+      ]);
+    });
+
+    it("scopes WIP tours to the worktree that created them", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const linked = await createLinkedWorktree(repo);
+      await writeFile(join(repo, "wip.txt"), "main worktree wip\n");
+      const created = await run(
+        ["create", "--head", "WIP", "--title", "main wip", "--json"],
+        repo,
+        { tourHome },
+      );
+      const tour = JSON.parse(created.stdout);
+      expect(tour.wip_snapshot).toBe(true);
+
+      const defaultList = await run(["list", "--json"], linked, { tourHome });
+      expect(defaultList.exitCode).toBe(0);
+      expect(JSON.parse(defaultList.stdout)).toEqual([]);
+
+      const allList = await run(["list", "--all", "--json"], linked, { tourHome });
+      expect(JSON.parse(allList.stdout).map((t: { id: string }) => t.id)).toEqual([
+        tour.id,
+      ]);
+    });
+  });
+
+  describe("smart defaults", () => {
+    it("bare tour prints the first-run banner when only another worktree has tours", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const linked = await createLinkedWorktree(repo);
+      await run(
+        ["create", "--head", "HEAD", "--title", "main worktree", "--json"],
+        repo,
+        { tourHome },
+      );
+
+      const result = await run([], linked, { tourHome, timeoutMs: 2000 });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("No tours found for this worktree");
+      expect(result.stdout).toContain("tour list --all");
+    });
+
+    it("tour tui without an id ignores tours from another worktree", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const linked = await createLinkedWorktree(repo);
+      await run(
+        ["create", "--head", "HEAD", "--title", "main worktree", "--json"],
+        repo,
+        { tourHome },
+      );
+
+      const result = await run(["tui"], linked, { tourHome, timeoutMs: 2000 });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("No open tours");
+    });
   });
 
   describe("show", () => {
@@ -451,6 +534,25 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(0);
       const data = JSON.parse(result.stdout);
       expect(data.id).toBe(tour.id);
+    });
+
+    it("explicit-id commands resolve tours from another linked worktree", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const linked = await createLinkedWorktree(repo);
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo, { tourHome });
+      const tour = JSON.parse(cr.stdout);
+
+      const showResult = await run(["show", tour.id, "--json"], linked, { tourHome });
+      expect(showResult.exitCode).toBe(0);
+      expect(JSON.parse(showResult.stdout).id).toBe(tour.id);
+
+      const closeResult = await run(["close", tour.id, "--json"], linked, { tourHome });
+      expect(closeResult.exitCode).toBe(0);
+      expect(JSON.parse(closeResult.stdout).status).toBe("closed");
+
+      const deleteResult = await run(["delete", tour.id, "--json"], linked, { tourHome });
+      expect(deleteResult.exitCode).toBe(0);
+      expect(JSON.parse(deleteResult.stdout)).toEqual({ deleted: tour.id });
     });
   });
 

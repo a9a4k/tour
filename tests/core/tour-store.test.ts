@@ -26,6 +26,7 @@ function makeTour(overrides?: Partial<Tour>): Tour {
     head_source: "HEAD",
     base_source: "HEAD^",
     wip_snapshot: false,
+    created_in_worktree: "/tmp/worktree-a",
     ...overrides,
   };
 }
@@ -76,6 +77,24 @@ describe("tour-store", () => {
       await createTour(dir, makeTour({ id: "2026-05-08-120001-bbbb", status: "closed", closed_at: new Date().toISOString() }));
       const tours = await listTours(dir, { status: "all" });
       expect(tours).toHaveLength(2);
+    });
+
+    it("filters by worktree stamp when provided", async () => {
+      await createTour(dir, makeTour({
+        id: "2026-05-08-120000-aaaa",
+        created_in_worktree: "/tmp/worktree-a",
+      }));
+      await createTour(dir, makeTour({
+        id: "2026-05-08-120001-bbbb",
+        created_in_worktree: "/tmp/worktree-b",
+      }));
+
+      const tours = await listTours(dir, {
+        status: "all",
+        worktreeStamp: "/tmp/worktree-b",
+      });
+
+      expect(tours.map((t) => t.id)).toEqual(["2026-05-08-120001-bbbb"]);
     });
 
     it("sorts by ID (chronological)", async () => {

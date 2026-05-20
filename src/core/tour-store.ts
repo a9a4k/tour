@@ -3,6 +3,11 @@ import { join } from "node:path";
 import { parse as parseTOML, stringify as stringifyTOML } from "smol-toml";
 import type { Tour } from "./types.js";
 
+interface ListToursOptions {
+  status?: "open" | "closed" | "all";
+  worktreeStamp?: string;
+}
+
 function tourDir(tourStoreRoot: string, id: string): string {
   return join(tourStoreRoot, id);
 }
@@ -30,7 +35,7 @@ export async function getTour(
 
 export async function listTours(
   tourStoreRoot: string,
-  opts?: { status?: "open" | "closed" | "all" },
+  opts?: ListToursOptions,
 ): Promise<Tour[]> {
   let entries: string[];
   try {
@@ -46,8 +51,10 @@ export async function listTours(
     } catch {}
   }
   const status = opts?.status ?? "open";
-  const filtered =
-    status === "all" ? tours : tours.filter((t) => t.status === status);
+  let filtered = status === "all" ? tours : tours.filter((t) => t.status === status);
+  if (opts?.worktreeStamp !== undefined) {
+    filtered = filtered.filter((t) => t.created_in_worktree === opts.worktreeStamp);
+  }
   return filtered.sort((a, b) => a.id.localeCompare(b.id));
 }
 
