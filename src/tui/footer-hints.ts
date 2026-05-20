@@ -90,19 +90,19 @@ export interface FooterPreviewOptions {
  *   on a card                : `r: reply to "<title>"`
  *   on a card (off-screen up): `r: reply to "<title>"  (cursor ↑ above viewport)`
  *   on a card (off-screen dn): `r: reply to "<title>"  (cursor ↓ below viewport)`
- *   on a row                 : `r: — (no comment under cursor)`
- *   null cursor              : `r: — (no comment under cursor)`
+ *   on a row                 : `` (empty — pressing `r` already flashes a
+ *                                labelled no-op so the persistent line would
+ *                                just waste a footer row)
+ *   null cursor              : `` (same)
  *
  * The off-screen suffix never applies to a row cursor — `r` on a row is
  * already a labelled no-op so the user knows nothing will happen.
  */
 export function composeFooterPreview(opts: FooterPreviewOptions): string {
   const { cursor, comments, cardViewportPosition } = opts;
-  if (!cursor || cursor.kind !== "card") {
-    return `r: — (no comment under cursor)`;
-  }
+  if (!cursor || cursor.kind !== "card") return "";
   const ann = comments.find((a) => a.id === cursor.commentId);
-  if (!ann) return `r: — (no comment under cursor)`;
+  if (!ann) return "";
   const title = truncateTitle(ann.body);
   const base = `r: reply to "${title}"`;
   if (cardViewportPosition === "above") return `${base}  (cursor ↑ above viewport)`;

@@ -695,7 +695,7 @@ function App(props: AppProps) {
     comments,
     cardViewportPosition,
   });
-  const baseFooter = `${footerPreview}  ·  ${footerHints}`;
+  const baseFooter = footerPreview ? `${footerPreview}  ·  ${footerHints}` : footerHints;
   // When a transient status is set, lead with it so it's visible even
   // on narrow terminals (TUICommander panes etc). Prior order appended
   // the status after the long persistent hints, which pushed it past

@@ -143,13 +143,16 @@ describe("composeFooterHints (issue #184 → relabelled in issue #390)", () => {
 // hints the cursor's direction relative to the viewport so a wheel-
 // scrolled-away cursor doesn't surprise the user.
 describe("composeFooterPreview (PRD #192)", () => {
-  it("renders the no-comment placeholder when the cursor is null", () => {
-    expect(composeFooterPreview({ cursor: null, comments: [] })).toBe(
-      "r: — (no comment under cursor)",
-    );
+  // The persistent preview line collapses to empty when `r` has no
+  // target — pressing `r` in those states already flashes a labelled
+  // no-op via App.tsx (`r: no comment under cursor — n/p to navigate`),
+  // so reserving a whole footer row to repeat the same fact just steals
+  // vertical space on narrow terminals.
+  it("returns empty when the cursor is null", () => {
+    expect(composeFooterPreview({ cursor: null, comments: [] })).toBe("");
   });
 
-  it("renders the no-comment placeholder when the cursor is on a row", () => {
+  it("returns empty when the cursor is on a row", () => {
     const cursor: Cursor = {
       kind: "row",
       file: "x.txt",
@@ -157,9 +160,7 @@ describe("composeFooterPreview (PRD #192)", () => {
       side: "additions",
       preferredSide: "additions",
     };
-    expect(composeFooterPreview({ cursor, comments: [] })).toBe(
-      "r: — (no comment under cursor)",
-    );
+    expect(composeFooterPreview({ cursor, comments: [] })).toBe("");
   });
 
   it("renders `r: reply to \"<title>\"` when the cursor is on a card", () => {
@@ -170,11 +171,9 @@ describe("composeFooterPreview (PRD #192)", () => {
     );
   });
 
-  it("renders no-comment placeholder when the CardAnchor's id is gone (stale)", () => {
+  it("returns empty when the CardAnchor's id is gone (stale)", () => {
     const cursor: Cursor = { kind: "card", commentId: "ghost", preferredSide: "additions" };
-    expect(composeFooterPreview({ cursor, comments: [] })).toBe(
-      "r: — (no comment under cursor)",
-    );
+    expect(composeFooterPreview({ cursor, comments: [] })).toBe("");
   });
 
   it("truncates long titles with an ellipsis", () => {
