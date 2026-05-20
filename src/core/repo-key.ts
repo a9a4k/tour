@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+import { NotGitWorkingTreeError } from "./not-git-working-tree-error.js";
 
 const exec = promisify(execFile);
 
@@ -33,20 +34,16 @@ function shortHash(input: string): string {
   return createHash("sha1").update(input).digest("hex").slice(0, 12);
 }
 
-export async function gitCommonDir(cwd: string): Promise<string | null> {
+export async function gitCommonDir(cwd: string): Promise<string> {
   try {
     return await realpath(resolveGitPath(cwd, await git(["rev-parse", "--git-common-dir"], cwd)));
   } catch {
-    return null;
+    throw new NotGitWorkingTreeError();
   }
 }
 
 export async function repoKey(cwd: string): Promise<string> {
   const commonDir = await gitCommonDir(cwd);
-  if (commonDir === null) {
-    const realCwd = await realpath(cwd);
-    return `${slug(basename(realCwd))}-${shortHash(realCwd)}`;
-  }
   return `${slug(keyName(cwd, commonDir))}-${shortHash(commonDir)}`;
 }
 
@@ -54,6 +51,6 @@ export async function worktreeStamp(cwd: string): Promise<string> {
   try {
     return await realpath(resolveGitPath(cwd, await git(["rev-parse", "--git-dir"], cwd)));
   } catch {
-    return await realpath(cwd);
+    throw new NotGitWorkingTreeError();
   }
 }

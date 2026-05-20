@@ -6,10 +6,19 @@ import { dirname, join, parse } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { resolveTourLocation } from "../../src/core/tour-location.js";
+import { NOT_GIT_WORKING_TREE_MESSAGE } from "../../src/core/not-git-working-tree-error.js";
 
 const exec = promisify(execFile);
 
 const CLI = join(import.meta.dirname, "../../src/main.ts");
+let cachedBunPath: string | undefined;
+
+async function bunPath(): Promise<string> {
+  if (cachedBunPath) return cachedBunPath;
+  const { stdout } = await exec("which", ["bun"]);
+  cachedBunPath = stdout.trimEnd();
+  return cachedBunPath;
+}
 
 // Invoke the CLI via `bun` (preinstalled by setup-bun@v2 in CI; on PATH in
 // dev). Avoids the `npx tsx` cold-cache install race that fails on CI:
@@ -21,13 +30,18 @@ const CLI = join(import.meta.dirname, "../../src/main.ts");
 async function run(
   args: string[],
   cwd: string,
-  opts?: { stdin?: string; tourHome?: string; timeoutMs?: number },
+  opts?: {
+    stdin?: string;
+    tourHome?: string;
+    timeoutMs?: number;
+    env?: NodeJS.ProcessEnv;
+  },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const tourHome = opts?.tourHome ?? tourHomeFor(cwd);
   try {
-    const child = exec("bun", [CLI, ...args], {
+    const child = exec(await bunPath(), [CLI, ...args], {
       cwd,
-      env: { ...process.env, TOUR_HOME: tourHome },
+      env: { ...process.env, ...opts?.env, TOUR_HOME: tourHome },
       maxBuffer: 10 * 1024 * 1024,
       timeout: opts?.timeoutMs,
     });
@@ -1600,6 +1614,38 @@ describe("CLI integration", () => {
       const r = await run(["list"], repo);
       expect(r.exitCode).toBe(0);
       expect(r.stderr).toBe("");
+    });
+
+    it("fails fast with the canonical git-required error outside a git repo", async () => {
+      const dir = await realpath(await mkdtemp(join(tmpdir(), "tour-cli-plain-")));
+      const r = await run(["list"], dir);
+      expect(r.exitCode).toBe(1);
+      expect(r.stdout).toBe("");
+      expect(r.stderr).toBe(NOT_GIT_WORKING_TREE_MESSAGE);
+    });
+
+    it("retired migrate still fails at the resolver outside a git repo", async () => {
+      const dir = await realpath(await mkdtemp(join(tmpdir(), "tour-cli-migrate-plain-")));
+      const r = await run(["migrate"], dir);
+      expect(r.exitCode).toBe(1);
+      expect(r.stdout).toBe("");
+      expect(r.stderr).toBe(NOT_GIT_WORKING_TREE_MESSAGE);
+    });
+
+    it("--json mirrors the canonical git-required error envelope outside a git repo", async () => {
+      const dir = await realpath(await mkdtemp(join(tmpdir(), "tour-cli-plain-json-")));
+      const r = await run(["list", "--json"], dir);
+      expect(r.exitCode).toBe(1);
+      expect(r.stdout).toBe("");
+      expect(JSON.parse(r.stderr)).toEqual({ error: NOT_GIT_WORKING_TREE_MESSAGE });
+    });
+
+    it("fails with the same git-required error when git is missing from PATH", async () => {
+      const binWithoutGit = await realpath(await mkdtemp(join(tmpdir(), "tour-cli-no-git-")));
+      const r = await run(["list"], repo, { env: { PATH: binWithoutGit } });
+      expect(r.exitCode).toBe(1);
+      expect(r.stdout).toBe("");
+      expect(r.stderr).toBe(NOT_GIT_WORKING_TREE_MESSAGE);
     });
   });
 });

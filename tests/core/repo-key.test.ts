@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { repoKey, worktreeStamp } from "../../src/core/repo-key.js";
+import {
+  NOT_GIT_WORKING_TREE_MESSAGE,
+  NotGitWorkingTreeError,
+} from "../../src/core/not-git-working-tree-error.js";
 
 const exec = promisify(execFile);
 
@@ -65,11 +69,12 @@ describe("repoKey", () => {
     expect(await repoKey(repo)).toBe(`my-repo-100-${shortHash(commonDir)}`);
   });
 
-  it("falls back to realpath(cwd) outside git", async () => {
+  it("throws the canonical git-required error outside git", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "tour-repo-key-plain-")));
-    const expected = `${slug(basename(dir))}-${shortHash(dir)}`;
 
-    expect(await repoKey(dir)).toBe(expected);
-    expect(await worktreeStamp(dir)).toBe(dir);
+    await expect(repoKey(dir)).rejects.toThrow(NotGitWorkingTreeError);
+    await expect(repoKey(dir)).rejects.toThrow(NOT_GIT_WORKING_TREE_MESSAGE);
+    await expect(worktreeStamp(dir)).rejects.toThrow(NotGitWorkingTreeError);
+    await expect(worktreeStamp(dir)).rejects.toThrow(NOT_GIT_WORKING_TREE_MESSAGE);
   });
 });

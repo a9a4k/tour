@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, chmod } from "node:fs/promises";
+import { mkdtemp, writeFile, chmod, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -42,6 +42,8 @@ async function createTempRepoWithTour(bunPath: string): Promise<string> {
 
 async function makePathWithStubs(stubs: string[]): Promise<string> {
   const stubDir = await mkdtemp(join(tmpdir(), "tour-stubs-"));
+  const { stdout: gitPath } = await execP("which", ["git"]);
+  await symlink(gitPath.trimEnd(), join(stubDir, "git"));
   for (const name of stubs) {
     const p = join(stubDir, name);
     await writeFile(p, "#!/bin/sh\nexit 0\n");
