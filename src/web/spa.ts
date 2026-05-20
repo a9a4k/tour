@@ -602,6 +602,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     margin-bottom: 4px;
     font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', monospace;
+    overflow-wrap: anywhere;
   }
   .delete-modal-preview-header .author-kind {
     text-transform: lowercase;
