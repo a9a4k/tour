@@ -57,6 +57,23 @@ export interface CardAnchor {
   preferredSide: "additions" | "deletions";
 }
 
+type ThreadNodeLookup = Map<string, { thread: Thread; nodeIdx: number }>;
+const threadNodeLookupCache = new WeakMap<ReadonlyArray<Thread>, ThreadNodeLookup>();
+
+function threadNodeLookup(threads: ReadonlyArray<Thread>): ThreadNodeLookup {
+  const cached = threadNodeLookupCache.get(threads);
+  if (cached) return cached;
+  const lookup: ThreadNodeLookup = new Map();
+  for (const thread of threads) {
+    lookup.set(thread.root.id, { thread, nodeIdx: 0 });
+    thread.replies.forEach((reply, index) => {
+      lookup.set(reply.id, { thread, nodeIdx: index + 1 });
+    });
+  }
+  threadNodeLookupCache.set(threads, lookup);
+  return lookup;
+}
+
 /** Locate the Thread that contains a given commentId (parent or
  *  Reply), and the node's position within `[root, ...replies]`. Used
  *  by the in-Card `j`/`k` walker (ADR 0037), the row-idx / validate
@@ -66,24 +83,7 @@ export function findThreadByNode(
   commentId: string,
   threads: ReadonlyArray<Thread>,
 ): { thread: Thread; nodeIdx: number } | null {
-  for (const t of threads) {
-    if (t.root.id === commentId) return { thread: t, nodeIdx: 0 };
-    const idx = t.replies.findIndex((r) => r.id === commentId);
-    if (idx !== -1) return { thread: t, nodeIdx: idx + 1 };
-  }
-  return null;
-}
-
-/** Resolve any Comment id (parent or Reply) to its Thread's root id.
- *  Falls back to `commentId` when the id isn't in any Thread (stale
- *  cursor, mid-bundle-refresh) so call sites get a stable id without
- *  branching. Used by PRD #397 / ADR 0038 action seams (`thread.toggle`,
- *  pre-dispatch `thread.expand`) which all target Thread roots. */
-export function threadRootIdOf(
-  commentId: string,
-  threads: ReadonlyArray<Thread>,
-): string {
-  return findThreadByNode(commentId, threads)?.thread.root.id ?? commentId;
+  return threadNodeLookup(threads).get(commentId) ?? null;
 }
 
 export type Cursor = RowAnchor | CardAnchor;

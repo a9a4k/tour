@@ -103,7 +103,7 @@ describe("buildConversationTree", () => {
     expect(out.comments.map((a) => a.id)).toEqual(["a2", "a3", "a1"]);
   });
 
-  it("attaches reply-to-reply chains under the root Comment (flat replies[])", () => {
+  it("attaches replies under the root Comment (flat replies[])", () => {
     const root = ann({ id: "root", created_at: "2026-05-08T00:00:00Z" });
     const rep1 = ann({
       id: "rep1",
@@ -113,7 +113,7 @@ describe("buildConversationTree", () => {
     });
     const rep2 = ann({
       id: "rep2",
-      thread_id: "rep1",
+      thread_id: "root",
       author_kind: "agent",
       created_at: "2026-05-08T00:00:03Z",
     });

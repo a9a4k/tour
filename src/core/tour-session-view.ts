@@ -6,7 +6,6 @@ import type { FileContentPair } from "./file-content-provider.js";
 import type { Cursor } from "./cursor-state.js";
 import {
   resolveCursorRowIdx,
-  threadRootIdOf,
   validateCursor,
 } from "./cursor-state.js";
 import {
@@ -22,7 +21,6 @@ import { planRows, type PlannedRow } from "./diff-rows.js";
 import { flatRows, type FlatRow } from "./flat-rows.js";
 import {
   buildThreads,
-  isTopLevel,
   topLevelComments,
   type Thread,
 } from "./threads.js";
@@ -173,10 +171,12 @@ function deriveNavBase(comments: ReadonlyArray<Comment>): NavBase {
 function deriveNavSlice(
   base: NavBase,
   cursor: Cursor | null,
+  comments: ReadonlyArray<Comment>,
 ): NavSlice {
   let currentIdx = 0;
   if (cursor && cursor.kind === "card") {
-    const rootId = threadRootIdOf(cursor.commentId, base.threads);
+    const comment = comments.find((c) => c.id === cursor.commentId);
+    const rootId = comment?.thread_id ?? comment?.id ?? cursor.commentId;
     currentIdx = base.navIndexById.get(rootId) ?? 0;
   }
   const target = sendTarget(cursor, base.threads);
@@ -195,7 +195,7 @@ function deriveTreeSlice(
   const root = compress(buildTree([...files]));
   const commentCounts: Record<string, number> = {};
   for (const a of comments) {
-    if (!isTopLevel(a)) continue;
+    if (a.thread_id !== undefined) continue;
     commentCounts[a.file] = (commentCounts[a.file] ?? 0) + 1;
   }
   const visibleRows = flatten(root, collapsedFolders, commentCounts);
@@ -311,7 +311,7 @@ export function deriveTourSessionView(
     };
   }
   const bundleSlice = deriveBundleSlice(bundle);
-  const navSlice = deriveNavSlice(navBase, state.cursor);
+  const navSlice = deriveNavSlice(navBase, state.cursor, bundle.comments);
   const treeSlice = deriveTreeSlice(
     bundle.files,
     state.collapsedFolders,
@@ -368,8 +368,8 @@ export function useTourSessionView(
   );
 
   const navSlice = useMemo<NavSlice | null>(
-    () => (isOk ? deriveNavSlice(navBase, cursor) : null),
-    [isOk, navBase, cursor],
+    () => (isOk ? deriveNavSlice(navBase, cursor, comments) : null),
+    [isOk, navBase, cursor, comments],
   );
 
   const treeSlice = useMemo<TreeSlice | null>(

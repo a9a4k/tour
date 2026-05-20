@@ -98,7 +98,6 @@ import {
   cursorFromComment,
   cursorAtFirstFileRow,
   cursorOnInteractive,
-  threadRootIdOf,
   type Cursor,
 } from "../core/cursor-state.js";
 import {
@@ -641,12 +640,13 @@ function App(props: AppProps) {
   // Issue #406 / ADR 0038 amended. The diff-mode `Enter` legend flips
   // by the cursor: `Enter: expand` (interactive row OR collapsed Card),
   // `Enter: collapse` (expanded Card), omitted (plain diff row).
-  // `threadRootIdOf` resolves a Reply cursor to its Thread root so the
-  // collapse lookup is correct on either node.
+  // A Reply cursor carries its root on `thread_id`, so collapse lookup
+  // targets the same Thread from either node.
   const enterHintCursor: EnterHintCursor = (() => {
     if (cursor?.kind === "row" && cursor.interactive) return "interactive";
     if (cursor?.kind !== "card") return "row";
-    const rootId = threadRootIdOf(cursor.commentId, threads);
+    const rootId =
+      cursorCardComment?.thread_id ?? cursorCardComment?.id ?? cursor.commentId;
     return collapsedThreads.has(rootId) ? "card-collapsed" : "card-expanded";
   })();
   // Issue #406 / ADR 0038 amended. The diff-mode `C` legend flips by
@@ -916,11 +916,11 @@ function App(props: AppProps) {
   // PRD #397 / ADR 0038. Header chevron click on a Card (collapsed `▸`
   // or expanded `▾`) toggles the Thread's collapse state. The chevron
   // is rendered on the top-level Comment's header only — replies have
-  // no chevron — so `commentId` is always a Thread root; no
-  // `threadRootIdOf` step needed. The outer Card-click handler also
-  // fires on the same mouse event (OpenTUI bubbles), so the cursor
-  // lands on the Card alongside the toggle (mirrors the webapp
-  // chevron's explicit `onCardClick + onToggleCollapse` pair).
+  // no chevron — so `commentId` is always a Thread root. The outer
+  // Card-click handler also fires on the same mouse event (OpenTUI
+  // bubbles), so the cursor lands on the Card alongside the toggle
+  // (mirrors the webapp chevron's explicit `onCardClick +
+  // onToggleCollapse` pair).
   const onCardToggleCollapse = (commentId: string) => {
     store.dispatch({ type: "thread.toggle", id: commentId });
   };
@@ -1161,7 +1161,7 @@ function App(props: AppProps) {
     // visible above the new draft. `thread.expand` is a no-op when the
     // id isn't in `collapsedThreads`, so this is cheap on the common
     // (already-expanded) path.
-    const rootId = threadRootIdOf(cursorCardComment.id, threads);
+    const rootId = cursorCardComment.thread_id ?? cursorCardComment.id;
     if (collapsedThreads.has(rootId)) {
       store.dispatch({ type: "thread.expand", id: rootId });
     }
@@ -1209,7 +1209,7 @@ function App(props: AppProps) {
     // PRD #397 / ADR 0038. Modifying action seam — auto-expand the
     // Thread before dispatching the agent reply so the user can watch
     // the in-flight pill and the agent's reply land in context.
-    const rootId = threadRootIdOf(cursorCardComment.id, threads);
+    const rootId = cursorCardComment.thread_id ?? cursorCardComment.id;
     if (collapsedThreads.has(rootId)) {
       store.dispatch({ type: "thread.expand", id: rootId });
     }
@@ -1505,13 +1505,12 @@ function App(props: AppProps) {
         // Issue #406 / ADR 0038 amended. Per-Thread collapse on
         // `Enter` (was `Shift+C` pre-#406). The keymap gates the
         // binding on `cursorOnCard`, so the cursor is always a Card
-        // anchor here; a Reply-cursor folds onto its root via
-        // `threadRootIdOf` (matches the validator's cursor-on-reply
-        // projection).
+        // anchor here; a Reply-cursor carries its root on `thread_id`.
         if (!cursor || cursor.kind !== "card") return;
+        const comment = comments.find((c) => c.id === cursor.commentId);
         store.dispatch({
           type: "thread.toggle",
-          id: threadRootIdOf(cursor.commentId, threads),
+          id: comment?.thread_id ?? comment?.id ?? cursor.commentId,
         });
         return;
       }
@@ -1817,7 +1816,9 @@ function App(props: AppProps) {
         // refuses to act on a collapsed Thread. The user must expand
         // first so the Replies they're about to cascade-delete are
         // visible before confirmation.
-        if (collapsedThreads.has(threadRootIdOf(cursor.commentId, threads))) {
+        const comment = comments.find((c) => c.id === cursor.commentId);
+        const rootId = comment?.thread_id ?? comment?.id ?? cursor.commentId;
+        if (collapsedThreads.has(rootId)) {
           flash("d: — (Thread collapsed, expand to delete)");
           return;
         }

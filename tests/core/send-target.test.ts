@@ -79,7 +79,7 @@ describe("sendTarget", () => {
     });
     const humanFollowUp = ann({
       id: "r2",
-      thread_id: "r1",
+      thread_id: "t1",
       author_kind: "human",
       created_at: "2026-05-12T00:00:02Z",
     });
@@ -171,7 +171,7 @@ describe("sendTarget", () => {
       });
       const humanFollowUp = ann({
         id: "r2",
-        thread_id: "r1",
+        thread_id: "t1",
         author_kind: "human",
         created_at: "2026-05-12T00:00:02Z",
       });

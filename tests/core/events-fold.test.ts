@@ -181,6 +181,28 @@ describe("foldEventsToComments", () => {
   });
 
   describe("defence-in-depth at fold time", () => {
+    it("throws when a reply.created event references an unknown thread_id", () => {
+      const events: TourEvent[] = [
+        createReply({ id: "r-orphan", thread_id: "missing-root" }),
+      ];
+
+      expect(() => foldEventsToComments(events)).toThrow(
+        'reply.created "r-orphan" references unknown thread_id "missing-root"',
+      );
+    });
+
+    it("throws when a reply.created event references another Reply", () => {
+      const events: TourEvent[] = [
+        createTop({ id: "root" }),
+        createReply({ id: "reply-1", thread_id: "root" }),
+        createReply({ id: "reply-2", thread_id: "reply-1" }),
+      ];
+
+      expect(() => foldEventsToComments(events)).toThrow(
+        'reply.created "reply-2" references non-root thread_id "reply-1"',
+      );
+    });
+
     it("ignores delete events targeting unknown ids", () => {
       const events: TourEvent[] = [
         createTop({ id: "p" }),

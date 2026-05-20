@@ -13,39 +13,22 @@ function compareComments(a: Comment, b: Comment): number {
   return 0;
 }
 
-// Walk the thread_id chain up to the top-level comment. Returns null if
-// the chain hits an unknown id (orphan) or a cycle (malformed input).
-function findRoot(start: Comment, byId: Map<string, Comment>): Comment | null {
-  let cur = start;
-  const seen = new Set<string>([cur.id]);
-  while (cur.thread_id !== undefined) {
-    const parent = byId.get(cur.thread_id);
-    if (!parent) return null;
-    if (seen.has(parent.id)) return null;
-    seen.add(parent.id);
-    cur = parent;
-  }
-  return cur;
-}
-
 export function buildThreads(comments: Comment[]): Thread[] {
-  const byId = new Map<string, Comment>();
-  for (const a of comments) byId.set(a.id, a);
+  const repliesByRootId = new Map<string, Comment[]>();
+  for (const c of comments) {
+    if (c.thread_id === undefined) continue;
+    const replies = repliesByRootId.get(c.thread_id) ?? [];
+    replies.push(c);
+    repliesByRootId.set(c.thread_id, replies);
+  }
 
   const threadsByRootId = new Map<string, Thread>();
-  for (const a of comments) {
-    if (a.thread_id === undefined) {
-      threadsByRootId.set(a.id, { root: a, replies: [] });
-    }
-  }
-
-  for (const a of comments) {
-    if (a.thread_id === undefined) continue;
-    const root = findRoot(a, byId);
-    if (!root) continue;
-    const t = threadsByRootId.get(root.id);
-    if (!t) continue;
-    t.replies.push(a);
+  for (const c of comments) {
+    if (c.thread_id !== undefined) continue;
+    threadsByRootId.set(c.id, {
+      root: c,
+      replies: repliesByRootId.get(c.id) ?? [],
+    });
   }
 
   for (const t of threadsByRootId.values()) {
@@ -55,10 +38,6 @@ export function buildThreads(comments: Comment[]): Thread[] {
   return [...threadsByRootId.values()].sort((a, b) =>
     compareComments(a.root, b.root),
   );
-}
-
-export function isTopLevel(a: Comment): boolean {
-  return a.thread_id === undefined;
 }
 
 function findLatest(
@@ -107,5 +86,5 @@ export function latestCommentId(
 }
 
 export function topLevelComments(comments: Comment[]): Comment[] {
-  return comments.filter(isTopLevel);
+  return comments.filter((c) => c.thread_id === undefined);
 }

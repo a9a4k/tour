@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   buildThreads,
-  isTopLevel,
   latestCommentId,
   latestHumanLeafId,
   topLevelComments,
@@ -77,41 +76,12 @@ describe("buildThreads", () => {
     expect(out[1].replies.map((r) => r.id)).toEqual(["br"]);
   });
 
-  it("silently drops orphan replies whose thread_id does not exist", () => {
-    const a = ann({ id: "a" });
-    const orphan = ann({ id: "orph", thread_id: "missing" });
-    const out = buildThreads([a, orphan]);
-    expect(out).toHaveLength(1);
-    expect(out[0].root.id).toBe("a");
-    expect(out[0].replies).toHaveLength(0);
-  });
-
-  it("does not return a thread rooted at an orphan reply", () => {
-    const orphan = ann({ id: "orph", thread_id: "missing" });
-    expect(buildThreads([orphan])).toEqual([]);
-  });
-
-  it("attaches reply-to-reply chains under the root thread, ordered by created_at", () => {
-    const root = ann({ id: "root", created_at: "2026-05-08T00:00:00Z" });
-    const rep1 = ann({ id: "r1", thread_id: "root", created_at: "2026-05-08T00:00:02Z" });
-    const rep2 = ann({ id: "r2", thread_id: "r1", created_at: "2026-05-08T00:00:03Z" });
-    const out = buildThreads([root, rep1, rep2]);
-    expect(out).toHaveLength(1);
-    expect(out[0].replies.map((r) => r.id)).toEqual(["r1", "r2"]);
-  });
-
   it("breaks created_at ties by id ascending", () => {
     const root = ann({ id: "root", created_at: "2026-05-08T00:00:00Z" });
     const a = ann({ id: "b", thread_id: "root", created_at: "2026-05-08T00:00:01Z" });
     const b = ann({ id: "a", thread_id: "root", created_at: "2026-05-08T00:00:01Z" });
     const out = buildThreads([root, a, b]);
     expect(out[0].replies.map((r) => r.id)).toEqual(["a", "b"]);
-  });
-
-  it("drops a reply whose chain forms a cycle", () => {
-    const a = ann({ id: "a", thread_id: "b" });
-    const b = ann({ id: "b", thread_id: "a" });
-    expect(buildThreads([a, b])).toEqual([]);
   });
 });
 
@@ -122,11 +92,10 @@ describe("latestHumanLeafId", () => {
   //
   // The simplification used: the latest comment in the Thread by
   // `created_at` (id ascending tiebreak, matching buildThreads) is
-  // always a leaf in a well-formed tree (its parent must have an
-  // earlier or equal `created_at`). So the rule collapses to "the
-  // latest overall, if human; otherwise null". If the latest turn is
-  // agent-authored, no Send button anywhere — the user is expected to
-  // write a human Reply first.
+  // always the latest node in a structurally-flat Thread. So the rule
+  // collapses to "the latest overall, if human; otherwise null". If the
+  // latest turn is agent-authored, no Send button anywhere — the user is
+  // expected to write a human Reply first.
 
   it("returns the top-level id when it's a human Comment with no replies", () => {
     const a = ann({ id: "a", author_kind: "human" });
@@ -145,11 +114,11 @@ describe("latestHumanLeafId", () => {
     expect(latestHumanLeafId(top, [r1, r2])).toBe("r2");
   });
 
-  it("returns the latest human leaf, ignoring an older human Reply that has its own child", () => {
-    // [agent] top + [human] r1 (has child r1a) + [agent] r1a + [human] r2 (leaf)
+  it("returns the latest human Reply", () => {
+    // [agent] top + [human] r1 + [agent] r1a + [human] r2
     const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({ id: "r1", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
-    const r1a = ann({ id: "r1a", thread_id: "r1", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
+    const r1a = ann({ id: "r1a", thread_id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
     const r2 = ann({ id: "r2", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:03Z" });
     expect(latestHumanLeafId(top, [r1, r1a, r2])).toBe("r2");
   });
@@ -168,10 +137,10 @@ describe("latestHumanLeafId", () => {
     expect(latestHumanLeafId(top, [r1])).toBe(null);
   });
 
-  it("moves Send from a human top-level to the latest human descendant", () => {
+  it("moves Send from a human top-level to the latest human Reply", () => {
     const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({ id: "r1", thread_id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
-    const r2 = ann({ id: "r2", thread_id: "r1", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
+    const r2 = ann({ id: "r2", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
     expect(latestHumanLeafId(top, [r1, r2])).toBe("r2");
   });
 
@@ -236,12 +205,7 @@ describe("latestCommentId", () => {
   });
 });
 
-describe("isTopLevel / topLevelComments", () => {
-  it("isTopLevel: true when thread_id is undefined", () => {
-    expect(isTopLevel(ann({ id: "a" }))).toBe(true);
-    expect(isTopLevel(ann({ id: "a", thread_id: "x" }))).toBe(false);
-  });
-
+describe("topLevelComments", () => {
   it("topLevelComments filters out replies", () => {
     const a = ann({ id: "a" });
     const b = ann({ id: "b", thread_id: "a" });

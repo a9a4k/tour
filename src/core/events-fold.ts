@@ -61,12 +61,22 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
     }
   }
 
-  // Resolve reply anchors against the final created set.
+  // Validate Reply thread pointers against the final created set, then
+  // resolve anchors from the root Comment.
   for (const id of order) {
     const c = created.get(id);
     if (!c || c.thread_id === undefined) continue;
     const parent = created.get(c.thread_id);
-    if (!parent) continue;
+    if (!parent) {
+      throw new Error(
+        `reply.created "${c.id}" references unknown thread_id "${c.thread_id}"`,
+      );
+    }
+    if (parent.thread_id !== undefined) {
+      throw new Error(
+        `reply.created "${c.id}" references non-root thread_id "${c.thread_id}"`,
+      );
+    }
     c.file = parent.file;
     c.side = parent.side;
     c.line_start = parent.line_start;

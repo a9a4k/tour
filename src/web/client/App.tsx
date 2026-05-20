@@ -53,7 +53,6 @@ import {
   preferredSideOf,
   resolveCursorRowIdx,
   setCursorSide,
-  threadRootIdOf,
   type Cursor,
   type ExpandOrphanKind,
 } from "../../core/cursor-state.js";
@@ -1442,14 +1441,14 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           // Thread's collapse state (the gesture moved from `Shift+C`).
           // The webapp keymap returns this only when `cursorOnCard`, so
           // a missing cardId is a defensive no-op. A Reply-cursor folds
-          // onto its root via `threadRootIdOf` (matches the validator's
-          // cursor-on-reply projection).
+          // onto its root via the Comment's `thread_id` when needed.
           if (view.kind !== "ok") return;
           const cardId = view.cursor.cardId;
           if (!cardId) return;
+          const comment = view.cursor.cardComment;
           store.dispatch({
             type: "thread.toggle",
-            id: threadRootIdOf(cardId, view.nav.threads),
+            id: comment?.thread_id ?? comment?.id ?? cardId,
           });
           return;
         }
@@ -1877,7 +1876,8 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (view.kind !== "ok" || !view.cursor.onCard || view.cursor.cardId === null) {
       return "row";
     }
-    const rootId = threadRootIdOf(view.cursor.cardId, view.nav.threads);
+    const comment = view.cursor.cardComment;
+    const rootId = comment?.thread_id ?? comment?.id ?? view.cursor.cardId;
     return sessionState.collapsedThreads.has(rootId)
       ? "card-collapsed"
       : "card-expanded";

@@ -1,7 +1,6 @@
 import type { DiffFile } from "../core/diff-model.js";
 import type { Comment } from "../core/types.js";
 import type { FileClassification } from "../core/file-classifier.js";
-import { isTopLevel } from "../core/threads.js";
 import { formatRenameLabel, RENAME_PLACEHOLDER_BODY } from "../core/rename-label.js";
 
 export function statusIcon(type: string): string {
@@ -16,7 +15,7 @@ export function statusIcon(type: string): string {
 }
 
 function commentCountForFile(comments: Comment[], fileName: string): number {
-  return comments.filter((a) => a.file === fileName && isTopLevel(a)).length;
+  return comments.filter((a) => a.file === fileName && a.thread_id === undefined).length;
 }
 
 export function fileClassification(

@@ -33,9 +33,8 @@ interface CommentCardProps {
    *  with the parent Comment id; the App-side handler dispatches
    *  `thread.toggle`. The chevron is rendered on the top-level header
    *  only (Reply nodes get no chevron), so the id is always a Thread
-   *  root — no `threadRootIdOf` normalisation needed at the callback
-   *  site. Omitted in unit-test mounts that don't wire the callback
-   *  path; the chevron renders as plain text in that case. */
+   *  root. Omitted in unit-test mounts that don't wire the callback path;
+   *  the chevron renders as plain text in that case. */
   onToggleCollapse?: (commentId: string) => void;
 }
 

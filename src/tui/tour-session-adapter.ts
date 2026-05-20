@@ -16,7 +16,6 @@ import {
   type TourSessionStore,
 } from "../core/tour-session.js";
 import type { WriteCommentInput } from "../core/write-comment-input.js";
-import { isTopLevel } from "../core/threads.js";
 import {
   buildTree,
   compress,
@@ -283,7 +282,7 @@ export function createTuiTourSessionAdapter(
       const tree = compress(buildTree([...bundle.files]));
       const commentCounts: Record<string, number> = {};
       for (const a of bundle.comments) {
-        if (isTopLevel(a)) {
+        if (a.thread_id === undefined) {
           commentCounts[a.file] = (commentCounts[a.file] ?? 0) + 1;
         }
       }

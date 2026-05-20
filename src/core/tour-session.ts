@@ -11,7 +11,6 @@ import {
   isCardAnchor,
   isRowAnchor,
   preferredSideOf,
-  threadRootIdOf,
   validateCursorStructural,
 } from "./cursor-state.js";
 import { buildThreads } from "./threads.js";
@@ -976,8 +975,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "thread.toggle": {
       // PRD #397 / ADR 0038. Flip membership. Surfaces wire `Enter`
       // on a Card (per-Thread, issue #406) and the surface header
-      // chevron click here. `threadRootIdOf` upstream normalises a
-      // Reply-cursor id to the parent root.
+      // chevron click here. Call sites pass the Thread root id.
       const next = new Set(state.collapsedThreads);
       if (next.has(action.id)) next.delete(action.id);
       else next.add(action.id);
@@ -1240,13 +1238,13 @@ function reflowIntents(
 // the cursored Card with `center` + `instant` (a smooth scroll over a
 // freshly-resized doc reads as glitchy). Row / interactive-row cursors are
 // doc-position-stable; no scroll fires. Reply-cursor ids normalise to the
-// Thread root via `threadRootIdOf` — after `collapseAll` the Reply row is
-// gone, so the intent must carry the parent's id.
+// Thread root — after `collapseAll` the Reply row is gone, so the intent
+// must carry the parent's id.
 function recenterCardCursorIntents(state: TourSessionState): Intent[] {
   const cursor = state.cursor;
   if (!isCardAnchor(cursor) || state.bundle.kind !== "ok") return NO_INTENTS;
-  const threads = buildThreads(state.bundle.value.comments);
-  const rootId = threadRootIdOf(cursor.commentId, threads);
+  const comment = state.bundle.value.comments.find((c) => c.id === cursor.commentId);
+  const rootId = comment?.thread_id ?? comment?.id ?? cursor.commentId;
   return [
     {
       type: "scrollCursorTarget",
