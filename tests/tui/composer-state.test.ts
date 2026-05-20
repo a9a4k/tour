@@ -154,6 +154,15 @@ describe("buildReplyComposer", () => {
     expect(state).toEqual({ kind: "reply", thread_id: "a1" });
   });
 
+  it("normalizes a Reply cursor to the root thread_id", () => {
+    const reply = ann({
+      id: "reply-1",
+      thread_id: "root-1",
+    });
+    const state = buildReplyComposer({ currentComment: reply });
+    expect(state).toEqual({ kind: "reply", thread_id: "root-1" });
+  });
+
   it("returns null when there's no current comment to reply to", () => {
     const state = buildReplyComposer({ currentComment: null });
     expect(state).toBeNull();

@@ -460,6 +460,28 @@ describe("comments-store", () => {
       expect(loaded).toEqual([]);
     });
 
+    it("rejects when thread_id points at a Reply and writes nothing", async () => {
+      await seedTopLevel(dir, tourId, { id: "root-1" });
+      const firstReply = await createReply(dir, tourId, {
+        thread_id: "root-1",
+        body: "first reply",
+        author_kind: "human",
+      });
+      const before = await readFile(eventsPath(dir, tourId), "utf-8");
+
+      await expect(
+        createReply(dir, tourId, {
+          thread_id: firstReply.id,
+          body: "depth two",
+          author_kind: "human",
+        }),
+      ).rejects.toThrow(
+        `thread_id "${firstReply.id}" is a Reply (root of its Thread is "root-1"); pass thread_id="root-1"`,
+      );
+
+      expect(await readFile(eventsPath(dir, tourId), "utf-8")).toBe(before);
+    });
+
     it("rejects whitespace-only reply body and writes nothing (slice 2 / #142)", async () => {
       await seedTopLevel(dir, tourId, { id: "p-trim" });
       await expect(
@@ -623,6 +645,37 @@ describe("comments-store", () => {
       // No partial write: the file is still empty.
       const loaded = await readComments(dir, tourId);
       expect(loaded).toEqual([]);
+    });
+
+    it("rejects whole batch (no write) when a reply targets another Reply", async () => {
+      const bundle = makeBundle([{ name: "a.ts" }]);
+      await seedTopLevel(dir, tourId, { id: "root-1" });
+      const firstReply = await createReply(dir, tourId, {
+        thread_id: "root-1",
+        body: "first reply",
+        author_kind: "human",
+      });
+      const before = await readFile(eventsPath(dir, tourId), "utf-8");
+
+      await expect(
+        createComments(
+          dir,
+          tourId,
+          [
+            {
+              kind: "reply",
+              thread_id: firstReply.id,
+              body: "depth two",
+              author_kind: "agent",
+            },
+          ],
+          bundle,
+        ),
+      ).rejects.toThrow(
+        `thread_id "${firstReply.id}" is a Reply (root of its Thread is "root-1"); pass thread_id="root-1"`,
+      );
+
+      expect(await readFile(eventsPath(dir, tourId), "utf-8")).toBe(before);
     });
 
     it("rejects whole batch (no write) when any anchor file is not in the bundle (slice 4 / #144)", async () => {

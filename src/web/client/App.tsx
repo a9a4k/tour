@@ -1419,10 +1419,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             cardAnn,
             [...(view.nav.repliesByRoot.get(cardId) ?? [])],
           );
+          const latestComment = [
+            cardAnn,
+            ...(view.nav.repliesByRoot.get(cardId) ?? []),
+          ].find((c) => c.id === latestId);
           recallCardThen(cardId, () => {
             store.dispatch({
               type: "composer.open",
-              target: { kind: "reply", thread_id: latestId },
+              target: {
+                kind: "reply",
+                thread_id:
+                  latestComment?.thread_id ?? latestComment?.id ?? latestId,
+              },
             });
           });
           return;
@@ -1696,12 +1704,18 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
 
   const openReplyComposer = useCallback(
     (thread_id: string) => {
+      const comment = view.nav.threads
+        .flatMap((t) => [t.root, ...t.replies])
+        .find((c) => c.id === thread_id);
       store.dispatch({
         type: "composer.open",
-        target: { kind: "reply", thread_id },
+        target: {
+          kind: "reply",
+          thread_id: comment?.thread_id ?? comment?.id ?? thread_id,
+        },
       });
     },
-    [store],
+    [store, view.nav.threads],
   );
 
   // Issue #383 / ADR 0035: mouse paths to open-in-editor. Two callers:

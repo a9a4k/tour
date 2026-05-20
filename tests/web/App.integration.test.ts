@@ -1166,8 +1166,26 @@ const failBundleEmpty = {
   comments: [],
 };
 
+const failReplyAnn = {
+  id: "ann-human-fail-reply",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 2,
+  line_end: 2,
+  body: "existing reply",
+  author: "alice",
+  author_kind: "human" as const,
+  thread_id: "ann-human-fail",
+  created_at: "2026-05-15T00:00:01Z",
+};
+
+const failBundleWithReply = {
+  ...failBundleWithAnn,
+  comments: [failHumanAnn, failReplyAnn],
+};
+
 interface FailFetchOpts {
-  bundle: typeof failBundleWithAnn | typeof failBundleEmpty;
+  bundle: typeof failBundleWithAnn | typeof failBundleEmpty | typeof failBundleWithReply;
   postResponder: () => Promise<Response>;
 }
 
@@ -1447,6 +1465,98 @@ describe("App comment-create failure status (Issue #334)", () => {
     // The live region always renders an empty prefix when status is
     // null (the legend follows in a sibling span). No failure prefix.
     expect(status!.textContent ?? "").not.toContain("failed:");
+  });
+
+  it("normalizes the latest Reply target to the root thread_id before POSTing", async () => {
+    let posted: Record<string, unknown> | null = null;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([failTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}`) && method === "GET") {
+        return Promise.resolve(
+          new Response(JSON.stringify(failBundleWithReply), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}/comments`) && method === "POST") {
+        posted = JSON.parse(String(init?.body));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "ann-reply-success",
+              file: "src/foo.ts",
+              side: "additions",
+              line_start: 2,
+              line_end: 2,
+              body: "reply body",
+              author: "human",
+              author_kind: "human",
+              thread_id: "ann-human-fail",
+              created_at: "2026-05-15T00:00:02Z",
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    await act(async () => {
+      setTextareaValue(ta!, "reply body");
+    });
+
+    const submitBtn = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    await act(async () => {
+      submitBtn!.click();
+    });
+    await flush();
+
+    expect(posted?.thread_id).toBe("ann-human-fail");
   });
 });
 

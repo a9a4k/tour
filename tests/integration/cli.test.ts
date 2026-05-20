@@ -811,6 +811,43 @@ describe("CLI integration", () => {
       expect(r.stderr).toContain("ghost-id");
     });
 
+    it("--reply-to with a Reply id fails with the root thread_id suggestion", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = JSON.parse((await run([
+        "annotate", tour.id,
+        "--file", "hello.txt",
+        "--side", "additions",
+        "--line", "1",
+        "--body", "root note",
+        "--json",
+      ], repo)).stdout);
+      const firstReply = JSON.parse((await run([
+        "annotate", tour.id,
+        "--reply-to", root.id,
+        "--body", "first reply",
+        "--as-human",
+        "--json",
+      ], repo)).stdout);
+
+      const r = await run([
+        "annotate", tour.id,
+        "--reply-to", firstReply.id,
+        "--body", "depth two",
+      ], repo);
+
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain(
+        `thread_id "${firstReply.id}" is a Reply (root of its Thread is "${root.id}"); pass thread_id="${root.id}"`,
+      );
+      const showR = await run(["show", tour.id, "--json"], repo);
+      const data = JSON.parse(showR.stdout);
+      expect(data.comments.map((c: { id: string }) => c.id)).toEqual([
+        root.id,
+        firstReply.id,
+      ]);
+    });
+
     it("--as-agent and --as-human together is rejected", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);

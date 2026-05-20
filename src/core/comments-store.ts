@@ -112,11 +112,16 @@ interface BuildReplyInput {
 
 function findParentOrThrow(
   thread_id: string,
-  existing: CommentState[],
+  existing: ReadonlyMap<string, CommentState>,
 ): CommentState {
-  const parent = existing.find((a) => a.id === thread_id);
+  const parent = existing.get(thread_id);
   if (!parent) {
     throw new Error(`No comment with id "${thread_id}" in this tour`);
+  }
+  if (parent.thread_id !== undefined) {
+    throw new Error(
+      `thread_id "${thread_id}" is a Reply (root of its Thread is "${parent.thread_id}"); pass thread_id="${parent.thread_id}"`,
+    );
   }
   return parent;
 }
@@ -203,7 +208,8 @@ export async function createReply(
 ): Promise<Comment> {
   validateBody(request.body);
   const existing = await readComments(tourStoreRoot, tourId);
-  const parent = findParentOrThrow(request.thread_id, existing);
+  const byId = new Map(existing.map((a) => [a.id, a]));
+  const parent = findParentOrThrow(request.thread_id, byId);
   const event = buildReplyCreatedEvent(request);
   await appendEvent(tourStoreRoot, tourId, event);
   return replyEventToComment(event, parent);
@@ -226,20 +232,19 @@ export async function createComments(
   const events: TourEvent[] = [];
   const builtComments: Comment[] = [];
   // Replies in the same batch may target top-level Comments created
-  // earlier in the same batch; the on-disk read won't see them yet, so
-  // track in-batch parents in a sidecar lookup.
-  const inBatchById: Map<string, CommentState> = new Map();
+  // earlier in the same batch; seed the lookup with on-disk Comments,
+  // then extend it as batch items are built.
+  const inBatchById: Map<string, CommentState> = new Map(
+    existing.map((a) => [a.id, a]),
+  );
   for (const req of requests) {
     if (req.kind === "reply") {
-      const parent =
-        existing.find((a) => a.id === req.thread_id) ??
-        inBatchById.get(req.thread_id);
-      if (!parent) {
-        throw new Error(`No comment with id "${req.thread_id}" in this tour`);
-      }
+      const parent = findParentOrThrow(req.thread_id, inBatchById);
       const event = buildReplyCreatedEvent(req);
       events.push(event);
-      builtComments.push(replyEventToComment(event, parent));
+      const comment = replyEventToComment(event, parent);
+      builtComments.push(comment);
+      inBatchById.set(comment.id, comment);
     } else {
       const event = buildCommentCreatedEvent(req);
       events.push(event);
