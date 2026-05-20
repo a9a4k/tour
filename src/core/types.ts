@@ -43,7 +43,7 @@ export interface Comment {
 // `CommentState` for documentary intent.
 export type CommentState = Comment;
 
-// On-disk event union for `.tour/<id>/tour-events.jsonl` (ADR 0036).
+// On-disk event union for `<tour-store-root>/<id>/tour-events.jsonl` (ADR 0036).
 // Append-only JSONL — one event per line, kind-discriminated. Future
 // verbs (edit, resolve, re-anchor) extend the union without changing
 // the storage seam.

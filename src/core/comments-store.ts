@@ -181,7 +181,7 @@ export type CreateRequest =
   | ({ kind: "reply" } & CreateReplyRequest);
 
 export async function createComment(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   request: CreateCommentRequest,
   bundle: TourBundle,
@@ -189,7 +189,7 @@ export async function createComment(
   validateBody(request.body);
   validateAnchor(request, bundle);
   const event = buildCommentCreatedEvent(request);
-  await appendEvent(repoRoot, tourId, event);
+  await appendEvent(tourStoreRoot, tourId, event);
   return eventToComment(event);
 }
 
@@ -197,15 +197,15 @@ export async function createComment(
 // parent exists at write time — callers must not pass a pre-loaded parent
 // (PRD #140). The Reply inherits the parent's anchor.
 export async function createReply(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   request: CreateReplyRequest,
 ): Promise<Comment> {
   validateBody(request.body);
-  const existing = await readComments(repoRoot, tourId);
+  const existing = await readComments(tourStoreRoot, tourId);
   const parent = findParentOrThrow(request.replies_to, existing);
   const event = buildReplyCreatedEvent(request);
-  await appendEvent(repoRoot, tourId, event);
+  await appendEvent(tourStoreRoot, tourId, event);
   return replyEventToComment(event, parent);
 }
 
@@ -213,7 +213,7 @@ export async function createReply(
 // on-disk event log read once), then a single `appendFile` for the whole
 // batch. A bad reply parent rejects before any write happens.
 export async function createComments(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   requests: CreateRequest[],
   bundle: TourBundle,
@@ -222,7 +222,7 @@ export async function createComments(
     validateBody(req.body);
     if (req.kind === "top-level") validateAnchor(req, bundle);
   }
-  const existing = await readComments(repoRoot, tourId);
+  const existing = await readComments(tourStoreRoot, tourId);
   const events: TourEvent[] = [];
   const builtComments: Comment[] = [];
   // Replies in the same batch may target top-level Comments created
@@ -248,15 +248,15 @@ export async function createComments(
       inBatchById.set(comment.id, comment);
     }
   }
-  await appendEvents(repoRoot, tourId, events);
+  await appendEvents(tourStoreRoot, tourId, events);
   return builtComments;
 }
 
 export async function readComments(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
 ): Promise<CommentState[]> {
-  const events = await readEvents(repoRoot, tourId);
+  const events = await readEvents(tourStoreRoot, tourId);
   return foldEventsToComments(events);
 }
 
@@ -271,7 +271,7 @@ export interface CreateDeleteRequest {
 }
 
 export async function createDelete(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   request: CreateDeleteRequest,
 ): Promise<{ target_id: string; at: string }> {
@@ -280,7 +280,7 @@ export async function createDelete(
       `comment.deleted is humans-only (ADR 0036) — refused by_kind="${request.by_kind}"`,
     );
   }
-  const existing = await readComments(repoRoot, tourId);
+  const existing = await readComments(tourStoreRoot, tourId);
   const target = existing.find((c) => c.id === request.target_id);
   if (!target) {
     throw new Error(`No comment with id "${request.target_id}" in this tour`);
@@ -293,6 +293,6 @@ export async function createDelete(
     target_id: request.target_id,
     at: new Date().toISOString(),
   };
-  await appendEvent(repoRoot, tourId, event);
+  await appendEvent(tourStoreRoot, tourId, event);
   return { target_id: event.target_id, at: event.at };
 }
