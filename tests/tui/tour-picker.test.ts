@@ -58,6 +58,17 @@ function rowBoxes(root: AnyElement): AnyElement[] {
   return childrenOf(scrollbox).filter((k) => k.type === "box");
 }
 
+function flatten(node: unknown, out: AnyElement[] = []): AnyElement[] {
+  if (Array.isArray(node)) {
+    for (const c of node) flatten(c, out);
+    return out;
+  }
+  if (!isElement(node)) return out;
+  out.push(node);
+  flatten(node.props.children, out);
+  return out;
+}
+
 describe("TourPicker (TUI) — row click wiring (issue #321)", () => {
   it("wires onMouseDown on each row to onSelect with the row's idx", () => {
     const onSelect = vi.fn();
@@ -78,5 +89,15 @@ describe("TourPicker (TUI) — row click wiring (issue #321)", () => {
     const root = renderPicker({ onSelect, rows: [] });
     expect(rowBoxes(root)).toHaveLength(0);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps picker rows and hint chrome out of Text selection", () => {
+    const root = renderPicker({ cursor: 1, currentTourId: "tour-a" });
+    const texts = flatten(root).filter((el) => el.type === "text");
+
+    expect(texts.length).toBeGreaterThan(0);
+    for (const text of texts) {
+      expect(text.props["selectable"]).toBe(false);
+    }
   });
 });

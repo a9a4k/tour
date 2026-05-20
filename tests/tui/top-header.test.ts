@@ -285,6 +285,15 @@ describe("TopHeaderTui (issue #93)", () => {
     expect(headerText).toContain("Unified");
   });
 
+  it("keeps all header chrome out of Text selection", () => {
+    const root = render({ tourStats: { additions: 12, deletions: 7 } });
+    const texts = walk(root).filter((e) => e.type === "text");
+
+    for (const text of texts) {
+      expect(text.props["selectable"]).toBe(false);
+    }
+  });
+
   // Issue #311 retired the cursor-file path row. The "what file am I in"
   // affordance is now owned by the pane-top active-file header (issue
   // #307); the "what file is selected" affordance is owned by the

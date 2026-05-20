@@ -62,6 +62,7 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
             fg={tour.title ? theme.fg.default : theme.fg.muted}
             truncate
             maxWidth={60}
+            selectable={false}
           >
             {tour.title || "(untitled)"}
           </text>
@@ -69,6 +70,7 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
             fg={theme.fg.muted}
             truncate
             maxWidth={60}
+            selectable={false}
           >
             {`  ${headerSourcePair(tour)}`}
           </text>
@@ -100,11 +102,11 @@ interface SidebarVisibilityButtonTuiProps {
 function SidebarVisibilityButtonTui({ visible, onToggle }: SidebarVisibilityButtonTuiProps) {
   return (
     <box flexDirection="row">
-      <text fg={theme.fg.muted}>{"["}</text>
-      <text fg={theme.fg.default} onMouseDown={onToggle}>
+      <text fg={theme.fg.muted} selectable={false}>{"["}</text>
+      <text fg={theme.fg.default} selectable={false} onMouseDown={onToggle}>
         {visible ? "⇤" : "⇥"}
       </text>
-      <text fg={theme.fg.muted}>{"]"}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"]"}</text>
     </box>
   );
 }
@@ -118,23 +120,25 @@ interface LayoutToggleTuiProps {
 function LayoutToggleTui({ layout, onSplit, onUnified }: LayoutToggleTuiProps) {
   return (
     <box flexDirection="row">
-      <text fg={theme.fg.muted}>{"["}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"["}</text>
       <text
         fg={layout === "split" ? theme.fg.accent : theme.fg.muted}
         bold={layout === "split"}
+        selectable={false}
         onMouseDown={onSplit}
       >
         {"Split"}
       </text>
-      <text fg={theme.fg.muted}>{" | "}</text>
+      <text fg={theme.fg.muted} selectable={false}>{" | "}</text>
       <text
         fg={layout === "unified" ? theme.fg.accent : theme.fg.muted}
         bold={layout === "unified"}
+        selectable={false}
         onMouseDown={onUnified}
       >
         {"Unified"}
       </text>
-      <text fg={theme.fg.muted}>{"]"}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"]"}</text>
     </box>
   );
 }
@@ -165,9 +169,9 @@ function TourStatsIndicatorTui({ additions, deletions }: TourStatsIndicatorTuiPr
   if (additions <= 0 && deletions <= 0) return null;
   return (
     <box flexDirection="row">
-      {additions > 0 ? <text fg={theme.fg.success}>{`+${additions}`}</text> : null}
-      {additions > 0 && deletions > 0 ? <text>{" "}</text> : null}
-      {deletions > 0 ? <text fg={theme.fg.danger}>{`-${deletions}`}</text> : null}
+      {additions > 0 ? <text fg={theme.fg.success} selectable={false}>{`+${additions}`}</text> : null}
+      {additions > 0 && deletions > 0 ? <text selectable={false}>{" "}</text> : null}
+      {deletions > 0 ? <text fg={theme.fg.danger} selectable={false}>{`-${deletions}`}</text> : null}
       <box width={1} />
     </box>
   );
@@ -184,21 +188,23 @@ function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {
   const nextDisabled = onCard && idx >= total - 1;
   return (
     <box flexDirection="row">
-      <text fg={theme.fg.muted}>{"["}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"["}</text>
       <text
         fg={prevDisabled ? theme.fg.subtle : theme.fg.default}
+        selectable={false}
         onMouseDown={prevDisabled ? undefined : onPrev}
       >
         {"←"}
       </text>
-      <text fg={theme.fg.default}>{onCard ? ` ${idx + 1}/${total} ` : ` —/${total} `}</text>
+      <text fg={theme.fg.default} selectable={false}>{onCard ? ` ${idx + 1}/${total} ` : ` —/${total} `}</text>
       <text
         fg={nextDisabled ? theme.fg.subtle : theme.fg.default}
+        selectable={false}
         onMouseDown={nextDisabled ? undefined : onNext}
       >
         {"→"}
       </text>
-      <text fg={theme.fg.muted}>{"]"}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"]"}</text>
     </box>
   );
 }

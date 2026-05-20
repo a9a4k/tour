@@ -40,7 +40,7 @@ export function TourPicker({ rows, currentTourId, cursor, scrollRef, onSelect }:
     >
       <scrollbox ref={scrollRef} height="100%">
         {rows.length === 0 ? (
-          <text fg={theme.fg.muted}>{" (no tours) "}</text>
+          <text fg={theme.fg.muted} selectable={false}>{" (no tours) "}</text>
         ) : (
           rows.map((r, i) => {
             const isCurrent = r.id === currentTourId;
@@ -60,15 +60,15 @@ export function TourPicker({ rows, currentTourId, cursor, scrollRef, onSelect }:
                 flexDirection="row"
                 onMouseDown={() => onSelect(i)}
               >
-                <text fg={theme.fg.accent} bg={bg}>{glyph}</text>
-                <text fg={theme.fg.default} bg={bg}>{rowLabel(r)}</text>
+                <text fg={theme.fg.accent} bg={bg} selectable={false}>{glyph}</text>
+                <text fg={theme.fg.default} bg={bg} selectable={false}>{rowLabel(r)}</text>
               </box>
             );
           })
         )}
       </scrollbox>
       <box height={1} paddingX={1}>
-        <text fg={theme.fg.muted}>
+        <text fg={theme.fg.muted} selectable={false}>
           {" j/k: move  ·  Enter: select  ·  t/Esc: close "}
         </text>
       </box>

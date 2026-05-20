@@ -40,6 +40,21 @@ export interface FileRowSegments {
   trailing: string;
 }
 
+export interface FolderRowParts {
+  leading: string;
+  name: string;
+  trailing: string;
+}
+
+export interface FileRowParts {
+  leading: string;
+  name: string;
+  additions: string;
+  deletions: string;
+  badge: string;
+  trailing: string;
+}
+
 const LEADING = 1;
 const TRAILING = 1;
 const CARET_AND_SPACE = 2; // "▾ " or "▸ "
@@ -81,10 +96,19 @@ export function fileRowFixedCost(row: FileRow, stats: FileRowStats): number {
 }
 
 export function folderRowLabel(row: FolderRow, nameBudget: number): string {
+  const parts = folderRowParts(row, nameBudget);
+  return parts.leading + parts.name + parts.trailing;
+}
+
+export function folderRowParts(row: FolderRow, nameBudget: number): FolderRowParts {
   const indent = " ".repeat(INDENT_PER_DEPTH * row.depth);
   const caret = row.collapsed ? "▸" : "▾";
   const name = middleTruncate(row.displayName, Math.max(0, nameBudget));
-  return ` ${indent}${caret} ${name} `;
+  return {
+    leading: ` ${indent}${caret} `,
+    name,
+    trailing: " ",
+  };
 }
 
 export function fileRowSegments(
@@ -92,11 +116,27 @@ export function fileRowSegments(
   stats: FileRowStats,
   nameBudget: number,
 ): FileRowSegments {
+  const parts = fileRowParts(row, stats, nameBudget);
+  return {
+    leading: parts.leading + parts.name,
+    additions: parts.additions,
+    deletions: parts.deletions,
+    badge: parts.badge,
+    trailing: parts.trailing,
+  };
+}
+
+export function fileRowParts(
+  row: FileRow,
+  stats: FileRowStats,
+  nameBudget: number,
+): FileRowParts {
   const indent = " ".repeat(INDENT_PER_DEPTH * row.depth);
   const icon = statusIcon(row.file.type);
   const name = middleTruncate(row.displayName, Math.max(0, nameBudget));
   return {
-    leading: ` ${indent}${icon} ${name}`,
+    leading: ` ${indent}${icon} `,
+    name,
     additions: additionsSegment(stats.additions),
     deletions: deletionsSegment(stats.deletions),
     badge: badgeFor(row.commentCount),

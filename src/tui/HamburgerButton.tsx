@@ -14,9 +14,9 @@ interface HamburgerButtonTuiProps {
 export function HamburgerButtonTui({ onOpen }: HamburgerButtonTuiProps) {
   return (
     <box flexDirection="row">
-      <text fg={theme.fg.muted}>{"["}</text>
-      <text fg={theme.fg.default} onMouseDown={onOpen}>{"≡"}</text>
-      <text fg={theme.fg.muted}>{"]"}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"["}</text>
+      <text fg={theme.fg.default} selectable={false} onMouseDown={onOpen}>{"≡"}</text>
+      <text fg={theme.fg.muted} selectable={false}>{"]"}</text>
     </box>
   );
 }

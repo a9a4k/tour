@@ -61,6 +61,7 @@ import { dispatchKey } from "./keymap.js";
 import { dispatchPickerKey } from "./picker-keymap.js";
 import { TourPicker } from "./TourPicker.js";
 import { TopHeaderTui } from "./TopHeader.js";
+import { FooterLineTui } from "./FooterLine.js";
 import { Composer } from "./Composer.js";
 import { DeleteConfirmModal } from "./DeleteConfirmModal.js";
 import {
@@ -74,8 +75,8 @@ import {
   fileEntryLabel,
 } from "./file-entry-label.js";
 import {
-  folderRowLabel,
-  fileRowSegments,
+  folderRowParts,
+  fileRowParts,
   folderRowFixedCost,
   fileRowFixedCost,
 } from "./sidebar-row-label.js";
@@ -242,7 +243,7 @@ function DiffPaneFile({
   const stylesRight = useTuiHighlight(file.newContent ?? "", additionsLang);
   const stylesLeft = useTuiHighlight(file.oldContent ?? "", deletionsLang);
   const placeholder = fileCardPlaceholder(collapsed, file.hunks.length > 0, reason);
-  if (placeholder !== null) return <text fg={theme.fg.muted}>{placeholder}</text>;
+  if (placeholder !== null) return <text fg={theme.fg.muted} selectable={false}>{placeholder}</text>;
   return (
     <DiffRows
       fileName={file.name}
@@ -1873,7 +1874,7 @@ function App(props: AppProps) {
 
       {view.kind === "snapshot-lost" && (
         <box height={2} width="100%" paddingX={1}>
-          <text fg={theme.fg.attention} bold>
+          <text fg={theme.fg.attention} bold selectable={false}>
             ⚠ Snapshot lost — comments preserved but diff cannot be displayed
           </text>
         </box>
@@ -1931,8 +1932,8 @@ function App(props: AppProps) {
                 // `theme.fg.cursor` while the rest of the row keeps its
                 // muted folder colour. `height={1}` on inner texts mirrors
                 // the file-row treatment so the row stays at 1 grid row.
-                const label = folderRowLabel(row, sidebarContentWidth - folderRowFixedCost(row));
-                const labelText = showGlyph ? label.slice(1) : label;
+                const parts = folderRowParts(row, sidebarContentWidth - folderRowFixedCost(row));
+                const leadingText = showGlyph ? parts.leading.slice(1) : parts.leading;
                 return (
                   <box
                     key={`d:${row.path}`}
@@ -1945,7 +1946,13 @@ function App(props: AppProps) {
                       <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
                     )}
                     <text height={1} fg={theme.fg.muted} selectable={false}>
-                      {labelText}
+                      {leadingText}
+                    </text>
+                    <text height={1} fg={theme.fg.muted}>
+                      {parts.name}
+                    </text>
+                    <text height={1} fg={theme.fg.muted} selectable={false}>
+                      {parts.trailing}
                     </text>
                   </box>
                 );
@@ -1959,7 +1966,7 @@ function App(props: AppProps) {
               // count `+1 -1`. Pure-rename rows (no content change)
               // return 0/0 and render no stats segments.
               const stats = countDiffStats(plannedRowsByFile.get(row.path) ?? []);
-              const segs = fileRowSegments(
+              const segs = fileRowParts(
                 row,
                 stats,
                 sidebarContentWidth - fileRowFixedCost(row, stats),
@@ -1998,6 +2005,9 @@ function App(props: AppProps) {
                   )}
                   <text height={1} fg={theme.fg.default} selectable={false}>
                     {leadingText}
+                  </text>
+                  <text height={1} fg={theme.fg.default}>
+                    {segs.name}
                   </text>
                   {segs.additions.length > 0 && (
                     <text height={1} fg={theme.fg.success} selectable={false}>
@@ -2130,10 +2140,7 @@ function App(props: AppProps) {
         </box>
       </box>
 
-      {/* Footer */}
-      <box height={1} width="100%" paddingX={1}>
-        <text fg={theme.fg.muted}>{footer}</text>
-      </box>
+      <FooterLineTui footer={footer} />
 
       {sessionState.picker.kind === "open" && (
         <TourPicker

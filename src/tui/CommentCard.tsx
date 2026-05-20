@@ -78,7 +78,7 @@ function ReplyPill({ lock, now }: PillProps) {
   if (stale) {
     return (
       <box marginTop={1} paddingLeft={2}>
-        <text fg={theme.fg.attention}>
+        <text fg={theme.fg.attention} selectable={false}>
           {`⚠️ Reply agent (${lock.agent}) is taking unusually long…`}
         </text>
       </box>
@@ -86,7 +86,7 @@ function ReplyPill({ lock, now }: PillProps) {
   }
   return (
     <box marginTop={1} paddingLeft={2}>
-      <text fg={theme.fg.muted}>
+      <text fg={theme.fg.muted} selectable={false}>
         {`✏️ Reply agent (${lock.agent}) is replying… (${seconds}s)`}
       </text>
     </box>
@@ -207,7 +207,7 @@ export function CommentCard({
           {` ${comment.file}:${rangeLabel(comment)}`}
         </text>
         {comment.author !== comment.author_kind ? (
-          <text fg={theme.fg.accent} bold>
+          <text fg={theme.fg.accent} bold selectable={false}>
             {` (${comment.author})`}
           </text>
         ) : null}
@@ -236,7 +236,7 @@ export function CommentCard({
                 {`[${r.author_kind}]`}
               </text>
               {r.author !== r.author_kind ? (
-                <text fg={theme.fg.muted}>{` (${r.author})`}</text>
+                <text fg={theme.fg.muted} selectable={false}>{` (${r.author})`}</text>
               ) : null}
               {r.author_kind === "agent" && r.replies_to ? (
                 // Issue #390 / ADR 0021 addendum: reply-agent replies are
@@ -244,7 +244,7 @@ export function CommentCard({
                 // `author_kind: "agent"` + `replies_to`). Mark them with
                 // a visible role suffix so the reply-agent reads as a
                 // distinct participant from the user's current chat.
-                <text fg={theme.fg.muted}>{` · reply-agent`}</text>
+                <text fg={theme.fg.muted} selectable={false}>{` · reply-agent`}</text>
               ) : null}
             </box>
             <text fg={theme.fg.default} wrapMode="word">{r.body}</text>

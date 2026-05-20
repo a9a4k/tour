@@ -103,7 +103,7 @@ export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
          * vanishes and the textarea's first column slides leftward over
          * its column (issue #391 follow-up).
          */}
-        <text fg={theme.fg.muted} style={{ flexShrink: 0, width: 2 }}>{"❯ "}</text>
+        <text fg={theme.fg.muted} selectable={false} style={{ flexShrink: 0, width: 2 }}>{"❯ "}</text>
         {showEditableInput ? (
           <textarea
             ref={(r) => {
@@ -140,7 +140,7 @@ export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg={theme.fg.muted}>{hintText(state)}</text>
+        <text fg={theme.fg.muted} selectable={false}>{hintText(state)}</text>
       </box>
     </box>
   );

@@ -1678,6 +1678,26 @@ index 1..2 100644
       expect(findGlyph(tree, "↕")).toBeDefined();
     });
 
+    it("keeps hunk-header control glyphs out of Text selection while preserving hunk text", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -10,3 +10,3 @@ function run()",
+          hunkIndex: 1,
+          gapAbove: 12,
+          primaryExpand: "all",
+        },
+      ];
+      const tree = callDiffRows({ rows, layout: "split" });
+      const glyph = findGlyph(tree, "↕");
+      const header = findText(tree, (s) => s.includes("function run"));
+
+      expect(glyph).toBeDefined();
+      expect(glyph!.props["selectable"]).toBe(false);
+      expect(header).toBeDefined();
+      expect(header!.props["selectable"]).toBeUndefined();
+    });
+
     it("attaches onMouseDown when primaryExpand !== null; click dispatches onInteractiveClick with hunk-separator subkind", () => {
       const rows: PlannedRow[] = [
         {

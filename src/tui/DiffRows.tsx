@@ -317,7 +317,7 @@ export function DiffRows({
                 alignItems="center"
                 backgroundColor={buttonBg}
               >
-                <text height={1} fg={theme.fg.onEmphasis}>
+                <text height={1} fg={theme.fg.onEmphasis} selectable={false}>
                   {hunkHeaderGlyph(row.primaryExpand)}
                 </text>
               </box>
@@ -372,7 +372,7 @@ export function DiffRows({
                   alignItems="center"
                   backgroundColor={buttonBg}
                 >
-                  <text height={1} fg={theme.fg.onEmphasis}>↓</text>
+                  <text height={1} fg={theme.fg.onEmphasis} selectable={false}>↓</text>
                 </box>
                 <box flexGrow={1} backgroundColor={textBg} />
               </box>

@@ -3,7 +3,9 @@ import type { DiffFile } from "../../src/core/diff-model.js";
 import type { VisibleRow } from "../../src/core/file-tree.js";
 import {
   folderRowLabel,
+  folderRowParts,
   fileRowSegments,
+  fileRowParts,
   folderRowFixedCost,
   fileRowFixedCost,
 } from "../../src/tui/sidebar-row-label.js";
@@ -79,6 +81,13 @@ describe("folderRowLabel", () => {
     const row = folder({ displayName: "a".repeat(100), depth: 2 });
     const out = folderRowLabel(row, 28 - folderRowFixedCost(row));
     expect(out.length).toBe(28);
+  });
+});
+
+describe("folderRowParts", () => {
+  it("splits folder chrome from the selectable name", () => {
+    expect(folderRowParts(folder({ displayName: "src", collapsed: true }), 100))
+      .toEqual({ leading: " ▸ ", name: "src", trailing: " " });
   });
 });
 
@@ -190,6 +199,25 @@ describe("fileRowSegments (issue #265)", () => {
     const stats = { additions: 999, deletions: 999 };
     const out = fileRowSegments(row, stats, 28 - fileRowFixedCost(row, stats));
     expect(fullLabel(out).length).toBe(28);
+  });
+});
+
+describe("fileRowParts", () => {
+  it("splits file chrome, selectable name, stats, badge, and trailing padding", () => {
+    const out = fileRowParts(
+      file({ displayName: "a.ts", commentCount: 3 }),
+      { additions: 43, deletions: 27 },
+      100,
+    );
+
+    expect(out).toEqual({
+      leading: " M ",
+      name: "a.ts",
+      additions: " +43",
+      deletions: " -27",
+      badge: " [3]",
+      trailing: " ",
+    });
   });
 });
 

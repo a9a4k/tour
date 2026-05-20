@@ -43,6 +43,10 @@ function textBodies(tree: unknown): string[] {
     });
 }
 
+function textElements(tree: unknown): AnyElement[] {
+  return flatten(tree).filter((el) => el.type === "text");
+}
+
 function findTextarea(tree: unknown): AnyElement | undefined {
   return flatten(tree).find((el) => el.type === "textarea");
 }
@@ -152,6 +156,28 @@ describe("Composer render gate (issue #254 + issue #391)", () => {
     expect(texts).toContain("Submitting");
     // Body preserved so the user can see what they're submitting.
     expect(texts).toContain("the draft");
+  });
+
+  it("keeps composer chevrons and hints out of Text selection while preserving draft text", () => {
+    const tree = render({
+      kind: "submitting",
+      target: topLevelTarget,
+      body: "the draft",
+    });
+    const texts = textElements(tree);
+    const chevron = texts.find((t) => t.props.children === "❯ ");
+    const body = texts.find((t) => t.props.children === "the draft");
+    const hint = texts.find((t) =>
+      typeof t.props.children === "string" &&
+      t.props.children.includes("Submitting"),
+    );
+
+    expect(chevron).toBeDefined();
+    expect(chevron!.props["selectable"]).toBe(false);
+    expect(body).toBeDefined();
+    expect(body!.props["selectable"]).toBeUndefined();
+    expect(hint).toBeDefined();
+    expect(hint!.props["selectable"]).toBe(false);
   });
 
   // The pre-fix UI rendered nothing on `errored` either — the silent-fail

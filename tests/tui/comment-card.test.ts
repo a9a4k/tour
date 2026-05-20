@@ -92,7 +92,7 @@ describe("CommentCard selection cues", () => {
     expect(replyBody).toBeDefined();
     expect(replyBody!.props["selectable"]).toBeUndefined();
 
-    for (const chrome of ["▾ ", "1 / 3 ", "[human]", "● "]) {
+    for (const chrome of ["▾ ", "1 / 3 ", "[human]", " (user)", "● "]) {
       const nodes = texts.filter((t) => t.props["children"] === chrome);
       expect(nodes.length).toBeGreaterThan(0);
       for (const node of nodes) {
