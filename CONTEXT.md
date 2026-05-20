@@ -5,8 +5,20 @@ A code-walkthrough tool that pairs an ephemeral, GitHub-style diff (split or uni
 ## Language
 
 **Tour**:
-A single guided traversal of a pinned git diff, with zero or more comments attached. Lives in `<tour-home>/<repo-key>/<id>/`.
+A single guided traversal of a pinned git diff, with zero or more comments attached. Lives in `<tour-home>/<repo-key>/<id>/` (ADR 0039); the previous in-repo `.tour/<id>/` location is migrated by `tour migrate`. Carries a `created_in_worktree` stamp so per-worktree filtering survives the storage collapse across worktrees of one clone.
 _Avoid_: review, PR, pull request, code review session, changeset
+
+**Tour home**:
+The user-scoped root holding every Tour on a machine. `$TOUR_HOME` if set, else `~/.tour/`. Replaces the previous in-repo `.tour/` location (ADR 0039) so coding agents with auto-commit can't sweep Tour internals into the user's commits and `git status` stays clean in every repo Tour has been used in. The retired `ensureTourIgnored` write to `.gitignore` is gone with the move — the repo is never touched on `tour create`.
+_Avoid_: tour root, tour store, dotfile, `.tour/`
+
+**Repo key**:
+The folder name under **Tour home** that scopes one repo's Tours. Shape: `<basename>-<short-hash>`, where `basename` is the last segment of the repo's working tree path and `short-hash` is the first 12 chars of `sha1(realpath(git rev-parse --git-common-dir))`. Worktrees of one clone share a Repo key — `git-common-dir` resolves to the same `.git/` for the main checkout and every linked worktree — which is correct because Tours anchor on SHAs reachable from every worktree. Survives `mv` of the working tree (the gitdir reference is stable). Outside a git repo, the hash is over `realpath(cwd)`. Two clones of the same repo at different paths get distinct keys; that's accepted and consistent with the per-pass model.
+_Avoid_: repo id, project key, store key, slug
+
+**Worktree stamp**:
+The `created_in_worktree` field on a **Tour**, set at `tour create` time to `realpath(git rev-parse --git-dir)` — `/path/to/repo/.git` for the main worktree, `/path/to/repo/.git/worktrees/<name>` for a linked worktree, `realpath(cwd)` outside a git repo. Drives `tour list`'s default filter (`created_in_worktree === <current worktree stamp>`); `tour list --all` bypasses. Stable across `git worktree move` (git updates the gitdir reference, the on-disk path stays the same); dies cleanly on `git worktree remove` (the gitdir is deleted, the stamp can no longer match — the Tour falls into `--all`, which is the right outcome for "I tidied up that worktree, stop showing those Tours"). Bare `tour` and `tour tui`'s smart-default consume the same stamp; explicit `tour <verb> <id>` ignores it.
+_Avoid_: worktree path, created-from, source path, origin
 
 **Diff**:
 The set of file changes shown in a Tour, recomputed from git on every open. Never persisted.
@@ -143,6 +155,7 @@ _Avoid_: selection (ambiguous with Cursor), highlight (ambiguous with syntax Hig
 
 ## Resolved decisions
 
+- **Tour storage location**: user-scoped (`<tour-home>/<repo-key>/<id>/`), not repo-scoped (`<repo>/.tour/<id>/`). Driven by (a) `tour create` modifying the user's `.gitignore` on first use, and (b) the eager-gitignore approach being a race against coding agents that auto-commit between edit and tour-create. Moving storage to `~/.tour/` makes it structurally invisible to repo-scoped tools — no gitignore needed, no race possible. Worktrees of one clone now share a Repo key (correct: SHAs reachable from every worktree); per-worktree filtering survives via the `created_in_worktree` stamp on every Tour. `ensureTourIgnored` is retired with the move. See ADR 0039.
 - **Comment lifetime**: per-tour-pass. Comments are not re-anchored across rebases or amendments. Stale Tours are abandoned, not migrated.
 - **Diff source**: commit-pinned only. Working-tree tours are supported by snapshotting to a synthetic commit at create time, so the rest of the system only ever sees SHAs.
 - **Multiplicity**: many Tours coexist, ordered by creation time. Default open behavior surfaces the most recent unfinished one.
