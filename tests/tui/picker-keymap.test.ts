@@ -47,8 +47,11 @@ describe("dispatchPickerKey", () => {
     expect(dispatchPickerKey(k("return"))).toEqual({ type: "commit" });
   });
 
+  it("bare a toggles the picker scope", () => {
+    expect(dispatchPickerKey(k("a"))).toEqual({ type: "toggle-scope" });
+  });
+
   it("unbound letters are a plain noop", () => {
-    expect(dispatchPickerKey(k("a"))).toEqual({ type: "noop" });
     expect(dispatchPickerKey(k("c"))).toEqual({ type: "noop" });
     expect(dispatchPickerKey(k("q"))).toEqual({ type: "noop" });
   });

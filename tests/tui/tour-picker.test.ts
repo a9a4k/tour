@@ -38,12 +38,14 @@ function renderPicker(opts: {
   onSelect?: (idx: number) => void;
   cursor?: number;
   currentTourId?: string | null;
+  scope?: "worktree" | "all";
   rows?: PickerRow[];
 } = {}): AnyElement {
   const out = TourPicker({
     rows: opts.rows ?? sampleRows,
     cursor: opts.cursor ?? 0,
     currentTourId: opts.currentTourId ?? null,
+    scope: opts.scope ?? "worktree",
     onSelect: opts.onSelect ?? (() => {}),
   });
   if (!isElement(out)) throw new Error("TourPicker did not return an element");
@@ -190,5 +192,21 @@ describe("TourPicker (TUI) — row click wiring (issue #321)", () => {
     for (const text of texts.filter((t) => t.props.children !== "❯" && t.props.children !== " ")) {
       expect(text.props["selectable"]).not.toBe(false);
     }
+  });
+
+  it("surfaces the current scope and toggle hint in the footer", () => {
+    const worktree = renderPicker({ scope: "worktree" });
+    const all = renderPicker({ scope: "all" });
+
+    const text = (root: AnyElement) =>
+      flatten(root)
+        .filter((el) => el.type === "text")
+        .map((el) => String(el.props.children))
+        .join("\n");
+
+    expect(text(worktree)).toContain("a: all worktrees");
+    expect(text(worktree)).toContain("scope: worktree");
+    expect(text(all)).toContain("a: this worktree");
+    expect(text(all)).toContain("scope: all");
   });
 });

@@ -882,6 +882,36 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     flex-direction: column;
   }
   .picker-card:focus { outline: none; }
+  .picker-scope-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-default);
+    background: var(--canvas-default);
+  }
+  .picker-scope-toggle button {
+    border: 1px solid var(--border-default);
+    background: var(--canvas-subtle);
+    color: var(--fg-default);
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .picker-scope-toggle button:first-child {
+    border-radius: 6px 0 0 6px;
+  }
+  .picker-scope-toggle button:last-child {
+    border-radius: 0 6px 6px 0;
+  }
+  .picker-scope-toggle button.active {
+    background: var(--bg-accent-cursor);
+    border-color: var(--border-accent);
+  }
+  .picker-scope-toggle button:focus-visible {
+    outline: 1px solid var(--border-accent);
+    outline-offset: 1px;
+  }
   .picker-list {
     overflow-y: auto;
     padding: 4px 0;

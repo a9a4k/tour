@@ -28,6 +28,8 @@ export type WriteCommentInput =
     }
   | { kind: "reply"; parent: Comment; body: string };
 
+export type TourPickerScope = "worktree" | "all";
+
 // The cross-process bridge from `src/cli/tui.ts` to `src/tui/app.tsx`.
 // Co-located here so the dynamic-import cast in `src/cli/tui.ts` can't lie
 // about the shape of the props the App expects — both sides import from
@@ -39,7 +41,9 @@ export interface StartTuiProps {
   replyLock: ReplyLock | null;
   loadTour: (id: string) => Promise<TourBundle>;
   loadReplyLock: (id: string) => Promise<ReplyLock | null>;
-  loadTours: () => Promise<{ tours: Tour[]; commentCounts: Record<string, number> }>;
+  loadTours: (
+    scope: TourPickerScope,
+  ) => Promise<{ tours: Tour[]; commentCounts: Record<string, number> }>;
   writeComment: (tourId: string, input: WriteCommentInput) => Promise<Comment>;
   /** ADR 0036 Slice D / issue #388. Wraps `createDelete` — humans-only
    *  contract enforced at the seam in `core/comments-store`. */

@@ -1,6 +1,7 @@
 import type { Ref } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { PickerRow } from "../core/tour-list.js";
+import type { TourPickerScope } from "../core/write-comment-input.js";
 import { theme } from "../core/theme.js";
 import { CURSOR_GLYPH } from "./DiffLine.js";
 import { textSelectionSafeActivation } from "./text-selection-gesture.js";
@@ -8,6 +9,7 @@ import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 interface TourPickerProps {
   rows: PickerRow[];
   currentTourId: string | null;
+  scope: TourPickerScope;
   cursor: number;
   // Ref onto the picker's inner scrollbox so the Tour-session intent
   // listener can realize `scrollPickerRow` by scrolling
@@ -24,7 +26,9 @@ function rowLabel(r: PickerRow): string {
   return ` ${r.glyph} ${age}  ${r.title}${badge} `;
 }
 
-export function TourPicker({ rows, currentTourId, cursor, scrollRef, onSelect }: TourPickerProps) {
+export function TourPicker({ rows, currentTourId, scope, cursor, scrollRef, onSelect }: TourPickerProps) {
+  const toggleLabel =
+    scope === "worktree" ? "a: all worktrees" : "a: this worktree";
   return (
     <box
       position="absolute"
@@ -73,7 +77,7 @@ export function TourPicker({ rows, currentTourId, cursor, scrollRef, onSelect }:
       </scrollbox>
       <box height={1} paddingX={1}>
         <text fg={theme.fg.muted}>
-          {" j/k: move  ·  Enter: select  ·  t/Esc: close "}
+          {` j/k: move  ·  Enter: select  ·  ${toggleLabel}  ·  scope: ${scope}  ·  T/Esc: close `}
         </text>
       </box>
     </box>

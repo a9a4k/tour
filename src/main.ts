@@ -221,6 +221,7 @@ async function main(): Promise<void> {
           tourId: positional[0],
           cwd,
           tourStoreRoot,
+          worktreeStamp,
           replyAgent: flag(flags, "reply-agent"),
           editor: resolveEditor(flag(flags, "editor"), process.env),
         });
