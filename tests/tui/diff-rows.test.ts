@@ -52,6 +52,23 @@ function selectableMouseEvent() {
   return { target: { selectable: true }, button: 0, stopPropagation: vi.fn() };
 }
 
+function mouseHandlersOf(element: AnyElement) {
+  return {
+    down: element.props["onMouseDown"] as (event: unknown) => void,
+    drag: element.props["onMouseDrag"] as (event: unknown) => void,
+    up: element.props["onMouseUp"] as (event: unknown) => void,
+  };
+}
+
+function dragSelectableText(element: AnyElement) {
+  const { down, drag, up } = mouseHandlersOf(element);
+  const event = selectableMouseEvent();
+  down(event);
+  drag(event);
+  up(event);
+  return event;
+}
+
 function parseFile(rawDiff: string): FileDiffMetadata {
   const patches = parsePatchFiles(rawDiff);
   return patches[0].files[0];
@@ -1141,14 +1158,7 @@ index 1..2 100644
         tree,
         `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
       );
-      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
-      const drag = wrapper!.props["onMouseDrag"] as (event: unknown) => void;
-      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
-      const event = selectableMouseEvent();
-
-      down(event);
-      drag(event);
-      up(event);
+      const event = dragSelectableText(wrapper!);
 
       expect(onCursorClick).not.toHaveBeenCalled();
       expect(event.stopPropagation).toHaveBeenCalled();
@@ -1170,8 +1180,7 @@ index 1..2 100644
         tree,
         `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
       );
-      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
-      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const { down, up } = mouseHandlersOf(wrapper!);
       const event = selectableMouseEvent();
 
       down(event);
@@ -1312,14 +1321,7 @@ index 1..2 100644
       const withHandler = flatten(tree).find(
         (el) => typeof el.props["onMouseDown"] === "function",
       );
-      const down = withHandler!.props["onMouseDown"] as (event: unknown) => void;
-      const drag = withHandler!.props["onMouseDrag"] as (event: unknown) => void;
-      const up = withHandler!.props["onMouseUp"] as (event: unknown) => void;
-      const event = selectableMouseEvent();
-
-      down(event);
-      drag(event);
-      up(event);
+      const event = dragSelectableText(withHandler!);
 
       expect(onCardClick).not.toHaveBeenCalled();
       expect(event.stopPropagation).toHaveBeenCalled();
@@ -1340,8 +1342,7 @@ index 1..2 100644
       const withHandler = flatten(tree).find(
         (el) => typeof el.props["onMouseDown"] === "function",
       );
-      const down = withHandler!.props["onMouseDown"] as (event: unknown) => void;
-      const up = withHandler!.props["onMouseUp"] as (event: unknown) => void;
+      const { down, up } = mouseHandlersOf(withHandler!);
       const event = selectableMouseEvent();
 
       down(event);
@@ -1577,14 +1578,7 @@ index 1..2 100644
         onInteractiveClick,
       });
       const wrapper = findIdElement(tree, "interactive-row-x.txt-collapsed-file-top");
-      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
-      const drag = wrapper!.props["onMouseDrag"] as (event: unknown) => void;
-      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
-      const event = selectableMouseEvent();
-
-      down(event);
-      drag(event);
-      up(event);
+      const event = dragSelectableText(wrapper!);
 
       expect(onInteractiveClick).not.toHaveBeenCalled();
       expect(event.stopPropagation).toHaveBeenCalled();
@@ -1609,8 +1603,7 @@ index 1..2 100644
         onInteractiveClick,
       });
       const wrapper = findIdElement(tree, "interactive-row-x.txt-collapsed-file-top");
-      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
-      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const { down, up } = mouseHandlersOf(wrapper!);
       const event = selectableMouseEvent();
 
       down(event);
@@ -1935,14 +1928,7 @@ index 1..2 100644
         onInteractiveClick,
       });
       const wrapper = findIdElement(tree, "interactive-row-x.ts-hunk-separator-2");
-      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
-      const drag = wrapper!.props["onMouseDrag"] as (event: unknown) => void;
-      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
-      const event = selectableMouseEvent();
-
-      down(event);
-      drag(event);
-      up(event);
+      const event = dragSelectableText(wrapper!);
 
       expect(onInteractiveClick).not.toHaveBeenCalled();
       expect(event.stopPropagation).toHaveBeenCalled();

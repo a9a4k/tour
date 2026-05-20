@@ -285,12 +285,12 @@ export function DiffRows({
           const id = hunkHeaderRowId(fileName, row.hunkIndex);
           const mouseHandlers = onInteractiveClick
             ? textSelectionSafeActivation(() =>
-              onInteractiveClick(
-                fileName,
-                row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
-                row.hunkIndex === 0 ? "top" : row.hunkIndex,
-              ),
-            )
+                onInteractiveClick(
+                  fileName,
+                  row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
+                  row.hunkIndex === 0 ? "top" : row.hunkIndex,
+                ),
+              )
             : undefined;
           // Issue #379: focus tint lives on the right (text) cell, not
           // the saturated button cell. The button stays `accentEmphasis`
@@ -340,7 +340,9 @@ export function DiffRows({
             rowCursor.interactive.boundaryRef === row.boundaryRef;
           const id = interactiveRowId(fileName, row.subKind, row.boundaryRef);
           const mouseHandlers = onInteractiveClick
-            ? textSelectionSafeActivation(() => onInteractiveClick(fileName, row.subKind, row.boundaryRef))
+            ? textSelectionSafeActivation(() =>
+                onInteractiveClick(fileName, row.subKind, row.boundaryRef),
+              )
             : undefined;
           // Issue #292: standalone `expand-down` row mirrors the
           // hunk-header banner's two-cell layout — saturated button
@@ -524,11 +526,15 @@ export function DiffRows({
           const rightClick = splitClickTarget(row, "right");
           const leftMouseHandlers =
             onCursorClick && leftClick
-              ? textSelectionSafeActivation(() => onCursorClick(fileName, leftClick.side, leftClick.lineNumber))
+              ? textSelectionSafeActivation(() =>
+                  onCursorClick(fileName, leftClick.side, leftClick.lineNumber),
+                )
               : undefined;
           const rightMouseHandlers =
             onCursorClick && rightClick
-              ? textSelectionSafeActivation(() => onCursorClick(fileName, rightClick.side, rightClick.lineNumber))
+              ? textSelectionSafeActivation(() =>
+                  onCursorClick(fileName, rightClick.side, rightClick.lineNumber),
+                )
               : undefined;
           // Issue #267 — flexDirection="row" on each 50%-width half
           // wrapper. The wrapper hosts a single DiffLine child; swapping
@@ -634,7 +640,9 @@ export function DiffRows({
           : undefined;
         const unifiedMouseHandlers =
           onCursorClick && unifiedTarget
-            ? textSelectionSafeActivation(() => onCursorClick(fileName, unifiedTarget.side, unifiedTarget.lineNumber))
+            ? textSelectionSafeActivation(() =>
+                onCursorClick(fileName, unifiedTarget.side, unifiedTarget.lineNumber),
+              )
             : undefined;
         return (
           <box
