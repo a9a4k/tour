@@ -223,7 +223,7 @@ async function persistReply(
     return;
   }
   await createReply(cwd, tourId, {
-    thread_id: triggering.id,
+    thread_id: triggering.thread_id ?? triggering.id,
     body,
     author: agent,
     author_kind: "agent",

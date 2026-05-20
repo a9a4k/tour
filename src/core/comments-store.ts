@@ -110,15 +110,20 @@ interface BuildReplyInput {
   author_kind: AuthorKind;
 }
 
-function findParentOrThrow(
+function findThreadRootOrThrow(
   thread_id: string,
-  existing: CommentState[],
+  commentsById: ReadonlyMap<string, CommentState>,
 ): CommentState {
-  const parent = existing.find((a) => a.id === thread_id);
-  if (!parent) {
+  const root = commentsById.get(thread_id);
+  if (!root) {
     throw new Error(`No comment with id "${thread_id}" in this tour`);
   }
-  return parent;
+  if (root.thread_id !== undefined) {
+    throw new Error(
+      `thread_id "${thread_id}" is a Reply (root of its Thread is "${root.thread_id}"); pass thread_id="${root.thread_id}"`,
+    );
+  }
+  return root;
 }
 
 function buildReplyCreatedEvent(
@@ -203,10 +208,11 @@ export async function createReply(
 ): Promise<Comment> {
   validateBody(request.body);
   const existing = await readComments(tourStoreRoot, tourId);
-  const parent = findParentOrThrow(request.thread_id, existing);
+  const commentsById = new Map(existing.map((a) => [a.id, a]));
+  const threadRoot = findThreadRootOrThrow(request.thread_id, commentsById);
   const event = buildReplyCreatedEvent(request);
   await appendEvent(tourStoreRoot, tourId, event);
-  return replyEventToComment(event, parent);
+  return replyEventToComment(event, threadRoot);
 }
 
 // Atomic batch: build every event first (replies resolve against the
@@ -226,20 +232,19 @@ export async function createComments(
   const events: TourEvent[] = [];
   const builtComments: Comment[] = [];
   // Replies in the same batch may target top-level Comments created
-  // earlier in the same batch; the on-disk read won't see them yet, so
-  // track in-batch parents in a sidecar lookup.
-  const inBatchById: Map<string, CommentState> = new Map();
+  // earlier in the same batch; seed the lookup with on-disk Comments,
+  // then extend it as batch items are built.
+  const inBatchById: Map<string, CommentState> = new Map(
+    existing.map((a) => [a.id, a]),
+  );
   for (const req of requests) {
     if (req.kind === "reply") {
-      const parent =
-        existing.find((a) => a.id === req.thread_id) ??
-        inBatchById.get(req.thread_id);
-      if (!parent) {
-        throw new Error(`No comment with id "${req.thread_id}" in this tour`);
-      }
+      const threadRoot = findThreadRootOrThrow(req.thread_id, inBatchById);
       const event = buildReplyCreatedEvent(req);
       events.push(event);
-      builtComments.push(replyEventToComment(event, parent));
+      const comment = replyEventToComment(event, threadRoot);
+      builtComments.push(comment);
+      inBatchById.set(comment.id, comment);
     } else {
       const event = buildCommentCreatedEvent(req);
       events.push(event);

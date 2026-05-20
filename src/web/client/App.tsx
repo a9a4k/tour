@@ -1415,14 +1415,24 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (sessionState.collapsedThreads.has(cardId)) {
             store.dispatch({ type: "thread.expand", id: cardId });
           }
+          const cardReplies = [...(view.nav.repliesByRoot.get(cardId) ?? [])];
           const latestId = latestCommentId(
             cardAnn,
-            [...(view.nav.repliesByRoot.get(cardId) ?? [])],
+            cardReplies,
           );
+          const latestComment =
+            latestId === cardAnn.id
+              ? cardAnn
+              : cardReplies.find((c) => c.id === latestId);
+          const targetThreadId =
+            latestComment?.thread_id ?? latestComment?.id ?? latestId;
           recallCardThen(cardId, () => {
             store.dispatch({
               type: "composer.open",
-              target: { kind: "reply", thread_id: latestId },
+              target: {
+                kind: "reply",
+                thread_id: targetThreadId,
+              },
             });
           });
           return;
@@ -1695,13 +1705,22 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   const openReplyComposer = useCallback(
-    (thread_id: string) => {
+    (commentId: string) => {
+      const comment = view.nav.threads
+        .flatMap((t) => [t.root, ...t.replies])
+        .find((c) => c.id === commentId);
+      const targetThreadId = comment
+        ? comment.thread_id ?? comment.id
+        : commentId;
       store.dispatch({
         type: "composer.open",
-        target: { kind: "reply", thread_id },
+        target: {
+          kind: "reply",
+          thread_id: targetThreadId,
+        },
       });
     },
-    [store],
+    [store, view.nav.threads],
   );
 
   // Issue #383 / ADR 0035: mouse paths to open-in-editor. Two callers:
@@ -3046,7 +3065,7 @@ interface CommentListSnapshotLostProps {
   composerBody: string;
   composerError: string | null;
   onComposerBodyChange: (body: string) => void;
-  onOpenReply: (thread_id: string) => void;
+  onOpenReply: (commentId: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;

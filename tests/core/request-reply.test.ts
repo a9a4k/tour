@@ -255,6 +255,35 @@ describe("requestReply", () => {
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
 
+  it("normalizes a triggering Reply to its root thread_id before writing the agent Reply", async () => {
+    await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
+    await seedComment(
+      dir,
+      tourId,
+      mkAnn({ id: "ann-1-reply", author_kind: "human", thread_id: "ann-1" }),
+    );
+    const adapter = fixtureAdapter({
+      code: 0,
+      signal: null,
+      stdout: "fixture: replying to the leaf.",
+    });
+
+    const result = await requestReply({
+      cwd: dir,
+      tourId,
+      commentId: "ann-1-reply",
+      agent: "fixture",
+      adapter,
+    });
+
+    expect(result).toEqual({ kind: "dispatched" });
+    const comments = await readComments(dir, tourId);
+    const reply = comments.find(
+      (a) => a.author_kind === "agent" && a.body === "fixture: replying to the leaf.",
+    );
+    expect(reply?.thread_id).toBe("ann-1");
+  });
+
   it("returns { kind: 'busy' } when the lock is already held by another in-flight dispatch", async () => {
     await seedComment(dir, tourId, mkAnn({ id: "ann-1", author_kind: "human" }));
     // Held by this very test's process so the pid-liveness probe stays alive.
