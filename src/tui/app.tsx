@@ -125,6 +125,7 @@ import { spawnGuiEditor } from "../core/editor-spawn.js";
 import { spawnTerminalEditor } from "./terminal-editor-spawn.js";
 import { existsSync as existsSyncSafe } from "node:fs";
 import { isAbsolute as isAbsolutePath, join as joinPath } from "node:path";
+import { useFlashFooter } from "../core/use-flash-footer.js";
 
 function initialPickerCursor(rows: PickerRow[], currentId: string): number {
   if (rows.length === 0) return 0;
@@ -390,9 +391,9 @@ function App(props: AppProps) {
     const located = revealAndLocate(tree, snapshot, counts, file);
     return located ? located.rowIdx : null;
   };
-  // Footer status line that flashes after an `s` no-op so the user knows
-  // why the keystroke didn't dispatch. Cleared by any subsequent key.
-  const [footerStatus, setFooterStatus] = useState<string | null>(null);
+  // Transient footer status: auto-dismisses after the shared footer timeout
+  // with last-write-wins semantics across all TUI call sites.
+  const { status: footerStatus, flash } = useFlashFooter();
   // PRD #343 follow-up: Esc-coalesce guard. Under tmux (and any terminal
   // where Kitty keyboard disambiguation isn't end-to-end), `\x1b` is
   // ambiguous — it's both bare Esc and the lead byte of every CSI
@@ -406,45 +407,9 @@ function App(props: AppProps) {
   // typically <20ms. 50ms threshold keeps the user-story-6 round-trip
   // gesture (Esc → scan → Esc back) safe while killing the phantom.
   const lastEscAtRef = useRef<number>(0);
-  // Issue #326 / #431: tracks the pending clipboard footer-flash timer so
-  // a fresh `y` press or finished Text selection cancels the prior pending
-  // clear and the unmount effect can stop it. Restoration is via a
-  // functional setter so a newer status (set after our flash) survives.
-  const clipboardFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // PRD #349 / ADR 0032 / issue #352: success-flash timer for the
-  // "Opened <file>:<line>" footer status. Mirrors the yank timer (1200ms
-  // auto-clear) — fresh `o` press cancels prior pending clear; unmount
-  // effect clears as well.
-  const openFooterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => (): void => {
-      if (openFooterTimerRef.current !== null) {
-        clearTimeout(openFooterTimerRef.current);
-      }
-    },
-    [],
-  );
-  useEffect(
-    () => (): void => {
-      if (clipboardFooterTimerRef.current !== null) {
-        clearTimeout(clipboardFooterTimerRef.current);
-      }
-    },
-    [],
-  );
   const renderer = useRenderer();
-  const flashClipboardFooterStatus = (message: string): void => {
-    setFooterStatus(message);
-    if (clipboardFooterTimerRef.current !== null) {
-      clearTimeout(clipboardFooterTimerRef.current);
-    }
-    clipboardFooterTimerRef.current = setTimeout(() => {
-      clipboardFooterTimerRef.current = null;
-      setFooterStatus((cur) => (cur === message ? null : cur));
-    }, 1200);
-  };
   useSelectionHandler((selection) => {
-    copyFinishedTextSelection(selection, renderer, flashClipboardFooterStatus);
+    copyFinishedTextSelection(selection, renderer, flash);
   });
   const diffScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const sidebarScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -1202,12 +1167,12 @@ function App(props: AppProps) {
     // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
     // row case to a footer-hint no-op; this defends in depth.
     if (!cursorCardComment) {
-      setFooterStatus("no comment under cursor — n/p to navigate");
+      flash("no comment under cursor — n/p to navigate");
       return;
     }
     if (!sendHintVerdict.enabled) {
       if (sendHintVerdict.reason === "lock-held") {
-        setFooterStatus(`${replyLock?.agent ?? props.replyAgent} is replying — wait`);
+        flash(`${replyLock?.agent ?? props.replyAgent} is replying — wait`);
       }
       // sendTarget === null (latest turn is agent) falls out of the
       // visible set (footer hint hidden), so pressing `s` is a silent
@@ -1222,7 +1187,6 @@ function App(props: AppProps) {
     if (collapsedThreads.has(rootId)) {
       store.dispatch({ type: "thread.expand", id: rootId });
     }
-    setFooterStatus(null);
     store.dispatch({
       type: "send-to-agent",
       tourId: bundle.tour.id,
@@ -1350,7 +1314,7 @@ function App(props: AppProps) {
         sidebarWidth + delta,
         renderer.terminalWidth,
       );
-      setFooterStatus(`sidebar: ${next} cols`);
+      flash(`sidebar: ${next} cols`);
       if (next !== sidebarWidth) {
         const targetId = resizeReanchorTargetId({
           cursor,
@@ -1529,7 +1493,7 @@ function App(props: AppProps) {
         // "hide everything", the more common intent). Zero Threads
         // → labelled footer no-op.
         if (topLevel.length === 0) {
-          setFooterStatus("C: no threads to collapse");
+          flash("C: no threads to collapse");
           return;
         }
         const allCollapsed = topLevel.every((c) => collapsedThreads.has(c.id));
@@ -1704,7 +1668,7 @@ function App(props: AppProps) {
           targetFile = selectedRow.path;
         }
         if (targetFile === null) {
-          setFooterStatus("e: no file under cursor");
+          flash("e: no file under cursor");
           return;
         }
         expandAllInFile(targetFile);
@@ -1730,7 +1694,7 @@ function App(props: AppProps) {
           bundleFiles,
         });
         if (target.kind === "none") {
-          flashClipboardFooterStatus(
+          flash(
             target.reason === "no-selection"
               ? "y: no selection"
               : "y: no cursor",
@@ -1739,11 +1703,11 @@ function App(props: AppProps) {
         }
         if (target.kind === "path") {
           yankToClipboard(target.path, renderer);
-          flashClipboardFooterStatus(`Copied ${target.path}`);
+          flash(`Copied ${target.path}`);
           return;
         }
         yankToClipboard(target.text, renderer);
-        flashClipboardFooterStatus(`Copied "${truncateForPreview(target.text)}"`);
+        flash(`Copied "${truncateForPreview(target.text)}"`);
         return;
       }
       case "open-in-editor": {
@@ -1754,7 +1718,7 @@ function App(props: AppProps) {
         // distinct hint since the cursor is on a non-line synthetic.
         const editor = props.editor ?? null;
         if (!editor) {
-          setFooterStatus("o: editor not configured — set $TOUR_EDITOR or pass --editor");
+          flash("o: editor not configured — set $TOUR_EDITOR or pass --editor");
           return;
         }
         const target = resolveOpenTarget({
@@ -1765,55 +1729,45 @@ function App(props: AppProps) {
         });
         if (!target) {
           if (cursor && cursor.kind === "row" && cursor.interactive) {
-            setFooterStatus("o: not on a diff row — j/k to land on a line");
+            flash("o: not on a diff row — j/k to land on a line");
           } else {
-            setFooterStatus("o: no file under cursor");
+            flash("o: no file under cursor");
           }
           return;
         }
         const cwd = props.cwd;
         if (!cwd) {
-          setFooterStatus("o: no working directory");
+          flash("o: no working directory");
           return;
         }
         const absPath = isAbsolutePath(target.file) ? target.file : joinPath(cwd, target.file);
         if (!existsSyncSafe(absPath)) {
-          setFooterStatus(`o: ${target.file} not in working tree`);
+          flash(`o: ${target.file} not in working tree`);
           return;
         }
         const spawned = editor.terminal
           ? spawnTerminalEditor(editor, target, cwd, renderer)
           : spawnGuiEditor(editor, target, cwd);
         void spawned.then((result) => {
-          setFooterStatus(result.message);
-          if (openFooterTimerRef.current !== null) {
-            clearTimeout(openFooterTimerRef.current);
-          }
-          if (result.ok) {
-            const flashed = result.message;
-            openFooterTimerRef.current = setTimeout(() => {
-              openFooterTimerRef.current = null;
-              setFooterStatus((cur) => (cur === flashed ? null : cur));
-            }, 1200);
-          }
+          flash(result.message);
         });
         return;
       }
       case "noop-reply-on-row":
-        setFooterStatus("r: no comment under cursor — n/p to navigate");
+        flash("r: no comment under cursor — n/p to navigate");
         return;
       case "noop-send-on-row":
         // Issue #390 / ADR 0021 addendum: the request-reply verb is
         // now `R` (shift-r). Status message follows.
-        setFooterStatus("R: no comment under cursor — n/p to navigate");
+        flash("R: no comment under cursor — n/p to navigate");
         return;
       case "noop-comment-on-card":
-        setFooterStatus("c: on a card — j/k to land on a row first");
+        flash("c: on a card — j/k to land on a row first");
         return;
       case "noop-delete-on-row":
         // ADR 0036 Slice D / issue #388. `d` is card-only — labelled
         // no-op when the cursor isn't on a Comment card.
-        setFooterStatus("d: no comment under cursor — n/p to navigate");
+        flash("d: no comment under cursor — n/p to navigate");
         return;
       case "noop-delete-on-stub":
         // ADR 0036 — the cursored card is a `[deleted]` stub (parent
@@ -1821,7 +1775,7 @@ function App(props: AppProps) {
         // write seam refuses already-deleted targets; surface that as
         // a labelled no-op instead of opening a modal that's going to
         // error on confirm.
-        setFooterStatus("d: comment already deleted");
+        flash("d: comment already deleted");
         return;
       case "open-delete-confirm": {
         // ADR 0036 Slice D / issue #388. The cursor's CardAnchor.commentId
@@ -1834,7 +1788,7 @@ function App(props: AppProps) {
         // first so the Replies they're about to cascade-delete are
         // visible before confirmation.
         if (collapsedThreads.has(threadRootIdOf(cursor.commentId, threads))) {
-          setFooterStatus("d: — (Thread collapsed, expand to delete)");
+          flash("d: — (Thread collapsed, expand to delete)");
           return;
         }
         store.dispatch({ type: "deleteConfirm.open", targetId: cursor.commentId });
