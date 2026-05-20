@@ -16,10 +16,9 @@ import {
 // only; the rest of the row stays unchanged. `folderRowFixedCost` and
 // `fileRowFixedCost` give the caller the per-row decoration width so it
 // can subtract from the sidebar content width without duplicating the
-// constants. `fileRowSegments` (issue #265) returns a structured set of
-// segments so the caller can paint `+N` in `theme.fg.success` and `-M`
-// in `theme.fg.danger` while keeping the rest of the row in the default
-// foreground.
+// constants. `fileRowSegments` preserves the older coloured-stats shape,
+// while `fileRowParts` / `folderRowParts` split row chrome from the
+// selectable name segment.
 
 function folder(
   overrides: Partial<Extract<VisibleRow<DiffFile>, { kind: "folder" }>> = {},

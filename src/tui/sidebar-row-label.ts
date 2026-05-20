@@ -12,9 +12,9 @@ import { statusIcon } from "./file-entry-label.js";
 //
 // File rows (issue #265) carry per-file diff stats `+N -M` between the
 // filename and the comment badge — `+N` paints in `theme.fg.success`,
-// `-M` in `theme.fg.danger`. To support per-segment colouring the file
-// row exposes `fileRowSegments` instead of a single string: the caller
-// renders each non-empty segment as its own `<text>` inside a row box.
+// `-M` in `theme.fg.danger`. The segment APIs keep decoration, name,
+// stats, and padding as separate strings so callers can independently
+// colour stats and mark only the user-facing name selectable.
 
 type FolderRow = Extract<VisibleRow<DiffFile>, { kind: "folder" }>;
 type FileRow = Extract<VisibleRow<DiffFile>, { kind: "file" }>;
@@ -25,10 +25,10 @@ export interface FileRowStats {
 }
 
 export interface FileRowSegments {
-  // " ${indent}${icon} ${truncatedName}" — leading space, indent, status
-  // icon, single space, middle-truncated name. No trailing whitespace;
-  // each subsequent non-empty segment carries its own leading space so
-  // omitted segments leave no double-space gap.
+  // " ${indent}${icon} ${truncatedName}" — compatibility shape for callers
+  // that still render decoration and name as one segment. No trailing
+  // whitespace; each subsequent non-empty segment carries its own leading
+  // space so omitted segments leave no double-space gap.
   leading: string;
   // " +N" or "" when additions === 0. Paints in theme.fg.success.
   additions: string;
@@ -41,17 +41,26 @@ export interface FileRowSegments {
 }
 
 export interface FolderRowParts {
+  // " ${indent}${caret} " — row padding, tree indentation, and folder caret.
   leading: string;
+  // Middle-truncated display name; this is the selectable content segment.
   name: string;
+  // Single trailing space for row padding.
   trailing: string;
 }
 
 export interface FileRowParts {
+  // " ${indent}${icon} " — row padding, tree indentation, and status icon.
   leading: string;
+  // Middle-truncated display name; this is the selectable content segment.
   name: string;
+  // " +N" or "" when additions === 0. Paints in theme.fg.success.
   additions: string;
+  // " -M" or "" when deletions === 0. Paints in theme.fg.danger.
   deletions: string;
+  // " [N]" or "" when commentCount === 0.
   badge: string;
+  // Single trailing space for row padding.
   trailing: string;
 }
 
