@@ -110,20 +110,20 @@ interface BuildReplyInput {
   author_kind: AuthorKind;
 }
 
-function findParentOrThrow(
+function findThreadRootOrThrow(
   thread_id: string,
-  existing: ReadonlyMap<string, CommentState>,
+  commentsById: ReadonlyMap<string, CommentState>,
 ): CommentState {
-  const parent = existing.get(thread_id);
-  if (!parent) {
+  const root = commentsById.get(thread_id);
+  if (!root) {
     throw new Error(`No comment with id "${thread_id}" in this tour`);
   }
-  if (parent.thread_id !== undefined) {
+  if (root.thread_id !== undefined) {
     throw new Error(
-      `thread_id "${thread_id}" is a Reply (root of its Thread is "${parent.thread_id}"); pass thread_id="${parent.thread_id}"`,
+      `thread_id "${thread_id}" is a Reply (root of its Thread is "${root.thread_id}"); pass thread_id="${root.thread_id}"`,
     );
   }
-  return parent;
+  return root;
 }
 
 function buildReplyCreatedEvent(
@@ -208,11 +208,11 @@ export async function createReply(
 ): Promise<Comment> {
   validateBody(request.body);
   const existing = await readComments(tourStoreRoot, tourId);
-  const byId = new Map(existing.map((a) => [a.id, a]));
-  const parent = findParentOrThrow(request.thread_id, byId);
+  const commentsById = new Map(existing.map((a) => [a.id, a]));
+  const threadRoot = findThreadRootOrThrow(request.thread_id, commentsById);
   const event = buildReplyCreatedEvent(request);
   await appendEvent(tourStoreRoot, tourId, event);
-  return replyEventToComment(event, parent);
+  return replyEventToComment(event, threadRoot);
 }
 
 // Atomic batch: build every event first (replies resolve against the
@@ -239,10 +239,10 @@ export async function createComments(
   );
   for (const req of requests) {
     if (req.kind === "reply") {
-      const parent = findParentOrThrow(req.thread_id, inBatchById);
+      const threadRoot = findThreadRootOrThrow(req.thread_id, inBatchById);
       const event = buildReplyCreatedEvent(req);
       events.push(event);
-      const comment = replyEventToComment(event, parent);
+      const comment = replyEventToComment(event, threadRoot);
       builtComments.push(comment);
       inBatchById.set(comment.id, comment);
     } else {
