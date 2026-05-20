@@ -15,6 +15,11 @@ import type { CommentState, TourEvent } from "./types.js";
 // known comment are ignored. Duplicate deletes for the same target are
 // idempotent (first delete wins for the `at` timestamp). Append order
 // is truth; `at` timestamps are display metadata, not the ordering key.
+// Reply events are stricter (ADR 0040): a `reply.created` whose
+// `thread_id` is unknown, or points at another Reply, throws — the seam
+// is the only legitimate writer of `reply.created`, so a malformed
+// pointer in the log signals manual edit or corruption rather than
+// something the projection should silently absorb.
 // Output preserves event-append order — Thread grouping happens
 // downstream in `buildThreads`.
 export function foldEventsToComments(events: TourEvent[]): CommentState[] {
