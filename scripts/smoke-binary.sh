@@ -36,6 +36,22 @@ cd "$tmp"
 echo "==> version smoke"
 "$BIN" --version
 
+# Tour requires a git working tree (ADR 0039) for everything except
+# --version / --help. Set one up so the serve / tui smokes resolve.
+git init -q smoke-repo
+cd smoke-repo
+git config user.email tour-ci@example.com
+git config user.name tour-ci
+echo hello > a.txt
+git add a.txt
+git commit -q -m "init"
+# `tour create --head HEAD` defaults the base to HEAD^ (src/cli/create.ts).
+# Add a second commit so the default resolves; otherwise `git rev-parse
+# HEAD^` errors and the smoke fails before reaching the lazy import.
+echo world >> a.txt
+git add a.txt
+git commit -q -m "second"
+
 # --- serve / web/server.js smoke ---
 # If the lazy import of ../web/server.js is unbundled, serve never binds
 # and the curl loop times out. If serve binds but Bun.build can't resolve
@@ -80,25 +96,12 @@ SERVE_PID=""
 
 # --- tui / tui/app.js smoke ---
 # `tour tui` reaches the lazy import after loading a tour bundle. With no
-# tours present it throws before the import — so set up an ephemeral repo
-# + tour to reach the call site. Don't care about TUI rendering: opentui
-# doesn't exit without a TTY, so a hard watchdog kills it after a few
-# seconds. Only check that the dynamic import resolved (no
-# "Cannot find module" / "ResolveMessage" in stderr).
+# tours present it throws before the import — so create one to reach the
+# call site. Don't care about TUI rendering: opentui doesn't exit
+# without a TTY, so a hard watchdog kills it after a few seconds. Only
+# check that the dynamic import resolved (no "Cannot find module" /
+# "ResolveMessage" in stderr).
 echo "==> tui smoke (lazy-import resolution)"
-git init -q smoke-repo
-cd smoke-repo
-git config user.email tour-ci@example.com
-git config user.name tour-ci
-echo hello > a.txt
-git add a.txt
-git commit -q -m "init"
-# `tour create --head HEAD` defaults the base to HEAD^ (src/cli/create.ts).
-# Add a second commit so the default resolves; otherwise `git rev-parse
-# HEAD^` errors and the smoke fails before reaching the lazy import.
-echo world >> a.txt
-git add a.txt
-git commit -q -m "second"
 "$BIN" create --head HEAD --title smoke > /dev/null
 
 "$BIN" tui </dev/null > /dev/null 2>tui.err &
