@@ -41,6 +41,12 @@ const tourSummary = {
   wip_snapshot: false,
 };
 
+const otherWorktreeTourSummary = {
+  ...tourSummary,
+  id: "2026-05-13-000001-other-worktree",
+  title: "Other worktree tour",
+};
+
 // Two-file diff: src/foo.ts has a paired change (deletion + addition) +
 // pure addition, src/bar.ts is pure additions. Each file has one hunk so
 // the planner emits a hunk-header row + diff rows.
@@ -228,6 +234,79 @@ describe("App integration smoke (Issue #235)", () => {
     // and the file blocks committed their bodies).
     const rows = document.querySelectorAll(".tour-row");
     expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it("picker scope toggle refetches all worktree tours", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      urls.push(u);
+      if (u === "/api/tours?status=all&all=1") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([tourSummary, otherWorktreeTourSummary]),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        );
+      }
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([tourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${tourId}`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(bundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${tourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: tourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      (
+        document.querySelector('[aria-label="Switch tour"]') as HTMLButtonElement
+      ).click();
+    });
+    expect(document.body.textContent).not.toContain("Other worktree tour");
+
+    const allButton = [...document.querySelectorAll(".picker-scope-toggle button")]
+      .find((button) => button.textContent === "All") as HTMLButtonElement;
+    await act(async () => {
+      allButton.click();
+    });
+    await flush();
+
+    expect(urls).toContain("/api/tours?status=all&all=1");
+    expect(document.body.textContent).toContain("Other worktree tour");
   });
 
   // Issue #277: tour-level diff-stats indicator leads the right cluster,

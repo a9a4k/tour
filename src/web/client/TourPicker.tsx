@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { PickerRow } from "../../core/tour-list.js";
+import type { TourPickerScope } from "../../core/write-comment-input.js";
 import {
   consumeTextSelectionDrag,
   createTextSelectionDragState,
@@ -12,12 +13,14 @@ interface TourPickerProps {
   rows: PickerRow[];
   cursor: number;
   currentTourId: string | null;
+  scope: TourPickerScope;
   // Move cursor by `delta` (clamped at edges). Slice-1 reducer accepts any
   // integer delta so row-hover / row-click can jump straight to the target
   // idx without a chain of ±1 dispatches.
   onMove: (delta: number) => void;
   onCommit: () => void;
   onClose: () => void;
+  onScopeChange: (scope: TourPickerScope) => void;
 }
 
 // Controlled picker. Cursor + open state live in the Tour-session store
@@ -29,9 +32,11 @@ export function TourPicker({
   rows,
   cursor,
   currentTourId,
+  scope,
   onMove,
   onCommit,
   onClose,
+  onScopeChange,
 }: TourPickerProps): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const textSelectionDrag = useRef(createTextSelectionDragState());
@@ -55,11 +60,19 @@ export function TourPicker({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const fromButton = e.target instanceof HTMLButtonElement;
+      if (fromButton && (e.key === "Enter" || e.key === " ")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Escape" || e.key === "t") {
         e.preventDefault();
         e.stopPropagation();
         onClose();
+        return;
+      }
+      if (e.key === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        onScopeChange(scope === "worktree" ? "all" : "worktree");
         return;
       }
       if (e.key === "j" || e.key === "ArrowDown") {
@@ -80,7 +93,7 @@ export function TourPicker({
         onCommit();
       }
     },
-    [onMove, onCommit, onClose],
+    [scope, onMove, onCommit, onClose, onScopeChange],
   );
 
   const onScrimClick = useCallback(
@@ -105,6 +118,24 @@ export function TourPicker({
         tabIndex={-1}
         onKeyDown={onKeyDown}
       >
+        <div className="picker-scope-toggle" role="group" aria-label="Tour picker scope">
+          <button
+            type="button"
+            className={scope === "worktree" ? "active" : ""}
+            aria-pressed={scope === "worktree"}
+            onClick={() => onScopeChange("worktree")}
+          >
+            This worktree
+          </button>
+          <button
+            type="button"
+            className={scope === "all" ? "active" : ""}
+            aria-pressed={scope === "all"}
+            onClick={() => onScopeChange("all")}
+          >
+            All
+          </button>
+        </div>
         <div className="picker-list" role="listbox">
           {rows.map((r, i) => {
             const isCurrent = r.id === currentTourId;

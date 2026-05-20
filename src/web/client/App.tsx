@@ -41,6 +41,7 @@ import {
 } from "../../core/diff-rows.js";
 import { parseFileDiffMetadata, type FileDiffMetadata } from "../../core/diff-model.js";
 import { emptyExpansion, getBoundary } from "../../core/expansion-state.js";
+import type { TourPickerScope } from "../../core/write-comment-input.js";
 import {
   cursorAfterExpand,
   cursorAtFirstFileRow,
@@ -193,6 +194,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       ? (sessionState.tourList.value as TourSummary[])
       : null;
   const pickerOpen = isPickerOpen(sessionState);
+  const [pickerScope, setPickerScope] = useState<TourPickerScope>("worktree");
   const bundle = isBundleResolved(sessionState);
   const bundleError =
     sessionState.bundle.kind === "err" ? sessionState.bundle.error : null;
@@ -305,6 +307,15 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     [store],
   );
 
+  const loadTourList = useCallback(
+    async (scope: TourPickerScope): Promise<SessionTourSummary[]> => {
+      const allParam = scope === "all" ? "&all=1" : "";
+      const res = await fetch(`/api/tours?status=all${allParam}`);
+      return (await res.json()) as SessionTourSummary[];
+    },
+    [],
+  );
+
   // Tour-session runtime (PRD #278 slices 2-6). Subscribes to SSE via the
   // web adapter and dispatches `bundle.refreshed` / `replyLock.loaded` on
   // tour events; realises every intent the reducer emits (loadTour,
@@ -329,8 +340,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     store.dispatch({ type: "tourList.loading" });
     void (async () => {
       try {
-        const res = await fetch("/api/tours?status=all");
-        const tours = (await res.json()) as SessionTourSummary[];
+        const tours = await loadTourList("worktree");
         store.dispatch({ type: "tourList.loaded", tours });
         // Auto-pick at bare `/`: most-recent open (issue #187 — shared
         // with the server's bare-`tour serve` pre-pick). Closed-only
@@ -363,7 +373,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadTourList]);
 
   useEffect(() => {
     const onPop = () => {
@@ -529,6 +539,34 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     });
     store.dispatch({ type: "picker.open", rows });
   }, [store, bundle]);
+
+  const onPickerScopeChange = useCallback(
+    (scope: TourPickerScope) => {
+      setPickerScope(scope);
+      store.dispatch({ type: "tourList.loading" });
+      void (async () => {
+        try {
+          const tours = await loadTourList(scope);
+          store.dispatch({ type: "tourList.loaded", tours });
+          const counts: Record<string, number> = {};
+          if (bundle) counts[bundle.tour.id] = bundle.comments.length;
+          const rows = buildPickerRows({
+            tours,
+            commentCounts: counts,
+            now: Date.now(),
+          });
+          store.dispatch({ type: "picker.open", rows });
+        } catch (err) {
+          store.dispatch({
+            type: "tourList.failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+          store.dispatch({ type: "picker.open", rows: [] });
+        }
+      })();
+    },
+    [store, bundle, loadTourList],
+  );
 
   const closePicker = useCallback(() => {
     store.dispatch({ type: "picker.close" });
@@ -2116,9 +2154,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           rows={sessionState.picker.rows}
           cursor={sessionState.picker.cursor}
           currentTourId={tourId}
+          scope={pickerScope}
           onMove={onPickerMove}
           onCommit={onPickerCommit}
           onClose={closePicker}
+          onScopeChange={onPickerScopeChange}
         />
       ) : null}
       {deleteModalTargetId !== null && bundle ? (() => {

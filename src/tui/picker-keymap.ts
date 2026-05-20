@@ -18,12 +18,14 @@ export type PickerKeyAction =
   | { type: "close" }
   | { type: "move"; delta: number }
   | { type: "commit" }
+  | { type: "toggle-scope" }
   | { type: "noop" };
 
 export function dispatchPickerKey(key: KeyInput): PickerKeyAction {
   if (key.name === "escape") return { type: "close" };
   if (!key.ctrl && key.shift && key.name === "t") return { type: "close" };
   if (key.ctrl || key.shift) return { type: "noop" };
+  if (key.name === "a") return { type: "toggle-scope" };
   if (key.name === "j" || key.name === "down") return { type: "move", delta: 1 };
   if (key.name === "k" || key.name === "up") return { type: "move", delta: -1 };
   if (key.name === "return") return { type: "commit" };

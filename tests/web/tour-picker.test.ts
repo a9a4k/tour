@@ -51,9 +51,11 @@ function mount(props: Partial<ComponentProps<typeof TourPicker>> = {}): HTMLElem
         rows: sampleRows,
         cursor: 0,
         currentTourId: null,
+        scope: "worktree",
         onMove: () => {},
         onCommit: () => {},
         onClose: () => {},
+        onScopeChange: () => {},
         ...props,
       }),
     );
@@ -156,6 +158,49 @@ describe("TourPicker (web) Text selection", () => {
     });
 
     expect(onMove).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("renders a scope toggle and reports scope changes", () => {
+    const onScopeChange = vi.fn();
+    const container = mount({ scope: "worktree", onScopeChange });
+    const buttons = [...container.querySelectorAll(".picker-scope-toggle button")];
+
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "This worktree",
+      "All",
+    ]);
+    expect(buttons[0]!.getAttribute("aria-pressed")).toBe("true");
+    expect(buttons[1]!.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => {
+      buttons[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onScopeChange).toHaveBeenCalledWith("all");
+  });
+
+  it("keeps picker shortcuts active after a scope button receives focus", () => {
+    const onMove = vi.fn();
+    const onCommit = vi.fn();
+    const container = mount({ onMove, onCommit });
+    const button = container.querySelector(
+      ".picker-scope-toggle button",
+    ) as HTMLButtonElement;
+
+    button.focus();
+    act(() => {
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    act(() => {
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+
+    expect(onMove).toHaveBeenCalledWith(1);
     expect(onCommit).not.toHaveBeenCalled();
   });
 });

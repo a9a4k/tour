@@ -53,6 +53,7 @@ import {
 } from "../core/tour-session.js";
 import {
   type StartTuiProps,
+  type TourPickerScope,
   type WriteCommentInput,
 } from "../core/write-comment-input.js";
 import { theme } from "../core/theme.js";
@@ -307,6 +308,7 @@ function App(props: AppProps) {
       }),
   );
   const sessionState = useTourSession(store);
+  const [pickerScope, setPickerScope] = useState<TourPickerScope>("worktree");
   // Bundle / replyLock read from the store. During the in-flight window
   // of a tour switch (picker.commit → loadTour → tour.switched), the
   // store's bundle slice transiently goes to `loading`; we keep showing
@@ -706,23 +708,26 @@ function App(props: AppProps) {
   // The initial picker cursor lands on the first non-current tour
   // (mirrors the prior UX); we walk there via `picker.move(+1)` since
   // the reducer's `picker.open` always opens at cursor 0.
-  const openPicker = async () => {
-    if (store.getState().picker.kind === "open") return;
+  const loadPickerRows = async (scope: TourPickerScope): Promise<PickerRow[]> => {
     if (!props.loadTours) {
-      store.dispatch({ type: "picker.open", rows: [] });
-      return;
+      return [];
     }
     store.dispatch({ type: "tourList.loading" });
+    const { tours, commentCounts: counts } = await props.loadTours(scope);
+    const summaries: TourSummary[] = tours.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      created_at: t.created_at,
+    }));
+    store.dispatch({ type: "tourList.loaded", tours: summaries });
+    return buildPickerRows({ tours, commentCounts: counts, now: Date.now() });
+  };
+
+  const openPicker = async () => {
+    if (store.getState().picker.kind === "open") return;
     try {
-      const { tours, commentCounts: counts } = await props.loadTours();
-      const summaries: TourSummary[] = tours.map((t) => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        created_at: t.created_at,
-      }));
-      store.dispatch({ type: "tourList.loaded", tours: summaries });
-      const rows = buildPickerRows({ tours, commentCounts: counts, now: Date.now() });
+      const rows = await loadPickerRows(pickerScope);
       store.dispatch({ type: "picker.open", rows });
       const initialIdx = initialPickerCursor(rows, bundle.tour.id);
       for (let i = 0; i < initialIdx; i++) {
@@ -733,6 +738,25 @@ function App(props: AppProps) {
       store.dispatch({ type: "tourList.failed", error });
       store.dispatch({ type: "picker.open", rows: [] });
     }
+  };
+
+  const togglePickerScope = () => {
+    const next = pickerScope === "worktree" ? "all" : "worktree";
+    setPickerScope(next);
+    void (async () => {
+      try {
+        const rows = await loadPickerRows(next);
+        store.dispatch({ type: "picker.open", rows });
+        const initialIdx = initialPickerCursor(rows, bundle.tour.id);
+        for (let i = 0; i < initialIdx; i++) {
+          store.dispatch({ type: "picker.move", delta: 1 });
+        }
+      } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        store.dispatch({ type: "tourList.failed", error });
+        store.dispatch({ type: "picker.open", rows: [] });
+      }
+    })();
   };
 
 
@@ -1282,6 +1306,10 @@ function App(props: AppProps) {
       }
       if (action.type === "move") {
         store.dispatch({ type: "picker.move", delta: action.delta });
+        return;
+      }
+      if (action.type === "toggle-scope") {
+        togglePickerScope();
         return;
       }
       if (action.type === "commit") {
@@ -2003,6 +2031,7 @@ function App(props: AppProps) {
         <TourPicker
           rows={sessionState.picker.rows}
           currentTourId={bundle.tour.id}
+          scope={pickerScope}
           cursor={sessionState.picker.cursor}
           scrollRef={pickerScrollRef}
           onSelect={(idx) => {

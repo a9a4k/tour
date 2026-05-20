@@ -105,8 +105,11 @@ export async function tui(args: TuiArgs): Promise<void> {
         by_kind: "human",
       });
     },
-    loadTours: async () => {
-      const tours = await listTours(tourStoreRoot, { status: "all" });
+    loadTours: async (scope) => {
+      const tours = await listTours(tourStoreRoot, {
+        status: "all",
+        worktreeStamp: scope === "worktree" ? args.worktreeStamp : undefined,
+      });
       const counts: Record<string, number> = {};
       await Promise.all(
         tours.map(async (t) => {

@@ -45,6 +45,49 @@ async function createTempRepoWithTour(): Promise<{
   return { dir, tourId: tour.id };
 }
 
+async function createRepoWithCrossWorktreeTours(): Promise<{
+  dir: string;
+  linked: string;
+  tourHome: string;
+  mainTourId: string;
+  linkedTourId: string;
+}> {
+  const dir = await mkdtemp(join(tmpdir(), "tour-web-worktree-"));
+  const tourHome = await mkdtemp(join(tmpdir(), "tour-web-home-"));
+  await gitCmd(["init", dir], dir);
+  await gitCmd(["config", "user.email", "test@test.com"], dir);
+  await gitCmd(["config", "user.name", "Test"], dir);
+  await writeFile(join(dir, "hello.txt"), "hello\n");
+  await gitCmd(["add", "."], dir);
+  await gitCmd(["commit", "-m", "initial"], dir);
+  await writeFile(join(dir, "hello.txt"), "hello main\n");
+  await gitCmd(["add", "."], dir);
+  await gitCmd(["commit", "-m", "main update"], dir);
+
+  const main = await execP(
+    BUN,
+    [CLI, "create", "--head", "HEAD", "--title", "Main worktree", "--json"],
+    { cwd: dir, env: { ...process.env, TOUR_HOME: tourHome } },
+  );
+  const mainTourId = JSON.parse(main.stdout).id as string;
+
+  const linked = await mkdtemp(join(tmpdir(), "tour-web-linked-"));
+  await gitCmd(["worktree", "add", linked, "-b", `linked-${Date.now()}`], dir);
+  await gitCmd(["config", "user.email", "test@test.com"], linked);
+  await gitCmd(["config", "user.name", "Test"], linked);
+  await writeFile(join(linked, "hello.txt"), "hello linked\n");
+  await gitCmd(["add", "."], linked);
+  await gitCmd(["commit", "-m", "linked update"], linked);
+  const linkedResult = await execP(
+    BUN,
+    [CLI, "create", "--head", "HEAD", "--title", "Linked worktree", "--json"],
+    { cwd: linked, env: { ...process.env, TOUR_HOME: tourHome } },
+  );
+  const linkedTourId = JSON.parse(linkedResult.stdout).id as string;
+
+  return { dir, linked, tourHome, mainTourId, linkedTourId };
+}
+
 async function waitForServer(url: string, maxAttempts = 20): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
@@ -347,4 +390,35 @@ describe("Webapp integration", () => {
     expect(eventData).toContain("comment-changed");
     controller.abort();
   });
+});
+
+describe("Webapp worktree-scoped tour list", () => {
+  let serverProcess: ChildProcess | undefined;
+  const port = 10000 + Math.floor(Math.random() * 50000);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  afterAll(() => {
+    serverProcess?.kill("SIGTERM");
+  });
+
+  it("GET /api/tours defaults to the current worktree and ?all=1 reveals other worktrees", async () => {
+    const setup = await createRepoWithCrossWorktreeTours();
+    serverProcess = exec(`${BUN} ${CLI} serve --port ${port}`, {
+      cwd: setup.dir,
+      env: { ...process.env, TOUR_HOME: setup.tourHome },
+    });
+    await waitForServer(`${baseUrl}/api/tours`);
+
+    const defaultRes = await fetch(`${baseUrl}/api/tours?status=all`);
+    expect(defaultRes.status).toBe(200);
+    const defaultTours = await defaultRes.json() as Array<{ id: string }>;
+    expect(defaultTours.map((t) => t.id)).toEqual([setup.mainTourId]);
+
+    const allRes = await fetch(`${baseUrl}/api/tours?status=all&all=1`);
+    expect(allRes.status).toBe(200);
+    const allTours = await allRes.json() as Array<{ id: string }>;
+    expect(allTours.map((t) => t.id).sort()).toEqual(
+      [setup.mainTourId, setup.linkedTourId].sort(),
+    );
+  }, 30000);
 });

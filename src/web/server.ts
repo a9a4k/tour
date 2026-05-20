@@ -256,9 +256,12 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
         if (url.pathname === "/api/tours") {
           const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
+          const includeAll =
+            url.searchParams.get("all") === "1" ||
+            url.searchParams.get("all") === "true";
           const tours = await listTours(tourStoreRoot, {
             status,
-            worktreeStamp: args.worktreeStamp,
+            worktreeStamp: includeAll ? undefined : args.worktreeStamp,
           });
           return Response.json(tours);
         }
