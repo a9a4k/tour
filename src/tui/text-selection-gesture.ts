@@ -2,7 +2,7 @@ import type { MouseEvent } from "@opentui/core";
 
 type ActivationMouseEvent = Pick<
   MouseEvent,
-  "button" | "stopPropagation" | "target"
+  "button" | "isDragging" | "stopPropagation" | "target"
 >;
 
 export interface TextSelectionSafeActivation {
@@ -45,7 +45,7 @@ export function textSelectionSafeActivation(
 
     onMouseUp(event) {
       if (!pendingTextClick) return;
-      const shouldActivate = !dragged;
+      const shouldActivate = !dragged && event?.isDragging !== true;
       pendingTextClick = false;
       dragged = false;
       event?.stopPropagation();

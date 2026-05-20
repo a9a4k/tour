@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { PickerRow } from "../../core/tour-list.js";
+import {
+  consumeTextSelectionDrag,
+  createTextSelectionDragState,
+  recordTextSelectionMouseDown,
+  recordTextSelectionMouseMove,
+  TEXT_SELECTABLE_CLASS,
+} from "./text-selection.js";
 
 interface TourPickerProps {
   rows: PickerRow[];
@@ -27,6 +34,7 @@ export function TourPicker({
   onClose,
 }: TourPickerProps): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const textSelectionDrag = useRef(createTextSelectionDragState());
 
   useEffect(() => {
     cardRef.current?.focus();
@@ -103,8 +111,39 @@ export function TourPicker({
                 className={cls}
                 role="option"
                 aria-selected={isCursor}
-                onMouseEnter={() => onMove(i - cursor)}
-                onClick={() => {
+                onMouseEnter={(event) => {
+                  recordTextSelectionMouseMove(
+                    textSelectionDrag.current,
+                    event.nativeEvent,
+                  );
+                  if (!textSelectionDrag.current.active && event.buttons !== 1) {
+                    onMove(i - cursor);
+                  }
+                }}
+                onMouseDown={(event) => {
+                  recordTextSelectionMouseDown(
+                    textSelectionDrag.current,
+                    event.nativeEvent,
+                  );
+                }}
+                onMouseMove={(event) => {
+                  recordTextSelectionMouseMove(
+                    textSelectionDrag.current,
+                    event.nativeEvent,
+                  );
+                }}
+                onMouseUp={(event) => {
+                  recordTextSelectionMouseMove(
+                    textSelectionDrag.current,
+                    event.nativeEvent,
+                  );
+                }}
+                onClick={(event) => {
+                  if (consumeTextSelectionDrag(textSelectionDrag.current)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                  }
                   // Click commits the clicked row; align cursor first so the
                   // reducer's picker.commit (which reads state.picker.cursor)
                   // resolves to the clicked id.
@@ -113,10 +152,16 @@ export function TourPicker({
                 }}
               >
                 <span className={`picker-glyph ${r.status}`}>{r.glyph}</span>
-                <span className="picker-age">{r.age}</span>
-                <span className="picker-title">{r.title}</span>
+                <span className={`picker-age ${TEXT_SELECTABLE_CLASS}`}>
+                  {r.age}
+                </span>
+                <span className={`picker-title ${TEXT_SELECTABLE_CLASS}`}>
+                  {r.title}
+                </span>
                 {r.commentCount > 0 ? (
-                  <span className="badge">{r.commentCount}</span>
+                  <span className={`badge ${TEXT_SELECTABLE_CLASS}`}>
+                    {r.commentCount}
+                  </span>
                 ) : null}
               </button>
             );
