@@ -1,6 +1,8 @@
 # Tour storage lives in `~/.tour/`, not `<repo>/.tour/`
 
 > **Status:** Accepted — 2026-05-20.
+>
+> **Amendment 2026-05-20:** The original text claimed a fallback to `realpath(cwd)` for the Repo key and Worktree stamp "outside a git repo." That fallback was inherited from the predecessor `core/tour-root.ts` and is unreachable in practice — Tour shells out to git for every load-bearing operation (`tour create` runs `git rev-parse` / `git stash create` / `git update-ref` / `git merge-base`; opening a bundle runs `git show <sha>:<path>`), so any command outside a git working tree fails at the first git invocation long before the fallback is exercised. The decision is now: **Tour requires a git working tree.** Commands run outside one fail at the resolver with a single helpful error. The code-side removal of the dead branches is tracked in #448.
 
 Per-Tour on-disk storage moves out of the user's repo. The new location is `<tour-home>/<repo-key>/<id>/`, where `tour-home` defaults to `~/.tour/` (override: `$TOUR_HOME`) and `repo-key` is `<basename>-<short-hash>` derived from `realpath(git rev-parse --git-common-dir)`. `ensureTourIgnored` is retired with this move. Every Tour now carries a `created_in_worktree` stamp so per-worktree filtering survives the storage collapse.
 
@@ -31,13 +33,12 @@ A secondary win falls out for free: worktrees of one clone today get independent
 ### Location
 
 - `tour-home` = `$TOUR_HOME` if set, else `~/.tour/`.
-- `repo-key` = `<basename>-<short-hash>` where `basename` is the last segment of the repo's working tree path and `short-hash` is the first 12 chars of `sha1(realpath(git rev-parse --git-common-dir))`. Outside a git repo, the hash is over `realpath(cwd)`.
+- `repo-key` = `<basename>-<short-hash>` where `basename` is the last segment of the repo's working tree path and `short-hash` is the first 12 chars of `sha1(realpath(git rev-parse --git-common-dir))`. A git working tree is required — see the amendment at the top of this ADR.
 - On-disk shape: `<tour-home>/<repo-key>/<tour-id>/{tour.toml, tour-events.jsonl, logs/, .reply-lock.json}`.
 
 ### Worktree stamp
 
-- New required field on `Tour`: `created_in_worktree: string` = `realpath(git rev-parse --git-dir)` at create time. For the main worktree this is `/path/to/repo/.git`; for a linked worktree, `/path/to/repo/.git/worktrees/<name>`.
-- Outside a git repo, the stamp is `realpath(cwd)`.
+- New required field on `Tour`: `created_in_worktree: string` = `realpath(git rev-parse --git-dir)` at create time. For the main worktree this is `/path/to/repo/.git`; for a linked worktree, `/path/to/repo/.git/worktrees/<name>`. The stamp is always git-derived — see the amendment at the top of this ADR.
 
 ### Filtering
 
