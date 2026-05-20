@@ -1491,7 +1491,9 @@ describe("CLI integration", () => {
       const r = await run(["list"], repo);
       expect(r.exitCode).toBe(0);
       expect(r.stderr).toContain("legacy `.tour/` found");
+      expect(r.stderr).toContain("run `tour migrate`");
       expect(r.stderr).toContain(join(realRepo, ".tour"));
+      expect(r.stderr).not.toContain("manual move required");
     });
   });
 });
