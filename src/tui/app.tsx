@@ -1167,7 +1167,7 @@ function App(props: AppProps) {
     // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
     // row case to a footer-hint no-op; this defends in depth.
     if (!cursorCardComment) {
-      flash("no comment under cursor — n/p to navigate");
+      flash("R: no comment under cursor — n/p to navigate");
       return;
     }
     if (!sendHintVerdict.enabled) {
