@@ -7,7 +7,6 @@ export interface TourLocation {
   repoRoot: string;
   tourStoreRoot: string;
   worktreeStamp: string;
-  legacyDotTour?: string;
 }
 
 interface ResolveTourLocationOptions {
@@ -31,11 +30,9 @@ export async function resolveTourLocation(
   const repoRoot = findRepoRoot(cwd);
   const key = await repoKey(repoRoot);
   const storeRoot = join(tourHome(opts.env), key);
-  const legacyDotTour = join(repoRoot, ".tour");
   return {
     repoRoot,
     tourStoreRoot: storeRoot,
     worktreeStamp: await worktreeStamp(repoRoot),
-    legacyDotTour: existsSync(legacyDotTour) ? legacyDotTour : undefined,
   };
 }

@@ -49,7 +49,6 @@ describe("resolveTourLocation", () => {
       repoRoot: repo,
       tourStoreRoot: join(tourHome, key),
       worktreeStamp: gitCommonDir,
-      legacyDotTour: undefined,
     });
   });
 
@@ -64,7 +63,6 @@ describe("resolveTourLocation", () => {
       repoRoot: dir,
       tourStoreRoot: join(tourHome, key),
       worktreeStamp: dir,
-      legacyDotTour: undefined,
     });
   });
 
@@ -81,14 +79,4 @@ describe("resolveTourLocation", () => {
     expect(linkedLocation.worktreeStamp).not.toBe(mainLocation.worktreeStamp);
   });
 
-  it("reports a legacy .tour directory without making it the store root", async () => {
-    const repo = await createRepo("tour-location-legacy-");
-    const tourHome = await realpath(await mkdtemp(join(tmpdir(), "tour-home-legacy-")));
-    await mkdir(join(repo, ".tour"));
-
-    const location = await resolveTourLocation(repo, { env: { TOUR_HOME: tourHome } });
-
-    expect(location.tourStoreRoot.startsWith(join(tourHome, ""))).toBe(true);
-    expect(location.legacyDotTour).toBe(join(repo, ".tour"));
-  });
 });

@@ -3,6 +3,8 @@
 > **Status:** Accepted — 2026-05-20.
 >
 > **Amendment 2026-05-20:** The original text claimed a fallback to `realpath(cwd)` for the Repo key and Worktree stamp "outside a git repo." That fallback was inherited from the predecessor `core/tour-root.ts` and is unreachable in practice — Tour shells out to git for every load-bearing operation (`tour create` runs `git rev-parse` / `git stash create` / `git update-ref` / `git merge-base`; opening a bundle runs `git show <sha>:<path>`), so any command outside a git working tree fails at the first git invocation long before the fallback is exercised. The decision is now: **Tour requires a git working tree.** Commands run outside one fail at the resolver with a single helpful error. The code-side removal of the dead branches is tracked in #448.
+>
+> **Amendment 2026-05-20:** `tour migrate` was a one-shot transition tool for pre-0.x users with in-repo `<repo>/.tour/` stores. All known users have migrated into `<tour-home>/<repo-key>/<id>/`, so the command and the legacy-directory nudge are retired. A repo-root `.tour/` directory is now treated as opaque user content; users who skipped the migration window can move any wanted Tour directories manually or abandon them.
 
 Per-Tour on-disk storage moves out of the user's repo. The new location is `<tour-home>/<repo-key>/<id>/`, where `tour-home` defaults to `~/.tour/` (override: `$TOUR_HOME`) and `repo-key` is `<basename>-<short-hash>` derived from `realpath(git rev-parse --git-common-dir)`. `ensureTourIgnored` is retired with this move. Every Tour now carries a `created_in_worktree` stamp so per-worktree filtering survives the storage collapse.
 

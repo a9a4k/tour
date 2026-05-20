@@ -1470,6 +1470,7 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("tour");
       expect(result.stdout).toContain("create");
+      expect(result.stdout).not.toContain("migrate");
     });
   });
 
@@ -1535,6 +1536,12 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Unknown command");
     });
+
+    it("treats retired migrate as unknown", async () => {
+      const result = await run(["migrate"], repo);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown command: migrate");
+    });
   });
 
   describe("tour location resolution", () => {
@@ -1588,14 +1595,11 @@ describe("CLI integration", () => {
       expect(r.stderr).not.toContain("No tour store directory");
     });
 
-    it("warns about a legacy repo-root .tour/ without blocking the command", async () => {
+    it("ignores a repo-root .tour/ without a migration nudge", async () => {
       await mkdir(join(repo, ".tour"), { recursive: true });
       const r = await run(["list"], repo);
       expect(r.exitCode).toBe(0);
-      expect(r.stderr).toContain("legacy `.tour/` found");
-      expect(r.stderr).toContain("run `tour migrate`");
-      expect(r.stderr).toContain(join(realRepo, ".tour"));
-      expect(r.stderr).not.toContain("manual move required");
+      expect(r.stderr).toBe("");
     });
   });
 });

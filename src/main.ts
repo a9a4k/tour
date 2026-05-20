@@ -10,7 +10,6 @@ import { prune } from "./cli/prune.js";
 import { pickup } from "./cli/pickup.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
-import { migrate } from "./cli/migrate.js";
 import { listTours } from "./core/tour-store.js";
 import { pickDefaultSurface } from "./core/surface-picker.js";
 import { isOnPath } from "./core/is-on-path.js";
@@ -59,7 +58,6 @@ Usage:
   tour close <id> [--json]
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
-  tour migrate [--json]
   tour pickup <id> [--json]
   tour --version
   tour --help
@@ -94,13 +92,8 @@ async function main(): Promise<void> {
   try {
     const { command, positional, flags } = parseArgs(process.argv);
     json = boolFlag(flags, "json");
-    const { repoRoot: cwd, tourStoreRoot, worktreeStamp, legacyDotTour } =
+    const { repoRoot: cwd, tourStoreRoot, worktreeStamp } =
       await resolveTourLocation(process.cwd());
-    if (legacyDotTour && command !== "migrate") {
-      console.error(
-        `legacy \`.tour/\` found at ${legacyDotTour} — run \`tour migrate\` to move it into \`${tourStoreRoot}/\``,
-      );
-    }
 
     switch (command) {
       case "create": {
@@ -183,16 +176,6 @@ async function main(): Promise<void> {
         await prune({ olderThan, json, cwd, tourStoreRoot });
         break;
       }
-
-      case "migrate":
-        await migrate({
-          json,
-          cwd,
-          tourStoreRoot,
-          worktreeStamp,
-          legacyDotTour,
-        });
-        break;
 
       case "pickup": {
         const tourId = positional[0];
