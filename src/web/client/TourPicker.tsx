@@ -36,6 +36,19 @@ export function TourPicker({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const textSelectionDrag = useRef(createTextSelectionDragState());
 
+  const handleSelectableMouseDown = (event: React.MouseEvent) => {
+    recordTextSelectionMouseDown(textSelectionDrag.current, event.nativeEvent);
+  };
+  const handleSelectableMouseMove = (event: React.MouseEvent) => {
+    recordTextSelectionMouseMove(textSelectionDrag.current, event.nativeEvent);
+  };
+  const suppressAfterTextSelectionDrag = (event: React.MouseEvent): boolean => {
+    if (!consumeTextSelectionDrag(textSelectionDrag.current)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  };
+
   useEffect(() => {
     cardRef.current?.focus();
   }, []);
@@ -112,38 +125,16 @@ export function TourPicker({
                 role="option"
                 aria-selected={isCursor}
                 onMouseEnter={(event) => {
-                  recordTextSelectionMouseMove(
-                    textSelectionDrag.current,
-                    event.nativeEvent,
-                  );
+                  handleSelectableMouseMove(event);
                   if (!textSelectionDrag.current.active && event.buttons !== 1) {
                     onMove(i - cursor);
                   }
                 }}
-                onMouseDown={(event) => {
-                  recordTextSelectionMouseDown(
-                    textSelectionDrag.current,
-                    event.nativeEvent,
-                  );
-                }}
-                onMouseMove={(event) => {
-                  recordTextSelectionMouseMove(
-                    textSelectionDrag.current,
-                    event.nativeEvent,
-                  );
-                }}
-                onMouseUp={(event) => {
-                  recordTextSelectionMouseMove(
-                    textSelectionDrag.current,
-                    event.nativeEvent,
-                  );
-                }}
+                onMouseDown={handleSelectableMouseDown}
+                onMouseMove={handleSelectableMouseMove}
+                onMouseUp={handleSelectableMouseMove}
                 onClick={(event) => {
-                  if (consumeTextSelectionDrag(textSelectionDrag.current)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    return;
-                  }
+                  if (suppressAfterTextSelectionDrag(event)) return;
                   // Click commits the clicked row; align cursor first so the
                   // reducer's picker.commit (which reads state.picker.cursor)
                   // resolves to the clicked id.
