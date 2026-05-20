@@ -9,7 +9,7 @@ export interface BatchItem {
   body?: string;
   author?: string;
   author_kind?: AuthorKind;
-  replies_to?: string;
+  thread_id?: string;
 }
 
 // Accept both JSONL (one object per line; blank lines tolerated) and a single

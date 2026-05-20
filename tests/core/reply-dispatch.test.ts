@@ -25,7 +25,7 @@ describe("shouldDispatchReply", () => {
   it("fires for human-authored replies", () => {
     expect(
       shouldDispatchReply(
-        ann({ id: "a2", author_kind: "human", replies_to: "a1" }),
+        ann({ id: "a2", author_kind: "human", thread_id: "a1" }),
       ),
     ).toBe(true);
   });
@@ -37,7 +37,7 @@ describe("shouldDispatchReply", () => {
   it("does not fire for agent-authored replies", () => {
     expect(
       shouldDispatchReply(
-        ann({ id: "a4", author_kind: "agent", replies_to: "a1" }),
+        ann({ id: "a4", author_kind: "agent", thread_id: "a1" }),
       ),
     ).toBe(false);
   });

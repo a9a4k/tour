@@ -28,12 +28,12 @@ function commentCreated(id: string, body = "b"):
   };
 }
 
-function replyCreated(id: string, replies_to: string):
+function replyCreated(id: string, thread_id: string):
   Extract<TourEvent, { kind: "reply.created" }> {
   return {
     kind: "reply.created",
     id,
-    replies_to,
+    thread_id,
     body: "r",
     author: "human",
     author_kind: "human",

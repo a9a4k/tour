@@ -53,7 +53,7 @@ function ann(o: Partial<Comment> & Pick<Comment, "id" | "side" | "line_start" | 
     body: o.body ?? "n",
     author: o.author ?? "agent",
     author_kind: o.author_kind ?? "agent",
-    replies_to: o.replies_to,
+    thread_id: o.thread_id,
     created_at: o.created_at ?? "2026-01-01T00:00:00Z",
   };
 }

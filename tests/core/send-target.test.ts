@@ -14,7 +14,7 @@ function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
     body: o.body ?? "body",
     author: o.author ?? (o.author_kind === "agent" ? "claude" : "user"),
     author_kind: o.author_kind ?? "human",
-    replies_to: o.replies_to,
+    thread_id: o.thread_id,
     created_at: o.created_at ?? "2026-05-12T00:00:00Z",
   };
 }
@@ -73,13 +73,13 @@ describe("sendTarget", () => {
     });
     const agentReply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       author_kind: "agent",
       created_at: "2026-05-12T00:00:01Z",
     });
     const humanFollowUp = ann({
       id: "r2",
-      replies_to: "r1",
+      thread_id: "r1",
       author_kind: "human",
       created_at: "2026-05-12T00:00:02Z",
     });
@@ -100,7 +100,7 @@ describe("sendTarget", () => {
     });
     const agentReply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       author_kind: "agent",
       created_at: "2026-05-12T00:00:01Z",
     });
@@ -121,7 +121,7 @@ describe("sendTarget", () => {
     });
     const humanReply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       author_kind: "human",
       created_at: "2026-05-12T00:00:01Z",
     });
@@ -144,7 +144,7 @@ describe("sendTarget", () => {
       });
       const humanFollowUp = ann({
         id: "r1",
-        replies_to: "t1",
+        thread_id: "t1",
         author_kind: "human",
         created_at: "2026-05-12T00:00:01Z",
       });
@@ -165,13 +165,13 @@ describe("sendTarget", () => {
       });
       const agentReply = ann({
         id: "r1",
-        replies_to: "t1",
+        thread_id: "t1",
         author_kind: "agent",
         created_at: "2026-05-12T00:00:01Z",
       });
       const humanFollowUp = ann({
         id: "r2",
-        replies_to: "r1",
+        thread_id: "r1",
         author_kind: "human",
         created_at: "2026-05-12T00:00:02Z",
       });
@@ -194,7 +194,7 @@ describe("sendTarget", () => {
       });
       const agentReply = ann({
         id: "r1",
-        replies_to: "t1",
+        thread_id: "t1",
         author_kind: "agent",
         created_at: "2026-05-12T00:00:01Z",
       });

@@ -52,5 +52,5 @@ export function buildReplyComposer(args: {
   currentComment: Comment | null;
 }): ComposerTarget | null {
   if (!args.currentComment) return null;
-  return { kind: "reply", replies_to: args.currentComment.id };
+  return { kind: "reply", thread_id: args.currentComment.id };
 }

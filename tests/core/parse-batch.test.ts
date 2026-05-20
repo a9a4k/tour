@@ -76,9 +76,9 @@ describe("parseBatch", () => {
     expect(() => parseBatch("[not json")).toThrow();
   });
 
-  it("supports replies_to in JSONL", () => {
-    const stdin = `{"replies_to":"ann-id","body":"thx"}\n`;
+  it("supports thread_id in JSONL", () => {
+    const stdin = `{"thread_id":"ann-id","body":"thx"}\n`;
     const items = parseBatch(stdin);
-    expect(items).toEqual([{ replies_to: "ann-id", body: "thx" }]);
+    expect(items).toEqual([{ thread_id: "ann-id", body: "thx" }]);
   });
 });

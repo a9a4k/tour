@@ -99,7 +99,7 @@ describe("CommentCard header collapses redundant `author` when author === author
       id: "ann-2",
       body: "reply body",
       author: "human",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -128,7 +128,7 @@ describe("CommentCard header collapses redundant `author` when author === author
       body: "reply body",
       author: "claude",
       author_kind: "agent",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -171,7 +171,7 @@ describe("CommentCard text selection", () => {
       body: "reply body",
       author_kind: "agent",
       author: "claude",
-      replies_to: baseComment.id,
+      thread_id: baseComment.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -297,7 +297,7 @@ describe("CommentCard text selection", () => {
       ...baseComment,
       id: "ann-2",
       body: "reply body",
-      replies_to: baseComment.id,
+      thread_id: baseComment.id,
     };
     const calls: string[] = [];
     const container = mount(
@@ -489,7 +489,7 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
       id: "ann-2",
       author: "claude",
       author_kind: "agent",
-      replies_to: baseComment.id,
+      thread_id: baseComment.id,
       body: "agent reply body",
     };
     const container = mount(
@@ -608,7 +608,7 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
       author: "alice",
       author_kind: "human",
       body: `reply body ${id}`,
-      replies_to: agentTop.id,
+      thread_id: agentTop.id,
       created_at: t,
     };
   }
@@ -704,7 +704,7 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
       id: "ann-r-agent-latest",
       author: "claude",
       author_kind: "agent",
-      replies_to: agentTop.id,
+      thread_id: agentTop.id,
       body: "agent latest body",
       created_at: "2026-05-08T00:00:02Z",
     };
@@ -732,7 +732,7 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
       id: "ann-r-agent-latest",
       author: "claude",
       author_kind: "agent",
-      replies_to: agentTop.id,
+      thread_id: agentTop.id,
       body: "agent latest body",
       created_at: "2026-05-08T00:00:02Z",
     };
@@ -833,7 +833,7 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
       id: "ann-r1",
       author: "claude",
       author_kind: "agent",
-      replies_to: humanTop.id,
+      thread_id: humanTop.id,
       body: "agent r1 body",
       created_at: "2026-05-08T00:00:01Z",
     };
@@ -842,7 +842,7 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
       id: "ann-r2",
       author: "alice",
       author_kind: "human",
-      replies_to: r1.id,
+      thread_id: r1.id,
       body: "human r2 body",
       created_at: "2026-05-08T00:00:02Z",
     };
@@ -1250,13 +1250,13 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "reply 1",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const r2: Comment = {
       ...baseComment,
       id: "r2",
       body: "reply 2",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -1281,13 +1281,13 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "reply 1",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const r2: Comment = {
       ...baseComment,
       id: "r2",
       body: "reply 2",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const calls: string[] = [];
     const container = mount(
@@ -1322,13 +1322,13 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "reply 1",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const r2: Comment = {
       ...baseComment,
       id: "r2",
       body: "reply 2",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const calls: string[] = [];
     const container = mount(
@@ -1358,7 +1358,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "reply 1",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const calls: string[] = [];
     const container = mount(
@@ -1389,7 +1389,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "reply 1",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const cardCalls: string[] = [];
     const deleteCalls: string[] = [];
@@ -1424,7 +1424,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "I survived",
-      replies_to: stubbed.id,
+      thread_id: stubbed.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -1458,7 +1458,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
       ...baseComment,
       id: "r1",
       body: "alive",
-      replies_to: stubbed.id,
+      thread_id: stubbed.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -1490,7 +1490,7 @@ describe("CommentCard reply-agent byline marker (issue #390 / ADR 0021 addendum)
   // — e.g. `claude · reply-agent` — so the second instance becomes a
   // visible entity in the conversation."
   //
-  // The structural marker is `author_kind === "agent" && replies_to`
+  // The structural marker is `author_kind === "agent" && thread_id`
   // — those replies are by construction produced by `reply-runner`'s
   // `createReply` call. Top-level agent annotations don't carry the
   // marker (they came in via ingestion, not the dispatch path).
@@ -1509,7 +1509,7 @@ describe("CommentCard reply-agent byline marker (issue #390 / ADR 0021 addendum)
       body: "agent reply body",
       author: "claude",
       author_kind: "agent",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -1537,7 +1537,7 @@ describe("CommentCard reply-agent byline marker (issue #390 / ADR 0021 addendum)
       body: "human reply body",
       author: "alice",
       author_kind: "human",
-      replies_to: parent.id,
+      thread_id: parent.id,
     };
     const container = mount(
       createElement(CommentCard, {
@@ -1553,7 +1553,7 @@ describe("CommentCard reply-agent byline marker (issue #390 / ADR 0021 addendum)
     expect(replyBlock?.querySelector(".reply-agent-byline")).toBeNull();
   });
 
-  it("does NOT render the marker on an agent-authored top-level Comment (no replies_to)", () => {
+  it("does NOT render the marker on an agent-authored top-level Comment (no thread_id)", () => {
     const agentTop: Comment = {
       ...baseComment,
       id: "agent-top",
@@ -1601,8 +1601,8 @@ describe("CommentCard collapsed one-liner (PRD #397 / ADR 0038 / issue #399)", (
   });
 
   it("renders the one-liner header with author_kind tag, file:line, body preview, and reply count", () => {
-    const r1: Comment = { ...baseComment, id: "r1", body: "reply", replies_to: "ann-1" };
-    const r2: Comment = { ...baseComment, id: "r2", body: "reply2", replies_to: "ann-1" };
+    const r1: Comment = { ...baseComment, id: "r1", body: "reply", thread_id: "ann-1" };
+    const r2: Comment = { ...baseComment, id: "r2", body: "reply2", thread_id: "ann-1" };
     const container = mount(
       createElement(CommentCard, {
         comment: { ...baseComment, body: "short body", line_start: 42, line_end: 42 },

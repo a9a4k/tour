@@ -159,7 +159,7 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
 
     const comments = await readComments(location.tourStoreRoot, tourId);
     const reply = comments.find(
-      (a) => a.replies_to !== undefined && a.author_kind === "agent",
+      (a) => a.thread_id !== undefined && a.author_kind === "agent",
     );
     expect(reply).toBeDefined();
     expect(reply?.body).toBe(FIXTURE_BODY);

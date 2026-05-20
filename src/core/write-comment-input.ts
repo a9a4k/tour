@@ -90,7 +90,7 @@ export function buildWriteCommentInput(args: {
       },
     };
   }
-  const parent = args.bundle.comments.find((a) => a.id === target.replies_to);
+  const parent = args.bundle.comments.find((a) => a.id === target.thread_id);
   if (!parent) return { kind: "parent-missing" };
   return {
     kind: "ok",

@@ -129,13 +129,13 @@ export async function comment(args: CommentArgs): Promise<void> {
       // `--as-agent` / `--as-human` already do. Per-item `author` in the
       // JSONL still wins (symmetric with `item.author_kind ?? authorKind`).
       const itemAuthor = item.author ?? args.author;
-      if (item.replies_to !== undefined) {
+      if (item.thread_id !== undefined) {
         if (item.body === undefined) {
           throw new Error("Batch reply item missing body");
         }
         return {
           kind: "reply",
-          replies_to: item.replies_to,
+          thread_id: item.thread_id,
           body: item.body,
           author: itemAuthor,
           author_kind: itemKind,
@@ -175,7 +175,7 @@ export async function comment(args: CommentArgs): Promise<void> {
     // inside the diff by construction), so no bundle load — keeps the
     // reply path cheap.
     const reply = await createReply(tourStoreRoot, resolvedId, {
-      replies_to: args.replyTo,
+      thread_id: args.replyTo,
       body: args.body,
       author: args.author,
       author_kind: authorKind,

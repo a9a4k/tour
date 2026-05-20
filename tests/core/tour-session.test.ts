@@ -462,7 +462,7 @@ describe("reduce — bundle slice", () => {
 
   it("tour.switched falls back to topLevel[0] when annId points at a Reply, deleted Comment, or missing Comment", () => {
     const first = mkComment({ id: "ann-1", file: "foo.ts" });
-    const reply = mkComment({ id: "reply-1", replies_to: "ann-1", file: "bar.ts" });
+    const reply = mkComment({ id: "reply-1", thread_id: "ann-1", file: "bar.ts" });
     const deleted = mkComment({
       id: "ann-2",
       file: "baz.ts",
@@ -1664,8 +1664,8 @@ function topLevelTarget(
   };
 }
 
-function replyTarget(replies_to: string = "parent-1"): ComposerTarget {
-  return { kind: "reply", replies_to };
+function replyTarget(thread_id: string = "parent-1"): ComposerTarget {
+  return { kind: "reply", thread_id };
 }
 
 function mkComment(over: Partial<Comment> & { id: string }): Comment {
@@ -1679,7 +1679,7 @@ function mkComment(over: Partial<Comment> & { id: string }): Comment {
     author: over.author ?? "claude",
     author_kind: over.author_kind ?? "agent",
     created_at: over.created_at ?? "2026-05-13T00:00:00Z",
-    ...(over.replies_to !== undefined ? { replies_to: over.replies_to } : {}),
+    ...(over.thread_id !== undefined ? { thread_id: over.thread_id } : {}),
     ...(over.deleted !== undefined ? { deleted: over.deleted } : {}),
   };
 }
@@ -1927,7 +1927,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
         tourId: "tour-a",
         bundle: b,
       }).state;
-      const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
+      const reply = mkComment({ id: "reply-1", thread_id: "parent-1" });
       const r = reduce(s, {
         type: "bundle.commentInsertedWithLanding",
         comment: reply,
@@ -2187,7 +2187,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
       s = reduce(s, { type: "composer.setBody", body: "reply" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
+      const reply = mkComment({ id: "reply-1", thread_id: "parent-1" });
       const r = reduce(s, { type: "composer.submitted", comment: reply });
       expect(r.intents).toEqual([
         {
@@ -2349,7 +2349,7 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
       s = reduce(s, { type: "composer.open", target: replyTarget("parent-1") }).state;
       s = reduce(s, { type: "composer.setBody", body: "reply" }).state;
       s = reduce(s, { type: "composer.submit" }).state;
-      const reply = mkComment({ id: "reply-1", replies_to: "parent-1" });
+      const reply = mkComment({ id: "reply-1", thread_id: "parent-1" });
 
       // composer.submitted commit — cursor and bundle both still pre-submit.
       const afterSubmitted = reduce(s, {
@@ -2818,7 +2818,7 @@ describe("reduce — thread collapse slice (PRD #397 / ADR 0038)", () => {
     const refreshed: TourBundle = {
       kind: "ok",
       tour: tour({ id: "tour-a" }),
-      comments: [t1, t2, mkComment({ id: "r1", replies_to: "t1" })],
+      comments: [t1, t2, mkComment({ id: "r1", thread_id: "t1" })],
       diff: "",
       files: [],
     };
@@ -2897,7 +2897,7 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
 
   it("thread.collapseAll skips Reply ids (only top-level Comments)", () => {
     const t1 = mkComment({ id: "t1" });
-    const r1 = mkComment({ id: "r1", replies_to: "t1" });
+    const r1 = mkComment({ id: "r1", thread_id: "t1" });
     const bundle: TourBundle = {
       kind: "ok",
       tour: tour({ id: "tour-a" }),
@@ -2976,7 +2976,7 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
 
   it("thread.collapseAll with cursor on a Reply emits scrollCursorTarget targeting the Thread root (issue #407)", () => {
     const t1 = mkComment({ id: "t1" });
-    const r1 = mkComment({ id: "r1", replies_to: "t1" });
+    const r1 = mkComment({ id: "r1", thread_id: "t1" });
     const bundle: TourBundle = {
       kind: "ok",
       tour: tour({ id: "tour-a" }),
@@ -3064,7 +3064,7 @@ describe("reduce — thread.collapseAll / thread.expandAll (issue #406)", () => 
 
   it("thread.expandAll with cursor on a Reply emits scrollCursorTarget targeting the Thread root (issue #407)", () => {
     const t1 = mkComment({ id: "t1" });
-    const r1 = mkComment({ id: "r1", replies_to: "t1" });
+    const r1 = mkComment({ id: "r1", thread_id: "t1" });
     const bundle: TourBundle = {
       kind: "ok",
       tour: tour({ id: "tour-a" }),
@@ -3836,8 +3836,8 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
 
   it("reply-only (parent live + ≥1 sibling): cursor on doomed Reply → snaps to parent root; preferredSide preserved", () => {
     const parent = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1", created_at: "2026-05-13T00:00:01Z" });
-    const r2 = mkComment({ id: "r2", replies_to: "p1", created_at: "2026-05-13T00:00:02Z" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1", created_at: "2026-05-13T00:00:01Z" });
+    const r2 = mkComment({ id: "r2", thread_id: "p1", created_at: "2026-05-13T00:00:02Z" });
     let s = stateWithComments([parent, r1, r2]);
     s = withCardCursor(s, "r1", "deletions");
     s = inSubmitting(s, "r1");
@@ -3853,7 +3853,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
 
   it("reply-only (parent live, no siblings): cursor on doomed Reply → snaps to parent root", () => {
     const parent = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     let s = stateWithComments([parent, r1]);
     s = withCardCursor(s, "r1", "additions");
     s = inSubmitting(s, "r1");
@@ -3870,8 +3870,8 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
       ...mkComment({ id: "p1" }),
       deleted: { at: "2026-05-13T00:00:00Z" },
     };
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
-    const r2 = mkComment({ id: "r2", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
+    const r2 = mkComment({ id: "r2", thread_id: "p1" });
     let s = stateWithComments([parentStub, r1, r2]);
     s = withCardCursor(s, "r1", "deletions");
     s = inSubmitting(s, "r1");
@@ -3886,7 +3886,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
 
   it("parent-stub: cursor on doomed parent with ≥1 surviving Reply stays on the parent stub", () => {
     const parent = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     let s = stateWithComments([parent, r1]);
     s = withCardCursor(s, "p1", "deletions");
     s = inSubmitting(s, "p1");
@@ -3914,7 +3914,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
       ...mkComment({ id: "p1" }),
       deleted: { at: "2026-05-13T00:00:00Z" },
     };
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     let s = stateWithComments([parentStub, r1]);
     s = withCardCursor(s, "r1");
     s = inSubmitting(s, "r1");
@@ -3937,7 +3937,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
 
   it("RowAnchor cursor: unchanged across the delete (no fallback semantics for diff-row cursors)", () => {
     const parent = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     let s = stateWithComments([parent, r1]);
     const row: RowAnchor = {
       kind: "row",
@@ -3965,7 +3965,7 @@ describe("reduce — deleteConfirm.succeeded cursor lineage fallback (issue #402
 
   it("subsequent bundle.refreshed is a cursor no-op after the snap (parent still exists in flatRows)", () => {
     const parent = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     let s = stateWithComments([parent, r1]);
     s = withCardCursor(s, "r1", "deletions");
     s = inSubmitting(s, "r1");

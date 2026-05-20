@@ -76,13 +76,13 @@ describe("buildConversationTree", () => {
     const root = ann({ id: "r1", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({
       id: "r1-rep1",
-      replies_to: "r1",
+      thread_id: "r1",
       author_kind: "human",
       created_at: "2026-05-08T00:00:02Z",
     });
     const r2 = ann({
       id: "r1-rep2",
-      replies_to: "r1",
+      thread_id: "r1",
       author_kind: "agent",
       created_at: "2026-05-08T00:00:03Z",
     });
@@ -107,13 +107,13 @@ describe("buildConversationTree", () => {
     const root = ann({ id: "root", created_at: "2026-05-08T00:00:00Z" });
     const rep1 = ann({
       id: "rep1",
-      replies_to: "root",
+      thread_id: "root",
       author_kind: "human",
       created_at: "2026-05-08T00:00:02Z",
     });
     const rep2 = ann({
       id: "rep2",
-      replies_to: "rep1",
+      thread_id: "rep1",
       author_kind: "agent",
       created_at: "2026-05-08T00:00:03Z",
     });
@@ -122,9 +122,9 @@ describe("buildConversationTree", () => {
     expect(out.comments[0].replies.map((r) => r.id)).toEqual(["rep1", "rep2"]);
   });
 
-  it("drops orphan replies (replies_to → unknown id)", () => {
+  it("drops orphan replies (thread_id → unknown id)", () => {
     const a = ann({ id: "a" });
-    const orph = ann({ id: "orph", replies_to: "ghost" });
+    const orph = ann({ id: "orph", thread_id: "ghost" });
     const out = buildConversationTree(tour(), [a, orph]);
     expect(out.comments).toHaveLength(1);
     expect(out.comments[0].id).toBe("a");
@@ -152,7 +152,7 @@ describe("buildConversationTree", () => {
       body: "because…",
       author: "almas",
       author_kind: "human",
-      replies_to: "r",
+      thread_id: "r",
       created_at: "2026-05-08T00:00:02Z",
     });
     const out = buildConversationTree(tour(), [root, reply]);
@@ -172,7 +172,7 @@ describe("buildConversationTree", () => {
     expect(rep.author_kind).toBe("human");
     expect(rep.author).toBe("almas");
     expect(rep.body).toBe("because…");
-    expect(rep.replies_to).toBe("r");
+    expect(rep.thread_id).toBe("r");
   });
 
   it("produces deterministic output for the same input regardless of input ordering", () => {
@@ -189,14 +189,14 @@ describe("buildConversationTree", () => {
       body: "I disagree",
       author: "almas",
       author_kind: "human",
-      replies_to: "root1",
+      thread_id: "root1",
       created_at: "2026-05-08T00:00:01Z",
     });
     const agent = ann({
       id: "agent1",
       file: "src/a.ts",
       body: "Fair point",
-      replies_to: "root1",
+      thread_id: "root1",
       created_at: "2026-05-08T00:00:02Z",
     });
     const root2 = ann({

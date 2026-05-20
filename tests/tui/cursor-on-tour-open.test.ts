@@ -59,7 +59,7 @@ function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
     body: o.body ?? "body",
     author: o.author ?? "user",
     author_kind: o.author_kind ?? "human",
-    replies_to: o.replies_to,
+    thread_id: o.thread_id,
     created_at: o.created_at ?? "2026-05-13T00:00:00Z",
   };
 }

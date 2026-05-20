@@ -88,7 +88,7 @@ export type ComposerTarget =
       line_start: number;
       line_end: number;
     }
-  | { kind: "reply"; replies_to: string };
+  | { kind: "reply"; thread_id: string };
 
 // Tagged-union state machine for the comment composer (PRD #234). The
 // surface's three useStates (composerTarget + composerError + textarea body
@@ -995,7 +995,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       if (state.bundle.kind !== "ok") return { state, intents: NO_INTENTS };
       const topLevelIds: string[] = [];
       for (const c of state.bundle.value.comments) {
-        if (c.replies_to === undefined) topLevelIds.push(c.id);
+        if (c.thread_id === undefined) topLevelIds.push(c.id);
       }
       if (topLevelIds.length === 0) return { state, intents: NO_INTENTS };
       const next = new Set(state.collapsedThreads);
@@ -1151,7 +1151,7 @@ function pruneCollapsedThreads(
   if (collapsed.size === 0) return collapsed as Set<string>;
   const topLevelIds = new Set<string>();
   for (const c of comments) {
-    if (c.replies_to === undefined) topLevelIds.add(c.id);
+    if (c.thread_id === undefined) topLevelIds.add(c.id);
   }
   let changed = false;
   const next = new Set<string>();

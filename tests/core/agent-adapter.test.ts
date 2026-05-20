@@ -90,13 +90,13 @@ describe("buildEnvelope", () => {
     const root = ann({ id: "a1" });
     const r1 = ann({
       id: "a2",
-      replies_to: "a1",
+      thread_id: "a1",
       author_kind: "human",
       created_at: "2026-05-10T12:00:01Z",
     });
     const r2 = ann({
       id: "a3",
-      replies_to: "a1",
+      thread_id: "a1",
       author_kind: "agent",
       created_at: "2026-05-10T12:00:02Z",
     });

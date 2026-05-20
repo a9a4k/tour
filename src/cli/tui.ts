@@ -73,7 +73,7 @@ export async function tui(args: TuiArgs): Promise<void> {
     writeComment: (id, input) => {
       if (input.kind === "reply") {
         return createReply(tourStoreRoot, id, {
-          replies_to: input.parent.id,
+          thread_id: input.parent.id,
           body: input.body,
           author_kind: "human",
         });

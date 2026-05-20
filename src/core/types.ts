@@ -23,7 +23,7 @@ export interface Comment {
   body: string;
   author: string;
   author_kind: AuthorKind;
-  replies_to?: string;
+  thread_id?: string;
   created_at: string;
   // Issue #389 / ADR 0036 (Slice E): C4 cascade marker. Set internally
   // on every deleted comment during the fold; only ever observable on
@@ -63,7 +63,7 @@ export type TourEvent =
   | {
       kind: "reply.created";
       id: string;
-      replies_to: string;
+      thread_id: string;
       body: string;
       author: string;
       author_kind: AuthorKind;
