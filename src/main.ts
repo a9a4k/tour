@@ -16,6 +16,7 @@ import { isOnPath } from "./core/is-on-path.js";
 import { resolveEditor } from "./core/editor-config.js";
 import { resolveTourLocation } from "./core/tour-location.js";
 import { parseArgs } from "./core/parse-args.js";
+import { isNotGitWorkingTreeError } from "./core/not-git-working-tree-error.js";
 
 declare const __EMBEDDED_VERSION__: string;
 const VERSION =
@@ -285,6 +286,8 @@ async function main(): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     if (json) {
       console.error(JSON.stringify({ error: message }));
+    } else if (isNotGitWorkingTreeError(err)) {
+      console.error(message);
     } else {
       console.error(`Error: ${message}`);
     }

@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { resolveTourLocation } from "../../src/core/tour-location.js";
+import {
+  NOT_GIT_WORKING_TREE_MESSAGE,
+  NotGitWorkingTreeError,
+} from "../../src/core/not-git-working-tree-error.js";
 
 const exec = promisify(execFile);
 
@@ -52,18 +56,16 @@ describe("resolveTourLocation", () => {
     });
   });
 
-  it("falls back to realpath(cwd) outside a git repo", async () => {
+  it("throws the canonical git-required error outside a git repo", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "tour-location-plain-")));
     const tourHome = await realpath(await mkdtemp(join(tmpdir(), "tour-home-plain-")));
-    const key = `${slug(basename(dir))}-${shortHash(dir)}`;
 
     await expect(
       resolveTourLocation(dir, { env: { TOUR_HOME: tourHome } }),
-    ).resolves.toEqual({
-      repoRoot: dir,
-      tourStoreRoot: join(tourHome, key),
-      worktreeStamp: dir,
-    });
+    ).rejects.toThrow(NotGitWorkingTreeError);
+    await expect(
+      resolveTourLocation(dir, { env: { TOUR_HOME: tourHome } }),
+    ).rejects.toThrow(NOT_GIT_WORKING_TREE_MESSAGE);
   });
 
   it("uses one repo-key store for the main checkout and a linked worktree", async () => {

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
 import { repoKey, worktreeStamp } from "./repo-key.js";
 import { tourHome } from "./tour-home.js";
+import { NotGitWorkingTreeError } from "./not-git-working-tree-error.js";
 
 export interface TourLocation {
   repoRoot: string;
@@ -18,7 +19,7 @@ function findRepoRoot(cwd: string): string {
   const fsRoot = parse(current).root;
   while (true) {
     if (existsSync(join(current, ".git"))) return current;
-    if (current === fsRoot) return cwd;
+    if (current === fsRoot) throw new NotGitWorkingTreeError();
     current = dirname(current);
   }
 }
