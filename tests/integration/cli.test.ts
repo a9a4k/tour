@@ -1596,15 +1596,6 @@ describe("CLI integration", () => {
   });
 
   describe("tour location resolution", () => {
-    // Tests are invoked via a sub-process and `bun src/main.ts`; on macOS
-    // /tmp resolves through /private/var, so the repo path the bun cwd
-    // observes is realpath-normalised. Match that here when asserting.
-    // Issue #365 / #368.
-    let realRepo: string;
-    beforeEach(async () => {
-      realRepo = await realpath(repo);
-    });
-
     it("writes to the same TOUR_HOME repo-key store when create runs from a sub-directory", async () => {
       const sub = join(repo, "deep", "nested");
       await mkdir(sub, { recursive: true });
@@ -1615,7 +1606,7 @@ describe("CLI integration", () => {
         env: { TOUR_HOME: tourHomeFor(sub) },
       });
       expect(existsSync(join(location.tourStoreRoot, tour.id))).toBe(true);
-      expect(location.repoRoot).toBe(realRepo);
+      expect(location.repoRoot).toBe(repo);
       expect(existsSync(join(repo, ".tour"))).toBe(false);
       expect(existsSync(join(sub, ".tour"))).toBe(false);
     });

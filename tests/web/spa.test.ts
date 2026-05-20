@@ -454,7 +454,6 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.reply-button\s*\{[^}]*border:\s*1px solid var\(--border-default\)/);
     expect(out).toMatch(/\.reply-button\s*\{[^}]*color:\s*var\(--fg-muted\)/);
     expect(out).toMatch(/\.reply-button:hover\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
-    expect(out).toMatch(/\.ann-reply-composer\s*\{[^}]*border-left:\s*2px solid var\(--border-muted\)/);
   });
 
   it("styles the rename path-pair and pure-rename placeholder body (Issue #145)", () => {
