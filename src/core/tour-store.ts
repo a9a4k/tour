@@ -30,7 +30,7 @@ export async function getTour(
 
 export async function listTours(
   tourStoreRoot: string,
-  opts?: { status?: "open" | "closed" | "all" },
+  opts?: { status?: "open" | "closed" | "all"; worktreeStamp?: string },
 ): Promise<Tour[]> {
   let entries: string[];
   try {
@@ -46,9 +46,13 @@ export async function listTours(
     } catch {}
   }
   const status = opts?.status ?? "open";
-  const filtered =
+  const statusFiltered =
     status === "all" ? tours : tours.filter((t) => t.status === status);
-  return filtered.sort((a, b) => a.id.localeCompare(b.id));
+  const worktreeFiltered =
+    opts?.worktreeStamp === undefined
+      ? statusFiltered
+      : statusFiltered.filter((t) => t.created_in_worktree === opts.worktreeStamp);
+  return worktreeFiltered.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function updateTourStatus(

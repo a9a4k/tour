@@ -4,14 +4,19 @@ import { printOutput } from "./output.js";
 
 interface ListArgs {
   status: "open" | "closed" | "all";
+  all: boolean;
   json: boolean;
   cwd: string;
   tourStoreRoot?: string;
+  worktreeStamp?: string;
 }
 
 export async function list(args: ListArgs): Promise<void> {
   const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
-  const tours = await listTours(tourStoreRoot, { status: args.status });
+  const tours = await listTours(tourStoreRoot, {
+    status: args.status,
+    worktreeStamp: args.all ? undefined : args.worktreeStamp,
+  });
 
   if (args.json) {
     printOutput(tours, true);

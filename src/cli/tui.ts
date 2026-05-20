@@ -18,6 +18,7 @@ interface TuiArgs {
   tourId?: string;
   cwd: string;
   tourStoreRoot?: string;
+  worktreeStamp?: string;
   replyAgent?: string;
   editor?: EditorConfig | null;
 }
@@ -41,7 +42,10 @@ export async function tui(args: TuiArgs): Promise<void> {
   if (args.tourId) {
     tourId = await resolveIdPrefix(tourStoreRoot, args.tourId);
   } else {
-    const tours = await listTours(tourStoreRoot, { status: "open" });
+    const tours = await listTours(tourStoreRoot, {
+      status: "open",
+      worktreeStamp: args.worktreeStamp,
+    });
     if (tours.length === 0) {
       throw new Error("No open tours. Create one with: tour create --head HEAD");
     }

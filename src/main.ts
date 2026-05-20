@@ -53,7 +53,7 @@ Usage:
   tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour comment <id> --delete <comment-id> [--json]
   tour comment <id> --batch - [--json]                            (alias: annotate)
-  tour list [--status open|closed|all] [--json]
+  tour list [--all] [--status open|closed|all] [--json]
   tour show <id> [--json]
   tour close <id> [--json]
   tour delete <id> [--json]
@@ -66,8 +66,10 @@ Usage:
 function firstRunBanner(tourStoreRoot: string): string {
   return `tour ${VERSION} — local code review with AI comments.
 
-  No tours found in this repo.
+  No tours found for this worktree.
   Tours live at: ${tourStoreRoot}
+  Tours from other worktrees are hidden by default; run:
+    tour list --all
 
   Create one:
     tour create --head HEAD              # tour the latest commit
@@ -144,9 +146,11 @@ async function main(): Promise<void> {
       case "list":
         await list({
           status: (flag(flags, "status") as "open" | "closed" | "all") ?? "open",
+          all: boolFlag(flags, "all"),
           json,
           cwd,
           tourStoreRoot,
+          worktreeStamp,
         });
         break;
 
@@ -190,6 +194,7 @@ async function main(): Promise<void> {
           tourId: positional[0],
           cwd,
           tourStoreRoot,
+          worktreeStamp,
           replyAgent: flag(flags, "reply-agent"),
           editor: resolveEditor(flag(flags, "editor"), process.env),
         });
@@ -223,7 +228,10 @@ async function main(): Promise<void> {
         break;
 
       case "": {
-        const tours = await listTours(tourStoreRoot, { status: "all" }).catch(() => []);
+        const tours = await listTours(tourStoreRoot, {
+          status: "all",
+          worktreeStamp,
+        }).catch(() => []);
         if (tours.length === 0) {
           console.log(firstRunBanner(tourStoreRoot));
           break;
@@ -256,6 +264,7 @@ async function main(): Promise<void> {
             open: false,
             cwd,
             tourStoreRoot,
+            worktreeStamp,
             replyAgent: flag(flags, "reply-agent"),
             editor,
           });
@@ -263,6 +272,7 @@ async function main(): Promise<void> {
           await tui({
             cwd,
             tourStoreRoot,
+            worktreeStamp,
             replyAgent: flag(flags, "reply-agent"),
             editor,
           });

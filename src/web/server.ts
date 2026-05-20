@@ -40,6 +40,7 @@ interface ServeArgs {
   tourId?: string;
   cwd: string;
   tourStoreRoot?: string;
+  worktreeStamp?: string;
   replyAgent?: string;
   // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
   // main.ts. Powers the POST /api/tours/<id>/open-in-editor handler;
@@ -176,7 +177,11 @@ export async function startServer(args: ServeArgs): Promise<void> {
   // so the terminal URL routes to a real tour instead of bare `/`. Zero
   // open tours → bare URL, unchanged from today.
   const effectiveTourId =
-    args.tourId ?? (pickAutoTour(await listTours(tourStoreRoot, { status: "all" })))?.id;
+    args.tourId ??
+    (pickAutoTour(await listTours(tourStoreRoot, {
+      status: "all",
+      worktreeStamp: args.worktreeStamp,
+    })))?.id;
   const path = effectiveTourId ? `/${effectiveTourId}` : "";
 
   const startedAt = new Date().toISOString();
@@ -251,7 +256,10 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
         if (url.pathname === "/api/tours") {
           const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
-          const tours = await listTours(tourStoreRoot, { status });
+          const tours = await listTours(tourStoreRoot, {
+            status,
+            worktreeStamp: args.worktreeStamp,
+          });
           return Response.json(tours);
         }
 
