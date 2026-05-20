@@ -460,7 +460,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // new call, so rapid `n n n n` sequences converge on the last
       // target without queueing.
       const topLevel = view.nav.topLevel;
-      const target = delta === 1 ? nextCard(cursor, topLevel) : prevCard(cursor, topLevel);
+      const target =
+        delta === 1
+          ? nextCard(cursor, topLevel, view.nav.threads)
+          : prevCard(cursor, topLevel, view.nav.threads);
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.commentId);
       if (!ann) return;

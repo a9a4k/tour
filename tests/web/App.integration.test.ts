@@ -1903,10 +1903,41 @@ const replyWalkReply2 = {
   created_at: "2026-05-17T00:00:02Z",
 };
 
+const replyWalkNextParent = {
+  id: "ann-next-parent",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 4,
+  line_end: 4,
+  body: "next parent",
+  author: "alice",
+  author_kind: "human" as const,
+  created_at: "2026-05-17T00:00:03Z",
+};
+
+const replyWalkNextReply = {
+  id: "ann-next-reply",
+  file: "src/foo.ts",
+  side: "additions" as const,
+  line_start: 4,
+  line_end: 4,
+  body: "next reply",
+  author: "alice",
+  author_kind: "human" as const,
+  replies_to: "ann-next-parent",
+  created_at: "2026-05-17T00:00:04Z",
+};
+
 const replyWalkBundle = {
   kind: "ok" as const,
   tour: replyWalkTourSummary,
-  comments: [replyWalkParent, replyWalkReply1, replyWalkReply2],
+  comments: [
+    replyWalkParent,
+    replyWalkReply1,
+    replyWalkReply2,
+    replyWalkNextParent,
+    replyWalkNextReply,
+  ],
   diff: replyWalkDiff,
   files: [
     {
@@ -2106,6 +2137,48 @@ describe("App j/k descends into Card replies (issue #404 — ADR 0037 wiring)", 
     });
     await flush();
     expect(annFromHash()).toBeNull();
+  });
+
+  it("n/p from a reply walks to the next/previous Thread parent", async () => {
+    globalThis.fetch = stubReplyWalkFetch();
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: replyWalkTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-reply-1");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "n", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-next-parent");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-next-reply");
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "p", bubbles: true }),
+      );
+    });
+    await flush();
+    expect(annFromHash()).toBe("ann-parent");
   });
 });
 
