@@ -78,8 +78,8 @@ describe("TourPicker (web) Text selection", () => {
     const onCommit = vi.fn();
     const container = mount({ onMove, onCommit });
     const row = container.querySelector(
-      'button[data-picker-row-idx="1"]',
-    ) as HTMLButtonElement;
+      '[data-picker-row-idx="1"]',
+    ) as HTMLElement;
     const title = row.querySelector(".picker-title") as HTMLSpanElement;
     const age = row.querySelector(".picker-age") as HTMLSpanElement;
 
@@ -105,16 +105,27 @@ describe("TourPicker (web) Text selection", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("renders picker rows as selectable options rather than native buttons", () => {
+    const container = mount();
+    const row = container.querySelector('[data-picker-row-idx="1"]');
+
+    expect(row).not.toBeNull();
+    expect(row!.tagName).toBe("DIV");
+    expect(row!.getAttribute("role")).toBe("option");
+    expect(row!.querySelector(".picker-title")?.classList.contains(TEXT_SELECTABLE_CLASS))
+      .toBe(true);
+  });
+
   it("keeps picker text-selection drags from selecting rows on hover", () => {
     const onMove = vi.fn();
     const onCommit = vi.fn();
     const container = mount({ onMove, onCommit });
     const firstRow = container.querySelector(
-      'button[data-picker-row-idx="0"]',
-    ) as HTMLButtonElement;
+      '[data-picker-row-idx="0"]',
+    ) as HTMLElement;
     const secondRow = container.querySelector(
-      'button[data-picker-row-idx="1"]',
-    ) as HTMLButtonElement;
+      '[data-picker-row-idx="1"]',
+    ) as HTMLElement;
     const firstTitle = firstRow.querySelector(
       ".picker-title",
     ) as HTMLSpanElement;

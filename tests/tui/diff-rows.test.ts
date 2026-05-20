@@ -1195,6 +1195,49 @@ index 1..2 100644
       );
     });
 
+    it("unified: an OpenTUI no-motion selection click still dispatches cursor click", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "unified",
+        onCursorClick,
+      });
+      const wrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
+      );
+      const { down, up } = mouseHandlersOf(wrapper!);
+      const downEvent = {
+        button: 0,
+        target: { selectable: true },
+        x: 10,
+        y: 5,
+        stopPropagation: vi.fn(),
+      };
+      const upEvent = {
+        button: 0,
+        target: { selectable: true },
+        isDragging: true,
+        x: 10,
+        y: 5,
+        stopPropagation: vi.fn(),
+      };
+
+      down(downEvent);
+      up(upEvent);
+
+      expect(onCursorClick).toHaveBeenCalledWith(
+        "x.txt",
+        "additions",
+        ctxRow.rightLineNumber,
+      );
+    });
+
     it("hunk-header rows do NOT receive a click handler", () => {
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
