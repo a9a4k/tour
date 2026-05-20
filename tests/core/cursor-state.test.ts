@@ -1593,10 +1593,19 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
       replies_to: "pA",
       created_at: "2026-04-01T01:00:00Z",
     });
+    const rB = ann({
+      id: "rB1",
+      file: "x.txt",
+      side: "additions",
+      line_start: 2,
+      line_end: 2,
+      replies_to: "pB",
+      created_at: "2026-04-02T01:00:00Z",
+    });
     const topLevel = [parentA, parentB];
     const threads = [
       { root: parentA, replies: [rA] },
-      { root: parentB, replies: [] },
+      { root: parentB, replies: [rB] },
     ];
 
     it("`n` from a reply in Thread A lands on Thread B's parent", () => {
@@ -1608,8 +1617,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
       });
     });
 
-    it("`p` from a reply in Thread B is null (Thread A is treated as the prior top-level)", () => {
-      // Thread B has no replies; simulate cursor on parentB instead.
+    it("`p` from a parent in Thread B still lands on Thread A's parent", () => {
       const c: CardAnchor = { kind: "card", commentId: "pB", preferredSide: "additions" };
       expect(prevCard(c, topLevel, threads)).toEqual({
         kind: "card",
@@ -1623,6 +1631,62 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
       // From Thread A's reply, the "current" top-level is parentA (idx 0).
       // prev → null (no prior thread).
       expect(prevCard(c, topLevel, threads)).toBeNull();
+    });
+
+    it("`p` from a reply in Thread B lands on Thread A's parent", () => {
+      const c: CardAnchor = { kind: "card", commentId: "rB1", preferredSide: "deletions" };
+      expect(prevCard(c, topLevel, threads)).toEqual({
+        kind: "card",
+        commentId: "pA",
+        preferredSide: "deletions",
+      });
+    });
+
+    it("walks from a reply under a deleted parent stub via the Thread root", () => {
+      const deletedParent = {
+        ...ann({
+          id: "deleted-parent",
+          file: "x.txt",
+          side: "additions",
+          line_start: 3,
+          line_end: 3,
+          created_at: "2026-04-03T00:00:00Z",
+        }),
+        deleted: { at: "2026-04-03T02:00:00Z" },
+      };
+      const liveReply = ann({
+        id: "reply-under-deleted-parent",
+        file: "x.txt",
+        side: "additions",
+        line_start: 3,
+        line_end: 3,
+        replies_to: "deleted-parent",
+        created_at: "2026-04-03T01:00:00Z",
+      });
+      const afterDeletedParent = ann({
+        id: "after-deleted-parent",
+        file: "x.txt",
+        side: "additions",
+        line_start: 4,
+        line_end: 4,
+        created_at: "2026-04-04T00:00:00Z",
+      });
+      const stubTopLevel = [deletedParent, afterDeletedParent];
+      const stubThreads = [
+        { root: deletedParent, replies: [liveReply] },
+        { root: afterDeletedParent, replies: [] },
+      ];
+      const c: CardAnchor = {
+        kind: "card",
+        commentId: "reply-under-deleted-parent",
+        preferredSide: "additions",
+      };
+
+      expect(nextCard(c, stubTopLevel, stubThreads)).toEqual({
+        kind: "card",
+        commentId: "after-deleted-parent",
+        preferredSide: "additions",
+      });
     });
 
     it("destination CardAnchors point at top-level parents (not replies)", () => {
