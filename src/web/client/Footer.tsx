@@ -11,7 +11,7 @@ import React from "react";
 //
 // The component stays a shallow presentational shell — composition of
 // the legend string lives in `core/footer-hints.ts`; auto-dismiss
-// timer plumbing lives in `App.tsx`.
+// timer plumbing lives in `core/use-flash-footer.ts`.
 export interface FooterProps {
   status: string | null;
   legend: string;
