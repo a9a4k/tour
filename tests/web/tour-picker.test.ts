@@ -179,4 +179,28 @@ describe("TourPicker (web) Text selection", () => {
 
     expect(onScopeChange).toHaveBeenCalledWith("all");
   });
+
+  it("keeps picker shortcuts active after a scope button receives focus", () => {
+    const onMove = vi.fn();
+    const onCommit = vi.fn();
+    const container = mount({ onMove, onCommit });
+    const button = container.querySelector(
+      ".picker-scope-toggle button",
+    ) as HTMLButtonElement;
+
+    button.focus();
+    act(() => {
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+    });
+    act(() => {
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+
+    expect(onMove).toHaveBeenCalledWith(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
 });

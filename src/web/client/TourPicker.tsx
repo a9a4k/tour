@@ -60,7 +60,8 @@ export function TourPicker({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.target instanceof HTMLButtonElement) return;
+      const fromButton = e.target instanceof HTMLButtonElement;
+      if (fromButton && (e.key === "Enter" || e.key === " ")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Escape" || e.key === "t") {
         e.preventDefault();
