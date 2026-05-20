@@ -93,6 +93,22 @@ async function main(): Promise<void> {
   try {
     const { command, positional, flags } = parseArgs(process.argv);
     json = boolFlag(flags, "json");
+
+    // Help and version do not touch the tour store and must work outside
+    // a git working tree (e.g. `tour --version` in an arbitrary cwd).
+    switch (command) {
+      case "help":
+      case "--help":
+      case "-h":
+        console.log(USAGE);
+        return;
+      case "version":
+      case "--version":
+      case "-v":
+        console.log(`tour ${VERSION}`);
+        return;
+    }
+
     const { repoRoot: cwd, tourStoreRoot, worktreeStamp } =
       await resolveTourLocation(process.cwd());
 
@@ -211,18 +227,6 @@ async function main(): Promise<void> {
         });
         break;
       }
-
-      case "help":
-      case "--help":
-      case "-h":
-        console.log(USAGE);
-        break;
-
-      case "version":
-      case "--version":
-      case "-v":
-        console.log(`tour ${VERSION}`);
-        break;
 
       case "": {
         const tours = await listTours(tourStoreRoot, {
