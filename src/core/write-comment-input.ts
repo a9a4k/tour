@@ -45,6 +45,7 @@ export interface StartTuiProps {
    *  contract enforced at the seam in `core/comments-store`. */
   deleteComment: (tourId: string, targetId: string) => Promise<void>;
   cwd: string;
+  tourStoreRoot?: string;
   replyAgent?: string;
   /** PRD #349 / ADR 0032 / issue #352: resolved editor config (null
    *  when no flag and no env var was set). The TUI surfaces a footer

@@ -130,7 +130,7 @@ describe("loadTourBundle", () => {
       // Replace tour with one whose head_sha is unreachable.
       const badHead = "0".repeat(40);
       await writeFile(
-        join(cwd, ".tour", tourId, "tour.toml"),
+        join(cwd, tourId, "tour.toml"),
         [
           `id = "${tourId}"`,
           `title = "Test bundle tour"`,
@@ -173,7 +173,7 @@ describe("loadTourBundle", () => {
       );
       const badBase = "1".repeat(40);
       await writeFile(
-        join(cwd, ".tour", tourId, "tour.toml"),
+        join(cwd, tourId, "tour.toml"),
         [
           `id = "${tourId}"`,
           `title = "Test bundle tour"`,

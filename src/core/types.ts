@@ -3,6 +3,7 @@ export interface Tour {
   title: string;
   status: "open" | "closed";
   created_at: string;
+  created_in_worktree: string;
   closed_at: string;
   head_sha: string;
   base_sha: string;

@@ -28,6 +28,7 @@ import type { Comment } from "./types.js";
 // to a reply-agent spawn now.
 export interface RequestReplyOptions {
   cwd: string;
+  tourStoreRoot?: string;
   tourId: string;
   commentId: string;
   // The renderer-configured reply-agent name. Absent / empty means the
@@ -70,8 +71,9 @@ export async function requestReply(
   opts: RequestReplyOptions,
 ): Promise<RequestReplyResult> {
   if (!opts.agent) return { kind: "no-reply-agent" };
+  const tourStoreRoot = opts.tourStoreRoot ?? opts.cwd;
 
-  const comments = await readCommentsSafely(opts.cwd, opts.tourId);
+  const comments = await readCommentsSafely(tourStoreRoot, opts.tourId);
   const triggering = comments.find((a) => a.id === opts.commentId);
   // Three precondition rejections collapse to one result kind — the caller
   // only needs "this comment isn't a valid dispatch target", not the
@@ -84,7 +86,7 @@ export async function requestReply(
   }
 
   const startedAt = new Date().toISOString();
-  const acquired = await tryAcquireReplyLock(opts.cwd, opts.tourId, {
+  const acquired = await tryAcquireReplyLock(tourStoreRoot, opts.tourId, {
     agent: opts.agent,
     responding_to: opts.commentId,
     started_at: startedAt,
@@ -94,6 +96,7 @@ export async function requestReply(
 
   await runDispatch({
     cwd: opts.cwd,
+    tourStoreRoot,
     tourId: opts.tourId,
     agent: opts.agent,
     adapter: opts.adapter,
@@ -105,11 +108,11 @@ export async function requestReply(
 }
 
 async function readCommentsSafely(
-  cwd: string,
+  tourStoreRoot: string,
   tourId: string,
 ): Promise<Comment[]> {
   try {
-    return await readComments(cwd, tourId);
+    return await readComments(tourStoreRoot, tourId);
   } catch {
     return [];
   }
@@ -120,6 +123,7 @@ async function readCommentsSafely(
 // visible during spawn setup; releases the lock in its own `finally`.
 interface RunDispatchOptions {
   cwd: string;
+  tourStoreRoot: string;
   tourId: string;
   agent: string;
   adapter?: ShippedAdapter;
@@ -130,9 +134,9 @@ interface RunDispatchOptions {
 
 async function runDispatch(opts: RunDispatchOptions): Promise<void> {
   try {
-    const tour = await getTour(opts.cwd, opts.tourId);
+    const tour = await getTour(opts.tourStoreRoot, opts.tourId);
     const envelope = buildEnvelope(tour, opts.comments, opts.triggering);
-    const tourDir = join(opts.cwd, ".tour", opts.tourId);
+    const tourDir = join(opts.tourStoreRoot, opts.tourId);
     const systemPrompt = replyAgentSystemPrompt();
     const logPath = join(tourDir, "logs", `reply-${opts.triggering.id}.log`);
 
@@ -144,7 +148,7 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
       tourDir,
       adapter: opts.adapter,
     });
-    await writeReplyLock(opts.cwd, opts.tourId, {
+    await writeReplyLock(opts.tourStoreRoot, opts.tourId, {
       agent: opts.agent,
       responding_to: opts.triggering.id,
       started_at: opts.startedAt,
@@ -174,9 +178,9 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
       durationMs: Date.now() - Date.parse(opts.startedAt),
       error: result.error,
     });
-    await persistReply(opts.cwd, opts.tourId, opts.agent, opts.triggering, result, logPath);
+    await persistReply(opts.tourStoreRoot, opts.tourId, opts.agent, opts.triggering, result, logPath);
   } finally {
-    await deleteReplyLock(opts.cwd, opts.tourId);
+    await deleteReplyLock(opts.tourStoreRoot, opts.tourId);
   }
 }
 

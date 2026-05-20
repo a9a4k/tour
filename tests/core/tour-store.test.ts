@@ -50,15 +50,15 @@ describe("tour-store", () => {
       expect(loaded.wip_snapshot).toBe(false);
     });
 
-    it("creates .tour/<id>/ folder structure", async () => {
+    it("creates <tour-store-root>/<id>/ folder structure", async () => {
       const tour = makeTour();
       await createTour(dir, tour);
-      expect(existsSync(join(dir, ".tour", tour.id, "tour.toml"))).toBe(true);
+      expect(existsSync(join(dir, tour.id, "tour.toml"))).toBe(true);
     });
   });
 
   describe("listTours", () => {
-    it("returns empty array when no .tour dir exists", async () => {
+    it("returns empty array when no tour directory exists", async () => {
       const tours = await listTours(dir);
       expect(tours).toEqual([]);
     });
@@ -107,7 +107,7 @@ describe("tour-store", () => {
       const tour = makeTour();
       await createTour(dir, tour);
       await deleteTour(dir, tour.id);
-      expect(existsSync(join(dir, ".tour", tour.id))).toBe(false);
+      expect(existsSync(join(dir, tour.id))).toBe(false);
     });
 
     it("does not throw if tour does not exist", async () => {
@@ -133,13 +133,10 @@ describe("tour-store", () => {
       await expect(resolveIdPrefix(dir, "9999")).rejects.toThrow("No tour matching");
     });
 
-    // Issue #369: a missing `.tour/` directory is reported distinctly from
-    // "no tour matching prefix" — the former includes the resolved root so
-    // the user can tell `tour tui xyz` apart from `tour tui` against a repo
-    // where they've never run `tour create`.
-    it("throws a path-bearing error when .tour/ does not exist", async () => {
-      await expect(resolveIdPrefix(dir, "anything")).rejects.toThrow(
-        `No .tour/ directory at ${dir}`,
+    it("throws a path-bearing error when the tour store root does not exist", async () => {
+      const missing = join(dir, "missing-store");
+      await expect(resolveIdPrefix(missing, "anything")).rejects.toThrow(
+        `No tour store directory at ${missing}`,
       );
     });
   });
@@ -159,8 +156,8 @@ describe("tour-store", () => {
       }));
       const pruned = await pruneTours(dir, 30 * 24 * 60 * 60 * 1000);
       expect(pruned).toEqual(["2026-03-01-120000-old1"]);
-      expect(existsSync(join(dir, ".tour", "2026-03-01-120000-old1"))).toBe(false);
-      expect(existsSync(join(dir, ".tour", "2026-05-08-120000-new1"))).toBe(true);
+      expect(existsSync(join(dir, "2026-03-01-120000-old1"))).toBe(false);
+      expect(existsSync(join(dir, "2026-05-08-120000-new1"))).toBe(true);
     });
 
     it("does not prune open tours", async () => {

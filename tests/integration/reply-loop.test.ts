@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { requestReply } from "../../src/core/reply-runner.js";
 import { readReplyLock } from "../../src/core/reply-lock.js";
 import { readComments } from "../../src/core/comments-store.js";
+import { resolveTourLocation } from "../../src/core/tour-location.js";
 import type {
   ShippedAdapter,
   SpawnOpts,
@@ -27,6 +28,7 @@ async function run(
   try {
     const { stdout, stderr } = await exec("bun", [CLI, ...args], {
       cwd,
+      env: { ...process.env, TOUR_HOME: tourHomeFor(cwd) },
       maxBuffer: 10 * 1024 * 1024,
     });
     return { stdout: stdout.trimEnd(), stderr: stderr.trimEnd(), exitCode: 0 };
@@ -38,6 +40,10 @@ async function run(
       exitCode: e.code ?? 1,
     };
   }
+}
+
+function tourHomeFor(cwd: string): string {
+  return join(tmpdir(), `tour-reply-loop-home-${cwd.split("/").pop()}`);
 }
 
 async function git(args: string[], cwd: string): Promise<string> {
@@ -133,9 +139,13 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
     );
     expect(r.exitCode).toBe(0);
     const created = JSON.parse(r.stdout) as { id: string };
+    const location = await resolveTourLocation(repo, {
+      env: { TOUR_HOME: tourHomeFor(repo) },
+    });
 
     const result = await requestReply({
       cwd: repo,
+      tourStoreRoot: location.tourStoreRoot,
       tourId,
       commentId: created.id,
       agent: "fixture",
@@ -145,9 +155,9 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
 
     // requestReply resolves only after the spawn exits, so by here the
     // lock is gone and the reply is on disk.
-    expect(await readReplyLock(repo, tourId)).toBeNull();
+    expect(await readReplyLock(location.tourStoreRoot, tourId)).toBeNull();
 
-    const comments = await readComments(repo, tourId);
+    const comments = await readComments(location.tourStoreRoot, tourId);
     const reply = comments.find(
       (a) => a.replies_to !== undefined && a.author_kind === "agent",
     );

@@ -39,7 +39,7 @@ describe("TourWatcher", () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "tour-watcher-"));
-    tourDir = join(dir, ".tour", tourId);
+    tourDir = join(dir, tourId);
     await mkdir(tourDir, { recursive: true });
     await writeFile(join(tourDir, "tour-events.jsonl"), "");
   });

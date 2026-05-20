@@ -46,9 +46,9 @@ export class TourWatcher {
   private lastLockExists: boolean;
   private lastCommentsFp: FileFingerprint | null;
 
-  constructor(repoRoot: string, tourId: string, debounceMs = 100) {
+  constructor(tourStoreRoot: string, tourId: string, debounceMs = 100) {
     this.tourId = tourId;
-    this.tourDir = join(repoRoot, ".tour", tourId);
+    this.tourDir = join(tourStoreRoot, tourId);
     this.debounceMs = debounceMs;
     this.lastLockExists = existsSync(join(this.tourDir, REPLY_LOCK_FILENAME));
     this.lastCommentsFp = fingerprint(join(this.tourDir, EVENTS_FILENAME));

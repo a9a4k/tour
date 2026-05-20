@@ -14,7 +14,7 @@ import { listTours } from "./core/tour-store.js";
 import { pickDefaultSurface } from "./core/surface-picker.js";
 import { isOnPath } from "./core/is-on-path.js";
 import { resolveEditor } from "./core/editor-config.js";
-import { resolveTourRoot } from "./core/tour-root.js";
+import { resolveTourLocation } from "./core/tour-location.js";
 import { parseArgs } from "./core/parse-args.js";
 
 declare const __EMBEDDED_VERSION__: string;
@@ -63,10 +63,11 @@ Usage:
   tour --help
 `;
 
-function firstRunBanner(): string {
+function firstRunBanner(tourStoreRoot: string): string {
   return `tour ${VERSION} — local code review with AI comments.
 
   No tours found in this repo.
+  Tours live at: ${tourStoreRoot}
 
   Create one:
     tour create --head HEAD              # tour the latest commit
@@ -89,19 +90,11 @@ async function main(): Promise<void> {
   try {
     const { command, positional, flags } = parseArgs(process.argv);
     json = boolFlag(flags, "json");
-    // Issue #369. Every subcommand reads/writes `.tour/` at a single
-    // "tour root" — the nearest `.git` ancestor, the nearest `.tour/`
-    // ancestor outside a git repo, or cwd as a last-resort fallback.
-    // The resolved path is threaded through as `cwd` to all command
-    // handlers so two shells in different sub-directories of the same
-    // repo see the same store. Strays (sub-directory `.tour/` left
-    // over from before this change) surface as a one-line stderr
-    // warning so the user can see what's being ignored without losing
-    // data.
-    const { root: cwd, strayTourDirs } = await resolveTourRoot(process.cwd());
-    for (const stray of strayTourDirs) {
+    const { repoRoot: cwd, tourStoreRoot, worktreeStamp, legacyDotTour } =
+      await resolveTourLocation(process.cwd());
+    if (legacyDotTour) {
       console.error(
-        `tour: warning: ignoring stray .tour/ below resolved root at ${stray} (issue #369). Move its contents to ${cwd}/.tour/ to keep them.`,
+        `legacy \`.tour/\` found at ${legacyDotTour} — manual move required (\`tour migrate\` ships in #444)`,
       );
     }
 
@@ -116,6 +109,8 @@ async function main(): Promise<void> {
           force: boolFlag(flags, "force"),
           json,
           cwd,
+          tourStoreRoot,
+          worktreeStamp,
         });
         break;
       }
@@ -141,6 +136,7 @@ async function main(): Promise<void> {
           batch: boolFlag(flags, "batch") || flag(flags, "batch") === "-",
           json,
           cwd,
+          tourStoreRoot,
         });
         break;
       }
@@ -150,41 +146,42 @@ async function main(): Promise<void> {
           status: (flag(flags, "status") as "open" | "closed" | "all") ?? "open",
           json,
           cwd,
+          tourStoreRoot,
         });
         break;
 
       case "show": {
         const tourId = positional[0];
         if (!tourId) throw new Error("Usage: tour show <id>");
-        await show({ tourId, json, cwd });
+        await show({ tourId, json, cwd, tourStoreRoot });
         break;
       }
 
       case "close": {
         const tourId = positional[0];
         if (!tourId) throw new Error("Usage: tour close <id>");
-        await close({ tourId, json, cwd });
+        await close({ tourId, json, cwd, tourStoreRoot });
         break;
       }
 
       case "delete": {
         const tourId = positional[0];
         if (!tourId) throw new Error("Usage: tour delete <id>");
-        await del({ tourId, json, cwd });
+        await del({ tourId, json, cwd, tourStoreRoot });
         break;
       }
 
       case "prune": {
         const olderThan = flag(flags, "older-than");
         if (!olderThan) throw new Error("--older-than is required");
-        await prune({ olderThan, json, cwd });
+        await prune({ olderThan, json, cwd, tourStoreRoot });
         break;
       }
 
       case "pickup": {
         const tourId = positional[0];
         if (!tourId) throw new Error("Usage: tour pickup <id> [--json]");
-        await pickup({ tourId, json, cwd });
+        await pickup({ tourId, json, cwd, tourStoreRoot });
         break;
       }
 
@@ -192,6 +189,7 @@ async function main(): Promise<void> {
         await tui({
           tourId: positional[0],
           cwd,
+          tourStoreRoot,
           replyAgent: flag(flags, "reply-agent"),
           editor: resolveEditor(flag(flags, "editor"), process.env),
         });
@@ -205,6 +203,7 @@ async function main(): Promise<void> {
           open: boolFlag(flags, "open"),
           tourId: positional[0],
           cwd,
+          tourStoreRoot,
           replyAgent: flag(flags, "reply-agent"),
           editor: resolveEditor(flag(flags, "editor"), process.env),
         });
@@ -224,9 +223,9 @@ async function main(): Promise<void> {
         break;
 
       case "": {
-        const tours = await listTours(cwd, { status: "all" }).catch(() => []);
+        const tours = await listTours(tourStoreRoot, { status: "all" }).catch(() => []);
         if (tours.length === 0) {
-          console.log(firstRunBanner());
+          console.log(firstRunBanner(tourStoreRoot));
           break;
         }
         // Smart-default surface (issue #174): webapp when a browser is
@@ -256,12 +255,14 @@ async function main(): Promise<void> {
             portExplicit: false,
             open: false,
             cwd,
+            tourStoreRoot,
             replyAgent: flag(flags, "reply-agent"),
             editor,
           });
         } else {
           await tui({
             cwd,
+            tourStoreRoot,
             replyAgent: flag(flags, "reply-agent"),
             editor,
           });

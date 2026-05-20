@@ -1,6 +1,5 @@
 import { resolveRef, resolveDefaultBase, snapshotWorkingTree } from "../core/git.js";
 import { generateId } from "../core/ids.js";
-import { ensureTourIgnored } from "../core/gitignore.js";
 import { createTour, listTours } from "../core/tour-store.js";
 import { readComments } from "../core/comments-store.js";
 import { printOutput } from "./output.js";
@@ -13,12 +12,14 @@ interface CreateArgs {
   force?: boolean;
   json: boolean;
   cwd: string;
+  tourStoreRoot?: string;
+  worktreeStamp?: string;
 }
 
 export async function create(args: CreateArgs): Promise<void> {
   const { head, title, force, json, cwd } = args;
-
-  await ensureTourIgnored(cwd);
+  const tourStoreRoot = args.tourStoreRoot ?? cwd;
+  const worktreeStamp = args.worktreeStamp ?? cwd;
 
   const isWip = head === "WIP";
   // WIP anchors on HEAD (tip = parent = HEAD); resolveDefaultBase's
@@ -54,7 +55,7 @@ export async function create(args: CreateArgs): Promise<void> {
   // the existing tour, not a freshly created one" from a normal create.
   // WIP is out of scope — see comment above.
   if (!isWip && !force) {
-    const openTours = await listTours(cwd, { status: "open" });
+    const openTours = await listTours(tourStoreRoot, { status: "open" });
     const existing = openTours.find(
       (t) => t.head_sha === headSha && t.base_sha === base.sha,
     );
@@ -70,7 +71,7 @@ export async function create(args: CreateArgs): Promise<void> {
       ];
       console.error(lines.join("\n"));
       if (json) {
-        const comments = await readComments(cwd, existing.id);
+        const comments = await readComments(tourStoreRoot, existing.id);
         printOutput({ ...existing, comments }, true);
       }
       process.exitCode = 1;
@@ -84,6 +85,7 @@ export async function create(args: CreateArgs): Promise<void> {
     title: title ?? "",
     status: "open",
     created_at: new Date().toISOString(),
+    created_in_worktree: worktreeStamp,
     closed_at: "",
     head_sha: headSha,
     base_sha: base.sha,
@@ -92,7 +94,7 @@ export async function create(args: CreateArgs): Promise<void> {
     wip_snapshot: isWip,
   };
 
-  await createTour(cwd, tour);
+  await createTour(tourStoreRoot, tour);
 
   if (json) {
     printOutput(tour, true);

@@ -5,6 +5,7 @@ interface PruneArgs {
   olderThan: string;
   json: boolean;
   cwd: string;
+  tourStoreRoot?: string;
 }
 
 export function parseDuration(input: string): number {
@@ -22,7 +23,7 @@ export function parseDuration(input: string): number {
 
 export async function prune(args: PruneArgs): Promise<void> {
   const ms = parseDuration(args.olderThan);
-  const pruned = await pruneTours(args.cwd, ms);
+  const pruned = await pruneTours(args.tourStoreRoot ?? args.cwd, ms);
 
   if (args.json) {
     printOutput({ pruned }, true);

@@ -6,12 +6,14 @@ interface ShowArgs {
   tourId: string;
   json: boolean;
   cwd: string;
+  tourStoreRoot?: string;
 }
 
 export async function show(args: ShowArgs): Promise<void> {
-  const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
-  const tour = await getTour(args.cwd, resolvedId);
-  const comments = await readComments(args.cwd, resolvedId);
+  const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
+  const resolvedId = await resolveIdPrefix(tourStoreRoot, args.tourId);
+  const tour = await getTour(tourStoreRoot, resolvedId);
+  const comments = await readComments(tourStoreRoot, resolvedId);
 
   if (args.json) {
     printOutput({ ...tour, comments }, true);

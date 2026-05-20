@@ -10,17 +10,19 @@ interface DeleteArgs {
   tourId: string;
   json: boolean;
   cwd: string;
+  tourStoreRoot?: string;
 }
 
 export async function del(args: DeleteArgs): Promise<void> {
-  const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
-  const tour = await getTour(args.cwd, resolvedId);
+  const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
+  const resolvedId = await resolveIdPrefix(tourStoreRoot, args.tourId);
+  const tour = await getTour(tourStoreRoot, resolvedId);
 
   if (tour.wip_snapshot) {
     await releaseSnapshot(resolvedId, args.cwd);
   }
 
-  await deleteTour(args.cwd, resolvedId);
+  await deleteTour(tourStoreRoot, resolvedId);
 
   if (args.json) {
     printOutput({ deleted: resolvedId }, true);

@@ -46,23 +46,27 @@ function lineCount(content: string): number {
   return trimmed.split("\n").length;
 }
 
-export async function loadTourBundle(cwd: string, tourId: string): Promise<TourBundle> {
-  const tour = await getTour(cwd, tourId);
-  const comments = await readComments(cwd, tourId);
+export async function loadTourBundle(
+  tourStoreRoot: string,
+  tourId: string,
+  repoRoot = tourStoreRoot,
+): Promise<TourBundle> {
+  const tour = await getTour(tourStoreRoot, tourId);
+  const comments = await readComments(tourStoreRoot, tourId);
 
-  const headOk = await isShaResolvable(tour.head_sha, cwd);
-  const baseOk = await isShaResolvable(tour.base_sha, cwd);
+  const headOk = await isShaResolvable(tour.head_sha, repoRoot);
+  const baseOk = await isShaResolvable(tour.base_sha, repoRoot);
   if (!headOk || !baseOk) {
     return { kind: "snapshot-lost", tour, comments };
   }
 
-  const diff = await getDiff(tour.base_sha, tour.head_sha, cwd);
+  const diff = await getDiff(tour.base_sha, tour.head_sha, repoRoot);
   const model = parseDiff(diff);
 
   const fileContents = await fetchFileContents(model, {
     baseSha: tour.base_sha,
     headSha: tour.head_sha,
-    cwd,
+    cwd: repoRoot,
     gitShow,
   });
 
@@ -72,7 +76,7 @@ export async function loadTourBundle(cwd: string, tourId: string): Promise<TourB
       const hasChanges = f.hunks.length > 0;
       const isBinary = f.type === "binary";
       const classification = await classifyFile(f.name, {
-        cwd,
+        cwd: repoRoot,
         isBinary,
         isRenamed,
         hasChanges,

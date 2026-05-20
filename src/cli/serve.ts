@@ -7,6 +7,7 @@ interface ServeArgs {
   open: boolean;
   tourId?: string;
   cwd: string;
+  tourStoreRoot?: string;
   replyAgent?: string;
   // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
   // main.ts (--editor → $TOUR_EDITOR → $VISUAL → $EDITOR → null).

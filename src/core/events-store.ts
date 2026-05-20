@@ -3,32 +3,32 @@ import { join } from "node:path";
 import type { TourEvent } from "./types.js";
 
 // On-disk event log per ADR 0036. One file per Tour at
-// `.tour/<id>/tour-events.jsonl`, append-only JSONL. POSIX `O_APPEND`
+// `<tour-store-root>/<id>/tour-events.jsonl`, append-only JSONL. POSIX `O_APPEND`
 // writes serialise naturally across the four writers (CLI / TUI / webapp
 // / reply-runner); no lock concept beyond what the codebase already
 // relies on for the snapshot log it replaces.
 const EVENTS_FILENAME = "tour-events.jsonl";
 
-export function eventsPath(repoRoot: string, tourId: string): string {
-  return join(repoRoot, ".tour", tourId, EVENTS_FILENAME);
+export function eventsPath(tourStoreRoot: string, tourId: string): string {
+  return join(tourStoreRoot, tourId, EVENTS_FILENAME);
 }
 
 export async function appendEvent(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   event: TourEvent,
 ): Promise<void> {
-  await appendFile(eventsPath(repoRoot, tourId), JSON.stringify(event) + "\n");
+  await appendFile(eventsPath(tourStoreRoot, tourId), JSON.stringify(event) + "\n");
 }
 
 export async function appendEvents(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   events: TourEvent[],
 ): Promise<void> {
   if (events.length === 0) return;
   const lines = events.map((e) => JSON.stringify(e)).join("\n") + "\n";
-  await appendFile(eventsPath(repoRoot, tourId), lines);
+  await appendFile(eventsPath(tourStoreRoot, tourId), lines);
 }
 
 function isAuthorKind(v: unknown): v is "agent" | "human" {
@@ -104,12 +104,12 @@ function parseEvent(parsed: unknown): TourEvent | null {
 }
 
 export async function readEvents(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
 ): Promise<TourEvent[]> {
   let content: string;
   try {
-    content = await readFile(eventsPath(repoRoot, tourId), "utf-8");
+    content = await readFile(eventsPath(tourStoreRoot, tourId), "utf-8");
   } catch {
     return [];
   }

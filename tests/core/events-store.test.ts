@@ -46,12 +46,12 @@ describe("events-store", () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "tour-events-"));
-    await mkdir(join(dir, ".tour", tourId), { recursive: true });
+    await mkdir(join(dir, tourId), { recursive: true });
   });
 
   describe("eventsPath", () => {
-    it("returns `.tour/<id>/tour-events.jsonl` under the repo root", () => {
-      expect(eventsPath("/repo", "T1")).toBe(join("/repo", ".tour", "T1", "tour-events.jsonl"));
+    it("returns `<tour-store-root>/<id>/tour-events.jsonl`", () => {
+      expect(eventsPath("/repo", "T1")).toBe(join("/repo", "T1", "tour-events.jsonl"));
     });
   });
 

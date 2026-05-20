@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, mkdir, writeFile, readFile, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, mkdir, writeFile, realpath } from "node:fs/promises";
+import { dirname, join, parse } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
+import { resolveTourLocation } from "../../src/core/tour-location.js";
 
 const exec = promisify(execFile);
 
@@ -22,9 +23,11 @@ async function run(
   cwd: string,
   opts?: { stdin?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const tourHome = tourHomeFor(cwd);
   try {
     const child = exec("bun", [CLI, ...args], {
       cwd,
+      env: { ...process.env, TOUR_HOME: tourHome },
       maxBuffer: 10 * 1024 * 1024,
     });
     if (opts?.stdin && child.child.stdin) {
@@ -40,6 +43,20 @@ async function run(
       stderr: (e.stderr ?? "").trimEnd(),
       exitCode: e.code ?? 1,
     };
+  }
+}
+
+function tourHomeFor(cwd: string): string {
+  let current = cwd;
+  const fsRoot = parse(current).root;
+  while (true) {
+    if (existsSync(join(current, ".git"))) {
+      return join(tmpdir(), `tour-cli-home-${current.split("/").pop()}`);
+    }
+    if (current === fsRoot) {
+      return join(tmpdir(), `tour-cli-home-${cwd.split("/").pop()}`);
+    }
+    current = dirname(current);
   }
 }
 
@@ -84,7 +101,7 @@ describe("CLI integration", () => {
       expect(result.stderr).toContain(result.stdout);
     });
 
-    it("creates folder and tour.toml (--json: structured to stdout, empty stderr)", async () => {
+    it("creates tour under TOUR_HOME repo key (--json: structured to stdout, empty stderr)", async () => {
       const result = await run(
         ["create", "--head", "HEAD", "--json"],
         repo,
@@ -93,15 +110,21 @@ describe("CLI integration", () => {
       const tour = JSON.parse(result.stdout);
       expect(tour.id).toMatch(/^\d{4}-\d{2}-\d{2}/);
       expect(tour.status).toBe("open");
-      expect(existsSync(join(repo, ".tour", tour.id, "tour.toml"))).toBe(true);
+      const location = await resolveTourLocation(repo, {
+        env: { TOUR_HOME: tourHomeFor(repo) },
+      });
+      expect(tour.created_in_worktree).toBe(location.worktreeStamp);
+      expect(existsSync(join(location.tourStoreRoot, tour.id, "tour.toml"))).toBe(true);
+      expect(existsSync(join(repo, ".tour"))).toBe(false);
       // --json suppresses the hint entirely — stderr is empty.
       expect(result.stderr).toBe("");
     });
 
-    it("adds .tour/ to .gitignore", async () => {
+    it("does not touch the repo worktree", async () => {
       await run(["create", "--head", "HEAD"], repo);
-      const gitignore = await readFile(join(repo, ".gitignore"), "utf-8");
-      expect(gitignore).toContain(".tour/");
+      expect(await gitCmd(["status", "--short"], repo)).toBe("");
+      expect(existsSync(join(repo, ".tour"))).toBe(false);
+      expect(existsSync(join(repo, ".gitignore"))).toBe(false);
     });
 
     it("fails with invalid ref", async () => {
@@ -1311,9 +1334,12 @@ describe("CLI integration", () => {
     it("removes tour folder", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
+      const location = await resolveTourLocation(repo, {
+        env: { TOUR_HOME: tourHomeFor(repo) },
+      });
       const result = await run(["delete", tour.id], repo);
       expect(result.exitCode).toBe(0);
-      expect(existsSync(join(repo, ".tour", tour.id))).toBe(false);
+      expect(existsSync(join(location.tourStoreRoot, tour.id))).toBe(false);
     });
   });
 
@@ -1409,10 +1435,7 @@ describe("CLI integration", () => {
     });
   });
 
-  // Issue #369. The store lives at the repo root, not at `process.cwd()`,
-  // so any two shells in the same repo see the same tours regardless of
-  // their sub-directory cwd.
-  describe("tour root resolution (issue #369)", () => {
+  describe("tour location resolution", () => {
     // Tests are invoked via a sub-process and `bun src/main.ts`; on macOS
     // /tmp resolves through /private/var, so the repo path the bun cwd
     // observes is realpath-normalised. Match that here when asserting.
@@ -1422,14 +1445,18 @@ describe("CLI integration", () => {
       realRepo = await realpath(repo);
     });
 
-    it("writes .tour/ at the git root when create runs from a sub-directory", async () => {
+    it("writes to the same TOUR_HOME repo-key store when create runs from a sub-directory", async () => {
       const sub = join(repo, "deep", "nested");
       await mkdir(sub, { recursive: true });
       const cr = await run(["create", "--head", "HEAD", "--json"], sub);
       expect(cr.exitCode).toBe(0);
       const tour = JSON.parse(cr.stdout);
-      // The tour folder lives at <repo>/.tour/, not <sub>/.tour/.
-      expect(existsSync(join(repo, ".tour", tour.id))).toBe(true);
+      const location = await resolveTourLocation(sub, {
+        env: { TOUR_HOME: tourHomeFor(sub) },
+      });
+      expect(existsSync(join(location.tourStoreRoot, tour.id))).toBe(true);
+      expect(location.repoRoot).toBe(realRepo);
+      expect(existsSync(join(repo, ".tour"))).toBe(false);
       expect(existsSync(join(sub, ".tour"))).toBe(false);
     });
 
@@ -1444,29 +1471,27 @@ describe("CLI integration", () => {
       expect(tours.map((t: { id: string }) => t.id)).toContain(tour.id);
     });
 
-    it("show <unknown-id> reports `No .tour/ directory at <root>` when no tours exist", async () => {
+    it("show <unknown-id> reports the missing tour store path when no tours exist", async () => {
       const r = await run(["show", "ghost"], repo);
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain("No .tour/ directory at");
-      expect(r.stderr).toContain(realRepo);
+      expect(r.stderr).toContain("No tour store directory at");
+      expect(r.stderr).toContain(tourHomeFor(repo));
     });
 
-    it("show <unknown-id> keeps `No tour matching prefix` when .tour/ exists", async () => {
+    it("show <unknown-id> keeps `No tour matching prefix` when the tour store exists", async () => {
       await run(["create", "--head", "HEAD", "--json"], repo);
       const r = await run(["show", "ghost"], repo);
       expect(r.exitCode).toBe(1);
       expect(r.stderr).toContain('No tour matching prefix "ghost"');
-      expect(r.stderr).not.toContain("No .tour/ directory");
+      expect(r.stderr).not.toContain("No tour store directory");
     });
 
-    it("warns about stray sub-directory .tour/ found below the resolved root", async () => {
-      const stale = join(repo, "src");
-      await mkdir(join(stale, ".tour"), { recursive: true });
-      const realStale = await realpath(stale);
-      const r = await run(["list"], stale);
+    it("warns about a legacy repo-root .tour/ without blocking the command", async () => {
+      await mkdir(join(repo, ".tour"), { recursive: true });
+      const r = await run(["list"], repo);
       expect(r.exitCode).toBe(0);
-      expect(r.stderr).toContain("stray .tour/");
-      expect(r.stderr).toContain(join(realStale, ".tour"));
+      expect(r.stderr).toContain("legacy `.tour/` found");
+      expect(r.stderr).toContain(join(realRepo, ".tour"));
     });
   });
 });

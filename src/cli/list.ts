@@ -6,10 +6,12 @@ interface ListArgs {
   status: "open" | "closed" | "all";
   json: boolean;
   cwd: string;
+  tourStoreRoot?: string;
 }
 
 export async function list(args: ListArgs): Promise<void> {
-  const tours = await listTours(args.cwd, { status: args.status });
+  const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
+  const tours = await listTours(tourStoreRoot, { status: args.status });
 
   if (args.json) {
     printOutput(tours, true);
@@ -22,7 +24,7 @@ export async function list(args: ListArgs): Promise<void> {
   }
 
   for (const t of tours) {
-    const comments = await readComments(args.cwd, t.id);
+    const comments = await readComments(tourStoreRoot, t.id);
     const annotCount = comments.length;
     const status = t.status === "open" ? "●" : "○";
     const title = t.title || "(untitled)";

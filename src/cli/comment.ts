@@ -25,6 +25,7 @@ interface CommentArgs {
   batch?: boolean;
   json: boolean;
   cwd: string;
+  tourStoreRoot?: string;
 }
 
 function parseLine(line: string): { start: number; end: number } {
@@ -66,6 +67,7 @@ function resolveAuthorKind(asAgent?: boolean, asHuman?: boolean): AuthorKind {
 }
 
 export async function comment(args: CommentArgs): Promise<void> {
+  const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
   // Delete verb (Slice C / issue #387 / ADR 0036). Mutually exclusive
   // with the create / reply flag families. `--as-agent --delete` is
   // refused here — before any I/O — so the humans-only protocol error
@@ -88,8 +90,8 @@ export async function comment(args: CommentArgs): Promise<void> {
         "--delete is mutually exclusive with --file/--side/--line/--body, --reply-to, and --batch",
       );
     }
-    const resolvedIdForDelete = await resolveIdPrefix(args.cwd, args.tourId);
-    const result = await createDelete(args.cwd, resolvedIdForDelete, {
+    const resolvedIdForDelete = await resolveIdPrefix(tourStoreRoot, args.tourId);
+    const result = await createDelete(tourStoreRoot, resolvedIdForDelete, {
       target_id: args.deleteId,
       by_kind: "human",
     });
@@ -101,7 +103,7 @@ export async function comment(args: CommentArgs): Promise<void> {
     return;
   }
 
-  const resolvedId = await resolveIdPrefix(args.cwd, args.tourId);
+  const resolvedId = await resolveIdPrefix(tourStoreRoot, args.tourId);
   const authorKind = resolveAuthorKind(args.asAgent, args.asHuman);
 
   if (args.batch) {
@@ -155,8 +157,8 @@ export async function comment(args: CommentArgs): Promise<void> {
       };
     });
     // Single bundle load for the whole batch — PRD #140 / slice 4 #144.
-    const bundle = await loadTourBundle(args.cwd, resolvedId);
-    const comments = await createComments(args.cwd, resolvedId, requests, bundle);
+    const bundle = await loadTourBundle(tourStoreRoot, resolvedId, args.cwd);
+    const comments = await createComments(tourStoreRoot, resolvedId, requests, bundle);
     if (args.json) {
       printOutput(comments, true);
     } else {
@@ -172,7 +174,7 @@ export async function comment(args: CommentArgs): Promise<void> {
     // Reply path inherits its anchor from the parent (which is already
     // inside the diff by construction), so no bundle load — keeps the
     // reply path cheap.
-    const reply = await createReply(args.cwd, resolvedId, {
+    const reply = await createReply(tourStoreRoot, resolvedId, {
       replies_to: args.replyTo,
       body: args.body,
       author: args.author,
@@ -193,9 +195,9 @@ export async function comment(args: CommentArgs): Promise<void> {
   }
 
   const { start, end } = parseLine(args.line);
-  const bundle = await loadTourBundle(args.cwd, resolvedId);
+  const bundle = await loadTourBundle(tourStoreRoot, resolvedId, args.cwd);
   const created = await createComment(
-    args.cwd,
+    tourStoreRoot,
     resolvedId,
     {
       file: args.file,

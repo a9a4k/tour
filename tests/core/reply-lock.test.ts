@@ -19,7 +19,7 @@ const tourId = "2026-05-10-120000-test";
 
 async function makeRepo(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "tour-reply-lock-"));
-  await mkdir(join(dir, ".tour", tourId), { recursive: true });
+  await mkdir(join(dir, tourId), { recursive: true });
   return dir;
 }
 

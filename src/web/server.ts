@@ -39,6 +39,7 @@ interface ServeArgs {
   open: boolean;
   tourId?: string;
   cwd: string;
+  tourStoreRoot?: string;
   replyAgent?: string;
   // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
   // main.ts. Powers the POST /api/tours/<id>/open-in-editor handler;
@@ -160,6 +161,7 @@ function contentTypeFor(path: string): string {
 
 export async function startServer(args: ServeArgs): Promise<void> {
   const { port, portExplicit, cwd, replyAgent } = args;
+  const tourStoreRoot = args.tourStoreRoot ?? cwd;
   const editor = args.editor ?? null;
 
   // Path component appended to printed URLs (issue #179). Lets the user
@@ -174,7 +176,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
   // so the terminal URL routes to a real tour instead of bare `/`. Zero
   // open tours → bare URL, unchanged from today.
   const effectiveTourId =
-    args.tourId ?? (pickAutoTour(await listTours(cwd, { status: "all" })))?.id;
+    args.tourId ?? (pickAutoTour(await listTours(tourStoreRoot, { status: "all" })))?.id;
   const path = effectiveTourId ? `/${effectiveTourId}` : "";
 
   const startedAt = new Date().toISOString();
@@ -183,7 +185,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
   function getOrCreateWatcher(tourId: string): TourWatcher {
     let w = watchers.get(tourId);
     if (!w) {
-      w = new TourWatcher(cwd, tourId);
+      w = new TourWatcher(tourStoreRoot, tourId);
       w.start();
       watchers.set(tourId, w);
     }
@@ -249,7 +251,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
         if (url.pathname === "/api/tours") {
           const status = (url.searchParams.get("status") as "open" | "closed" | "all") ?? "open";
-          const tours = await listTours(cwd, { status });
+          const tours = await listTours(tourStoreRoot, { status });
           return Response.json(tours);
         }
 
@@ -257,7 +259,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
         if (eventsMatch) {
           const idOrPrefix = eventsMatch[1];
           try {
-            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
             const watcher = getOrCreateWatcher(resolvedId);
             const stream = new ReadableStream({
               start(controller) {
@@ -292,7 +294,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
         if (commentMatch && req.method === "POST") {
           const idOrPrefix = commentMatch[1];
           try {
-            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            const resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
             const body = (await req.json()) as Record<string, unknown>;
             const text = asString(body.body);
             // HTTP-shape concern only — whitespace-only rejection lives in
@@ -301,7 +303,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
             const author = asString(body.author);
             const repliesTo = asString(body.replies_to);
             if (repliesTo) {
-              const reply = await createReply(cwd, resolvedId, {
+              const reply = await createReply(tourStoreRoot, resolvedId, {
                 replies_to: repliesTo,
                 body: text,
                 author,
@@ -321,9 +323,9 @@ export async function startServer(args: ServeArgs): Promise<void> {
             // / slice 4 #144) — load the bundle so it has something to check
             // against. Cost is one extra read per POST; SPA already pays this
             // on its own `GET /api/tours/:id` calls.
-            const bundle = await loadTourBundle(cwd, resolvedId);
+            const bundle = await loadTourBundle(tourStoreRoot, resolvedId, cwd);
             const ann = await createComment(
-              cwd,
+              tourStoreRoot,
               resolvedId,
               {
                 file,
@@ -355,8 +357,8 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const idOrPrefix = deleteCommentMatch[1];
           const commentId = deleteCommentMatch[2];
           try {
-            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-            const result = await createDelete(cwd, resolvedId, {
+            const resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
+            const result = await createDelete(tourStoreRoot, resolvedId, {
               target_id: commentId,
               by_kind: "human",
             });
@@ -374,7 +376,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const idOrPrefix = requestReplyMatch[1];
           let resolvedId: string;
           try {
-            resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             return Response.json({ error: message }, { status: 404 });
@@ -389,6 +391,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
           const result = await requestReply({
             cwd,
+            tourStoreRoot,
             tourId: resolvedId,
             commentId,
             agent: replyAgent,
@@ -412,7 +415,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           const idOrPrefix = openInEditorMatch[1];
           let resolvedId: string;
           try {
-            resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
+            resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
           } catch {
             return Response.json(
               { ok: false, message: "o: tour not found" },
@@ -438,7 +441,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
           // `side` is carried for forward compatibility with a future
           // staleness-warning follow-up; not acted on in this slice.
-          const bundle = await loadTourBundle(cwd, resolvedId);
+          const bundle = await loadTourBundle(tourStoreRoot, resolvedId, cwd);
           if (bundle.kind !== "ok") {
             return Response.json(
               { ok: false, message: "o: tour snapshot lost" },
@@ -490,8 +493,8 @@ export async function startServer(args: ServeArgs): Promise<void> {
         if (lockMatch) {
           const idOrPrefix = lockMatch[1];
           try {
-            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-            const lock = await readReplyLock(cwd, resolvedId);
+            const resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
+            const lock = await readReplyLock(tourStoreRoot, resolvedId);
             return Response.json(lock);
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -503,8 +506,8 @@ export async function startServer(args: ServeArgs): Promise<void> {
         if (tourMatch) {
           const idOrPrefix = tourMatch[1];
           try {
-            const resolvedId = await resolveIdPrefix(cwd, idOrPrefix);
-            const bundle = await loadTourBundle(cwd, resolvedId);
+            const resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
+            const bundle = await loadTourBundle(tourStoreRoot, resolvedId, cwd);
             return Response.json(bundle);
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

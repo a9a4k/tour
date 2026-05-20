@@ -94,7 +94,7 @@ describe("comments-store", () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "tour-ann-"));
-    await mkdir(join(dir, ".tour", tourId), { recursive: true });
+    await mkdir(join(dir, tourId), { recursive: true });
   });
 
   describe("createComment", () => {

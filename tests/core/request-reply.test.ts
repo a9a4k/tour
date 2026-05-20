@@ -62,7 +62,7 @@ async function seedComment(
   // not a homogeneous Comment record log. Seed a `comment.created`
   // (or `reply.created` for an Annotation with `replies_to`) event so
   // `readComments` (which folds events) projects this Comment back.
-  const path = join(cwd, ".tour", tour, "tour-events.jsonl");
+  const path = join(cwd, tour, "tour-events.jsonl");
   const ev = ann.replies_to !== undefined
     ? {
         kind: "reply.created" as const,
@@ -201,12 +201,12 @@ async function waitForLockWritten(
 
 async function makeRepo(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "tour-request-reply-"));
-  await mkdir(join(dir, ".tour", tourId), { recursive: true });
+  await mkdir(join(dir, tourId), { recursive: true });
   await writeFile(
-    join(dir, ".tour", tourId, "tour.toml"),
+    join(dir, tourId, "tour.toml"),
     stringifyTOML(mkTour()),
   );
-  await writeFile(join(dir, ".tour", tourId, "tour-events.jsonl"), "");
+  await writeFile(join(dir, tourId, "tour-events.jsonl"), "");
   return dir;
 }
 

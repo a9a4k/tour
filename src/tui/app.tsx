@@ -447,6 +447,7 @@ function App(props: AppProps) {
     }
     return createTuiTourSessionAdapter({
       cwd: props.cwd,
+      tourStoreRoot: props.tourStoreRoot,
       store,
       loadTour: props.loadTour,
       loadReplyLock: props.loadReplyLock,
@@ -461,6 +462,7 @@ function App(props: AppProps) {
   }, [
     store,
     props.cwd,
+    props.tourStoreRoot,
     props.loadTour,
     props.loadReplyLock,
     props.writeComment,

@@ -3,46 +3,45 @@ import { join } from "node:path";
 import { parse as parseTOML, stringify as stringifyTOML } from "smol-toml";
 import type { Tour } from "./types.js";
 
-function tourDir(repoRoot: string, id: string): string {
-  return join(repoRoot, ".tour", id);
+function tourDir(tourStoreRoot: string, id: string): string {
+  return join(tourStoreRoot, id);
 }
 
-function tourPath(repoRoot: string, id: string): string {
-  return join(tourDir(repoRoot, id), "tour.toml");
+function tourPath(tourStoreRoot: string, id: string): string {
+  return join(tourDir(tourStoreRoot, id), "tour.toml");
 }
 
 export async function createTour(
-  repoRoot: string,
+  tourStoreRoot: string,
   tour: Tour,
 ): Promise<void> {
-  const dir = tourDir(repoRoot, tour.id);
+  const dir = tourDir(tourStoreRoot, tour.id);
   await mkdir(dir, { recursive: true });
-  await writeFile(tourPath(repoRoot, tour.id), stringifyTOML(tour));
+  await writeFile(tourPath(tourStoreRoot, tour.id), stringifyTOML(tour));
 }
 
 export async function getTour(
-  repoRoot: string,
+  tourStoreRoot: string,
   id: string,
 ): Promise<Tour> {
-  const content = await readFile(tourPath(repoRoot, id), "utf-8");
+  const content = await readFile(tourPath(tourStoreRoot, id), "utf-8");
   return parseTOML(content) as unknown as Tour;
 }
 
 export async function listTours(
-  repoRoot: string,
+  tourStoreRoot: string,
   opts?: { status?: "open" | "closed" | "all" },
 ): Promise<Tour[]> {
-  const base = join(repoRoot, ".tour");
   let entries: string[];
   try {
-    entries = await readdir(base);
+    entries = await readdir(tourStoreRoot);
   } catch {
     return [];
   }
   const tours: Tour[] = [];
   for (const entry of entries) {
     try {
-      const tour = await getTour(repoRoot, entry);
+      const tour = await getTour(tourStoreRoot, entry);
       tours.push(tour);
     } catch {}
   }
@@ -53,40 +52,35 @@ export async function listTours(
 }
 
 export async function updateTourStatus(
-  repoRoot: string,
+  tourStoreRoot: string,
   id: string,
   status: "open" | "closed",
 ): Promise<Tour> {
-  const tour = await getTour(repoRoot, id);
+  const tour = await getTour(tourStoreRoot, id);
   tour.status = status;
   if (status === "closed") {
     tour.closed_at = new Date().toISOString();
   }
-  await writeFile(tourPath(repoRoot, id), stringifyTOML(tour));
+  await writeFile(tourPath(tourStoreRoot, id), stringifyTOML(tour));
   return tour;
 }
 
 export async function deleteTour(
-  repoRoot: string,
+  tourStoreRoot: string,
   id: string,
 ): Promise<void> {
-  await rm(tourDir(repoRoot, id), { recursive: true, force: true });
+  await rm(tourDir(tourStoreRoot, id), { recursive: true, force: true });
 }
 
 export async function resolveIdPrefix(
-  repoRoot: string,
+  tourStoreRoot: string,
   prefix: string,
 ): Promise<string> {
-  const base = join(repoRoot, ".tour");
   let entries: string[];
   try {
-    entries = await readdir(base);
+    entries = await readdir(tourStoreRoot);
   } catch {
-    // Issue #369: distinguish "no `.tour/` directory at this root" from
-    // "the prefix doesn't match anything in `.tour/`". The path is the
-    // resolved tour-root (not `<root>/.tour`) so the message names the
-    // place the user can `cd` to or `tour create` from.
-    throw new Error(`No .tour/ directory at ${repoRoot}`);
+    throw new Error(`No tour store directory at ${tourStoreRoot}`);
   }
   const matches = entries.filter((e) => e.startsWith(prefix));
   if (matches.length === 0) {
@@ -101,16 +95,16 @@ export async function resolveIdPrefix(
 }
 
 export async function pruneTours(
-  repoRoot: string,
+  tourStoreRoot: string,
   olderThanMs: number,
 ): Promise<string[]> {
-  const tours = await listTours(repoRoot, { status: "closed" });
+  const tours = await listTours(tourStoreRoot, { status: "closed" });
   const now = Date.now();
   const pruned: string[] = [];
   for (const tour of tours) {
     const age = now - new Date(tour.closed_at).getTime();
     if (age >= olderThanMs) {
-      await deleteTour(repoRoot, tour.id);
+      await deleteTour(tourStoreRoot, tour.id);
       pruned.push(tour.id);
     }
   }

@@ -12,15 +12,15 @@ export interface ReplyLock {
 // tests but documented elsewhere as a constant the pill can rely on.
 export const DEFAULT_STALE_THRESHOLD_MS = 120_000;
 
-export function replyLockPath(repoRoot: string, tourId: string): string {
-  return join(repoRoot, ".tour", tourId, ".reply-lock.json");
+export function replyLockPath(tourStoreRoot: string, tourId: string): string {
+  return join(tourStoreRoot, tourId, ".reply-lock.json");
 }
 
 export async function readReplyLock(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
 ): Promise<ReplyLock | null> {
-  const path = replyLockPath(repoRoot, tourId);
+  const path = replyLockPath(tourStoreRoot, tourId);
   let lock: ReplyLock;
   try {
     const raw = await readFile(path, "utf-8");
@@ -37,7 +37,7 @@ export async function readReplyLock(
     try {
       process.kill(lock.pid, 0);
     } catch {
-      await deleteReplyLock(repoRoot, tourId);
+      await deleteReplyLock(tourStoreRoot, tourId);
       return null;
     }
   }
@@ -45,11 +45,11 @@ export async function readReplyLock(
 }
 
 export async function writeReplyLock(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   lock: ReplyLock,
 ): Promise<void> {
-  await writeFile(replyLockPath(repoRoot, tourId), JSON.stringify(lock));
+  await writeFile(replyLockPath(tourStoreRoot, tourId), JSON.stringify(lock));
 }
 
 // Atomic try-acquire: returns true iff the caller is now the lock holder.
@@ -59,14 +59,14 @@ export async function writeReplyLock(
 // two callers seeing "no lock" in parallel still resolve to exactly one
 // successful write.
 export async function tryAcquireReplyLock(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
   lock: ReplyLock,
 ): Promise<boolean> {
-  if (await readReplyLock(repoRoot, tourId)) return false;
+  if (await readReplyLock(tourStoreRoot, tourId)) return false;
   try {
     await writeFile(
-      replyLockPath(repoRoot, tourId),
+      replyLockPath(tourStoreRoot, tourId),
       JSON.stringify(lock),
       { flag: "wx" },
     );
@@ -78,11 +78,11 @@ export async function tryAcquireReplyLock(
 }
 
 export async function deleteReplyLock(
-  repoRoot: string,
+  tourStoreRoot: string,
   tourId: string,
 ): Promise<void> {
   try {
-    await unlink(replyLockPath(repoRoot, tourId));
+    await unlink(replyLockPath(tourStoreRoot, tourId));
   } catch {
     // idempotent — no-op if the lock file doesn't exist
   }

@@ -45,6 +45,7 @@ import { requestReply as runRequestReply } from "../core/reply-runner.js";
 // post-submit scroll once the watcher's `bundle.refreshed` lands.
 export interface TuiTourSessionAdapterDeps {
   cwd: string;
+  tourStoreRoot?: string;
   store: TourSessionStore;
   loadTour: (id: string) => Promise<TourBundle>;
   loadReplyLock: (id: string) => Promise<ReplyLock | null>;
@@ -155,13 +156,14 @@ export function createTuiTourSessionAdapter(
       if (!deps.replyAgent) return;
       await runRequestReply({
         cwd: deps.cwd,
+        tourStoreRoot: deps.tourStoreRoot,
         tourId,
         commentId,
         agent: deps.replyAgent,
       });
     },
     subscribeTourEvents: (tourId, handler: TourEventHandler) => {
-      const watcher = new TourWatcher(deps.cwd, tourId);
+      const watcher = new TourWatcher(deps.tourStoreRoot ?? deps.cwd, tourId);
       watcher.on((event) => {
         if (event.type === "comment-changed") {
           handler({ type: "comment-changed" });
