@@ -55,13 +55,11 @@ function findLatest(
 // button in a Thread, or null when no Send button should appear anywhere
 // (issue #190, PRD #181). At most one Send per Thread.
 //
-// Rule: the latest Comment in the Thread (by `created_at`, id
-// ascending tiebreak — matching `buildThreads`) is always a leaf in a
-// well-formed tree (its parent must have an earlier or equal
-// `created_at`). So "latest human leaf" collapses to "latest overall,
-// if human; otherwise null". If the latest turn is agent-authored, the
+// Rule: under the flat Thread model, the only Send candidate is the
+// latest Comment in the Thread (by `created_at`, id ascending tiebreak
+// — matching `buildThreads`). If the latest turn is agent-authored, the
 // user is expected to write a human Reply first — which then becomes
-// the new latest leaf and surfaces the Send button.
+// the new latest turn and surfaces the Send button.
 //
 // Pure thread-level computation; `canSendToAgent` stays a pure
 // per-Comment predicate, and the gating lives at the render site.

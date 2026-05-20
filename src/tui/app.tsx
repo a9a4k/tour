@@ -1507,10 +1507,11 @@ function App(props: AppProps) {
         // binding on `cursorOnCard`, so the cursor is always a Card
         // anchor here; a Reply-cursor carries its root on `thread_id`.
         if (!cursor || cursor.kind !== "card") return;
-        const comment = comments.find((c) => c.id === cursor.commentId);
+        const rootId =
+          cursorCardComment?.thread_id ?? cursorCardComment?.id ?? cursor.commentId;
         store.dispatch({
           type: "thread.toggle",
-          id: comment?.thread_id ?? comment?.id ?? cursor.commentId,
+          id: rootId,
         });
         return;
       }
@@ -1816,8 +1817,8 @@ function App(props: AppProps) {
         // refuses to act on a collapsed Thread. The user must expand
         // first so the Replies they're about to cascade-delete are
         // visible before confirmation.
-        const comment = comments.find((c) => c.id === cursor.commentId);
-        const rootId = comment?.thread_id ?? comment?.id ?? cursor.commentId;
+        const rootId =
+          cursorCardComment?.thread_id ?? cursorCardComment?.id ?? cursor.commentId;
         if (collapsedThreads.has(rootId)) {
           flash("d: — (Thread collapsed, expand to delete)");
           return;
