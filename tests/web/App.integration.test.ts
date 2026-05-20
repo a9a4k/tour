@@ -1233,16 +1233,13 @@ function setTextareaValue(ta: HTMLTextAreaElement, value: string): void {
 describe("App composer keyboard submit (issue #454 / ADR 0041)", () => {
   async function openTopLevelComposer(
     container: HTMLElement,
-    opts: { escapeToDiff?: boolean } = { escapeToDiff: true },
   ): Promise<HTMLTextAreaElement> {
-    if (opts.escapeToDiff ?? true) {
-      await act(async () => {
-        document.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-        );
-      });
-      await flush();
-    }
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await flush();
     await act(async () => {
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "c", bubbles: true }),

@@ -2988,9 +2988,9 @@ function Composer({
       onCancel();
       return;
     }
-    const isSubmitAlias = e.key === "Enter" && (e.metaKey || e.ctrlKey);
+    if (e.key !== "Enter") return;
+    const isSubmitAlias = e.metaKey || e.ctrlKey;
     const isBareEnter =
-      e.key === "Enter" &&
       !e.shiftKey &&
       !e.metaKey &&
       !e.ctrlKey &&
