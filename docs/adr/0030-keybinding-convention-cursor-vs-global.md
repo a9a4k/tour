@@ -100,7 +100,7 @@ The "different actor" sub-shape is sharp — not vague "stronger variant." It ex
 |---|---|---|
 | Process control | Universal terminal heritage | `Ctrl+C` quit |
 | Dev / debug | Out-of-band; not in the user-facing legend | `Ctrl+D` debug overlay |
-| Text-input commit | Where Enter is taken by the textarea | `Ctrl+S` composer submit (under review separately) |
+| Text-input commit | Where `Enter` is taken by other behavior | *reserved, no current binding* — ADR 0041 chose bare `Enter` for the composer on both surfaces, so the slot stays available for future text-input contexts (command palette, inline search modal) where `Enter` is genuinely taken |
 
 Tier 3 is intentionally a small surface. If the next proposed binding doesn't fit one of the three use cases, it doesn't belong here.
 
@@ -150,7 +150,8 @@ Ask in order, stop at the first yes:
 | `R` | request reply | Tier 2 | different actor |
 | `Ctrl+C` | quit | Tier 3 | process control |
 | `Ctrl+D` | debug overlay | Tier 3 | dev / debug |
-| `Ctrl+S` | composer submit | Tier 3 | text-input commit |
 | `q` `Esc` `Enter` `Space` `[` `]` `?` `/` | (various) | Symbols | terminal / web heritage |
+
+The Tier 3 "text-input commit" slot is declared but unbound — see ADR 0041 for the composer-submit decision that resolved the earlier `Ctrl+S` hedge.
 
 No rebinds. Every letter currently shipping fits cleanly under one of the three tiers or the symbol axis.
