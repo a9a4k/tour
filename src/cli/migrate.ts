@@ -48,17 +48,20 @@ async function stampTour(
   id: string,
   worktreeStamp: string,
 ): Promise<void> {
-  const path = join(tourStoreRoot, id, "tour.toml");
-  const tour = parseTOML(await readFile(path, "utf-8")) as Record<string, unknown>;
+  const tourTomlPath = join(tourStoreRoot, id, "tour.toml");
+  const tour = parseTOML(await readFile(tourTomlPath, "utf-8")) as Record<
+    string,
+    unknown
+  >;
   tour.created_in_worktree = worktreeStamp;
-  await writeFile(path, stringifyTOML(tour));
+  await writeFile(tourTomlPath, stringifyTOML(tour));
 }
 
 async function scrubGitignore(repoRoot: string): Promise<boolean> {
-  const path = join(repoRoot, ".gitignore");
+  const gitignorePath = join(repoRoot, ".gitignore");
   let content: string;
   try {
-    content = await readFile(path, "utf-8");
+    content = await readFile(gitignorePath, "utf-8");
   } catch {
     return false;
   }
@@ -74,7 +77,7 @@ async function scrubGitignore(repoRoot: string): Promise<boolean> {
   if (kept.length === lines.length) return false;
   let next = kept.join("\n");
   if (hadFinalNewline && next !== "" && !next.endsWith("\n")) next += "\n";
-  await writeFile(path, next);
+  await writeFile(gitignorePath, next);
   return true;
 }
 
@@ -87,43 +90,51 @@ async function removeIfEmpty(path: string): Promise<boolean> {
   }
 }
 
+function printMigrateResult(result: MigrateResult, json: boolean): void {
+  const migratedCount = result.migrated.length;
+  if (json) {
+    printOutput(result, true);
+  } else if (migratedCount === 0) {
+    console.log("nothing to migrate");
+  } else {
+    console.log(
+      `migrated ${migratedCount} tour${migratedCount === 1 ? "" : "s"}`,
+    );
+  }
+}
+
 export async function migrate(args: MigrateArgs): Promise<void> {
-  const legacyDotTour = args.legacyDotTour;
+  const { cwd, json, legacyDotTour, tourStoreRoot, worktreeStamp } = args;
   if (!legacyDotTour) {
-    const result = { migrated: [], gitignoreScrubbed: false, removedDir: false };
-    if (args.json) printOutput(result, true);
-    else console.log("nothing to migrate");
+    const result: MigrateResult = {
+      migrated: [],
+      gitignoreScrubbed: false,
+      removedDir: false,
+    };
+    printMigrateResult(result, json);
     return;
   }
 
   const ids = await legacyTourIds(legacyDotTour);
   for (const id of ids) {
-    if (existsSync(join(args.tourStoreRoot, id))) {
-      throw new Error(
-        `cannot migrate ${id}: ${join(args.tourStoreRoot, id)} already exists`,
-      );
+    const destination = join(tourStoreRoot, id);
+    if (existsSync(destination)) {
+      throw new Error(`cannot migrate ${id}: ${destination} already exists`);
     }
   }
 
-  await mkdir(args.tourStoreRoot, { recursive: true });
+  await mkdir(tourStoreRoot, { recursive: true });
   const migrated: string[] = [];
   for (const id of ids) {
-    await rename(join(legacyDotTour, id), join(args.tourStoreRoot, id));
-    await stampTour(args.tourStoreRoot, id, args.worktreeStamp);
+    const source = join(legacyDotTour, id);
+    const destination = join(tourStoreRoot, id);
+    await rename(source, destination);
+    await stampTour(tourStoreRoot, id, worktreeStamp);
     migrated.push(id);
   }
 
-  const gitignoreScrubbed = await scrubGitignore(args.cwd);
+  const gitignoreScrubbed = await scrubGitignore(cwd);
   const removedDir = await removeIfEmpty(legacyDotTour);
   const result: MigrateResult = { migrated, gitignoreScrubbed, removedDir };
-
-  if (args.json) {
-    printOutput(result, true);
-  } else if (migrated.length === 0) {
-    console.log("nothing to migrate");
-  } else {
-    console.log(
-      `migrated ${migrated.length} tour${migrated.length === 1 ? "" : "s"}`,
-    );
-  }
+  printMigrateResult(result, json);
 }
