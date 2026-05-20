@@ -1617,8 +1617,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
       });
     });
 
-    it("`p` from a reply in Thread B is null (Thread A is treated as the prior top-level)", () => {
-      // Thread B has no replies; simulate cursor on parentB instead.
+    it("`p` from a parent in Thread B still lands on Thread A's parent", () => {
       const c: CardAnchor = { kind: "card", commentId: "pB", preferredSide: "additions" };
       expect(prevCard(c, topLevel, threads)).toEqual({
         kind: "card",

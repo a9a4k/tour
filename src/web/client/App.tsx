@@ -459,11 +459,11 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       // browser-native smooth-scroll interrupts a prior tween on each
       // new call, so rapid `n n n n` sequences converge on the last
       // target without queueing.
-      const topLevel = view.nav.topLevel;
+      const { topLevel, threads } = view.nav;
       const target =
         delta === 1
-          ? nextCard(cursor, topLevel, view.nav.threads)
-          : prevCard(cursor, topLevel, view.nav.threads);
+          ? nextCard(cursor, topLevel, threads)
+          : prevCard(cursor, topLevel, threads);
       if (!target) return;
       const ann = topLevel.find((a) => a.id === target.commentId);
       if (!ann) return;
