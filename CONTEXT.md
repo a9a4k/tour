@@ -37,16 +37,16 @@ A note anchored to `(file, side, line_start, line_end)` inside a Tour's diff. `s
 _Avoid_: annotation (legacy Pierre-era term; superseded by ADR 0029), review comment, note
 
 **Reply**:
-A Comment whose `replies_to` field points at another Comment in the same Tour. Inherits the parent's `(file, side, line_start, line_end)` anchor — replies don't have independent positions. Renders inside the parent's card as part of a Thread. A deleted Reply is removed from its Thread's projection; a deleted parent renders as a `[deleted]` stub when ≥1 Reply remains live, and the whole Thread vanishes when every node is deleted (ADR 0036).
-_Avoid_: comment-on-comment, sub-comment, response
+A Comment whose `thread_id` field points at the top-level Comment of its Thread. By contract `thread_id` always references a top-level Comment — Replies never reference other Replies, so a Thread is structurally flat (one root + a list of Replies, ordered by `created_at`); see ADR 0040. Inherits the root's `(file, side, line_start, line_end)` anchor — replies don't have independent positions. Renders inside the root's card. Deletion cascade unchanged (ADR 0036): a deleted Reply vanishes from the projection; a deleted root with ≥1 live Reply renders as a `[deleted]` stub; a Thread where every node is deleted vanishes entirely.
+_Avoid_: comment-on-comment, sub-comment, response, nested reply
 
 **Comment event**:
 The unit of persistence in `tour-events.jsonl` (ADR 0036). One of `comment.created`, `reply.created`, or `comment.deleted`. The log is append-only; the canonical Comment set for a Tour is the projection produced by folding events at read time. New verbs (edit, resolve, re-anchor) extend the union without changing the storage seam. Only humans emit `comment.deleted` events; agents create only.
 _Avoid_: tombstone (the storage shape is uniform — `comment.deleted` is no more a tombstone than `comment.created` is)
 
 **Thread**:
-A top-level Comment plus the chain of Replies attached to it. Lives entirely inside one Tour — Threads do not carry across Tours in v1 (preserves ADR 0003's "no re-anchoring" stance). When a Tour closes, its Threads close with it. Continuity across Tours is the agent's job (it re-references prior concerns in prose when reviewing the new SHA), not Tour's data model.
-_Avoid_: conversation, discussion, exchange
+A top-level Comment plus the flat list of Replies attached to it. Structurally flat — Replies always point at the root via `thread_id`, never at other Replies; the data model does not admit nested sub-threads (ADR 0040). Lives entirely inside one Tour — Threads do not carry across Tours in v1 (preserves ADR 0003's "no re-anchoring" stance). When a Tour closes, its Threads close with it. Continuity across Tours is the agent's job (it re-references prior concerns in prose when reviewing the new SHA), not Tour's data model.
+_Avoid_: conversation, discussion, exchange, tree, nested
 
 **Reply-agent**:
 An ephemeral, capability-bounded agent process spawned by the renderer on explicit user action — pressing `s` in the TUI, or clicking **Send to {agent}** on a human Comment card in the webapp. Both surfaces converge on the shared core seam `requestReply` (`src/core/reply-runner.ts`). The agent has **no tools** — it runs in non-interactive print mode and emits the reply body to stdout; Tour captures stdout and writes the Reply Comment itself. The capability boundary is "no tools," strictly stronger than the prior single-allowed-tool design: the agent literally cannot read, write, edit, or shell out. A Tour-canonical system prompt instructs the model to emit only the reply body — no preamble, no narration. Distinct from the **main-agent** — the user's existing Claude Code / Codex / etc. session — which is unrestricted and consumes the conversation later via `tour pickup`. Invocation was originally implicit (watcher fired on every new human-authored Comment, ADR 0010); reversed in ADR 0021 to eliminate silent over-dispatch on directive / WIP / test Comments the user never intended to send to the agent.
