@@ -16,7 +16,7 @@ export async function dispatchOpenInEditor(
   file: string,
   line: number,
   side: OpenInEditorSide,
-  flashFooterStatus: (message: string) => void,
+  flash: (message: string) => void,
 ): Promise<void> {
   let res: Response;
   try {
@@ -26,11 +26,11 @@ export async function dispatchOpenInEditor(
       body: JSON.stringify({ file, line, side }),
     });
   } catch {
-    flashFooterStatus("o: server unreachable");
+    flash("o: server unreachable");
     return;
   }
   const data = (await res
     .json()
     .catch(() => ({ message: "o: server error" }))) as { message?: string };
-  flashFooterStatus(data.message ?? "o: server error");
+  flash(data.message ?? "o: server error");
 }

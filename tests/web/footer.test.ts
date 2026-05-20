@@ -10,7 +10,7 @@ import { Footer } from "../../src/web/client/Footer.js";
 // wrapped in an `aria-live="polite"` `aria-atomic="true"` span so screen
 // readers announce status changes politely. The component stays a
 // shallow presentational shell; composition lives in
-// core/footer-hints.ts and the auto-dismiss timer lives in App.tsx.
+// core/footer-hints.ts and the auto-dismiss timer lives in useFlashFooter.
 
 let root: Root | null = null;
 

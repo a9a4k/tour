@@ -167,7 +167,7 @@ describe("dispatchCursorKey: r / R gated by cursor row kind (PRD #192, issue #39
 describe("dispatchCursorKey: r / R miss reasons surface as status (PRD #330, issue #390)", () => {
   // ADR 0028 / PRD #330: cross-axis misses on the webapp footer flash a
   // reason via the transient status slot. The keymap emits the message; the
-  // App-side handler routes it into setFooterStatus with a ~2s auto-dismiss.
+  // App-side handler routes it into useFlashFooter with a ~2s auto-dismiss.
   // PRD #335 / ADR 0029 flipped "annotation" → "comment" in these strings.
   // Issue #390 / ADR 0021 addendum: the "Send …" copy was reframed to
   // "Request-reply …" and "Reply agent (<name>) is already replying."

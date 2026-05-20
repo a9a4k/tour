@@ -88,6 +88,7 @@ import { resolveYankTarget } from "../../core/yank-target.js";
 import { dispatchOpenInEditor } from "./dispatch-open-in-editor.js";
 import { dispatchDeleteComment } from "./dispatch-delete-comment.js";
 import { DeleteConfirmModal } from "./DeleteConfirmModal.js";
+import { useFlashFooter } from "../../core/use-flash-footer.js";
 import {
   consumeTextSelectionDrag,
   createTextSelectionDragState,
@@ -213,30 +214,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   // updates this; Enter on a file row moves the cursor, and the reducer
   // mirrors selectedFile from cursor file-change transitions.
   const [sidebarSelectedPath, setSidebarSelectedPath] = useState<string | null>(null);
-  // PRD #330 / ADR 0028: transient footer status surface. The cursor-keymap's
-  // `r` / `R` miss branches flash a reason here; the timer auto-dismisses
-  // after ~2s. Last-write-wins — replacement clears the prior pending
-  // timer; unmount clears any pending timer.
-  const [footerStatus, setFooterStatus] = useState<string | null>(null);
-  const footerStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flashFooterStatus = useCallback((message: string) => {
-    if (footerStatusTimerRef.current !== null) {
-      clearTimeout(footerStatusTimerRef.current);
-    }
-    setFooterStatus(message);
-    footerStatusTimerRef.current = setTimeout(() => {
-      setFooterStatus(null);
-      footerStatusTimerRef.current = null;
-    }, 2000);
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (footerStatusTimerRef.current !== null) {
-        clearTimeout(footerStatusTimerRef.current);
-        footerStatusTimerRef.current = null;
-      }
-    };
-  }, []);
+  // PRD #330 / ADR 0028 / issue #440: transient footer status surface.
+  // The shared hook owns the ~2s last-write-wins dismiss timer.
+  const { status: footerStatus, flash } = useFlashFooter();
   // Issue #334: when the composer transitions into `errored` (the
   // runtime dispatches `composer.failed` on adapter rejection — see
   // core/tour-session-runtime.ts:238), flash the failure reason in
@@ -252,10 +232,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     if (isErrored && !wasComposerErroredRef.current) {
       const verb =
         composerSlice.target.kind === "reply" ? "Reply" : "Comment";
-      flashFooterStatus(`${verb} failed: ${composerSlice.error}`);
+      flash(`${verb} failed: ${composerSlice.error}`);
     }
     wasComposerErroredRef.current = isErrored;
-  }, [composerSlice, flashFooterStatus]);
+  }, [composerSlice, flash]);
   // Folds (collapsedFolders + collapsedOverrides), layout, and composer
   // (target / body / error as one tagged-union slice) all live in the Tour-
   // session store (PRD #234 slice 3, issue #238). The webapp's three local
@@ -1158,7 +1138,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
       if (action.type === "noop") return;
       if (action.type === "status") {
         e.preventDefault();
-        flashFooterStatus(action.message);
+        flash(action.message);
         return;
       }
       e.preventDefault();
@@ -1432,7 +1412,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           if (view.kind !== "ok") return;
           const topLevel = view.nav.topLevel;
           if (topLevel.length === 0) {
-            flashFooterStatus("C: no threads to collapse");
+            flash("C: no threads to collapse");
             return;
           }
           const allCollapsed = topLevel.every((c) =>
@@ -1498,7 +1478,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
               view.kind === "ok" ? view.bundle.filesByName : new Map(),
           });
           if (target.kind === "none") {
-            flashFooterStatus(
+            flash(
               target.reason === "no-selection"
                 ? "y: no selection"
                 : "y: no cursor",
@@ -1513,7 +1493,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           const write = navigator.clipboard?.writeText?.(text);
           if (!write) return;
           write.then(
-            () => flashFooterStatus(message),
+            () => flash(message),
             () => {},
           );
           return;
@@ -1535,9 +1515,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           });
           if (!target) {
             if (cursor && cursor.kind === "row" && cursor.interactive) {
-              flashFooterStatus("o: not on a diff row — j/k to land on a line");
+              flash("o: not on a diff row — j/k to land on a line");
             } else {
-              flashFooterStatus("o: no file under cursor");
+              flash("o: no file under cursor");
             }
             return;
           }
@@ -1547,7 +1527,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
             target.file,
             target.line,
             cursor && cursor.kind === "row" ? cursor.side : "additions",
-            flashFooterStatus,
+            flash,
           );
           return;
         }
@@ -1572,7 +1552,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     boundaryBottomGapSize,
     hunkSeparatorGapSize,
     store,
-    flashFooterStatus,
+    flash,
     paneFocus,
     sidebarVisible,
     effectiveSidebarSelectedPath,
@@ -1692,9 +1672,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   const openInEditor = useCallback(
     (file: string, line: number, side: "additions" | "deletions") => {
       if (!tourId) return;
-      void dispatchOpenInEditor(tourId, file, line, side, flashFooterStatus);
+      void dispatchOpenInEditor(tourId, file, line, side, flash);
     },
-    [tourId, flashFooterStatus],
+    [tourId, flash],
   );
 
   const onAnnotationFileClick = useCallback(
@@ -1785,9 +1765,9 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
     const target = deleteModalTargetId;
     setDeleteModalTargetId(null);
     void dispatchDeleteComment(tourId, target).then((res) => {
-      if (!res.ok && res.message) flashFooterStatus(res.message);
+      if (!res.ok && res.message) flash(res.message);
     });
-  }, [tourId, deleteModalTargetId, flashFooterStatus]);
+  }, [tourId, deleteModalTargetId, flash]);
 
   const setLayoutChoice = useCallback(
     (next: Layout) => {

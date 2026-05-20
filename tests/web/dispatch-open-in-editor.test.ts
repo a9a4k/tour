@@ -56,7 +56,7 @@ describe("dispatchOpenInEditor", () => {
     expect(body).toEqual({ file: "foo.ts", line: 42, side: "additions" });
   });
 
-  it("pipes the server's `message` field verbatim into flashFooterStatus on success", async () => {
+  it("pipes the server's `message` field verbatim into flash on success", async () => {
     globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(JSON.stringify({ message: "Opened foo.ts:42" }), {
