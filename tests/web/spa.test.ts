@@ -443,6 +443,7 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.composer\s*\{[^}]*background:\s*var\(--canvas-subtle\)/);
     expect(out).toMatch(/\.composer-textarea\s*\{[^}]*background:\s*var\(--canvas-default\)/);
     expect(out).toMatch(/\.composer-textarea\s*\{[^}]*resize:\s*vertical/);
+    expect(out).toMatch(/\.composer-hint\s*\{[^}]*color:\s*var\(--fg-muted\)/);
     expect(out).toMatch(/\.composer-submit\s*\{[^}]*background:\s*var\(--bg-accent-emphasis\)/);
     expect(out).toMatch(/\.composer-submit:disabled\s*\{/);
     expect(out).toMatch(/\.composer-error\s*\{[^}]*color:\s*var\(--fg-danger\)/);

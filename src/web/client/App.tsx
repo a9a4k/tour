@@ -2950,6 +2950,8 @@ interface ComposerProps {
   onCancel: () => void;
 }
 
+const WEB_COMPOSER_HINT = "Enter: submit · Shift+Enter: newline · Esc: cancel";
+
 // Controlled textarea reading `body` from the Tour-session store's
 // composer slice (PRD #234 slice 3, issue #238). The local
 // `useState<string>("")` is gone: every keystroke dispatches
@@ -2986,7 +2988,14 @@ function Composer({
       onCancel();
       return;
     }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    const isSubmitAlias = e.key === "Enter" && (e.metaKey || e.ctrlKey);
+    const isBareEnter =
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey;
+    if (isSubmitAlias || isBareEnter) {
       e.preventDefault();
       submit();
     }
@@ -3006,6 +3015,7 @@ function Composer({
         placeholder={placeholder}
         rows={3}
       />
+      <div className="composer-hint">{WEB_COMPOSER_HINT}</div>
       {error ? <div className="composer-error">{error}</div> : null}
       <div className="composer-actions">
         <button

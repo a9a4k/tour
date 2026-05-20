@@ -1230,6 +1230,207 @@ function setTextareaValue(ta: HTMLTextAreaElement, value: string): void {
   ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+describe("App composer keyboard submit (issue #454 / ADR 0041)", () => {
+  async function openTopLevelComposer(
+    container: HTMLElement,
+    opts: { escapeToDiff?: boolean } = { escapeToDiff: true },
+  ): Promise<HTMLTextAreaElement> {
+    if (opts.escapeToDiff ?? true) {
+      await act(async () => {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+      });
+      await flush();
+    }
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+      );
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    return ta!;
+  }
+
+  async function mountComposerFixture(
+    bundle: typeof failBundleWithAnn | typeof failBundleEmpty,
+    postResponder: () => Promise<Response>,
+  ): Promise<HTMLElement> {
+    globalThis.fetch = stubFailFetch({ bundle, postResponder });
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+    return container;
+  }
+
+  function okCommentResponse(id: string, body: string): Promise<Response> {
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          ...failHumanAnn,
+          id,
+          body,
+          author: "human",
+          author_kind: "human",
+          created_at: "2026-05-20T00:00:00Z",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+  }
+
+  it("bare Enter submits a non-empty top-level composer", async () => {
+    let postCount = 0;
+    const container = await mountComposerFixture(failBundleEmpty, () => {
+      postCount += 1;
+      return okCommentResponse("ann-enter-submit", "first comment");
+    });
+
+    const ta = await openTopLevelComposer(container);
+    await act(async () => {
+      setTextareaValue(ta, "first comment");
+    });
+
+    await act(async () => {
+      ta.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    await flush();
+
+    expect(postCount).toBe(1);
+  });
+
+  it("keeps non-submit newline shortcuts out of the web composer handler", async () => {
+    let postCount = 0;
+    const container = await mountComposerFixture(failBundleEmpty, () => {
+      postCount += 1;
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    });
+    const ta = await openTopLevelComposer(container);
+    await act(async () => {
+      setTextareaValue(ta, "   ");
+    });
+
+    const bareEnter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      ta.dispatchEvent(bareEnter);
+    });
+    await flush();
+
+    expect(postCount).toBe(0);
+    expect(bareEnter.defaultPrevented).toBe(true);
+    expect(ta.value).toBe("   ");
+
+    const shiftEnter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      ta.dispatchEvent(shiftEnter);
+    });
+
+    const ctrlJ = new KeyboardEvent("keydown", {
+      key: "j",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      ta.dispatchEvent(ctrlJ);
+    });
+
+    expect(shiftEnter.defaultPrevented).toBe(false);
+    expect(ctrlJ.defaultPrevented).toBe(false);
+    expect(postCount).toBe(0);
+  });
+
+  it.each([
+    ["Ctrl+Enter", { ctrlKey: true }],
+    ["Cmd+Enter", { metaKey: true }],
+  ])("%s remains a submit alias", async (_label, modifiers) => {
+    let postCount = 0;
+    const container = await mountComposerFixture(failBundleEmpty, () => {
+      postCount += 1;
+      return okCommentResponse(`ann-alias-${postCount}`, "alias body");
+    });
+    const ta = await openTopLevelComposer(container);
+    await act(async () => {
+      setTextareaValue(ta, "alias body");
+    });
+
+    await act(async () => {
+      ta.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          ...modifiers,
+        }),
+      );
+    });
+    await flush();
+
+    expect(postCount).toBe(1);
+  });
+
+  it("shows the composer hint for both top-level and reply composers", async () => {
+    const container = await mountComposerFixture(failBundleWithAnn, () =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "r", bubbles: true }),
+      );
+    });
+    await flush();
+    let hint = container.querySelector(".composer-hint");
+    expect(hint?.textContent).toBe(
+      "Enter: submit · Shift+Enter: newline · Esc: cancel",
+    );
+
+    await act(async () => {
+      root!.unmount();
+      root = null;
+    });
+
+    const topLevelContainer = await mountComposerFixture(failBundleEmpty, () =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+    const ta = await openTopLevelComposer(topLevelContainer);
+    await act(async () => {
+      setTextareaValue(ta, "draft");
+    });
+
+    hint = topLevelContainer.querySelector(".composer-hint");
+    expect(hint?.textContent).toBe(
+      "Enter: submit · Shift+Enter: newline · Esc: cancel",
+    );
+  });
+});
+
 describe("App comment-create failure status (Issue #334)", () => {
   it("non-2xx response on reply submit flashes `Reply failed: <reason>` in the footer status slot", async () => {
     globalThis.fetch = stubFailFetch({

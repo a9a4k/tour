@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Webapp: composer now submits on `Enter`; `Shift+Enter` inserts a
+  newline (issue #454 / ADR 0041).** The existing `Cmd/Ctrl+Enter`
+  submit chord remains as an alias, and every web composer now shows
+  the matching hint below the textarea:
+  `Enter: submit · Shift+Enter: newline · Esc: cancel`. `Ctrl+J`
+  stays unbound on the web so the browser shortcut is not intercepted.
+
 - **Webapp: within-Card active-node cue gains a `●` glyph (issue #409 —
   TUI parity follow-up to #408).** Issue #408 shipped a CSS-only
   active-node cue (left-accent stroke + `--bg-accent-current` tint) on

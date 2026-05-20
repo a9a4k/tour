@@ -683,6 +683,11 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     outline: 1px solid var(--border-accent);
     outline-offset: 0;
   }
+  .composer-hint {
+    margin-top: 4px;
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
   .composer-error {
     margin-top: 6px;
     color: var(--fg-danger);
