@@ -129,6 +129,32 @@ describe("TourPicker (TUI) — row click wiring (issue #321)", () => {
     expect(stopPropagation).toHaveBeenCalled();
   });
 
+  it("keeps OpenTUI plain clicks on picker labels selecting the row even when selection is active", () => {
+    const onSelect = vi.fn();
+    const root = renderPicker({ onSelect });
+    const row = rowBoxes(root)[1]!;
+    const textDown = {
+      button: 0,
+      target: { selectable: true },
+      x: 10,
+      y: 4,
+      stopPropagation: vi.fn(),
+    };
+    const textUp = {
+      button: 0,
+      target: { selectable: true },
+      isDragging: true,
+      x: 10,
+      y: 4,
+      stopPropagation: vi.fn(),
+    };
+
+    (row.props["onMouseDown"] as (event: typeof textDown) => void)(textDown);
+    (row.props["onMouseUp"] as (event: typeof textUp) => void)(textUp);
+
+    expect(onSelect).toHaveBeenCalledWith(1);
+  });
+
   it("keeps plain clicks on picker labels selecting the row", () => {
     const onSelect = vi.fn();
     const root = renderPicker({ onSelect });

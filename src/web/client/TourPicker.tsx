@@ -117,9 +117,8 @@ export function TourPicker({
               .filter(Boolean)
               .join(" ");
             return (
-              <button
+              <div
                 key={r.id}
-                type="button"
                 data-picker-row-idx={i}
                 className={cls}
                 role="option"
@@ -154,7 +153,7 @@ export function TourPicker({
                     {r.commentCount}
                   </span>
                 ) : null}
-              </button>
+              </div>
             );
           })}
         </div>
