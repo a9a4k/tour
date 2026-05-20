@@ -1400,7 +1400,7 @@ describe("App comment-create failure status (Issue #334)", () => {
               body: "reply body",
               author: "human",
               author_kind: "human",
-              replies_to: "ann-human-fail",
+              thread_id: "ann-human-fail",
               created_at: "2026-05-15T00:00:01Z",
             }),
             {
@@ -1965,7 +1965,7 @@ const replyWalkReply1 = {
   body: "reply 1",
   author: "alice",
   author_kind: "human" as const,
-  replies_to: "ann-parent",
+  thread_id: "ann-parent",
   created_at: "2026-05-17T00:00:01Z",
 };
 
@@ -1978,7 +1978,7 @@ const replyWalkReply2 = {
   body: "reply 2",
   author: "alice",
   author_kind: "human" as const,
-  replies_to: "ann-parent",
+  thread_id: "ann-parent",
   created_at: "2026-05-17T00:00:02Z",
 };
 
@@ -2003,7 +2003,7 @@ const replyWalkNextReply = {
   body: "next reply",
   author: "alice",
   author_kind: "human" as const,
-  replies_to: "ann-next-parent",
+  thread_id: "ann-next-parent",
   created_at: "2026-05-17T00:00:04Z",
 };
 
@@ -2661,7 +2661,7 @@ describe("App post-submit cursor lands on the new Reply (issue #405 race with #3
     body: "pushback",
     author: "human",
     author_kind: "human" as const,
-    replies_to: "ann-human-fail",
+    thread_id: "ann-human-fail",
     created_at: "2026-05-17T00:00:00Z",
   };
 

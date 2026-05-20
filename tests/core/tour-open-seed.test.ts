@@ -53,7 +53,7 @@ function comment(over: Partial<Comment> & { id: string }): Comment {
     author: over.author ?? "user",
     author_kind: over.author_kind ?? "human",
     created_at: over.created_at ?? "2026-05-19T00:00:00Z",
-    ...(over.replies_to !== undefined ? { replies_to: over.replies_to } : {}),
+    ...(over.thread_id !== undefined ? { thread_id: over.thread_id } : {}),
     ...(over.deleted !== undefined ? { deleted: over.deleted } : {}),
   };
 }
@@ -112,7 +112,7 @@ describe("computeTourOpenSeed", () => {
 
   it("annId pointing at a Reply falls back to topLevel[0]", () => {
     const first = comment({ id: "ann-1", file: "a.ts" });
-    const reply = comment({ id: "reply-1", file: "b.ts", replies_to: "ann-1" });
+    const reply = comment({ id: "reply-1", file: "b.ts", thread_id: "ann-1" });
 
     expect(computeTourOpenSeed(okBundle([first, reply]), "reply-1")).toEqual(
       nonEmptySeed("ann-1", "a.ts"),

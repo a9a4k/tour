@@ -46,7 +46,7 @@ function ann(o: Partial<Comment> & Pick<Comment, "id">): Comment {
     body: o.body ?? "body",
     author: o.author ?? (o.author_kind === "agent" ? "claude" : "user"),
     author_kind: o.author_kind ?? "human",
-    replies_to: o.replies_to,
+    thread_id: o.thread_id,
     created_at: o.created_at ?? "2026-05-12T00:00:00Z",
     deleted: o.deleted,
   };
@@ -165,12 +165,12 @@ describe("deriveTourSessionView — snapshot-lost", () => {
     const top = ann({ id: "a1", created_at: "2026-05-12T00:00:00Z" });
     const reply = ann({
       id: "r1",
-      replies_to: "a1",
+      thread_id: "a1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const orphan = ann({
       id: "o1",
-      replies_to: "missing-id",
+      thread_id: "missing-id",
       created_at: "2026-05-12T00:00:02Z",
     });
     const view = deriveTourSessionView(
@@ -240,7 +240,7 @@ describe("deriveTourSessionView — nav slice", () => {
     const top = ann({ id: "a1", created_at: "2026-05-12T00:00:00Z" });
     const reply = ann({
       id: "r1",
-      replies_to: "a1",
+      thread_id: "a1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const view = expectOk(
@@ -256,7 +256,7 @@ describe("deriveTourSessionView — nav slice", () => {
   it("navIndexById is 1-based, top-level only", () => {
     const t1 = ann({ id: "t1" });
     const t2 = ann({ id: "t2", created_at: "2026-05-12T00:00:01Z" });
-    const reply = ann({ id: "r1", replies_to: "t1" });
+    const reply = ann({ id: "r1", thread_id: "t1" });
     const view = expectOk(
       deriveTourSessionView(
         okBundle({ comments: [t1, t2, reply] }),
@@ -271,8 +271,8 @@ describe("deriveTourSessionView — nav slice", () => {
 
   it("repliesByRoot excludes orphan replies (parent missing)", () => {
     const top = ann({ id: "t1" });
-    const reply = ann({ id: "r1", replies_to: "t1" });
-    const orphan = ann({ id: "o1", replies_to: "missing-id" });
+    const reply = ann({ id: "r1", thread_id: "t1" });
+    const orphan = ann({ id: "o1", thread_id: "missing-id" });
     const view = expectOk(
       deriveTourSessionView(
         okBundle({ comments: [top, reply, orphan] }),
@@ -292,12 +292,12 @@ describe("deriveTourSessionView — nav slice", () => {
     const t2 = ann({ id: "t2", created_at: "2026-05-12T00:00:01Z" });
     const reply = ann({
       id: "r1",
-      replies_to: "t2",
+      thread_id: "t2",
       created_at: "2026-05-12T00:00:02Z",
     });
     const deletedReply = ann({
       id: "r2",
-      replies_to: "t2",
+      thread_id: "t2",
       created_at: "2026-05-12T00:00:03Z",
       deleted: { at: "2026-05-12T00:00:04Z" },
     });
@@ -363,13 +363,13 @@ describe("deriveTourSessionView — nav slice", () => {
     });
     const agentReply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       author_kind: "agent",
       created_at: "2026-05-12T00:00:01Z",
     });
     const humanFollowUp = ann({
       id: "r2",
-      replies_to: "r1",
+      thread_id: "r1",
       author_kind: "human",
       created_at: "2026-05-12T00:00:02Z",
     });
@@ -392,7 +392,7 @@ describe("deriveTourSessionView — nav slice", () => {
     });
     const agentReply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       author_kind: "agent",
       created_at: "2026-05-12T00:00:01Z",
     });
@@ -430,7 +430,7 @@ describe("deriveTourSessionView — tree slice", () => {
 
   it("commentCounts counts top-level comments per file", () => {
     const t1 = ann({ id: "t1", file: "a.ts" });
-    const r1 = ann({ id: "r1", file: "a.ts", replies_to: "t1" });
+    const r1 = ann({ id: "r1", file: "a.ts", thread_id: "t1" });
     const t2 = ann({ id: "t2", file: "sub/b.ts" });
     const view = expectOk(
       deriveTourSessionView(
@@ -617,7 +617,7 @@ describe("deriveTourSessionView — cursor projection on collapsed Thread (PRD #
     const top = ann({ id: "t1", file: "a.ts" });
     const reply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const view = expectOk(
@@ -639,7 +639,7 @@ describe("deriveTourSessionView — cursor projection on collapsed Thread (PRD #
     const top = ann({ id: "t1", file: "a.ts" });
     const reply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const view = expectOk(
@@ -656,7 +656,7 @@ describe("deriveTourSessionView — cursor projection on collapsed Thread (PRD #
     const top = ann({ id: "t1", file: "a.ts" });
     const reply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const view = expectOk(
@@ -688,7 +688,7 @@ describe("deriveTourSessionView — watcher-reload preservation", () => {
     // Simulate a watcher refresh: comment list keeps t1 but adds a reply.
     const reply = ann({
       id: "r1",
-      replies_to: "t1",
+      thread_id: "t1",
       created_at: "2026-05-12T00:00:01Z",
     });
     const after = expectOk(

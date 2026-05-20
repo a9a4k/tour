@@ -20,12 +20,12 @@ function createTop(over: Partial<Extract<TourEvent, { kind: "comment.created" }>
 
 function createReply(over: Partial<Extract<TourEvent, { kind: "reply.created" }>> & {
   id: string;
-  replies_to: string;
+  thread_id: string;
 }): Extract<TourEvent, { kind: "reply.created" }> {
   return {
     kind: "reply.created",
     id: over.id,
-    replies_to: over.replies_to,
+    thread_id: over.thread_id,
     body: over.body ?? "reply " + over.id,
     author: over.author ?? "human",
     author_kind: over.author_kind ?? "human",
@@ -71,13 +71,13 @@ describe("foldEventsToComments", () => {
           line_start: 5,
           line_end: 7,
         }),
-        createReply({ id: "r1", replies_to: "p1", body: "agreed" }),
+        createReply({ id: "r1", thread_id: "p1", body: "agreed" }),
       ];
       const out = foldEventsToComments(events);
       expect(out).toHaveLength(2);
       const reply = out[1];
       expect(reply.id).toBe("r1");
-      expect(reply.replies_to).toBe("p1");
+      expect(reply.thread_id).toBe("p1");
       expect(reply.file).toBe("lib/y.ts");
       expect(reply.side).toBe("deletions");
       expect(reply.line_start).toBe(5);
@@ -89,7 +89,7 @@ describe("foldEventsToComments", () => {
       const events: TourEvent[] = [
         createTop({ id: "a" }),
         createTop({ id: "b" }),
-        createReply({ id: "ra", replies_to: "a" }),
+        createReply({ id: "ra", thread_id: "a" }),
         createTop({ id: "c" }),
       ];
       const out = foldEventsToComments(events);
@@ -101,8 +101,8 @@ describe("foldEventsToComments", () => {
     it("removes a deleted leaf Reply from the projection", () => {
       const events: TourEvent[] = [
         createTop({ id: "p" }),
-        createReply({ id: "r1", replies_to: "p" }),
-        createReply({ id: "r2", replies_to: "p" }),
+        createReply({ id: "r1", thread_id: "p" }),
+        createReply({ id: "r2", thread_id: "p" }),
         deleteEvent("r2"),
       ];
       const out = foldEventsToComments(events);
@@ -121,7 +121,7 @@ describe("foldEventsToComments", () => {
           line_end: 14,
           body: "original body",
         }),
-        createReply({ id: "r1", replies_to: "p", body: "still relevant" }),
+        createReply({ id: "r1", thread_id: "p", body: "still relevant" }),
         deleteEvent("p", "2026-05-16T12:30:00Z"),
       ];
       const out = foldEventsToComments(events);
@@ -143,9 +143,9 @@ describe("foldEventsToComments", () => {
     it("keeps the stub when only some replies are deleted", () => {
       const events: TourEvent[] = [
         createTop({ id: "p" }),
-        createReply({ id: "r1", replies_to: "p" }),
-        createReply({ id: "r2", replies_to: "p" }),
-        createReply({ id: "r3", replies_to: "p" }),
+        createReply({ id: "r1", thread_id: "p" }),
+        createReply({ id: "r2", thread_id: "p" }),
+        createReply({ id: "r3", thread_id: "p" }),
         deleteEvent("p"),
         deleteEvent("r2"),
       ];
@@ -160,8 +160,8 @@ describe("foldEventsToComments", () => {
     it("removes a thread where parent and all replies are deleted", () => {
       const events: TourEvent[] = [
         createTop({ id: "p" }),
-        createReply({ id: "r1", replies_to: "p" }),
-        createReply({ id: "r2", replies_to: "p" }),
+        createReply({ id: "r1", thread_id: "p" }),
+        createReply({ id: "r2", thread_id: "p" }),
         deleteEvent("r1"),
         deleteEvent("r2"),
         deleteEvent("p"),
@@ -194,7 +194,7 @@ describe("foldEventsToComments", () => {
     it("is idempotent on duplicate delete events for the same target (leaf reply)", () => {
       const events: TourEvent[] = [
         createTop({ id: "p" }),
-        createReply({ id: "r", replies_to: "p" }),
+        createReply({ id: "r", thread_id: "p" }),
         deleteEvent("r", "2026-05-16T12:00:00Z"),
         deleteEvent("r", "2026-05-16T13:00:00Z"),
       ];
@@ -205,7 +205,7 @@ describe("foldEventsToComments", () => {
     it("is idempotent on duplicate delete events for the same target (parent stub)", () => {
       const events: TourEvent[] = [
         createTop({ id: "p" }),
-        createReply({ id: "r", replies_to: "p" }),
+        createReply({ id: "r", thread_id: "p" }),
         deleteEvent("p", "2026-05-16T12:00:00Z"),
         deleteEvent("p", "2026-05-16T13:00:00Z"),
       ];
@@ -220,17 +220,17 @@ describe("foldEventsToComments", () => {
       // deleted. Append order shouldn't change the *set* of projected ids.
       const a: TourEvent[] = [
         createTop({ id: "p" }),
-        createReply({ id: "r1", replies_to: "p" }),
-        createReply({ id: "r2", replies_to: "p" }),
+        createReply({ id: "r1", thread_id: "p" }),
+        createReply({ id: "r2", thread_id: "p" }),
         deleteEvent("p"),
         deleteEvent("r2"),
       ];
       const b: TourEvent[] = [
         createTop({ id: "p" }),
         deleteEvent("r2"),
-        createReply({ id: "r2", replies_to: "p" }),
+        createReply({ id: "r2", thread_id: "p" }),
         deleteEvent("p"),
-        createReply({ id: "r1", replies_to: "p" }),
+        createReply({ id: "r1", thread_id: "p" }),
       ];
       const outA = foldEventsToComments(a);
       const outB = foldEventsToComments(b);
@@ -247,7 +247,7 @@ describe("foldEventsToComments", () => {
       const events: TourEvent[] = [
         createTop({ id: "p1" }),
         createTop({ id: "p2" }),
-        createReply({ id: "r2", replies_to: "p2" }),
+        createReply({ id: "r2", thread_id: "p2" }),
         deleteEvent("p1"),
       ];
       const out = foldEventsToComments(events);
@@ -262,9 +262,9 @@ describe("foldEventsToComments", () => {
       const events: TourEvent[] = [
         createTop({ id: "p1" }),
         createTop({ id: "p2" }),
-        createReply({ id: "p2-r1", replies_to: "p2" }),
-        createReply({ id: "p1-r1", replies_to: "p1" }),
-        createReply({ id: "p2-r2", replies_to: "p2" }),
+        createReply({ id: "p2-r1", thread_id: "p2" }),
+        createReply({ id: "p1-r1", thread_id: "p1" }),
+        createReply({ id: "p2-r2", thread_id: "p2" }),
       ];
       const out = foldEventsToComments(events);
       expect(out.map((c) => c.id)).toEqual(["p1", "p2", "p2-r1", "p1-r1", "p2-r2"]);

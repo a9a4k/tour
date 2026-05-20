@@ -16,7 +16,7 @@ function ann(overrides: Partial<Comment> & Pick<Comment, "id">): Comment {
     body: overrides.body ?? "agent note",
     author: overrides.author ?? "agent",
     author_kind: overrides.author_kind ?? "agent",
-    replies_to: overrides.replies_to,
+    thread_id: overrides.thread_id,
     created_at: overrides.created_at ?? "2026-01-01T00:00:00Z",
   };
 }
@@ -151,7 +151,7 @@ describe("buildReplyComposer", () => {
       line_end: 7,
     });
     const state = buildReplyComposer({ currentComment: parent });
-    expect(state).toEqual({ kind: "reply", replies_to: "a1" });
+    expect(state).toEqual({ kind: "reply", thread_id: "a1" });
   });
 
   it("returns null when there's no current comment to reply to", () => {

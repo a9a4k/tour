@@ -11,7 +11,7 @@ export interface Comment {
   body: string;
   author: string;
   author_kind: AuthorKind;
-  replies_to?: string;
+  thread_id?: string;
   created_at: string;
   // Issue #389 / ADR 0036 (Slice E): the C4 cascade stamps `deleted`
   // on a parent comment when its body is gone but ≥1 reply survives.

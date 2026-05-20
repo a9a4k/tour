@@ -96,7 +96,7 @@ function ann(o: Partial<Comment> & Pick<Comment, "id" | "side" | "line_start" | 
     body: o.body ?? "n",
     author: o.author ?? "agent",
     author_kind: o.author_kind ?? "agent",
-    replies_to: o.replies_to,
+    thread_id: o.thread_id,
     created_at: o.created_at ?? "2026-01-01T00:00:00Z",
   };
 }
@@ -711,7 +711,7 @@ describe("validateCursorStructural", () => {
     };
     const liveReply = ann({
       id: "r1",
-      replies_to: "c1",
+      thread_id: "c1",
       file: "a.ts",
       side: "additions",
       line_start: 1,
@@ -752,7 +752,7 @@ describe("validateCursorStructural", () => {
     const deletedReply = {
       ...ann({
         id: "r1",
-        replies_to: "c1",
+        thread_id: "c1",
         file: "a.ts",
         side: "additions",
         line_start: 1,
@@ -1292,7 +1292,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
     side: "additions",
     line_start: 5,
     line_end: 5,
-    replies_to: "p1",
+    thread_id: "p1",
     created_at: "2026-04-02T00:00:00Z",
   });
   const r2 = ann({
@@ -1301,7 +1301,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
     side: "additions",
     line_start: 5,
     line_end: 5,
-    replies_to: "p1",
+    thread_id: "p1",
     created_at: "2026-04-03T00:00:00Z",
   });
   const r3 = ann({
@@ -1310,7 +1310,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
     side: "additions",
     line_start: 5,
     line_end: 5,
-    replies_to: "p1",
+    thread_id: "p1",
     created_at: "2026-04-04T00:00:00Z",
   });
 
@@ -1590,7 +1590,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
       side: "additions",
       line_start: 1,
       line_end: 1,
-      replies_to: "pA",
+      thread_id: "pA",
       created_at: "2026-04-01T01:00:00Z",
     });
     const rB = ann({
@@ -1599,7 +1599,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
       side: "additions",
       line_start: 2,
       line_end: 2,
-      replies_to: "pB",
+      thread_id: "pB",
       created_at: "2026-04-02T01:00:00Z",
     });
     const topLevel = [parentA, parentB];
@@ -1660,7 +1660,7 @@ describe("ADR 0037 — reply-level cursor stops (issue #385)", () => {
         side: "additions",
         line_start: 3,
         line_end: 3,
-        replies_to: "deleted-parent",
+        thread_id: "deleted-parent",
         created_at: "2026-04-03T01:00:00Z",
       });
       const afterDeletedParent = ann({

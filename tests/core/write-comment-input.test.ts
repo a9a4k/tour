@@ -40,7 +40,7 @@ function mkComment(over: Partial<Comment> & Pick<Comment, "id">): Comment {
     body: over.body ?? "b",
     author: over.author ?? "h",
     author_kind: over.author_kind ?? "human",
-    replies_to: over.replies_to,
+    thread_id: over.thread_id,
     created_at: over.created_at ?? "2026-01-01T00:00:00Z",
   };
 }
@@ -87,7 +87,7 @@ describe("buildWriteCommentInput", () => {
       line_start: 3,
       line_end: 3,
     });
-    const tgt: ComposerTarget = { kind: "reply", replies_to: "ann-parent" };
+    const tgt: ComposerTarget = { kind: "reply", thread_id: "ann-parent" };
     const result = buildWriteCommentInput({
       target: tgt,
       body: "reply body",
@@ -103,7 +103,7 @@ describe("buildWriteCommentInput", () => {
   });
 
   it("reply target with a vanished parent returns parent-missing (no input emitted)", () => {
-    const tgt: ComposerTarget = { kind: "reply", replies_to: "ghost" };
+    const tgt: ComposerTarget = { kind: "reply", thread_id: "ghost" };
     const result = buildWriteCommentInput({
       target: tgt,
       body: "x",

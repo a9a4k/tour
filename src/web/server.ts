@@ -312,10 +312,10 @@ export async function startServer(args: ServeArgs): Promise<void> {
             // the Comment creation seam (PRD #140 rule 1/5).
             if (text === undefined) throw new Error("body is required");
             const author = asString(body.author);
-            const repliesTo = asString(body.replies_to);
-            if (repliesTo) {
+            const threadId = asString(body.thread_id);
+            if (threadId) {
               const reply = await createReply(tourStoreRoot, resolvedId, {
-                replies_to: repliesTo,
+                thread_id: threadId,
                 body: text,
                 author,
                 author_kind: "human",

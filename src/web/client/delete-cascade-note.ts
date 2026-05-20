@@ -19,12 +19,12 @@ export function computeDeleteCascadeNote(
   target: Comment,
   comments: ReadonlyArray<Comment>,
 ): DeleteCascade {
-  if (target.replies_to !== undefined) {
-    const parent = comments.find((c) => c.id === target.replies_to);
+  if (target.thread_id !== undefined) {
+    const parent = comments.find((c) => c.id === target.thread_id);
     const parentLive = parent !== undefined && isLive(parent);
     const liveSiblings = comments.filter(
       (c) =>
-        c.replies_to === target.replies_to && c.id !== target.id && isLive(c),
+        c.thread_id === target.thread_id && c.id !== target.id && isLive(c),
     ).length;
     if (!parentLive && liveSiblings === 0) {
       return { kind: "thread-vanishes" };
@@ -32,7 +32,7 @@ export function computeDeleteCascadeNote(
     return { kind: "reply-only" };
   }
   const surviving = comments.filter(
-    (c) => c.replies_to === target.id && isLive(c),
+    (c) => c.thread_id === target.id && isLive(c),
   ).length;
   if (surviving === 0) return { kind: "thread-vanishes" };
   return { kind: "parent-stub", survivorCount: surviving };

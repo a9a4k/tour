@@ -238,10 +238,10 @@ export function CommentCard({
               {r.author !== r.author_kind ? (
                 <text fg={theme.fg.muted}>{` (${r.author})`}</text>
               ) : null}
-              {r.author_kind === "agent" && r.replies_to ? (
+              {r.author_kind === "agent" && r.thread_id ? (
                 // Issue #390 / ADR 0021 addendum: reply-agent replies are
                 // produced by the dispatch path's `createReply` (always
-                // `author_kind: "agent"` + `replies_to`). Mark them with
+                // `author_kind: "agent"` + `thread_id`). Mark them with
                 // a visible role suffix so the reply-agent reads as a
                 // distinct participant from the user's current chat.
                 <text fg={theme.fg.muted}>{` · reply-agent`}</text>

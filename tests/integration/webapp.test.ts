@@ -261,11 +261,11 @@ describe("Webapp integration", () => {
     expect(ann.author_kind).toBe("human");
     expect(ann.file).toBe("hello.txt");
     expect(ann.body).toBe("Top-level human reply via webapp");
-    expect(ann.replies_to).toBeUndefined();
+    expect(ann.thread_id).toBeUndefined();
     expect(typeof ann.id).toBe("string");
   });
 
-  it("POST /api/tours/:id/comments with replies_to creates a Reply that inherits the parent anchor (Issue #77)", async () => {
+  it("POST /api/tours/:id/comments with thread_id creates a Reply that inherits the parent anchor (Issue #77)", async () => {
     const tourRes = await fetch(`${baseUrl}/api/tours/${tourId}`);
     const data = await tourRes.json() as { comments: Array<{ id: string }> };
     const parentId = data.comments[0].id;
@@ -274,14 +274,14 @@ describe("Webapp integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        replies_to: parentId,
+        thread_id: parentId,
         body: "Webapp reply body",
       }),
     });
     expect(res.status).toBe(201);
     const reply = await res.json() as Record<string, unknown>;
     expect(reply.author_kind).toBe("human");
-    expect(reply.replies_to).toBe(parentId);
+    expect(reply.thread_id).toBe(parentId);
     expect(reply.body).toBe("Webapp reply body");
   });
 

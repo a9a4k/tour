@@ -22,7 +22,7 @@ function mkComment(over: Partial<Comment> & { id: string }): Comment {
     author: over.author ?? "human",
     author_kind: over.author_kind ?? "human",
     created_at: over.created_at ?? "2026-05-13T00:00:00Z",
-    ...(over.replies_to !== undefined ? { replies_to: over.replies_to } : {}),
+    ...(over.thread_id !== undefined ? { thread_id: over.thread_id } : {}),
   };
 }
 
@@ -33,9 +33,9 @@ function thread(root: Comment, replies: Comment[] = []): Thread {
 describe("cascadeFor (ADR 0036 Slice D / issue #388)", () => {
   it("parent with surviving replies → { kind: 'parent-stub', survivorCount }", () => {
     const root = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
-    const r2 = mkComment({ id: "r2", replies_to: "p1" });
-    const r3 = mkComment({ id: "r3", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
+    const r2 = mkComment({ id: "r2", thread_id: "p1" });
+    const r3 = mkComment({ id: "r3", thread_id: "p1" });
     const ts = [thread(root, [r1, r2, r3])];
     expect(cascadeFor(root, ts)).toEqual({
       kind: "parent-stub",
@@ -51,15 +51,15 @@ describe("cascadeFor (ADR 0036 Slice D / issue #388)", () => {
 
   it("reply leaf with siblings → { kind: 'reply-only' }", () => {
     const root = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
-    const r2 = mkComment({ id: "r2", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
+    const r2 = mkComment({ id: "r2", thread_id: "p1" });
     const ts = [thread(root, [r1, r2])];
     expect(cascadeFor(r1, ts)).toEqual({ kind: "reply-only" });
   });
 
   it("reply leaf with live parent and no siblings → { kind: 'reply-only' } (parent + stub stays under live parent)", () => {
     const root = mkComment({ id: "p1" });
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     const ts = [thread(root, [r1])];
     expect(cascadeFor(r1, ts)).toEqual({ kind: "reply-only" });
   });
@@ -69,7 +69,7 @@ describe("cascadeFor (ADR 0036 Slice D / issue #388)", () => {
       ...mkComment({ id: "p1", body: "" }),
       ...({ deleted: { at: "2026-05-13T01:00:00Z" } } as object),
     } as Comment;
-    const r1 = mkComment({ id: "r1", replies_to: "p1" });
+    const r1 = mkComment({ id: "r1", thread_id: "p1" });
     const ts = [thread(root, [r1])];
     expect(cascadeFor(r1, ts)).toEqual({ kind: "thread-vanishes" });
   });
@@ -78,7 +78,7 @@ describe("cascadeFor (ADR 0036 Slice D / issue #388)", () => {
     // Degenerate state: orphaned reply (the fold drops these from the
     // projection, but the modal lookup must not throw). Fall back to the
     // safe "reply removed" message.
-    const orphan = mkComment({ id: "orphan", replies_to: "ghost" });
+    const orphan = mkComment({ id: "orphan", thread_id: "ghost" });
     expect(cascadeFor(orphan, [])).toEqual({ kind: "reply-only" });
   });
 });

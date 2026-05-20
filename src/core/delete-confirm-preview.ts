@@ -25,10 +25,10 @@ export function cascadeFor(
   target: Comment,
   threads: ReadonlyArray<Thread>,
 ): DeleteCascade {
-  if (target.replies_to !== undefined) {
+  if (target.thread_id !== undefined) {
     // Reply target. Find its parent Thread. If the parent is deleted
     // AND no other live reply survives the removal, the Thread vanishes.
-    const thread = threads.find((t) => t.root.id === target.replies_to);
+    const thread = threads.find((t) => t.root.id === target.thread_id);
     if (!thread) return { kind: "reply-only" };
     // The fold removes a deleted leaf Reply from the projection, but the
     // modal previews the *next* projection — `target` is still in

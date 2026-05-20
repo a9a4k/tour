@@ -126,7 +126,7 @@ export function hasLiveReply(
 ): boolean {
   return comments.some(
     (c) =>
-      c.replies_to === commentId &&
+      c.thread_id === commentId &&
       c.deleted === undefined &&
       c.id !== options.treatDeletedCommentId,
   );

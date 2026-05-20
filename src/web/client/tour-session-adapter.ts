@@ -115,7 +115,7 @@ export function createWebTourSessionAdapter(
       const body = input.body.trim();
       const payload: Record<string, unknown> =
         input.kind === "reply"
-          ? { body, replies_to: input.parent.id }
+          ? { body, thread_id: input.parent.id }
           : {
               body,
               file: input.file,
@@ -220,7 +220,7 @@ export function createWebTourSessionAdapter(
       let anchorFile: string | null = null;
       if (target.kind === "reply") {
         if (bundle !== null && bundle.kind === "ok") {
-          const parent = bundle.comments.find((a) => a.id === target.replies_to);
+          const parent = bundle.comments.find((a) => a.id === target.thread_id);
           anchorFile = parent?.file ?? null;
         }
       } else {
@@ -241,7 +241,7 @@ export function createWebTourSessionAdapter(
         const cbs = deps.callbacksRef.current;
         if (!cbs) return;
         if (target.kind === "reply") {
-          const replyAnchor = deps.commentRefs.current.get(target.replies_to);
+          const replyAnchor = deps.commentRefs.current.get(target.thread_id);
           replyAnchor?.scrollIntoView({ behavior: "instant", block: "center" });
           replyAnchor
             ?.querySelector<HTMLTextAreaElement>("textarea")

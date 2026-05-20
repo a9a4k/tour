@@ -2062,7 +2062,7 @@ function App(props: AppProps) {
           state={composer}
           parent={
             composer.target.kind === "reply"
-              ? comments.find((a) => a.id === composer.target.replies_to) ?? null
+              ? comments.find((a) => a.id === composer.target.thread_id) ?? null
               : null
           }
           onInput={(body) => store.dispatch({ type: "composer.setBody", body })}

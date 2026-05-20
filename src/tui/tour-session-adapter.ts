@@ -241,7 +241,7 @@ export function createTuiTourSessionAdapter(
         scheduleScroll(() => {
           const sb = deps.diffScrollBoxRef.current;
           if (!sb) return;
-          const targetId = `comment-${target.replies_to}`;
+          const targetId = `comment-${target.thread_id}`;
           if (sb.content.findDescendantById(targetId)) {
             centerChildInView(sb, targetId);
           }

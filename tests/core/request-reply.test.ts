@@ -60,14 +60,14 @@ async function seedComment(
 ): Promise<void> {
   // ADR 0036 — the on-disk shape is the `tour-events.jsonl` event log,
   // not a homogeneous Comment record log. Seed a `comment.created`
-  // (or `reply.created` for an Annotation with `replies_to`) event so
+  // (or `reply.created` for an Annotation with `thread_id`) event so
   // `readComments` (which folds events) projects this Comment back.
   const path = join(cwd, tour, "tour-events.jsonl");
-  const ev = ann.replies_to !== undefined
+  const ev = ann.thread_id !== undefined
     ? {
         kind: "reply.created" as const,
         id: ann.id,
-        replies_to: ann.replies_to,
+        thread_id: ann.thread_id,
         body: ann.body,
         author: ann.author,
         author_kind: ann.author_kind,
@@ -246,7 +246,7 @@ describe("requestReply", () => {
     expect(adapter.invocations[0].envelope.triggering_comment.id).toBe("ann-1");
 
     const comments = await readComments(dir, tourId);
-    const reply = comments.find((a) => a.replies_to === "ann-1");
+    const reply = comments.find((a) => a.thread_id === "ann-1");
     expect(reply).toBeDefined();
     expect(reply?.body).toBe("fixture: heard you.");
     expect(reply?.author).toBe("fixture");
@@ -281,7 +281,7 @@ describe("requestReply", () => {
     expect(result).toEqual({ kind: "busy" });
     expect(adapter.invocations).toHaveLength(0);
     const comments = await readComments(dir, tourId);
-    expect(comments.find((a) => a.replies_to === "ann-1")).toBeUndefined();
+    expect(comments.find((a) => a.thread_id === "ann-1")).toBeUndefined();
   });
 
   it("returns { kind: 'invalid-comment' } when no comment with that id exists", async () => {
@@ -326,7 +326,7 @@ describe("requestReply", () => {
     await seedComment(
       dir,
       tourId,
-      mkAnn({ id: "ann-1-reply", author_kind: "agent", replies_to: "ann-1" }),
+      mkAnn({ id: "ann-1-reply", author_kind: "agent", thread_id: "ann-1" }),
     );
     const adapter = fixtureAdapter({
       code: 0,
@@ -355,7 +355,7 @@ describe("requestReply", () => {
     });
     expect(result).toEqual({ kind: "no-reply-agent" });
     const comments = await readComments(dir, tourId);
-    expect(comments.find((a) => a.replies_to === "ann-1")).toBeUndefined();
+    expect(comments.find((a) => a.thread_id === "ann-1")).toBeUndefined();
     expect(await readReplyLock(dir, tourId)).toBeNull();
   });
 
@@ -376,7 +376,7 @@ describe("requestReply", () => {
     expect(result).toEqual({ kind: "dispatched" });
     expect(await readReplyLock(dir, tourId)).toBeNull();
     const comments = await readComments(dir, tourId);
-    expect(comments.find((a) => a.replies_to === "ann-1")).toBeUndefined();
+    expect(comments.find((a) => a.thread_id === "ann-1")).toBeUndefined();
   });
 
   it("rejects with { kind: 'busy' } on a concurrent second call without spawning a second adapter", async () => {

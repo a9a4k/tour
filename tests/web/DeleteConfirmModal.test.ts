@@ -146,8 +146,8 @@ describe("DeleteConfirmModal (issue #389)", () => {
 
   it("renders the 'reply-only' cascade note when the target is a Reply with a live sibling", () => {
     const parent = { ...baseTarget, id: "p" };
-    const r1: Comment = { ...baseTarget, id: "r1", replies_to: "p", body: "child" };
-    const r2: Comment = { ...baseTarget, id: "r2", replies_to: "p", body: "other" };
+    const r1: Comment = { ...baseTarget, id: "r1", thread_id: "p", body: "child" };
+    const r2: Comment = { ...baseTarget, id: "r2", thread_id: "p", body: "other" };
     const c = mount(
       createElement(DeleteConfirmModal, {
         target: r1,
@@ -164,9 +164,9 @@ describe("DeleteConfirmModal (issue #389)", () => {
 
   it("renders the 'parent-stub' cascade note when the target is a parent with surviving replies", () => {
     const parent = { ...baseTarget, id: "p" };
-    const r1: Comment = { ...baseTarget, id: "r1", replies_to: "p" };
-    const r2: Comment = { ...baseTarget, id: "r2", replies_to: "p" };
-    const r3: Comment = { ...baseTarget, id: "r3", replies_to: "p" };
+    const r1: Comment = { ...baseTarget, id: "r1", thread_id: "p" };
+    const r2: Comment = { ...baseTarget, id: "r2", thread_id: "p" };
+    const r3: Comment = { ...baseTarget, id: "r3", thread_id: "p" };
     const c = mount(
       createElement(DeleteConfirmModal, {
         target: parent,

@@ -41,13 +41,13 @@ describe("buildThreads", () => {
     const root = ann({ id: "r1", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({
       id: "r1-rep1",
-      replies_to: "r1",
+      thread_id: "r1",
       author_kind: "human",
       created_at: "2026-05-08T00:00:02Z",
     });
     const r2 = ann({
       id: "r1-rep2",
-      replies_to: "r1",
+      thread_id: "r1",
       author_kind: "agent",
       created_at: "2026-05-08T00:00:03Z",
     });
@@ -68,18 +68,18 @@ describe("buildThreads", () => {
   it("interleaves replies for multiple top-level comments correctly", () => {
     const a = ann({ id: "a", created_at: "2026-05-08T00:00:00Z" });
     const b = ann({ id: "b", created_at: "2026-05-08T00:00:01Z" });
-    const ar = ann({ id: "ar", replies_to: "a", created_at: "2026-05-08T00:00:02Z" });
-    const br = ann({ id: "br", replies_to: "b", created_at: "2026-05-08T00:00:03Z" });
-    const ar2 = ann({ id: "ar2", replies_to: "a", created_at: "2026-05-08T00:00:04Z" });
+    const ar = ann({ id: "ar", thread_id: "a", created_at: "2026-05-08T00:00:02Z" });
+    const br = ann({ id: "br", thread_id: "b", created_at: "2026-05-08T00:00:03Z" });
+    const ar2 = ann({ id: "ar2", thread_id: "a", created_at: "2026-05-08T00:00:04Z" });
     const out = buildThreads([a, b, ar, br, ar2]);
     expect(out.map((t) => t.root.id)).toEqual(["a", "b"]);
     expect(out[0].replies.map((r) => r.id)).toEqual(["ar", "ar2"]);
     expect(out[1].replies.map((r) => r.id)).toEqual(["br"]);
   });
 
-  it("silently drops orphan replies whose replies_to does not exist", () => {
+  it("silently drops orphan replies whose thread_id does not exist", () => {
     const a = ann({ id: "a" });
-    const orphan = ann({ id: "orph", replies_to: "missing" });
+    const orphan = ann({ id: "orph", thread_id: "missing" });
     const out = buildThreads([a, orphan]);
     expect(out).toHaveLength(1);
     expect(out[0].root.id).toBe("a");
@@ -87,14 +87,14 @@ describe("buildThreads", () => {
   });
 
   it("does not return a thread rooted at an orphan reply", () => {
-    const orphan = ann({ id: "orph", replies_to: "missing" });
+    const orphan = ann({ id: "orph", thread_id: "missing" });
     expect(buildThreads([orphan])).toEqual([]);
   });
 
   it("attaches reply-to-reply chains under the root thread, ordered by created_at", () => {
     const root = ann({ id: "root", created_at: "2026-05-08T00:00:00Z" });
-    const rep1 = ann({ id: "r1", replies_to: "root", created_at: "2026-05-08T00:00:02Z" });
-    const rep2 = ann({ id: "r2", replies_to: "r1", created_at: "2026-05-08T00:00:03Z" });
+    const rep1 = ann({ id: "r1", thread_id: "root", created_at: "2026-05-08T00:00:02Z" });
+    const rep2 = ann({ id: "r2", thread_id: "r1", created_at: "2026-05-08T00:00:03Z" });
     const out = buildThreads([root, rep1, rep2]);
     expect(out).toHaveLength(1);
     expect(out[0].replies.map((r) => r.id)).toEqual(["r1", "r2"]);
@@ -102,15 +102,15 @@ describe("buildThreads", () => {
 
   it("breaks created_at ties by id ascending", () => {
     const root = ann({ id: "root", created_at: "2026-05-08T00:00:00Z" });
-    const a = ann({ id: "b", replies_to: "root", created_at: "2026-05-08T00:00:01Z" });
-    const b = ann({ id: "a", replies_to: "root", created_at: "2026-05-08T00:00:01Z" });
+    const a = ann({ id: "b", thread_id: "root", created_at: "2026-05-08T00:00:01Z" });
+    const b = ann({ id: "a", thread_id: "root", created_at: "2026-05-08T00:00:01Z" });
     const out = buildThreads([root, a, b]);
     expect(out[0].replies.map((r) => r.id)).toEqual(["a", "b"]);
   });
 
   it("drops a reply whose chain forms a cycle", () => {
-    const a = ann({ id: "a", replies_to: "b" });
-    const b = ann({ id: "b", replies_to: "a" });
+    const a = ann({ id: "a", thread_id: "b" });
+    const b = ann({ id: "b", thread_id: "a" });
     expect(buildThreads([a, b])).toEqual([]);
   });
 });
@@ -140,45 +140,45 @@ describe("latestHumanLeafId", () => {
 
   it("returns the latest human Reply when the top-level is agent and all replies are human leaves", () => {
     const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
-    const r2 = ann({ id: "r2", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
+    const r1 = ann({ id: "r1", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "r2", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
     expect(latestHumanLeafId(top, [r1, r2])).toBe("r2");
   });
 
   it("returns the latest human leaf, ignoring an older human Reply that has its own child", () => {
     // [agent] top + [human] r1 (has child r1a) + [agent] r1a + [human] r2 (leaf)
     const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
-    const r1a = ann({ id: "r1a", replies_to: "r1", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
-    const r2 = ann({ id: "r2", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:03Z" });
+    const r1 = ann({ id: "r1", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r1a = ann({ id: "r1a", thread_id: "r1", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
+    const r2 = ann({ id: "r2", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:03Z" });
     expect(latestHumanLeafId(top, [r1, r1a, r2])).toBe("r2");
   });
 
   it("returns null when the latest turn in the Thread is agent-authored", () => {
     // [agent] top + [human] r1 (leaf) + [agent] r2 (latest, leaf)
     const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
-    const r2 = ann({ id: "r2", replies_to: "top", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
+    const r1 = ann({ id: "r1", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "r2", thread_id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:02Z" });
     expect(latestHumanLeafId(top, [r1, r2])).toBe(null);
   });
 
   it("hides Send on a human top-level once any Reply lands (latest is the Reply)", () => {
     const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
+    const r1 = ann({ id: "r1", thread_id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
     expect(latestHumanLeafId(top, [r1])).toBe(null);
   });
 
   it("moves Send from a human top-level to the latest human descendant", () => {
     const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "r1", replies_to: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
-    const r2 = ann({ id: "r2", replies_to: "r1", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
+    const r1 = ann({ id: "r1", thread_id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "r2", thread_id: "r1", author_kind: "human", created_at: "2026-05-08T00:00:02Z" });
     expect(latestHumanLeafId(top, [r1, r2])).toBe("r2");
   });
 
   it("breaks created_at ties by id ascending (id-largest wins, matching buildThreads)", () => {
     const top = ann({ id: "top", author_kind: "agent", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "a", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
-    const r2 = ann({ id: "b", replies_to: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r1 = ann({ id: "a", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "b", thread_id: "top", author_kind: "human", created_at: "2026-05-08T00:00:01Z" });
     expect(latestHumanLeafId(top, [r1, r2])).toBe("b");
   });
 });
@@ -203,13 +203,13 @@ describe("latestCommentId", () => {
     const top = ann({ id: "top", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({
       id: "r1",
-      replies_to: "top",
+      thread_id: "top",
       author_kind: "human",
       created_at: "2026-05-08T00:00:01Z",
     });
     const r2 = ann({
       id: "r2",
-      replies_to: "top",
+      thread_id: "top",
       author_kind: "agent",
       created_at: "2026-05-08T00:00:02Z",
     });
@@ -220,7 +220,7 @@ describe("latestCommentId", () => {
     const top = ann({ id: "top", author_kind: "human", created_at: "2026-05-08T00:00:00Z" });
     const r1 = ann({
       id: "r1",
-      replies_to: "top",
+      thread_id: "top",
       author_kind: "agent",
       created_at: "2026-05-08T00:00:01Z",
     });
@@ -230,21 +230,21 @@ describe("latestCommentId", () => {
 
   it("breaks created_at ties by id ascending (id-largest wins)", () => {
     const top = ann({ id: "top", created_at: "2026-05-08T00:00:00Z" });
-    const r1 = ann({ id: "a", replies_to: "top", created_at: "2026-05-08T00:00:01Z" });
-    const r2 = ann({ id: "b", replies_to: "top", created_at: "2026-05-08T00:00:01Z" });
+    const r1 = ann({ id: "a", thread_id: "top", created_at: "2026-05-08T00:00:01Z" });
+    const r2 = ann({ id: "b", thread_id: "top", created_at: "2026-05-08T00:00:01Z" });
     expect(latestCommentId(top, [r1, r2])).toBe("b");
   });
 });
 
 describe("isTopLevel / topLevelComments", () => {
-  it("isTopLevel: true when replies_to is undefined", () => {
+  it("isTopLevel: true when thread_id is undefined", () => {
     expect(isTopLevel(ann({ id: "a" }))).toBe(true);
-    expect(isTopLevel(ann({ id: "a", replies_to: "x" }))).toBe(false);
+    expect(isTopLevel(ann({ id: "a", thread_id: "x" }))).toBe(false);
   });
 
   it("topLevelComments filters out replies", () => {
     const a = ann({ id: "a" });
-    const b = ann({ id: "b", replies_to: "a" });
+    const b = ann({ id: "b", thread_id: "a" });
     const c = ann({ id: "c" });
     expect(topLevelComments([a, b, c])).toEqual([a, c]);
   });

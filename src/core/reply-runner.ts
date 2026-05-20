@@ -81,7 +81,7 @@ export async function requestReply(
   // via `canSendToAgent`; defence-in-depth here is enough).
   if (!triggering) return { kind: "invalid-comment" };
   if (!shouldDispatchReply(triggering)) return { kind: "invalid-comment" };
-  if (comments.some((a) => a.replies_to === opts.commentId)) {
+  if (comments.some((a) => a.thread_id === opts.commentId)) {
     return { kind: "invalid-comment" };
   }
 
@@ -223,7 +223,7 @@ async function persistReply(
     return;
   }
   await createReply(cwd, tourId, {
-    replies_to: triggering.id,
+    thread_id: triggering.id,
     body,
     author: agent,
     author_kind: "agent",

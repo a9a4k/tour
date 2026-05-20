@@ -76,7 +76,7 @@ function comment(id: string, overrides: Partial<Comment> = {}): Comment {
     author: overrides.author ?? "human",
     author_kind: overrides.author_kind ?? "human",
     created_at: overrides.created_at ?? "2026-05-14T00:00:00Z",
-    ...(overrides.replies_to !== undefined ? { replies_to: overrides.replies_to } : {}),
+    ...(overrides.thread_id !== undefined ? { thread_id: overrides.thread_id } : {}),
     ...(overrides.deleted !== undefined ? { deleted: overrides.deleted } : {}),
   };
 }
@@ -211,7 +211,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         author: "human",
         author_kind: "human",
         created_at: "2026-05-14T00:00:00Z",
-        ...(input.kind === "reply" ? { replies_to: input.parent.id } : {}),
+        ...(input.kind === "reply" ? { thread_id: input.parent.id } : {}),
       };
     },
     deleteComment: async ({ tourId, targetId }) => {
@@ -870,7 +870,7 @@ describe("TourSessionRuntime", () => {
 
       store.dispatch({
         type: "composer.open",
-        target: { kind: "reply", replies_to: "p1" },
+        target: { kind: "reply", thread_id: "p1" },
       });
       store.dispatch({ type: "composer.setBody", body: "a reply" });
       store.dispatch({ type: "composer.submit" });
@@ -989,7 +989,7 @@ describe("TourSessionRuntime", () => {
 
       store.dispatch({
         type: "composer.open",
-        target: { kind: "reply", replies_to: "vanished" },
+        target: { kind: "reply", thread_id: "vanished" },
       });
       store.dispatch({ type: "composer.setBody", body: "hi" });
       store.dispatch({ type: "composer.submit" });
@@ -1620,7 +1620,7 @@ describe("TourSessionRuntime", () => {
       const adapter = createFakeAdapter();
       const runtime = new TourSessionRuntime(store, adapter);
       const stop = runtime.start();
-      const target: ComposerTarget = { kind: "reply", replies_to: "ann-99" };
+      const target: ComposerTarget = { kind: "reply", thread_id: "ann-99" };
       store.dispatch({ type: "composer.open", target });
       store.dispatch({ type: "composer.recall" });
       expect(adapter.scrollComposerCalls).toEqual([target]);

@@ -77,7 +77,7 @@ function parseEvent(parsed: unknown): TourEvent | null {
     case "reply.created": {
       if (
         typeof o.id !== "string" ||
-        typeof o.replies_to !== "string" ||
+        typeof o.thread_id !== "string" ||
         typeof o.body !== "string" ||
         typeof o.author !== "string" ||
         !isAuthorKind(o.author_kind)
@@ -87,7 +87,7 @@ function parseEvent(parsed: unknown): TourEvent | null {
       return {
         kind: "reply.created",
         id: o.id,
-        replies_to: o.replies_to,
+        thread_id: o.thread_id,
         body: o.body,
         author: o.author,
         author_kind: o.author_kind,

@@ -35,8 +35,8 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
 
   it("returns 'parent-stub' with the live reply count when the target is a parent with surviving replies", () => {
     const parent = comment({ id: "p" });
-    const r1 = comment({ id: "r1", replies_to: "p" });
-    const r2 = comment({ id: "r2", replies_to: "p" });
+    const r1 = comment({ id: "r1", thread_id: "p" });
+    const r2 = comment({ id: "r2", thread_id: "p" });
     expect(computeDeleteCascadeNote(parent, [parent, r1, r2])).toEqual({
       kind: "parent-stub",
       survivorCount: 2,
@@ -45,10 +45,10 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
 
   it("excludes already-deleted replies from the parent's surviving count", () => {
     const parent = comment({ id: "p" });
-    const live = comment({ id: "r1", replies_to: "p" });
+    const live = comment({ id: "r1", thread_id: "p" });
     const dead = comment({
       id: "r2",
-      replies_to: "p",
+      thread_id: "p",
       deleted: { at: "2026-05-16T00:00:00Z" },
     });
     expect(computeDeleteCascadeNote(parent, [parent, live, dead])).toEqual({
@@ -61,7 +61,7 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
     const parent = comment({ id: "p" });
     const dead = comment({
       id: "r1",
-      replies_to: "p",
+      thread_id: "p",
       deleted: { at: "2026-05-16T00:00:00Z" },
     });
     expect(computeDeleteCascadeNote(parent, [parent, dead])).toEqual({
@@ -71,8 +71,8 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
 
   it("returns 'reply-only' when the target is a Reply and its parent or another sibling stays live", () => {
     const parent = comment({ id: "p" });
-    const r1 = comment({ id: "r1", replies_to: "p" });
-    const r2 = comment({ id: "r2", replies_to: "p" });
+    const r1 = comment({ id: "r1", thread_id: "p" });
+    const r2 = comment({ id: "r2", thread_id: "p" });
     expect(computeDeleteCascadeNote(r1, [parent, r1, r2])).toEqual({
       kind: "reply-only",
     });
@@ -85,7 +85,7 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
       id: "p",
       deleted: { at: "2026-05-16T00:00:00Z" },
     });
-    const r1 = comment({ id: "r1", replies_to: "p" });
+    const r1 = comment({ id: "r1", thread_id: "p" });
     expect(computeDeleteCascadeNote(r1, [parent, r1])).toEqual({
       kind: "thread-vanishes",
     });
@@ -96,8 +96,8 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
       id: "p",
       deleted: { at: "2026-05-16T00:00:00Z" },
     });
-    const r1 = comment({ id: "r1", replies_to: "p" });
-    const r2 = comment({ id: "r2", replies_to: "p" });
+    const r1 = comment({ id: "r1", thread_id: "p" });
+    const r2 = comment({ id: "r2", thread_id: "p" });
     expect(computeDeleteCascadeNote(r1, [parent, r1, r2])).toEqual({
       kind: "reply-only",
     });
@@ -109,7 +109,7 @@ describe("computeDeleteCascadeNote (issue #389)", () => {
     // projection invariant is "reply's parent is always present or
     // stubbed"; this branch handles the degenerate case without
     // misclassifying.
-    const r = comment({ id: "r1", replies_to: "ghost" });
+    const r = comment({ id: "r1", thread_id: "ghost" });
     expect(computeDeleteCascadeNote(r, [r])).toEqual({
       kind: "thread-vanishes",
     });

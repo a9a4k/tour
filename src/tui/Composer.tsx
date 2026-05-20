@@ -55,7 +55,7 @@ function contextLabel(target: ComposerTarget, parent: Comment | null): string {
   if (parent) {
     return ` Reply to #${shortId(parent.id)} · ${parent.file}:${rangeLabel(parent.line_start, parent.line_end)} (${parent.side}) `;
   }
-  return ` Reply to #${shortId(target.replies_to)} `;
+  return ` Reply to #${shortId(target.thread_id)} `;
 }
 
 function hintText(state: ComposerProps["state"]): string {

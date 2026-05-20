@@ -13,13 +13,13 @@ function compareComments(a: Comment, b: Comment): number {
   return 0;
 }
 
-// Walk the replies_to chain up to the top-level comment. Returns null if
+// Walk the thread_id chain up to the top-level comment. Returns null if
 // the chain hits an unknown id (orphan) or a cycle (malformed input).
 function findRoot(start: Comment, byId: Map<string, Comment>): Comment | null {
   let cur = start;
   const seen = new Set<string>([cur.id]);
-  while (cur.replies_to !== undefined) {
-    const parent = byId.get(cur.replies_to);
+  while (cur.thread_id !== undefined) {
+    const parent = byId.get(cur.thread_id);
     if (!parent) return null;
     if (seen.has(parent.id)) return null;
     seen.add(parent.id);
@@ -34,13 +34,13 @@ export function buildThreads(comments: Comment[]): Thread[] {
 
   const threadsByRootId = new Map<string, Thread>();
   for (const a of comments) {
-    if (a.replies_to === undefined) {
+    if (a.thread_id === undefined) {
       threadsByRootId.set(a.id, { root: a, replies: [] });
     }
   }
 
   for (const a of comments) {
-    if (a.replies_to === undefined) continue;
+    if (a.thread_id === undefined) continue;
     const root = findRoot(a, byId);
     if (!root) continue;
     const t = threadsByRootId.get(root.id);
@@ -58,7 +58,7 @@ export function buildThreads(comments: Comment[]): Thread[] {
 }
 
 export function isTopLevel(a: Comment): boolean {
-  return a.replies_to === undefined;
+  return a.thread_id === undefined;
 }
 
 function findLatest(

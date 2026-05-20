@@ -366,7 +366,7 @@ function okBundle(
   };
 }
 
-function ann(opts: { id: string; file: string; replies_to?: string }): Comment {
+function ann(opts: { id: string; file: string; thread_id?: string }): Comment {
   const out: Comment = {
     id: opts.id,
     file: opts.file,
@@ -378,7 +378,7 @@ function ann(opts: { id: string; file: string; replies_to?: string }): Comment {
     author_kind: "human",
     created_at: "2026-05-14T00:00:00Z",
   };
-  if (opts.replies_to !== undefined) out.replies_to = opts.replies_to;
+  if (opts.thread_id !== undefined) out.thread_id = opts.thread_id;
   return out;
 }
 
@@ -504,7 +504,7 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
     const dispatchSpy = vi.spyOn(store, "dispatch");
     const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    adapter.scrollToComposer({ kind: "reply", replies_to: parent.id });
+    adapter.scrollToComposer({ kind: "reply", thread_id: parent.id });
     expect(dispatchSpy).toHaveBeenCalledWith({
       type: "folds.setOverride",
       file: parentFile,
@@ -526,7 +526,7 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
     const dispatchSpy = vi.spyOn(store, "dispatch");
     const adapter = makeAdapter({ store, callbacks: noopCallbacks });
 
-    adapter.scrollToComposer({ kind: "reply", replies_to: parent.id });
+    adapter.scrollToComposer({ kind: "reply", thread_id: parent.id });
     expect(dispatchSpy).not.toHaveBeenCalled();
     await flushRaf();
   });
@@ -578,7 +578,7 @@ describe("createWebTourSessionAdapter.scrollToComposer — unfold before scroll 
     });
 
     expect(() =>
-      adapter.scrollToComposer({ kind: "reply", replies_to: "missing-id" }),
+      adapter.scrollToComposer({ kind: "reply", thread_id: "missing-id" }),
     ).not.toThrow();
     expect(dispatchSpy).not.toHaveBeenCalled();
     await flushRaf();

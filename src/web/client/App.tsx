@@ -1422,7 +1422,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
           recallCardThen(cardId, () => {
             store.dispatch({
               type: "composer.open",
-              target: { kind: "reply", replies_to: latestId },
+              target: { kind: "reply", thread_id: latestId },
             });
           });
           return;
@@ -1695,10 +1695,10 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
   );
 
   const openReplyComposer = useCallback(
-    (replies_to: string) => {
+    (thread_id: string) => {
       store.dispatch({
         type: "composer.open",
-        target: { kind: "reply", replies_to },
+        target: { kind: "reply", thread_id },
       });
     },
     [store],
@@ -2069,7 +2069,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                   />
                 ) : null;
                 const replyTargetId =
-                  composerTarget?.kind === "reply" ? composerTarget.replies_to : null;
+                  composerTarget?.kind === "reply" ? composerTarget.thread_id : null;
                 return (
                   <FileBlock
                     key={fileName}
@@ -2836,7 +2836,7 @@ export function CommentCard({
                   {r.author !== r.author_kind ? (
                     <span className={TEXT_SELECTABLE_CLASS}> {r.author}</span>
                   ) : null}
-                  {r.author_kind === "agent" && r.replies_to ? (
+                  {r.author_kind === "agent" && r.thread_id ? (
                     <span
                       className={`reply-agent-byline ${TEXT_SELECTABLE_CLASS}`}
                       title="This reply was produced by the configured reply-agent in a separate session."
@@ -3036,7 +3036,7 @@ interface CommentListSnapshotLostProps {
   composerBody: string;
   composerError: string | null;
   onComposerBodyChange: (body: string) => void;
-  onOpenReply: (replies_to: string) => void;
+  onOpenReply: (thread_id: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
@@ -3092,9 +3092,9 @@ function CommentListSnapshotLost({
         const replies = [...(repliesByRoot.get(a.id) ?? [])];
         const replyTargetId =
           composerTarget?.kind === "reply" &&
-          (composerTarget.replies_to === a.id ||
-            replies.some((r) => r.id === composerTarget.replies_to))
-            ? composerTarget.replies_to
+          (composerTarget.thread_id === a.id ||
+            replies.some((r) => r.id === composerTarget.thread_id))
+            ? composerTarget.thread_id
             : null;
         const isCurrent =
           cursorCardId !== null &&

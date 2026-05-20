@@ -52,7 +52,7 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
         body: ev.body,
         author: ev.author,
         author_kind: ev.author_kind,
-        replies_to: ev.replies_to,
+        thread_id: ev.thread_id,
         created_at: ev.at,
       });
       order.push(ev.id);
@@ -64,8 +64,8 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
   // Resolve reply anchors against the final created set.
   for (const id of order) {
     const c = created.get(id);
-    if (!c || c.replies_to === undefined) continue;
-    const parent = created.get(c.replies_to);
+    if (!c || c.thread_id === undefined) continue;
+    const parent = created.get(c.thread_id);
     if (!parent) continue;
     c.file = parent.file;
     c.side = parent.side;
@@ -86,8 +86,8 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
   const parentsWithSurvivingReplies = new Set<string>();
   for (const id of order) {
     const c = created.get(id);
-    if (!c || c.replies_to === undefined || c.deleted) continue;
-    parentsWithSurvivingReplies.add(c.replies_to);
+    if (!c || c.thread_id === undefined || c.deleted) continue;
+    parentsWithSurvivingReplies.add(c.thread_id);
   }
 
   // Always shallow-copy on emit so callers mutating the returned
@@ -100,7 +100,7 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
   for (const id of order) {
     const c = created.get(id);
     if (!c) continue;
-    if (c.replies_to !== undefined) {
+    if (c.thread_id !== undefined) {
       // Reply: emit iff not deleted.
       if (c.deleted) continue;
       out.push({ ...c });

@@ -636,7 +636,7 @@ describe("CLI integration", () => {
       expect(comments[1].line_end).toBe(1);
     });
 
-    it("supports replies_to in JSONL --batch mode (issue #172)", async () => {
+    it("supports thread_id in JSONL --batch mode (issue #172)", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       const root = JSON.parse(
@@ -654,7 +654,7 @@ describe("CLI integration", () => {
           )
         ).stdout,
       );
-      const jsonl = `{"replies_to":"${root.id}","body":"reply via JSONL"}\n`;
+      const jsonl = `{"thread_id":"${root.id}","body":"reply via JSONL"}\n`;
       const result = await run(
         ["annotate", tour.id, "--batch", "-", "--json"],
         repo,
@@ -663,7 +663,7 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(0);
       const comments = JSON.parse(result.stdout);
       expect(comments).toHaveLength(1);
-      expect(comments[0].replies_to).toBe(root.id);
+      expect(comments[0].thread_id).toBe(root.id);
       expect(comments[0].body).toBe("reply via JSONL");
     });
 
@@ -777,7 +777,7 @@ describe("CLI integration", () => {
       ], repo);
       expect(r.exitCode).toBe(0);
       const reply = JSON.parse(r.stdout);
-      expect(reply.replies_to).toBe(root.id);
+      expect(reply.thread_id).toBe(root.id);
       expect(reply.author_kind).toBe("human");
       expect(reply.file).toBe(root.file);
       expect(reply.side).toBe(root.side);
@@ -868,9 +868,9 @@ describe("CLI integration", () => {
       const ann = JSON.parse(r.stdout);
       expect(ann.file).toBe("hello.txt");
       expect(ann.body).toBe("via comment verb");
-      // Top-level (no `replies_to`) — the on-disk shape never carried a
-      // `kind` field; the discriminator is presence/absence of `replies_to`.
-      expect(ann.replies_to).toBeUndefined();
+      // Top-level (no `thread_id`) — the on-disk shape never carried a
+      // `kind` field; the discriminator is presence/absence of `thread_id`.
+      expect(ann.thread_id).toBeUndefined();
       // On-disk file is `tour-events.jsonl` after ADR 0036 (the event log
       // replaces the Stage B `comments.jsonl` snapshot log).
       const showR = await run(["show", tour.id, "--json"], repo);

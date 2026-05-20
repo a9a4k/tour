@@ -104,19 +104,19 @@ function eventToComment(
 }
 
 interface BuildReplyInput {
-  replies_to: string;
+  thread_id: string;
   body: string;
   author?: string;
   author_kind: AuthorKind;
 }
 
 function findParentOrThrow(
-  replies_to: string,
+  thread_id: string,
   existing: CommentState[],
 ): CommentState {
-  const parent = existing.find((a) => a.id === replies_to);
+  const parent = existing.find((a) => a.id === thread_id);
   if (!parent) {
-    throw new Error(`No comment with id "${replies_to}" in this tour`);
+    throw new Error(`No comment with id "${thread_id}" in this tour`);
   }
   return parent;
 }
@@ -127,7 +127,7 @@ function buildReplyCreatedEvent(
   return {
     kind: "reply.created",
     id: generateId(),
-    replies_to: input.replies_to,
+    thread_id: input.thread_id,
     body: input.body,
     author: input.author ?? input.author_kind,
     author_kind: input.author_kind,
@@ -148,7 +148,7 @@ function replyEventToComment(
     body: ev.body,
     author: ev.author,
     author_kind: ev.author_kind,
-    replies_to: ev.replies_to,
+    thread_id: ev.thread_id,
     created_at: ev.at,
   };
 }
@@ -170,7 +170,7 @@ export interface CreateCommentRequest {
 }
 
 export interface CreateReplyRequest {
-  replies_to: string;
+  thread_id: string;
   body: string;
   author?: string;
   author_kind: AuthorKind;
@@ -203,7 +203,7 @@ export async function createReply(
 ): Promise<Comment> {
   validateBody(request.body);
   const existing = await readComments(tourStoreRoot, tourId);
-  const parent = findParentOrThrow(request.replies_to, existing);
+  const parent = findParentOrThrow(request.thread_id, existing);
   const event = buildReplyCreatedEvent(request);
   await appendEvent(tourStoreRoot, tourId, event);
   return replyEventToComment(event, parent);
@@ -232,10 +232,10 @@ export async function createComments(
   for (const req of requests) {
     if (req.kind === "reply") {
       const parent =
-        existing.find((a) => a.id === req.replies_to) ??
-        inBatchById.get(req.replies_to);
+        existing.find((a) => a.id === req.thread_id) ??
+        inBatchById.get(req.thread_id);
       if (!parent) {
-        throw new Error(`No comment with id "${req.replies_to}" in this tour`);
+        throw new Error(`No comment with id "${req.thread_id}" in this tour`);
       }
       const event = buildReplyCreatedEvent(req);
       events.push(event);

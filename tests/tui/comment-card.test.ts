@@ -72,7 +72,7 @@ describe("CommentCard selection cues", () => {
       ...comment,
       id: "ann-2",
       body: "reply body",
-      replies_to: comment.id,
+      thread_id: comment.id,
     };
     const tree = CommentCard({
       comment,
@@ -114,7 +114,7 @@ describe("CommentCard selection cues", () => {
       ...comment,
       id: "ann-2",
       body: "reply body",
-      replies_to: comment.id,
+      thread_id: comment.id,
     };
     const tree = CommentCard({
       comment,
@@ -234,7 +234,7 @@ describe("CommentCard selection cues", () => {
         id: "ann-2",
         body: "reply body",
         author: "human",
-        replies_to: parent.id,
+        thread_id: parent.id,
       };
       const text = visibleText(
         CommentCard({ comment: parent, isCurrent: false, replies: [reply] }),
@@ -254,7 +254,7 @@ describe("CommentCard selection cues", () => {
         body: "reply body",
         author: "claude",
         author_kind: "agent",
-        replies_to: parent.id,
+        thread_id: parent.id,
       };
       const text = visibleText(
         CommentCard({ comment: parent, isCurrent: false, replies: [reply] }),

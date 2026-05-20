@@ -116,7 +116,7 @@ describe("comments-store", () => {
       );
       expect(ann.id.length).toBeGreaterThan(0);
       expect(typeof ann.created_at).toBe("string");
-      expect(ann.replies_to).toBeUndefined();
+      expect(ann.thread_id).toBeUndefined();
 
       const loaded = await readComments(dir, tourId);
       expect(loaded).toHaveLength(1);
@@ -418,7 +418,7 @@ describe("comments-store", () => {
   });
 
   describe("createReply", () => {
-    it("inherits the parent's anchor and stamps replies_to", async () => {
+    it("inherits the parent's anchor and stamps thread_id", async () => {
       await seedTopLevel(dir, tourId, {
         id: "parent-1",
         file: "src/lib/x.ts",
@@ -428,7 +428,7 @@ describe("comments-store", () => {
       });
 
       const reply = await createReply(dir, tourId, {
-        replies_to: "parent-1",
+        thread_id: "parent-1",
         body: "because of legacy compat",
         author: "human-2",
         author_kind: "human",
@@ -438,7 +438,7 @@ describe("comments-store", () => {
       expect(reply.side).toBe("deletions");
       expect(reply.line_start).toBe(12);
       expect(reply.line_end).toBe(14);
-      expect(reply.replies_to).toBe("parent-1");
+      expect(reply.thread_id).toBe("parent-1");
       expect(reply.author).toBe("human-2");
       expect(reply.author_kind).toBe("human");
       expect(reply.body).toBe("because of legacy compat");
@@ -451,7 +451,7 @@ describe("comments-store", () => {
     it("rejects when the parent id is not on disk and writes nothing", async () => {
       await expect(
         createReply(dir, tourId, {
-          replies_to: "no-such-id",
+          thread_id: "no-such-id",
           body: "orphan reply",
           author_kind: "human",
         }),
@@ -464,7 +464,7 @@ describe("comments-store", () => {
       await seedTopLevel(dir, tourId, { id: "p-trim" });
       await expect(
         createReply(dir, tourId, {
-          replies_to: "p-trim",
+          thread_id: "p-trim",
           body: "  \t \n ",
           author_kind: "agent",
         }),
@@ -478,14 +478,14 @@ describe("comments-store", () => {
       await seedTopLevel(dir, tourId, { id: "p-author-default" });
 
       const replyHuman = await createReply(dir, tourId, {
-        replies_to: "p-author-default",
+        thread_id: "p-author-default",
         body: "looks reasonable",
         author_kind: "human",
       });
       expect(replyHuman.author).toBe("human");
 
       const replyAgent = await createReply(dir, tourId, {
-        replies_to: "p-author-default",
+        thread_id: "p-author-default",
         body: "agree",
         author_kind: "agent",
       });
@@ -497,11 +497,11 @@ describe("comments-store", () => {
       // seam call — createReply finds it because it re-reads on every call.
       await seedTopLevel(dir, tourId, { id: "p-late" });
       const reply = await createReply(dir, tourId, {
-        replies_to: "p-late",
+        thread_id: "p-late",
         body: "found it",
         author_kind: "agent",
       });
-      expect(reply.replies_to).toBe("p-late");
+      expect(reply.thread_id).toBe("p-late");
     });
   });
 
@@ -560,7 +560,7 @@ describe("comments-store", () => {
           },
           {
             kind: "reply",
-            replies_to: "p1",
+            thread_id: "p1",
             body: "reply", author_kind: "human",
           },
         ],
@@ -568,8 +568,8 @@ describe("comments-store", () => {
       );
 
       expect(results).toHaveLength(2);
-      expect(results[0].replies_to).toBeUndefined();
-      expect(results[1].replies_to).toBe("p1");
+      expect(results[0].thread_id).toBeUndefined();
+      expect(results[1].thread_id).toBe("p1");
       expect(results[1].side).toBe("deletions"); // inherits parent's anchor
     });
 
@@ -612,7 +612,7 @@ describe("comments-store", () => {
             },
             {
               kind: "reply",
-              replies_to: "no-such-parent",
+              thread_id: "no-such-parent",
               body: "doomed", author_kind: "agent",
             },
           ],
@@ -737,7 +737,7 @@ describe("comments-store", () => {
       // refuse at the write seam (mirrors the fold's idempotency).
       await seedTopLevel(dir, tourId, { id: "p" });
       await createReply(dir, tourId, {
-        replies_to: "p",
+        thread_id: "p",
         body: "still here",
         author_kind: "human",
       });
@@ -756,7 +756,7 @@ describe("comments-store", () => {
     it("deletes a leaf reply — projection retains parent, drops the reply", async () => {
       await seedTopLevel(dir, tourId, { id: "p" });
       const reply = await createReply(dir, tourId, {
-        replies_to: "p",
+        thread_id: "p",
         body: "reply body",
         author_kind: "human",
       });
@@ -778,7 +778,7 @@ describe("comments-store", () => {
         body: "original",
       });
       const reply = await createReply(dir, tourId, {
-        replies_to: "p",
+        thread_id: "p",
         body: "still relevant",
         author_kind: "human",
       });
@@ -842,7 +842,7 @@ describe("comments-store", () => {
         line_end: 14,
       });
       const reply = await createReply(dir, tourId, {
-        replies_to: "parent-1",
+        thread_id: "parent-1",
         body: "agreed",
         author_kind: "human",
       });
@@ -853,7 +853,7 @@ describe("comments-store", () => {
       const replyLine = JSON.parse(lines[1]);
       expect(replyLine.kind).toBe("reply.created");
       expect(replyLine.id).toBe(reply.id);
-      expect(replyLine.replies_to).toBe("parent-1");
+      expect(replyLine.thread_id).toBe("parent-1");
       // The reply event does not carry the anchor — it's inherited at
       // fold time from the parent (ADR 0036).
       expect(replyLine.file).toBeUndefined();
