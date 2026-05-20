@@ -127,6 +127,7 @@ import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 import type { EnterHintCursor } from "../core/footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
 import { copyFinishedTextSelection } from "./text-selection-copy.js";
+import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
 import { spawnTerminalEditor } from "./terminal-editor-spawn.js";
@@ -1908,13 +1909,13 @@ function App(props: AppProps) {
               // lives in `sidebar-cursor-paint.ts` so the four cases are
               // unit-testable in isolation.
               const { bg, showGlyph } = sidebarCursorPaint({ isSelected, sidebarFocused });
-              const onRowMouseDown = (event: { stopPropagation: () => void }) => {
+              const onRowMouseDown = (event?: { stopPropagation: () => void }) => {
                 // OpenTUI mouse events bubble (Renderable.processMouseEvent
                 // calls parent unless `propagationStopped`). Without this
                 // stop, the sidebar container's `onMouseDown` would fire
                 // afterwards and force `sidebarFocused = true`, overriding
                 // the file-row's focus transfer to the diff pane.
-                event.stopPropagation();
+                event?.stopPropagation();
                 setSelectedRowIdx(idx);
                 if (row.kind === "file") {
                   // Routes through the shared helper so mouse + keyboard
@@ -1926,6 +1927,7 @@ function App(props: AppProps) {
                   store.dispatch({ type: "paneFocus.setSidebar" });
                 }
               };
+              const rowMouseHandlers = textSelectionSafeActivation(onRowMouseDown);
               if (row.kind === "folder") {
                 // Folder row is now a flex-row box (was a single <text>) so
                 // the cursor glyph can overlay the leading-space slot in
@@ -1940,7 +1942,9 @@ function App(props: AppProps) {
                     id={`row-${row.path}`}
                     flexDirection="row"
                     backgroundColor={bg}
-                    onMouseDown={onRowMouseDown}
+                    onMouseDown={rowMouseHandlers.onMouseDown}
+                    onMouseDrag={rowMouseHandlers.onMouseDrag}
+                    onMouseUp={rowMouseHandlers.onMouseUp}
                   >
                     {showGlyph && (
                       <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
@@ -1998,7 +2002,9 @@ function App(props: AppProps) {
                   id={`row-${row.path}`}
                   flexDirection="row"
                   backgroundColor={bg}
-                  onMouseDown={onRowMouseDown}
+                  onMouseDown={rowMouseHandlers.onMouseDown}
+                  onMouseDrag={rowMouseHandlers.onMouseDrag}
+                  onMouseUp={rowMouseHandlers.onMouseUp}
                 >
                   {showGlyph && (
                     <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>

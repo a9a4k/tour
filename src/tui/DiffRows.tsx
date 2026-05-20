@@ -11,6 +11,7 @@ import { commentCardSlot } from "./comment-placement.js";
 import { DiffLine } from "./DiffLine.js";
 import type { ReplyLock } from "../core/reply-lock.js";
 import type { Cursor } from "../core/cursor-state.js";
+import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 
 interface DiffRowsProps {
   fileName: string;
@@ -282,13 +283,14 @@ export function DiffRows({
             rowCursor.interactive.boundaryRef ===
               (row.hunkIndex === 0 ? "top" : row.hunkIndex);
           const id = hunkHeaderRowId(fileName, row.hunkIndex);
-          const onMouseDown = onInteractiveClick
-            ? () =>
-                onInteractiveClick(
-                  fileName,
-                  row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
-                  row.hunkIndex === 0 ? "top" : row.hunkIndex,
-                )
+          const mouseHandlers = onInteractiveClick
+            ? textSelectionSafeActivation(() =>
+              onInteractiveClick(
+                fileName,
+                row.hunkIndex === 0 ? "boundary-top" : "hunk-separator",
+                row.hunkIndex === 0 ? "top" : row.hunkIndex,
+              ),
+            )
             : undefined;
           // Issue #379: focus tint lives on the right (text) cell, not
           // the saturated button cell. The button stays `accentEmphasis`
@@ -309,7 +311,9 @@ export function DiffRows({
               id={id}
               flexDirection="row"
               width="100%"
-              onMouseDown={onMouseDown}
+              onMouseDown={mouseHandlers?.onMouseDown}
+              onMouseDrag={mouseHandlers?.onMouseDrag}
+              onMouseUp={mouseHandlers?.onMouseUp}
             >
               <box
                 flexShrink={0}
@@ -335,8 +339,8 @@ export function DiffRows({
             rowCursor.interactive.subKind === row.subKind &&
             rowCursor.interactive.boundaryRef === row.boundaryRef;
           const id = interactiveRowId(fileName, row.subKind, row.boundaryRef);
-          const onMouseDown = onInteractiveClick
-            ? () => onInteractiveClick(fileName, row.subKind, row.boundaryRef)
+          const mouseHandlers = onInteractiveClick
+            ? textSelectionSafeActivation(() => onInteractiveClick(fileName, row.subKind, row.boundaryRef))
             : undefined;
           // Issue #292: standalone `expand-down` row mirrors the
           // hunk-header banner's two-cell layout — saturated button
@@ -364,7 +368,9 @@ export function DiffRows({
                 id={id}
                 flexDirection="row"
                 width="100%"
-                onMouseDown={onMouseDown}
+                onMouseDown={mouseHandlers?.onMouseDown}
+                onMouseDrag={mouseHandlers?.onMouseDrag}
+                onMouseUp={mouseHandlers?.onMouseUp}
               >
                 <box
                   flexShrink={0}
@@ -383,7 +389,14 @@ export function DiffRows({
           // with the diff-row treatment. The text body (e.g. "··· N
           // hidden ···") comes from the planner.
           return (
-            <box key={key} id={id} width="100%" onMouseDown={onMouseDown}>
+            <box
+              key={key}
+              id={id}
+              width="100%"
+              onMouseDown={mouseHandlers?.onMouseDown}
+              onMouseDrag={mouseHandlers?.onMouseDrag}
+              onMouseUp={mouseHandlers?.onMouseUp}
+            >
               <DiffLine
                 gutter={INTERACTIVE_PAD_GUTTER}
                 text={row.text ?? ""}
@@ -427,14 +440,21 @@ export function DiffRows({
           // top-level comment id to onCardClick. ADR 0022's cursor
           // walks top-level comments only, so the row's `id` (the
           // top-level comment id, not a reply id) is the right value.
-          const onCardMouseDown =
-            onCardClick ? () => onCardClick(row.comment.id) : undefined;
+          const cardMouseHandlers = onCardClick
+            ? textSelectionSafeActivation(() => onCardClick(row.comment.id))
+            : undefined;
           if (slot === "full") {
             // Unified layout: wrap the card so the wrapper can carry the
             // click handler. Function-component cards can't host
             // `onMouseDown` directly under OpenTUI.
             return (
-              <box key={`ann-${row.id}`} width="100%" onMouseDown={onCardMouseDown}>
+              <box
+                key={`ann-${row.id}`}
+                width="100%"
+                onMouseDown={cardMouseHandlers?.onMouseDown}
+                onMouseDrag={cardMouseHandlers?.onMouseDrag}
+                onMouseUp={cardMouseHandlers?.onMouseUp}
+              >
                 {card}
               </box>
             );
@@ -445,10 +465,20 @@ export function DiffRows({
           // keep their column alignment — and stays a no-op on click.
           return (
             <box key={`ann-${row.id}`} flexDirection="row" width="100%">
-              <box width="50%" onMouseDown={slot === "left" ? onCardMouseDown : undefined}>
+              <box
+                width="50%"
+                onMouseDown={slot === "left" ? cardMouseHandlers?.onMouseDown : undefined}
+                onMouseDrag={slot === "left" ? cardMouseHandlers?.onMouseDrag : undefined}
+                onMouseUp={slot === "left" ? cardMouseHandlers?.onMouseUp : undefined}
+              >
                 {slot === "left" ? card : null}
               </box>
-              <box width="50%" onMouseDown={slot === "right" ? onCardMouseDown : undefined}>
+              <box
+                width="50%"
+                onMouseDown={slot === "right" ? cardMouseHandlers?.onMouseDown : undefined}
+                onMouseDrag={slot === "right" ? cardMouseHandlers?.onMouseDrag : undefined}
+                onMouseUp={slot === "right" ? cardMouseHandlers?.onMouseUp : undefined}
+              >
                 {slot === "right" ? card : null}
               </box>
             </box>
@@ -492,13 +522,13 @@ export function DiffRows({
             row.rightLineNumber !== null ? rowId(fileName, "additions", row.rightLineNumber) : undefined;
           const leftClick = splitClickTarget(row, "left");
           const rightClick = splitClickTarget(row, "right");
-          const onLeftMouseDown =
+          const leftMouseHandlers =
             onCursorClick && leftClick
-              ? () => onCursorClick(fileName, leftClick.side, leftClick.lineNumber)
+              ? textSelectionSafeActivation(() => onCursorClick(fileName, leftClick.side, leftClick.lineNumber))
               : undefined;
-          const onRightMouseDown =
+          const rightMouseHandlers =
             onCursorClick && rightClick
-              ? () => onCursorClick(fileName, rightClick.side, rightClick.lineNumber)
+              ? textSelectionSafeActivation(() => onCursorClick(fileName, rightClick.side, rightClick.lineNumber))
               : undefined;
           // Issue #267 — flexDirection="row" on each 50%-width half
           // wrapper. The wrapper hosts a single DiffLine child; swapping
@@ -519,7 +549,9 @@ export function DiffRows({
                 id={leftId}
                 width="50%"
                 flexDirection="row"
-                onMouseDown={onLeftMouseDown}
+                onMouseDown={leftMouseHandlers?.onMouseDown}
+                onMouseDrag={leftMouseHandlers?.onMouseDrag}
+                onMouseUp={leftMouseHandlers?.onMouseUp}
               >
                 <DiffLine
                   gutter={splitGutter(row.leftLineNumber, splitSign(row, "left"))}
@@ -559,7 +591,9 @@ export function DiffRows({
                 id={rightId}
                 width="50%"
                 flexDirection="row"
-                onMouseDown={onRightMouseDown}
+                onMouseDown={rightMouseHandlers?.onMouseDown}
+                onMouseDrag={rightMouseHandlers?.onMouseDrag}
+                onMouseUp={rightMouseHandlers?.onMouseUp}
               >
                 <DiffLine
                   gutter={splitGutter(row.rightLineNumber, splitSign(row, "right"))}
@@ -598,12 +632,19 @@ export function DiffRows({
         const unifiedRowId = unifiedTarget
           ? rowId(fileName, unifiedTarget.side, unifiedTarget.lineNumber)
           : undefined;
-        const onUnifiedMouseDown =
+        const unifiedMouseHandlers =
           onCursorClick && unifiedTarget
-            ? () => onCursorClick(fileName, unifiedTarget.side, unifiedTarget.lineNumber)
+            ? textSelectionSafeActivation(() => onCursorClick(fileName, unifiedTarget.side, unifiedTarget.lineNumber))
             : undefined;
         return (
-          <box key={key} id={unifiedRowId} width="100%" onMouseDown={onUnifiedMouseDown}>
+          <box
+            key={key}
+            id={unifiedRowId}
+            width="100%"
+            onMouseDown={unifiedMouseHandlers?.onMouseDown}
+            onMouseDrag={unifiedMouseHandlers?.onMouseDrag}
+            onMouseUp={unifiedMouseHandlers?.onMouseUp}
+          >
             <DiffLine
               gutter={unifiedGutter(row)}
               text={text}

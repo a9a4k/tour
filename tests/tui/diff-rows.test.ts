@@ -44,6 +44,14 @@ function diffLineCellsOf(tree: unknown): AnyElement[] {
   return flatten(tree).filter((el) => el.type === DiffLine);
 }
 
+function findIdElement(tree: unknown, id: string): AnyElement | undefined {
+  return flatten(tree).find((el) => el.props["id"] === id);
+}
+
+function selectableMouseEvent() {
+  return { target: { selectable: true }, button: 0, stopPropagation: vi.fn() };
+}
+
 function parseFile(rawDiff: string): FileDiffMetadata {
   const patches = parsePatchFiles(rawDiff);
   return patches[0].files[0];
@@ -891,10 +899,6 @@ index 1..2 100644
   });
 
   describe("mouse click → cursor (issue #104)", () => {
-    function findIdElement(tree: unknown, id: string): AnyElement | undefined {
-      return flatten(tree).find((el) => el.props["id"] === id);
-    }
-
     it("split: clicking the left column of a paired row dispatches with deletions side + leftLineNumber", () => {
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
@@ -1121,6 +1125,67 @@ index 1..2 100644
       );
     });
 
+    it("unified: dragging selectable diff text does not dispatch cursor click", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "unified",
+        onCursorClick,
+      });
+      const wrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
+      );
+      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
+      const drag = wrapper!.props["onMouseDrag"] as (event: unknown) => void;
+      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      drag(event);
+      up(event);
+
+      expect(onCursorClick).not.toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+    });
+
+    it("unified: a plain click on selectable diff text still dispatches cursor click on mouse up", () => {
+      const file = parseFile(SIMPLE_DIFF);
+      const rows = planRows(file, [], "unified");
+      const ctxIdx = rows.findIndex((r) => r.kind === "diff-row" && r.type === "context");
+      const ctxRow = rows[ctxIdx];
+      if (ctxRow.kind !== "diff-row") throw new Error("expected diff-row");
+      const onCursorClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(ctxIdx, ctxIdx + 1),
+        layout: "unified",
+        onCursorClick,
+      });
+      const wrapper = findIdElement(
+        tree,
+        `diff-row-x.txt-additions-${ctxRow.rightLineNumber}`,
+      );
+      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
+      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      expect(onCursorClick).not.toHaveBeenCalled();
+      up(event);
+
+      expect(onCursorClick).toHaveBeenCalledTimes(1);
+      expect(onCursorClick).toHaveBeenCalledWith(
+        "x.txt",
+        "additions",
+        ctxRow.rightLineNumber,
+      );
+    });
+
     it("hunk-header rows do NOT receive a click handler", () => {
       const file = parseFile(SIMPLE_DIFF);
       const rows = planRows(file, [], "split");
@@ -1228,6 +1293,61 @@ index 1..2 100644
       );
       expect(withHandler).toBeDefined();
       (withHandler!.props["onMouseDown"] as () => void)();
+      expect(onCardClick).toHaveBeenCalledTimes(1);
+      expect(onCardClick).toHaveBeenCalledWith(ann.id);
+    });
+
+    it("unified: dragging selectable Comment body text does not dispatch onCardClick", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("additions");
+      const rows = planRows(file, [ann], "unified");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
+      expect(annIdx).toBeGreaterThanOrEqual(0);
+      const onCardClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "unified",
+        onCardClick,
+      });
+      const withHandler = flatten(tree).find(
+        (el) => typeof el.props["onMouseDown"] === "function",
+      );
+      const down = withHandler!.props["onMouseDown"] as (event: unknown) => void;
+      const drag = withHandler!.props["onMouseDrag"] as (event: unknown) => void;
+      const up = withHandler!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      drag(event);
+      up(event);
+
+      expect(onCardClick).not.toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+    });
+
+    it("unified: a plain click on selectable Comment body text still dispatches onCardClick on mouse up", () => {
+      const file = parseFile(ANN_DIFF);
+      const ann = makeAnn("additions");
+      const rows = planRows(file, [ann], "unified");
+      const annIdx = rows.findIndex((r) => r.kind === "comment");
+      expect(annIdx).toBeGreaterThanOrEqual(0);
+      const onCardClick = vi.fn();
+      const tree = callDiffRows({
+        rows: rows.slice(annIdx, annIdx + 1),
+        layout: "unified",
+        onCardClick,
+      });
+      const withHandler = flatten(tree).find(
+        (el) => typeof el.props["onMouseDown"] === "function",
+      );
+      const down = withHandler!.props["onMouseDown"] as (event: unknown) => void;
+      const up = withHandler!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      expect(onCardClick).not.toHaveBeenCalled();
+      up(event);
+
       expect(onCardClick).toHaveBeenCalledTimes(1);
       expect(onCardClick).toHaveBeenCalledWith(ann.id);
     });
@@ -1431,6 +1551,73 @@ index 1..2 100644
       const handler = wrapper!.props["onMouseDown"];
       expect(typeof handler).toBe("function");
       (handler as () => void)();
+      expect(onInteractiveClick).toHaveBeenCalledWith(
+        "x.txt",
+        "collapsed-file",
+        "top",
+      );
+    });
+
+    it("dragging selectable interactive-row text does not dispatch onInteractiveClick", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "collapsed-file",
+          boundaryRef: "top",
+          text: "··· 42 lines hidden — Enter to expand ···",
+        },
+      ];
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.txt",
+        rows,
+        layout: "split",
+        cursorCardId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-collapsed-file-top");
+      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
+      const drag = wrapper!.props["onMouseDrag"] as (event: unknown) => void;
+      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      drag(event);
+      up(event);
+
+      expect(onInteractiveClick).not.toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+    });
+
+    it("a plain click on selectable interactive-row text still dispatches onInteractiveClick on mouse up", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "interactive",
+          subKind: "collapsed-file",
+          boundaryRef: "top",
+          text: "··· 42 lines hidden — Enter to expand ···",
+        },
+      ];
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.txt",
+        rows,
+        layout: "split",
+        cursorCardId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      const wrapper = findIdElement(tree, "interactive-row-x.txt-collapsed-file-top");
+      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
+      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      expect(onInteractiveClick).not.toHaveBeenCalled();
+      up(event);
+
+      expect(onInteractiveClick).toHaveBeenCalledTimes(1);
       expect(onInteractiveClick).toHaveBeenCalledWith(
         "x.txt",
         "collapsed-file",
@@ -1726,6 +1913,39 @@ index 1..2 100644
       expect(handler).toBeDefined();
       handler!();
       expect(onInteractiveClick).toHaveBeenCalledWith("x.ts", "hunk-separator", 2);
+    });
+
+    it("dragging selectable hunk-header text does not dispatch onInteractiveClick", () => {
+      const rows: PlannedRow[] = [
+        {
+          kind: "hunk-header",
+          header: "@@ -65,6 +65,46 @@ function run()",
+          hunkIndex: 2,
+          gapAbove: 8,
+          primaryExpand: "all",
+        },
+      ];
+      const onInteractiveClick = vi.fn();
+      const tree = DiffRows({
+        fileName: "x.ts",
+        rows,
+        layout: "split",
+        cursorCardId: null,
+        cursor: null,
+        onInteractiveClick,
+      });
+      const wrapper = findIdElement(tree, "interactive-row-x.ts-hunk-separator-2");
+      const down = wrapper!.props["onMouseDown"] as (event: unknown) => void;
+      const drag = wrapper!.props["onMouseDrag"] as (event: unknown) => void;
+      const up = wrapper!.props["onMouseUp"] as (event: unknown) => void;
+      const event = selectableMouseEvent();
+
+      down(event);
+      drag(event);
+      up(event);
+
+      expect(onInteractiveClick).not.toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
     });
 
     it("file-top hunk dispatches onInteractiveClick with boundary-top + 'top'", () => {
