@@ -84,6 +84,42 @@ describe("TourPicker (TUI) — row click wiring (issue #321)", () => {
     expect(onSelect).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps picker label drag-selection from selecting a row", () => {
+    const onSelect = vi.fn();
+    const stopPropagation = vi.fn();
+    const root = renderPicker({ onSelect });
+    const row = rowBoxes(root)[1]!;
+    const event = {
+      button: 0,
+      target: { selectable: true },
+      stopPropagation,
+    };
+
+    (row.props["onMouseDown"] as (event: typeof event) => void)(event);
+    (row.props["onMouseDrag"] as (event: typeof event) => void)(event);
+    (row.props["onMouseUp"] as (event: typeof event) => void)(event);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
+  });
+
+  it("keeps plain clicks on picker labels selecting the row", () => {
+    const onSelect = vi.fn();
+    const root = renderPicker({ onSelect });
+    const row = rowBoxes(root)[1]!;
+    const event = {
+      button: 0,
+      target: { selectable: true },
+      stopPropagation: vi.fn(),
+    };
+
+    (row.props["onMouseDown"] as (event: typeof event) => void)(event);
+    expect(onSelect).not.toHaveBeenCalled();
+    (row.props["onMouseUp"] as (event: typeof event) => void)(event);
+
+    expect(onSelect).toHaveBeenCalledWith(1);
+  });
+
   it("renders no rows (and no stray handlers) when the row list is empty", () => {
     const onSelect = vi.fn();
     const root = renderPicker({ onSelect, rows: [] });

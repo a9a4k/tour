@@ -3,6 +3,7 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import type { PickerRow } from "../core/tour-list.js";
 import { theme } from "../core/theme.js";
 import { CURSOR_GLYPH } from "./DiffLine.js";
+import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 
 interface TourPickerProps {
   rows: PickerRow[];
@@ -53,12 +54,15 @@ export function TourPicker({ rows, currentTourId, cursor, scrollRef, onSelect }:
             if (isCursor) bg = theme.bg.accentCursor.tui;
             else if (isCurrent) bg = theme.bg.accentCurrent.tui;
             const glyph = isCursor ? CURSOR_GLYPH : " ";
+            const mouseHandlers = textSelectionSafeActivation(() => onSelect(i));
             return (
               <box
                 key={r.id}
                 id={`picker-row-${i}`}
                 flexDirection="row"
-                onMouseDown={() => onSelect(i)}
+                onMouseDown={mouseHandlers.onMouseDown}
+                onMouseDrag={mouseHandlers.onMouseDrag}
+                onMouseUp={mouseHandlers.onMouseUp}
               >
                 <text fg={theme.fg.accent} bg={bg} selectable={false}>{glyph}</text>
                 <text fg={theme.fg.default} bg={bg}>{rowLabel(r)}</text>
