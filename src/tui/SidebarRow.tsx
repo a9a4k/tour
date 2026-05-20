@@ -50,13 +50,13 @@ export function SidebarRowTui(props: SidebarRowTuiProps) {
         {showGlyph && (
           <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
         )}
-        <text height={1} fg={theme.fg.muted} selectable={false}>
+        <text height={1} fg={theme.fg.muted}>
           {leadingText}
         </text>
         <text height={1} fg={theme.fg.muted} selectable={true}>
           {parts.name}
         </text>
-        <text height={1} fg={theme.fg.muted} selectable={false}>
+        <text height={1} fg={theme.fg.muted}>
           {parts.trailing}
         </text>
       </box>
@@ -83,28 +83,28 @@ export function SidebarRowTui(props: SidebarRowTuiProps) {
       {showGlyph && (
         <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
       )}
-      <text height={1} fg={theme.fg.default} selectable={false}>
+      <text height={1} fg={theme.fg.default}>
         {leadingText}
       </text>
       <text height={1} fg={theme.fg.default} selectable={true}>
         {segs.name}
       </text>
       {segs.additions.length > 0 && (
-        <text height={1} fg={theme.fg.success} selectable={false}>
+        <text height={1} fg={theme.fg.success}>
           {segs.additions}
         </text>
       )}
       {segs.deletions.length > 0 && (
-        <text height={1} fg={theme.fg.danger} selectable={false}>
+        <text height={1} fg={theme.fg.danger}>
           {segs.deletions}
         </text>
       )}
       {segs.badge.length > 0 && (
-        <text height={1} fg={theme.fg.default} selectable={false}>
+        <text height={1} fg={theme.fg.default}>
           {segs.badge}
         </text>
       )}
-      <text height={1} fg={theme.fg.default} selectable={false}>
+      <text height={1} fg={theme.fg.default}>
         {segs.trailing}
       </text>
     </box>

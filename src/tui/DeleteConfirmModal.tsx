@@ -78,7 +78,7 @@ export function DeleteConfirmModal({
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg={theme.fg.muted} selectable={false}>{hintText(state)}</text>
+        <text fg={theme.fg.muted}>{hintText(state)}</text>
       </box>
     </box>
   );

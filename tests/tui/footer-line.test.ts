@@ -18,7 +18,7 @@ function isElement(node: unknown): node is AnyElement {
 }
 
 describe("FooterLineTui", () => {
-  it("keeps footer hints and transient status chrome out of Text selection", () => {
+  it("keeps footer hints and transient status text selectable", () => {
     const out = FooterLineTui({ footer: "Copied selection  ·  j/k: move" });
     if (!isElement(out)) throw new Error("FooterLineTui did not return an element");
     const child = out.props.children;
@@ -26,6 +26,6 @@ describe("FooterLineTui", () => {
     expect(isElement(child)).toBe(true);
     expect((child as AnyElement).type).toBe("text");
     expect((child as AnyElement).props.children).toBe("Copied selection  ·  j/k: move");
-    expect((child as AnyElement).props["selectable"]).toBe(false);
+    expect((child as AnyElement).props["selectable"]).not.toBe(false);
   });
 });

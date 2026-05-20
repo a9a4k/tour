@@ -67,7 +67,7 @@ const comment: Comment = {
 };
 
 describe("CommentCard selection cues", () => {
-  it("keeps Comment and Reply body Text selectable while excluding cursor/header chrome", () => {
+  it("keeps visible Comment and Reply text selectable while excluding structural glyphs", () => {
     const reply: Comment = {
       ...comment,
       id: "ann-2",
@@ -92,8 +92,16 @@ describe("CommentCard selection cues", () => {
     expect(replyBody).toBeDefined();
     expect(replyBody!.props["selectable"]).toBeUndefined();
 
-    for (const chrome of ["▾ ", "1 / 3 ", "[human]", " (user)", "● "]) {
-      const nodes = texts.filter((t) => t.props["children"] === chrome);
+    for (const visible of ["1 / 3 ", "[human]", " (user)"]) {
+      const nodes = texts.filter((t) => t.props["children"] === visible);
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) {
+        expect(node.props["selectable"]).not.toBe(false);
+      }
+    }
+
+    for (const structural of ["▾ ", "● "]) {
+      const nodes = texts.filter((t) => t.props["children"] === structural);
       expect(nodes.length).toBeGreaterThan(0);
       for (const node of nodes) {
         expect(node.props["selectable"]).toBe(false);
@@ -101,7 +109,7 @@ describe("CommentCard selection cues", () => {
     }
   });
 
-  it("keeps collapsed preview Text selectable while excluding one-line chrome", () => {
+  it("keeps collapsed preview and metadata selectable while excluding structural glyphs", () => {
     const reply: Comment = {
       ...comment,
       id: "ann-2",
@@ -126,8 +134,16 @@ describe("CommentCard selection cues", () => {
     expect(preview).toBeDefined();
     expect(preview!.props["selectable"]).toBeUndefined();
 
-    for (const chrome of ["● ", "▸ ", "1 / 3 ", "[human]", "  💬 1"]) {
-      const nodes = texts.filter((t) => t.props["children"] === chrome);
+    for (const visible of ["1 / 3 ", "[human]", "  💬 1"]) {
+      const nodes = texts.filter((t) => t.props["children"] === visible);
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) {
+        expect(node.props["selectable"]).not.toBe(false);
+      }
+    }
+
+    for (const structural of ["● ", "▸ "]) {
+      const nodes = texts.filter((t) => t.props["children"] === structural);
       expect(nodes.length).toBeGreaterThan(0);
       for (const node of nodes) {
         expect(node.props["selectable"]).toBe(false);

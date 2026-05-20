@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { html } from "../../src/web/spa.js";
 
+function ruleBody(out: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = out.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  return match?.[1] ?? "";
+}
+
 describe("spa shell html()", () => {
   it("renders a #root mount point for the React app", () => {
     expect(html()).toContain('<div id="root">');
@@ -56,13 +62,22 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.app-sidebar\.is-resizing[\s\S]*?user-select:\s*none/);
   });
 
-  it("styles Tour text selection content separately from comment and file-header chrome", () => {
+  it("keeps visible metadata selectable while excluding true controls", () => {
     const out = html();
     expect(out).toMatch(
       /\.tour-text-selectable\s*\{[^}]*user-select:\s*text/,
     );
+    for (const selector of [
+      ".reason-tag",
+      ".tour-file-stats",
+      ".comment-block .nav-index",
+      ".comment-block .author-kind",
+      ".reply-agent-byline",
+    ]) {
+      expect(ruleBody(out, selector)).not.toMatch(/user-select:\s*none/);
+    }
     expect(out).toMatch(
-      /\.comment-block \.ann-actions,[\s\S]*?\.tour-file-open-in-editor-button,[\s\S]*?\.reason-tag\s*\{[^}]*user-select:\s*none/,
+      /\.comment-block \.ann-actions,[\s\S]*?\.tour-file-open-in-editor-button\s*\{[^}]*user-select:\s*none/,
     );
   });
 
@@ -236,13 +251,13 @@ describe("spa shell html()", () => {
     expect(out).toMatch(/\.tree-icon\s*\{[^}]*color:\s*var\(--fg-muted\)/);
   });
 
-  it("limits sidebar Text selection to file and folder labels (Issue #430)", () => {
+  it("keeps sidebar visible text selectable while excluding structural icons", () => {
     const out = html();
     expect(out).toMatch(/\.file-name\s*\{[^}]*user-select:\s*text/);
     expect(out).toMatch(/\.folder-name\s*\{[^}]*user-select:\s*text/);
     expect(out).toMatch(/\.tree-icon\s*\{[^}]*user-select:\s*none/);
     expect(out).toMatch(/\.status-icon\s*\{[^}]*user-select:\s*none/);
-    expect(out).toMatch(/\.badge\s*\{[^}]*user-select:\s*none/);
+    expect(ruleBody(out, ".badge")).not.toMatch(/user-select:\s*none/);
   });
 
   it("lays out the tour-header as a wrapping flex row with two clusters (Issue #92)", () => {

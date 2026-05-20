@@ -2322,7 +2322,9 @@ export const FolderRow = React.memo(function FolderRow({
     >
       <Chevron className="tree-icon" />
       <FileDirectoryFillIcon className="tree-icon" />
-      <span className="folder-name">{row.displayName}</span>
+      <span className={`folder-name ${TEXT_SELECTABLE_CLASS}`}>
+        {row.displayName}
+      </span>
     </button>
   );
 });
@@ -2386,8 +2388,12 @@ export const FileRow = React.memo(function FileRow({
       tabIndex={isTabStop ? 0 : -1}
     >
       <Icon className={`status-icon ${statusClass}`} />
-      <span className="file-name">{row.displayName}</span>
-      {row.commentCount > 0 ? <span className="badge">{row.commentCount}</span> : null}
+      <span className={`file-name ${TEXT_SELECTABLE_CLASS}`}>
+        {row.displayName}
+      </span>
+      {row.commentCount > 0 ? (
+        <span className={`badge ${TEXT_SELECTABLE_CLASS}`}>{row.commentCount}</span>
+      ) : null}
     </button>
   );
 });
@@ -2661,9 +2667,11 @@ export function CommentCard({
             <span aria-hidden="true">▸ </span>
           )}
           {navIndex !== null && navTotal > 0 ? (
-            <span className="nav-index">{navIndex} / {navTotal}{" "}</span>
+            <span className={`nav-index ${TEXT_SELECTABLE_CLASS}`}>
+              {navIndex} / {navTotal}{" "}
+            </span>
           ) : null}
-          <span className={`author-kind ${comment.author_kind}`}>
+          <span className={`author-kind ${comment.author_kind} ${TEXT_SELECTABLE_CLASS}`}>
             [{comment.author_kind}]
           </span>{" "}
           <span className={`ann-filename ${TEXT_SELECTABLE_CLASS}`}>
@@ -2675,7 +2683,10 @@ export function CommentCard({
             {"\""}
           </span>
           {replyCount > 0 ? (
-            <span className="ann-collapsed-reply-count">  💬 {replyCount}</span>
+            <span className={`ann-collapsed-reply-count ${TEXT_SELECTABLE_CLASS}`}>
+              {"  💬 "}
+              {replyCount}
+            </span>
           ) : null}
         </div>
         {showPill && replyLock ? <ReplyPill lock={replyLock} /> : null}
@@ -2716,13 +2727,15 @@ export function CommentCard({
           </button>
         ) : null}
         {navIndex !== null && navTotal > 0 ? (
-          <span className="nav-index">{navIndex} / {navTotal}{" "}</span>
+          <span className={`nav-index ${TEXT_SELECTABLE_CLASS}`}>
+            {navIndex} / {navTotal}{" "}
+          </span>
         ) : null}
-        <span className={`author-kind ${comment.author_kind}`}>
+        <span className={`author-kind ${comment.author_kind} ${TEXT_SELECTABLE_CLASS}`}>
           [{comment.author_kind}]
         </span>{" "}
         {comment.author !== comment.author_kind ? (
-          <>{comment.author} · </>
+          <span className={TEXT_SELECTABLE_CLASS}>{comment.author} · </span>
         ) : null}
         {onFileClick ? (
           // Issue #383 / ADR 0035: location-stamp linkification. Hover-
@@ -2792,13 +2805,17 @@ export function CommentCard({
                 }}
               >
                 <div className="ann-header">
-                  <span className={`author-kind ${r.author_kind}`}>
+                  <span
+                    className={`author-kind ${r.author_kind} ${TEXT_SELECTABLE_CLASS}`}
+                  >
                     [{r.author_kind}]
                   </span>
-                  {r.author !== r.author_kind ? <> {r.author}</> : null}
+                  {r.author !== r.author_kind ? (
+                    <span className={TEXT_SELECTABLE_CLASS}> {r.author}</span>
+                  ) : null}
                   {r.author_kind === "agent" && r.replies_to ? (
                     <span
-                      className="reply-agent-byline"
+                      className={`reply-agent-byline ${TEXT_SELECTABLE_CLASS}`}
                       title="This reply was produced by the configured reply-agent in a separate session."
                     >
                       {" "}· reply-agent

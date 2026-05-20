@@ -164,11 +164,13 @@ describe("CommentCard header collapses redundant `author` when author === author
 });
 
 describe("CommentCard text selection", () => {
-  it("marks comment body, reply body, and location stamps as selectable while leaving action chrome unmarked", () => {
+  it("marks visible comment text and metadata selectable while leaving action chrome unmarked", () => {
     const reply: Comment = {
       ...baseComment,
       id: "ann-2",
       body: "reply body",
+      author_kind: "agent",
+      author: "claude",
       replies_to: baseComment.id,
     };
     const container = mount(
@@ -198,6 +200,17 @@ describe("CommentCard text selection", () => {
         .querySelector(".ann-filename-link")
         ?.classList.contains(TEXT_SELECTABLE_CLASS),
     ).toBe(true);
+    for (const selector of [
+      ".nav-index",
+      ".author-kind",
+      ".reply-agent-byline",
+    ]) {
+      expect(
+        container
+          .querySelector(selector)
+          ?.classList.contains(TEXT_SELECTABLE_CLASS),
+      ).toBe(true);
+    }
     expect(
       container
         .querySelector(".reply-button")
@@ -243,6 +256,40 @@ describe("CommentCard text selection", () => {
       );
     });
     expect(calls).toEqual(["ann-1"]);
+  });
+
+  it("suppresses card activation after dragging visible metadata", () => {
+    const calls: string[] = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: { ...baseComment, author: "alice" },
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onCardClick: (id: string) => {
+          calls.push(id);
+        },
+      }),
+    );
+    const author = container.querySelector(".author-kind") as HTMLElement;
+    expect(author).not.toBeNull();
+
+    act(() => {
+      author.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      author.dispatchEvent(
+        new MouseEvent("mousemove", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      author.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+      author.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 34, clientY: 10 }),
+      );
+    });
+
+    expect(calls).toEqual([]);
   });
 
   it("keeps reply body plain clicks immediate but suppresses reply activation after a reply body drag", () => {

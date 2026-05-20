@@ -3,6 +3,7 @@ import type { DiffStats } from "../core/diff-stats.js";
 import { headerSourcePair } from "../core/header-source-pair.js";
 import { theme } from "../core/theme.js";
 import { HamburgerButtonTui } from "./HamburgerButton.js";
+import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 
 interface TopHeaderTuiProps {
   tour: Tour;
@@ -62,7 +63,6 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
             fg={tour.title ? theme.fg.default : theme.fg.muted}
             truncate
             maxWidth={60}
-            selectable={false}
           >
             {tour.title || "(untitled)"}
           </text>
@@ -70,7 +70,6 @@ export function TopHeaderTui(props: TopHeaderTuiProps) {
             fg={theme.fg.muted}
             truncate
             maxWidth={60}
-            selectable={false}
           >
             {`  ${headerSourcePair(tour)}`}
           </text>
@@ -118,14 +117,18 @@ interface LayoutToggleTuiProps {
 }
 
 function LayoutToggleTui({ layout, onSplit, onUnified }: LayoutToggleTuiProps) {
+  const splitMouseHandlers = textSelectionSafeActivation(onSplit);
+  const unifiedMouseHandlers = textSelectionSafeActivation(onUnified);
   return (
     <box flexDirection="row">
       <text fg={theme.fg.muted} selectable={false}>{"["}</text>
       <text
         fg={layout === "split" ? theme.fg.accent : theme.fg.muted}
         bold={layout === "split"}
-        selectable={false}
-        onMouseDown={onSplit}
+        selectable={true}
+        onMouseDown={splitMouseHandlers.onMouseDown}
+        onMouseDrag={splitMouseHandlers.onMouseDrag}
+        onMouseUp={splitMouseHandlers.onMouseUp}
       >
         {"Split"}
       </text>
@@ -133,8 +136,10 @@ function LayoutToggleTui({ layout, onSplit, onUnified }: LayoutToggleTuiProps) {
       <text
         fg={layout === "unified" ? theme.fg.accent : theme.fg.muted}
         bold={layout === "unified"}
-        selectable={false}
-        onMouseDown={onUnified}
+        selectable={true}
+        onMouseDown={unifiedMouseHandlers.onMouseDown}
+        onMouseDrag={unifiedMouseHandlers.onMouseDrag}
+        onMouseUp={unifiedMouseHandlers.onMouseUp}
       >
         {"Unified"}
       </text>
@@ -169,9 +174,9 @@ function TourStatsIndicatorTui({ additions, deletions }: TourStatsIndicatorTuiPr
   if (additions <= 0 && deletions <= 0) return null;
   return (
     <box flexDirection="row">
-      {additions > 0 ? <text fg={theme.fg.success} selectable={false}>{`+${additions}`}</text> : null}
-      {additions > 0 && deletions > 0 ? <text selectable={false}>{" "}</text> : null}
-      {deletions > 0 ? <text fg={theme.fg.danger} selectable={false}>{`-${deletions}`}</text> : null}
+      {additions > 0 ? <text fg={theme.fg.success}>{`+${additions}`}</text> : null}
+      {additions > 0 && deletions > 0 ? <text>{" "}</text> : null}
+      {deletions > 0 ? <text fg={theme.fg.danger}>{`-${deletions}`}</text> : null}
       <box width={1} />
     </box>
   );
@@ -186,21 +191,27 @@ function SequencePillTui({ idx, total, onPrev, onNext }: SequencePillTuiProps) {
   const onCard = idx >= 0;
   const prevDisabled = onCard && idx <= 0;
   const nextDisabled = onCard && idx >= total - 1;
+  const prevMouseHandlers = textSelectionSafeActivation(onPrev);
+  const nextMouseHandlers = textSelectionSafeActivation(onNext);
   return (
     <box flexDirection="row">
       <text fg={theme.fg.muted} selectable={false}>{"["}</text>
       <text
         fg={prevDisabled ? theme.fg.subtle : theme.fg.default}
         selectable={false}
-        onMouseDown={prevDisabled ? undefined : onPrev}
+        onMouseDown={prevDisabled ? undefined : prevMouseHandlers.onMouseDown}
+        onMouseDrag={prevDisabled ? undefined : prevMouseHandlers.onMouseDrag}
+        onMouseUp={prevDisabled ? undefined : prevMouseHandlers.onMouseUp}
       >
         {"←"}
       </text>
-      <text fg={theme.fg.default} selectable={false}>{onCard ? ` ${idx + 1}/${total} ` : ` —/${total} `}</text>
+      <text fg={theme.fg.default}>{onCard ? ` ${idx + 1}/${total} ` : ` —/${total} `}</text>
       <text
         fg={nextDisabled ? theme.fg.subtle : theme.fg.default}
         selectable={false}
-        onMouseDown={nextDisabled ? undefined : onNext}
+        onMouseDown={nextDisabled ? undefined : nextMouseHandlers.onMouseDown}
+        onMouseDrag={nextDisabled ? undefined : nextMouseHandlers.onMouseDrag}
+        onMouseUp={nextDisabled ? undefined : nextMouseHandlers.onMouseUp}
       >
         {"→"}
       </text>

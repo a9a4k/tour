@@ -397,7 +397,11 @@ function FileBlockImpl(props: FileBlockProps): React.JSX.Element {
           </button>
         </div>
         <div className="tour-file-header-right">
-          {reason ? <span className="reason-tag">{reason}</span> : null}
+          {reason ? (
+            <span className={`reason-tag ${TEXT_SELECTABLE_CLASS}`}>
+              {reason}
+            </span>
+          ) : null}
           <DiffStatsIndicator
             additions={stats.additions}
             deletions={stats.deletions}
@@ -520,7 +524,7 @@ function DiffStatsIndicator(props: {
     );
   }
   return (
-    <span className="tour-file-stats">
+    <span className={`tour-file-stats ${TEXT_SELECTABLE_CLASS}`}>
       <span className="tour-file-stats-bar">{segmentNodes}</span>
       {additions > 0 ? (
         <span className="tour-file-stats-count added">{`+${additions}`}</span>

@@ -91,13 +91,16 @@ describe("TourPicker (TUI) — row click wiring (issue #321)", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("keeps picker rows and hint chrome out of Text selection", () => {
+  it("keeps picker row labels and hints selectable while excluding cursor glyphs", () => {
     const root = renderPicker({ cursor: 1, currentTourId: "tour-a" });
     const texts = flatten(root).filter((el) => el.type === "text");
 
     expect(texts.length).toBeGreaterThan(0);
-    for (const text of texts) {
+    for (const text of texts.filter((t) => t.props.children === "❯" || t.props.children === " ")) {
       expect(text.props["selectable"]).toBe(false);
+    }
+    for (const text of texts.filter((t) => t.props.children !== "❯" && t.props.children !== " ")) {
+      expect(text.props["selectable"]).not.toBe(false);
     }
   });
 });

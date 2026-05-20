@@ -78,7 +78,7 @@ function ReplyPill({ lock, now }: PillProps) {
   if (stale) {
     return (
       <box marginTop={1} paddingLeft={2}>
-        <text fg={theme.fg.attention} selectable={false}>
+        <text fg={theme.fg.attention}>
           {`⚠️ Reply agent (${lock.agent}) is taking unusually long…`}
         </text>
       </box>
@@ -86,7 +86,7 @@ function ReplyPill({ lock, now }: PillProps) {
   }
   return (
     <box marginTop={1} paddingLeft={2}>
-      <text fg={theme.fg.muted} selectable={false}>
+      <text fg={theme.fg.muted}>
         {`✏️ Reply agent (${lock.agent}) is replying… (${seconds}s)`}
       </text>
     </box>
@@ -147,15 +147,15 @@ export function CommentCard({
             <text fg={theme.fg.muted} selectable={false}>{"▸ "}</text>
           )}
           {navIndex != null && navTotal != null && navTotal > 0 ? (
-            <text fg={theme.fg.muted} bold selectable={false}>{`${navIndex} / ${navTotal} `}</text>
+            <text fg={theme.fg.muted} bold>{`${navIndex} / ${navTotal} `}</text>
           ) : null}
-          <text fg={authorKindColor(comment.author_kind)} bold selectable={false}>
+          <text fg={authorKindColor(comment.author_kind)} bold>
             {`[${comment.author_kind}]`}
           </text>
           <text fg={theme.fg.accent} bold>{` ${comment.file}:${rangeLabel(comment)}`}</text>
           <text fg={theme.fg.muted}>{`  "${preview}"`}</text>
           {replyCount > 0 ? (
-            <text fg={theme.fg.muted} selectable={false}>{`  💬 ${replyCount}`}</text>
+            <text fg={theme.fg.muted}>{`  💬 ${replyCount}`}</text>
           ) : null}
         </box>
         {showPill && replyLock ? <ReplyPill lock={replyLock} now={now ?? Date.now()} /> : null}
@@ -196,18 +196,18 @@ export function CommentCard({
           <text fg={theme.fg.muted} selectable={false}>{"▾ "}</text>
         )}
         {navIndex != null && navTotal != null && navTotal > 0 ? (
-          <text fg={theme.fg.muted} bold selectable={false}>
+          <text fg={theme.fg.muted} bold>
             {`${navIndex} / ${navTotal} `}
           </text>
         ) : null}
-        <text fg={authorKindColor(comment.author_kind)} bold selectable={false}>
+        <text fg={authorKindColor(comment.author_kind)} bold>
           {`[${comment.author_kind}]`}
         </text>
         <text fg={theme.fg.accent} bold>
           {` ${comment.file}:${rangeLabel(comment)}`}
         </text>
         {comment.author !== comment.author_kind ? (
-          <text fg={theme.fg.accent} bold selectable={false}>
+          <text fg={theme.fg.accent} bold>
             {` (${comment.author})`}
           </text>
         ) : null}
@@ -232,11 +232,11 @@ export function CommentCard({
                   {"● "}
                 </text>
               ) : null}
-              <text fg={authorKindColor(r.author_kind)} bold selectable={false}>
+              <text fg={authorKindColor(r.author_kind)} bold>
                 {`[${r.author_kind}]`}
               </text>
               {r.author !== r.author_kind ? (
-                <text fg={theme.fg.muted} selectable={false}>{` (${r.author})`}</text>
+                <text fg={theme.fg.muted}>{` (${r.author})`}</text>
               ) : null}
               {r.author_kind === "agent" && r.replies_to ? (
                 // Issue #390 / ADR 0021 addendum: reply-agent replies are
@@ -244,7 +244,7 @@ export function CommentCard({
                 // `author_kind: "agent"` + `replies_to`). Mark them with
                 // a visible role suffix so the reply-agent reads as a
                 // distinct participant from the user's current chat.
-                <text fg={theme.fg.muted} selectable={false}>{` · reply-agent`}</text>
+                <text fg={theme.fg.muted}>{` · reply-agent`}</text>
               ) : null}
             </box>
             <text fg={theme.fg.default} wrapMode="word">{r.body}</text>

@@ -54,7 +54,7 @@ describe("sidebar row Text selection", () => {
             displayName: "file.ts",
             depth: 1,
             file,
-            commentCount: 0,
+            commentCount: 2,
           },
           selected: false,
           onSelect: (path) => selectedFiles.push(path),
@@ -78,6 +78,15 @@ describe("sidebar row Text selection", () => {
 
     const fileRow = container.querySelector("button.file-entry")!;
     const folderRow = container.querySelector("button.folder-entry")!;
+    expect(
+      fileRow.querySelector(".file-name")?.classList.contains("tour-text-selectable"),
+    ).toBe(true);
+    expect(
+      fileRow.querySelector(".badge")?.classList.contains("tour-text-selectable"),
+    ).toBe(true);
+    expect(
+      folderRow.querySelector(".folder-name")?.classList.contains("tour-text-selectable"),
+    ).toBe(true);
 
     fileRow.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     folderRow.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));

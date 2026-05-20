@@ -158,7 +158,7 @@ describe("Composer render gate (issue #254 + issue #391)", () => {
     expect(texts).toContain("the draft");
   });
 
-  it("keeps composer chevrons and hints out of Text selection while preserving draft text", () => {
+  it("keeps composer hints and draft text selectable while excluding the chevron", () => {
     const tree = render({
       kind: "submitting",
       target: topLevelTarget,
@@ -177,7 +177,7 @@ describe("Composer render gate (issue #254 + issue #391)", () => {
     expect(body).toBeDefined();
     expect(body!.props["selectable"]).toBeUndefined();
     expect(hint).toBeDefined();
-    expect(hint!.props["selectable"]).toBe(false);
+    expect(hint!.props["selectable"]).not.toBe(false);
   });
 
   // The pre-fix UI rendered nothing on `errored` either — the silent-fail

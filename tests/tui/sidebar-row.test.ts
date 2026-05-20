@@ -71,7 +71,7 @@ function file(
 }
 
 describe("SidebarRowTui Text selection", () => {
-  it("keeps file and folder labels selectable while excluding sidebar chrome", () => {
+  it("keeps sidebar visible text selectable while excluding the cursor glyph", () => {
     const folderTree = SidebarRowTui({
       row: folder(),
       isSelected: true,
@@ -81,10 +81,13 @@ describe("SidebarRowTui Text selection", () => {
     });
     const folderTexts = textElements(folderTree);
     expect(folderTexts.find((t) => t.props.children === "src")?.props.selectable).toBe(true);
-    for (const chrome of [CURSOR_GLYPH, "▾ ", " "]) {
-      const nodes = folderTexts.filter((t) => t.props.children === chrome);
+    for (const visible of ["▾ ", " "]) {
+      const nodes = folderTexts.filter((t) => t.props.children === visible);
       expect(nodes.length).toBeGreaterThan(0);
-      for (const node of nodes) expect(node.props.selectable).toBe(false);
+      for (const node of nodes) expect(node.props.selectable).not.toBe(false);
+    }
+    for (const node of folderTexts.filter((t) => t.props.children === CURSOR_GLYPH)) {
+      expect(node.props.selectable).toBe(false);
     }
 
     const fileTree = SidebarRowTui({
@@ -98,10 +101,13 @@ describe("SidebarRowTui Text selection", () => {
     const fileTexts = textElements(fileTree);
     expect(fileTexts.find((t) => t.props.children === "controller.ts")?.props.selectable)
       .toBe(true);
-    for (const chrome of [CURSOR_GLYPH, "M ", " +4", " -2", " [3]", " "]) {
-      const nodes = fileTexts.filter((t) => t.props.children === chrome);
+    for (const visible of ["M ", " +4", " -2", " [3]", " "]) {
+      const nodes = fileTexts.filter((t) => t.props.children === visible);
       expect(nodes.length).toBeGreaterThan(0);
-      for (const node of nodes) expect(node.props.selectable).toBe(false);
+      for (const node of nodes) expect(node.props.selectable).not.toBe(false);
+    }
+    for (const node of fileTexts.filter((t) => t.props.children === CURSOR_GLYPH)) {
+      expect(node.props.selectable).toBe(false);
     }
   });
 

@@ -140,7 +140,7 @@ export function Composer({ state, parent, onInput, onSubmit }: ComposerProps) {
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg={theme.fg.muted} selectable={false}>{hintText(state)}</text>
+        <text fg={theme.fg.muted}>{hintText(state)}</text>
       </box>
     </box>
   );

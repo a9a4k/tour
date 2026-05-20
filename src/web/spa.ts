@@ -161,7 +161,6 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     padding: 1px 6px;
     font-size: 11px;
     margin-left: auto;
-    user-select: none;
   }
   .app-main { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
   .banner {
@@ -926,20 +925,14 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     cursor: text;
   }
   .comment-block .selection-marker,
-  .comment-block .nav-index,
-  .comment-block .author-kind,
   .comment-block .ann-collapse-chevron,
   .comment-block .ann-trash-button,
-  .comment-block .reply-agent-byline,
   .comment-block .ann-actions,
-  .comment-block .ann-collapsed-reply-count,
   .tour-file-chevron,
   .tour-file-status-icon,
   .tour-file-copy-button,
   .tour-file-expand-all-button,
-  .tour-file-open-in-editor-button,
-  .tour-file-stats,
-  .reason-tag {
+  .tour-file-open-in-editor-button {
     user-select: none;
   }
 </style>

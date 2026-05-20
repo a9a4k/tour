@@ -46,7 +46,7 @@ const comment: Comment = {
 };
 
 describe("DeleteConfirmModal (TUI)", () => {
-  it("keeps action hints out of Text selection while preserving the comment excerpt", () => {
+  it("keeps action hints and the comment excerpt selectable", () => {
     const tree = DeleteConfirmModal({
       state: { kind: "open", targetId: comment.id },
       target: comment,
@@ -63,6 +63,6 @@ describe("DeleteConfirmModal (TUI)", () => {
     expect(excerpt).toBeDefined();
     expect(excerpt!.props["selectable"]).toBeUndefined();
     expect(hint).toBeDefined();
-    expect(hint!.props["selectable"]).toBe(false);
+    expect(hint!.props["selectable"]).not.toBe(false);
   });
 });

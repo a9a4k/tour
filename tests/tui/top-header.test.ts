@@ -285,12 +285,30 @@ describe("TopHeaderTui (issue #93)", () => {
     expect(headerText).toContain("Unified");
   });
 
-  it("keeps all header chrome out of Text selection", () => {
+  it("keeps visible header labels selectable while excluding structural glyphs", () => {
     const root = render({ tourStats: { additions: 12, deletions: 7 } });
     const texts = walk(root).filter((e) => e.type === "text");
+    const byText = (body: string) =>
+      texts.filter((e) => e.props.children === body);
 
-    for (const text of texts) {
-      expect(text.props["selectable"]).toBe(false);
+    for (const visible of [
+      "Add foo",
+      "  cafebab ← deadbee",
+      "+12",
+      "-7",
+      " 1/3 ",
+      "Split",
+      "Unified",
+    ]) {
+      const nodes = byText(visible);
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) expect(node.props["selectable"]).not.toBe(false);
+    }
+
+    for (const structural of ["[", "]", "←", "→", "⇤", "≡"]) {
+      const nodes = byText(structural);
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) expect(node.props["selectable"]).toBe(false);
     }
   });
 

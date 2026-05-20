@@ -367,13 +367,15 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
     expect(left!.querySelector(".rename-path")).not.toBeNull();
   });
 
-  it("marks file and rename paths as selectable while leaving header chrome unmarked", () => {
+  it("marks visible header text as selectable while leaving header controls unmarked", () => {
     const file: BundleFile = {
       ...baseFile,
       name: "new.ts",
       prevName: "old.ts",
+      classification: { collapsed: false, reason: "generated" },
     };
-    const c = mount(createElement(FileBlock, defaultProps({ file })));
+    const rows = rowsCanonical();
+    const c = mount(createElement(FileBlock, defaultProps({ file, rows })));
     expect(
       c
         .querySelector(".tour-file-name")
@@ -381,6 +383,14 @@ describe("<FileBlock> — GitHub-style header chrome (#225 / #317)", () => {
     ).toBe(true);
     expect(
       c.querySelector(".rename-path")?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      c.querySelector(".reason-tag")?.classList.contains(TEXT_SELECTABLE_CLASS),
+    ).toBe(true);
+    expect(
+      c
+        .querySelector(".tour-file-stats")
+        ?.classList.contains(TEXT_SELECTABLE_CLASS),
     ).toBe(true);
     expect(
       c

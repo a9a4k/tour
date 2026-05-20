@@ -236,7 +236,7 @@ function DiffPaneFile({
   const stylesRight = useTuiHighlight(file.newContent ?? "", additionsLang);
   const stylesLeft = useTuiHighlight(file.oldContent ?? "", deletionsLang);
   const placeholder = fileCardPlaceholder(collapsed, file.hunks.length > 0, reason);
-  if (placeholder !== null) return <text fg={theme.fg.muted} selectable={false}>{placeholder}</text>;
+  if (placeholder !== null) return <text fg={theme.fg.muted}>{placeholder}</text>;
   return (
     <DiffRows
       fileName={file.name}
@@ -1867,7 +1867,7 @@ function App(props: AppProps) {
 
       {view.kind === "snapshot-lost" && (
         <box height={2} width="100%" paddingX={1}>
-          <text fg={theme.fg.attention} bold selectable={false}>
+          <text fg={theme.fg.attention} bold>
             ⚠ Snapshot lost — comments preserved but diff cannot be displayed
           </text>
         </box>
