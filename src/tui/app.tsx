@@ -30,7 +30,6 @@ import type { TourBundle, BundleFile } from "../core/tour-bundle.js";
 import { resolveYankTarget } from "../core/yank-target.js";
 import type { FileClassification } from "../core/file-classifier.js";
 import { DiffRows } from "./DiffRows.js";
-import { CURSOR_FG, CURSOR_GLYPH } from "./DiffLine.js";
 import { useTuiHighlight } from "./use-tui-highlight.js";
 import { detectLang } from "../core/syntax-highlight.js";
 import { FileHeader } from "./FileHeader.js";
@@ -75,19 +74,13 @@ import {
   fileEntryLabel,
 } from "./file-entry-label.js";
 import {
-  folderRowParts,
-  fileRowParts,
-  folderRowFixedCost,
-  fileRowFixedCost,
-} from "./sidebar-row-label.js";
-import {
   SIDEBAR_BORDER,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_RESIZE_STEP,
   clampSidebarWidthManual,
   computeAutoFitWidth,
 } from "./sidebar-width.js";
-import { sidebarCursorPaint } from "./sidebar-cursor-paint.js";
+import { SidebarRowTui } from "./SidebarRow.js";
 import { countDiffStats } from "../core/diff-stats.js";
 import { TourSessionRuntime } from "../core/tour-session-runtime.js";
 import { createTuiTourSessionAdapter } from "./tour-session-adapter.js";
@@ -127,7 +120,6 @@ import { composeFooterHints, composeFooterPreview } from "./footer-hints.js";
 import type { EnterHintCursor } from "../core/footer-hints.js";
 import { yankToClipboard } from "./clipboard.js";
 import { copyFinishedTextSelection } from "./text-selection-copy.js";
-import { textSelectionSafeActivation } from "./text-selection-gesture.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
 import { spawnTerminalEditor } from "./terminal-editor-spawn.js";
@@ -1895,20 +1887,6 @@ function App(props: AppProps) {
           <scrollbox ref={sidebarScrollRef} height="100%">
             {visibleRows.map((row, idx) => {
               const isSelected = idx === safeRowIdx;
-              // Issue #305: focus-aware cursor on the sidebar selection.
-              // When the sidebar holds focus, the selected row paints the
-              // bright `cursorRow.tui` plate + overlays a `❯` glyph in
-              // `theme.fg.cursor` in the leading column. When the sidebar
-              // is parked (diff pane holds focus), the row dims to the
-              // softer `accentCursor.tui` plate and the glyph is hidden;
-              // row width and label position do not shift across focus
-              // because the glyph overwrites the leading space that the
-              // row-label module already budgets for. Bold is dropped on
-              // both states — the bg-intensity + glyph cues carry focus
-              // and selection without a second weight cue. Composition
-              // lives in `sidebar-cursor-paint.ts` so the four cases are
-              // unit-testable in isolation.
-              const { bg, showGlyph } = sidebarCursorPaint({ isSelected, sidebarFocused });
               const onRowMouseDown = (event?: { stopPropagation: () => void }) => {
                 // OpenTUI mouse events bubble (Renderable.processMouseEvent
                 // calls parent unless `propagationStopped`). Without this
@@ -1927,40 +1905,6 @@ function App(props: AppProps) {
                   store.dispatch({ type: "paneFocus.setSidebar" });
                 }
               };
-              const rowMouseHandlers = textSelectionSafeActivation(onRowMouseDown);
-              if (row.kind === "folder") {
-                // Folder row is now a flex-row box (was a single <text>) so
-                // the cursor glyph can overlay the leading-space slot in
-                // `theme.fg.cursor` while the rest of the row keeps its
-                // muted folder colour. `height={1}` on inner texts mirrors
-                // the file-row treatment so the row stays at 1 grid row.
-                const parts = folderRowParts(row, sidebarContentWidth - folderRowFixedCost(row));
-                const leadingText = showGlyph ? parts.leading.slice(1) : parts.leading;
-                return (
-                  <box
-                    key={`d:${row.path}`}
-                    id={`row-${row.path}`}
-                    flexDirection="row"
-                    backgroundColor={bg}
-                    onMouseDown={rowMouseHandlers.onMouseDown}
-                    onMouseDrag={rowMouseHandlers.onMouseDrag}
-                    onMouseUp={rowMouseHandlers.onMouseUp}
-                  >
-                    {showGlyph && (
-                      <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
-                    )}
-                    <text height={1} fg={theme.fg.muted} selectable={false}>
-                      {leadingText}
-                    </text>
-                    <text height={1} fg={theme.fg.muted}>
-                      {parts.name}
-                    </text>
-                    <text height={1} fg={theme.fg.muted} selectable={false}>
-                      {parts.trailing}
-                    </text>
-                  </box>
-                );
-              }
               // Per-file diff stats (#265): `+N` in fg.success and `-M`
               // in fg.danger between filename and comment badge. The
               // stats need their own foreground colors, so the row is a
@@ -1969,71 +1913,19 @@ function App(props: AppProps) {
               // count `+1`, deleted files count `-1`, paired-change rows
               // count `+1 -1`. Pure-rename rows (no content change)
               // return 0/0 and render no stats segments.
-              const stats = countDiffStats(plannedRowsByFile.get(row.path) ?? []);
-              const segs = fileRowParts(
-                row,
-                stats,
-                sidebarContentWidth - fileRowFixedCost(row, stats),
-              );
-              // Issue #305: when the sidebar is focused on this row, the
-              // ❯ glyph rides in front of the leading segment. The row-
-              // label module already budgets `LEADING = 1` (a single
-              // leading space) inside `segs.leading`; the glyph overwrites
-              // that one char so the middle-truncation budget for the
-              // name is not affected and the row's total width stays at
-              // `sidebarContentWidth`.
-              const leadingText = showGlyph ? segs.leading.slice(1) : segs.leading;
+              const stats = row.kind === "file"
+                ? countDiffStats(plannedRowsByFile.get(row.path) ?? [])
+                : { additions: 0, deletions: 0 };
               return (
-                // `height={1}` on each inner `<text>` pins the file row
-                // to 1 grid row. Without the pin every sidebar file row
-                // silently rendered at 2 grid rows tall, leaving a
-                // blank row below each entry (folder rows, rendered as
-                // a single `<text bg={bg}>` directly, never tripped
-                // it). The exact OpenTUI mechanism wasn't fully isolated
-                // — the file row's text segments are short and don't
-                // wrap, so this isn't the same wrap-induced sibling
-                // stretch documented for the hunk-header banner in
-                // DiffRows.tsx. Possibly a measure-path issue specific
-                // to `<text>` as a direct flex child under a
-                // `backgroundColor`-painted parent. `height={1}` works
-                // empirically; leave it in place.
-                <box
-                  key={`f:${row.path}`}
-                  id={`row-${row.path}`}
-                  flexDirection="row"
-                  backgroundColor={bg}
-                  onMouseDown={rowMouseHandlers.onMouseDown}
-                  onMouseDrag={rowMouseHandlers.onMouseDrag}
-                  onMouseUp={rowMouseHandlers.onMouseUp}
-                >
-                  {showGlyph && (
-                    <text height={1} fg={CURSOR_FG} selectable={false}>{CURSOR_GLYPH}</text>
-                  )}
-                  <text height={1} fg={theme.fg.default} selectable={false}>
-                    {leadingText}
-                  </text>
-                  <text height={1} fg={theme.fg.default}>
-                    {segs.name}
-                  </text>
-                  {segs.additions.length > 0 && (
-                    <text height={1} fg={theme.fg.success} selectable={false}>
-                      {segs.additions}
-                    </text>
-                  )}
-                  {segs.deletions.length > 0 && (
-                    <text height={1} fg={theme.fg.danger} selectable={false}>
-                      {segs.deletions}
-                    </text>
-                  )}
-                  {segs.badge.length > 0 && (
-                    <text height={1} fg={theme.fg.default} selectable={false}>
-                      {segs.badge}
-                    </text>
-                  )}
-                  <text height={1} fg={theme.fg.default} selectable={false}>
-                    {segs.trailing}
-                  </text>
-                </box>
+                <SidebarRowTui
+                  key={`${row.kind === "folder" ? "d" : "f"}:${row.path}`}
+                  row={row}
+                  isSelected={isSelected}
+                  sidebarFocused={sidebarFocused}
+                  sidebarContentWidth={sidebarContentWidth}
+                  stats={stats}
+                  onActivate={onRowMouseDown}
+                />
               );
             })}
           </scrollbox>
