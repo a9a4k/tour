@@ -433,6 +433,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
     margin-top: 8px;
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
   }
   .comment-block .reply-button {
     background: transparent;
@@ -472,8 +473,6 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   }
   .comment-block .ann-reply-composer {
     margin-top: 8px;
-    padding-left: 12px;
-    border-left: 2px solid var(--border-muted);
   }
   /* Issue #389 / ADR 0036 (Slice E): trash icon on every comment card.
      Hover-revealed on the parent header and on each inline Reply; the
