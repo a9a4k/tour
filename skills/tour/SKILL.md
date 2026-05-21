@@ -91,7 +91,9 @@ Returns comments + replies. Actors:
 | `"agent"`     | `claude` / `codex` / `gemini` / `opencode` / `pi` | Reply-agent   |
 | `"agent"`     | other                                             | You (earlier) |
 
-Most human comments have no reply-agent child — they're directives for you. Comments with a reply-agent child already had one agent turn; you may need to follow up.
+Humans only ever appear in `replies[]` — root comments are always agent-authored. Flatten before scanning for human notes; `data.comments.filter(c => c.author_kind === "human")` will always be empty.
+
+Most human notes have no reply-agent child — they're directives for you. Notes with a reply-agent child already had one agent turn; you may need to follow up.
 
 For each thread: code change | reply | close | defer. Reply with `thread_id`:
 
