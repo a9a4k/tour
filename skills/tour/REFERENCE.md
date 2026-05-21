@@ -11,7 +11,7 @@ Each line of input to `tour comment <id> --batch -` is a JSON object:
 | `line_start` | int | yes | File-line number on that side at the pinned SHA |
 | `line_end` | int | no | Inclusive end; defaults to `line_start` |
 | `body` | string | yes | GitHub-Flavored Markdown; no raw HTML; ` ```mermaid ` fences render as diagrams in the webapp |
-| `replies_to` | string | no | If set, this comment is a Reply on the given parent comment id; inherits parent's anchor |
+| `thread_id` | string | no | If set, this comment is a Reply on the given top-level comment id; inherits parent's anchor |
 | `author` | string | no | Display string; defaults to the `author_kind` literal (`"agent"`) |
 | `author_kind` | `"agent"` \| `"human"` | no | Defaults to `"agent"` for CLI invocations |
 
@@ -131,7 +131,7 @@ Comment = {
   body: string,
   author: string,
   author_kind: "agent" | "human",
-  replies_to?: string,
+  thread_id?: string,
   created_at: string
 }
 ```
@@ -156,7 +156,7 @@ The canonical flow is `tour serve <id> --reply-agent <name> &` — no `--open`. 
 
 ### Reply schema validation
 
-Reply comments (with `replies_to` set) still require `file`, `side`, and `line_start` for write-time validation — the planner uses them as a sanity check against the parent's anchor. Pass the parent's anchor verbatim.
+Reply comments (with `thread_id` set) still require `file`, `side`, and `line_start` for write-time validation — the planner uses them as a sanity check against the parent's anchor. Pass the parent's anchor verbatim.
 
 ## See also
 

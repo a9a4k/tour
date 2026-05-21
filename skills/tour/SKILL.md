@@ -93,10 +93,10 @@ Returns comments + replies. Actors:
 
 Most human comments have no reply-agent child — they're directives for you. Comments with a reply-agent child already had one agent turn; you may need to follow up.
 
-For each thread: code change | reply | close | defer. Reply with `replies_to`:
+For each thread: code change | reply | close | defer. Reply with `thread_id`:
 
 ```sh
-echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"<comment-id>","body":"..."}' | tour comment "$TOUR_ID" --batch -
+echo '{"file":"src/foo.ts","side":"additions","line_start":40,"thread_id":"<comment-id>","body":"..."}' | tour comment "$TOUR_ID" --batch -
 ```
 
 Replies inherit the parent's anchor; `file`/`side`/`line_start` are still required at write time.

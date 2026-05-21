@@ -72,7 +72,7 @@ The following helpers are deleted: `findRoot` (chain walker), `isTopLevel` (inli
 
 - **TUI** (`composer-state.ts`): `{ kind: "reply", thread_id: cur.thread_id ?? cur.id }` — one inline expression at the composer-target construction site.
 - **Web** (`App.tsx`): same inline expression where the composer target is built. The "latest comment" helper still returns a Reply id when the latest leaf is a Reply; the action-site dereferences `thread_id ?? id` on the resolved Comment.
-- **CLI** (`comment.ts`): `--reply-to <id>` and batch `replies_to` pass straight through to the seam. No `threadRootIdOf` lookup, no bundle load for normalization. The seam's throw is the user-facing error.
+- **CLI** (`comment.ts`): `--reply-to <id>` and batch `thread_id` pass straight through to the seam. No `threadRootIdOf` lookup, no bundle load for normalization. The seam's throw is the user-facing error.
 - **Reply-runner** (`reply-runner.ts`): same inline expression at the `createReply` call site.
 
 ### Cascade rules: unchanged shape, simpler implementation

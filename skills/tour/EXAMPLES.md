@@ -76,11 +76,11 @@ Abridged output:
 Reply in prose (no code change required):
 
 ```sh
-echo '{"file":"src/validate.ts","side":"additions","line_start":12,"replies_to":"2026-05-15-131200-h4of","body":"Exporting from `process.ts` would have worked but kept it as the dependency hub for any validation test. Pulling out lets tests skip the file-I/O setup."}' \
+echo '{"file":"src/validate.ts","side":"additions","line_start":12,"thread_id":"2026-05-15-131200-h4of","body":"Exporting from `process.ts` would have worked but kept it as the dependency hub for any validation test. Pulling out lets tests skip the file-I/O setup."}' \
   | tour comment "$TOUR_ID" --batch -
 ```
 
-The reply inherits the parent's anchor via `replies_to`. The webapp slots it into the thread.
+The reply inherits the parent's anchor via `thread_id`. The webapp slots it into the thread.
 
 ## Example 4 — Pickup → code change
 
@@ -93,7 +93,7 @@ tour pickup "$TOUR_ID" --json   # confirm the request
 Make the code change through your normal file-editing tools — Tour doesn't edit code. Then reply documenting the fix:
 
 ```sh
-echo '{"file":"src/foo.ts","side":"additions","line_start":40,"replies_to":"2026-05-15-131200-zq2t","body":"Done in commit abc123. Replaced nested loop with `Map<id, item>` lookup. O(n) now."}' \
+echo '{"file":"src/foo.ts","side":"additions","line_start":40,"thread_id":"2026-05-15-131200-zq2t","body":"Done in commit abc123. Replaced nested loop with `Map<id, item>` lookup. O(n) now."}' \
   | tour comment "$TOUR_ID" --batch -
 ```
 
