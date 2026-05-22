@@ -1,0 +1,82 @@
+import { describe, expect, it } from "vitest";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { loadUserConfig } from "../../src/core/user-config.js";
+
+async function tempTourHome(): Promise<string> {
+  return mkdtemp(join(tmpdir(), "tour-user-config-"));
+}
+
+describe("loadUserConfig", () => {
+  it("loads both supported keys from config.toml", async () => {
+    const tourHome = await tempTourHome();
+    await writeFile(
+      join(tourHome, "config.toml"),
+      'reply_agent = "claude"\neditor = "code -g {file}:{line}"\n',
+    );
+
+    await expect(loadUserConfig(tourHome)).resolves.toEqual({
+      replyAgent: "claude",
+      editor: "code -g {file}:{line}",
+    });
+  });
+
+  it("returns an empty config when config.toml is missing", async () => {
+    const tourHome = await tempTourHome();
+
+    await expect(loadUserConfig(tourHome)).resolves.toEqual({});
+  });
+
+  it("returns an empty config for an empty config.toml", async () => {
+    const tourHome = await tempTourHome();
+    await writeFile(join(tourHome, "config.toml"), "");
+
+    await expect(loadUserConfig(tourHome)).resolves.toEqual({});
+  });
+
+  it("loads reply_agent without editor", async () => {
+    const tourHome = await tempTourHome();
+    await writeFile(join(tourHome, "config.toml"), 'reply_agent = "codex"\n');
+
+    await expect(loadUserConfig(tourHome)).resolves.toEqual({
+      replyAgent: "codex",
+    });
+  });
+
+  it("loads editor without reply_agent", async () => {
+    const tourHome = await tempTourHome();
+    await writeFile(join(tourHome, "config.toml"), 'editor = "nvim"\n');
+
+    await expect(loadUserConfig(tourHome)).resolves.toEqual({
+      editor: "nvim",
+    });
+  });
+
+  it("throws with the config path for malformed TOML", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+    await writeFile(configPath, 'reply_agent = "claude\n');
+
+    await expect(loadUserConfig(tourHome)).rejects.toThrow(configPath);
+  });
+
+  it("throws with the bad key and valid keys for unknown root keys", async () => {
+    const tourHome = await tempTourHome();
+    await writeFile(join(tourHome, "config.toml"), 'editorr = "code"\n');
+
+    await expect(loadUserConfig(tourHome)).rejects.toThrow(
+      /Unknown Tour config key "editorr".*reply_agent, editor/,
+    );
+  });
+
+  it("throws with the key, expected type, and config path for type mismatches", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+    await writeFile(configPath, "reply_agent = 42\n");
+
+    await expect(loadUserConfig(tourHome)).rejects.toThrow(
+      new RegExp(`reply_agent.*expected string.*${configPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+    );
+  });
+});

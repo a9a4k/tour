@@ -434,6 +434,17 @@ describe("CLI integration", () => {
       expect(result.stdout).toContain("No tours found");
     });
 
+    it("fails when Tour config is malformed", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude\n');
+
+      const result = await run(["list"], repo, { tourHome });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(join(tourHome, "config.toml"));
+      expect(result.stderr).toContain("Malformed Tour config");
+    });
+
     it("supports --json", async () => {
       await run(["create", "--head", "HEAD", "--json"], repo);
       const result = await run(["list", "--json"], repo);
@@ -501,6 +512,9 @@ describe("CLI integration", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("No tours found for this worktree");
+      expect(result.stdout).toContain(
+        `Defaults at: ${join(tourHome, "config.toml")} (optional; run \`tour config show\`)`,
+      );
       expect(result.stdout).toContain("tour list --all");
     });
 
@@ -1048,6 +1062,16 @@ describe("CLI integration", () => {
       expect(serveLine).toBeDefined();
       expect(serveLine).toContain("[--editor <cmd>]");
     });
+
+    it("`tour --help` documents default precedence chains", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("Defaults:");
+      expect(r.stdout).toContain("--reply-agent uses: CLI flag, then $TOUR_HOME/config.toml, then none.");
+      expect(r.stdout).toContain(
+        "--editor uses: CLI flag, then $TOUR_EDITOR, then $TOUR_HOME/config.toml, then $VISUAL, then $EDITOR, then none.",
+      );
+    });
   });
 
   // Issue #396: prevent agent author-identity mistakes when authoring
@@ -1571,6 +1595,36 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Unknown reply-agent "cursor"');
       expect(result.stderr).toContain("claude");
+    });
+
+    it("tui uses reply_agent from Tour config when --reply-agent is absent", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "cursor"\n');
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo, {
+        tourHome,
+      });
+      const tour = JSON.parse(cr.stdout);
+
+      const result = await run(["tui", tour.id], repo, { tourHome });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown reply-agent "cursor"');
+    });
+
+    it("tui --reply-agent wins over reply_agent from Tour config", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude"\n');
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo, {
+        tourHome,
+      });
+      const tour = JSON.parse(cr.stdout);
+
+      const result = await run(["tui", "--reply-agent=cursor", tour.id], repo, {
+        tourHome,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown reply-agent "cursor"');
     });
 
     it("--flag= (empty value) errors with a missing-value message", async () => {

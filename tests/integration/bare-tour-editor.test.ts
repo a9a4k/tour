@@ -45,7 +45,15 @@ async function gitCmd(args: string[], cwd: string): Promise<void> {
   await execP("git", args, { cwd });
 }
 
-async function createTempRepoWithTour(bunPath: string): Promise<{
+function createTempRepoWithTour(bunPath: string): Promise<{
+  dir: string;
+  tourId: string;
+  fakeBin: string;
+}>;
+async function createTempRepoWithTour(
+  bunPath: string,
+  tourHome?: string,
+): Promise<{
   dir: string;
   tourId: string;
   fakeBin: string;
@@ -63,7 +71,10 @@ async function createTempRepoWithTour(bunPath: string): Promise<{
   const { stdout } = await execP(
     bunPath,
     [CLI, "create", "--head", "HEAD", "--json"],
-    { cwd: dir },
+    {
+      cwd: dir,
+      env: { ...process.env, ...(tourHome ? { TOUR_HOME: tourHome } : {}) },
+    },
   );
   const tour = JSON.parse(stdout);
 
@@ -257,5 +268,53 @@ describe("bare `tour --editor` smart-default dispatch (issue #364)", () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(true);
+  }, 20000);
+
+  it("threads Tour config editor fallback through bare `tour` into the dispatched webapp", async () => {
+    const tourHome = await mkdtemp(join(tmpdir(), "tour-bare-editor-home-"));
+    const setup = await createTempRepoWithTour(bunPath, tourHome);
+    await writeFile(
+      join(tourHome, "config.toml"),
+      `editor = "${setup.fakeBin}"\n`,
+    );
+    const stubDir = await makePathWithStubs(["xdg-open"]);
+    const logPath = join(setup.dir, "argv.log");
+    const result = await spawnBareTour(
+      bunPath,
+      [],
+      setup.dir,
+      {
+        PATH: `${stubDir}:/usr/bin:/bin`,
+        FAKE_EDITOR_LOG: logPath,
+        TOUR_HOME: tourHome,
+        TOUR_EDITOR: "",
+        VISUAL: "",
+        EDITOR: "",
+      },
+      10000,
+    );
+    activeProc = result.proc;
+    const m = result.stdout.match(SERVER_BANNER);
+    expect(m, `expected webapp banner; got:\n${result.stdout}`).toBeTruthy();
+    const port = m![1];
+    const tourId = m![2];
+
+    const res = await fetch(
+      `http://127.0.0.1:${port}/api/tours/${tourId}/open-in-editor`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: "hello.txt",
+          line: 1,
+          side: "additions",
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    await waitForLog(logPath);
+    const argv = (await readFile(logPath, "utf8")).trim().split("\n");
+    const expectedDir = await realpath(setup.dir);
+    expect(argv[argv.length - 1]).toBe(`${expectedDir}/hello.txt:1`);
   }, 20000);
 });

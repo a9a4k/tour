@@ -27,6 +27,32 @@ describe("resolveEditor — precedence", () => {
     expect(cfg?.bin).toBe("code");
   });
 
+  it("$TOUR_EDITOR wins over config when no flag", () => {
+    const cfg = resolveEditor(
+      undefined,
+      { TOUR_EDITOR: "code" },
+      "vim",
+    );
+    expect(cfg?.bin).toBe("code");
+  });
+
+  it("config wins over $VISUAL and $EDITOR when no flag and no TOUR_EDITOR", () => {
+    const cfg = resolveEditor(
+      undefined,
+      {
+        VISUAL: "vim",
+        EDITOR: "nano",
+      },
+      "code",
+    );
+    expect(cfg?.bin).toBe("code");
+  });
+
+  it("flag wins over config", () => {
+    const cfg = resolveEditor("code", {}, "vim");
+    expect(cfg?.bin).toBe("code");
+  });
+
   it("$VISUAL wins over $EDITOR when no flag and no TOUR_EDITOR", () => {
     const cfg = resolveEditor(undefined, {
       VISUAL: "code",
@@ -42,6 +68,10 @@ describe("resolveEditor — precedence", () => {
 
   it("returns null when no flag and no env vars are set", () => {
     expect(resolveEditor(undefined, {})).toBeNull();
+  });
+
+  it("returns null when config is absent and no env vars are set", () => {
+    expect(resolveEditor(undefined, {}, undefined)).toBeNull();
   });
 
   it("returns null when flag is empty string and env is empty", () => {

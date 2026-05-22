@@ -1,6 +1,6 @@
 // Editor resolution (PRD #349 / ADR 0032 / issue #352). Pure module: a
 // single resolution chain shared by both surfaces evaluates `--editor`
-// flag → $TOUR_EDITOR → $VISUAL → $EDITOR → null and returns an
+// flag → $TOUR_EDITOR → Tour config → $VISUAL → $EDITOR → null and returns an
 // EditorConfig that downstream code never re-parses.
 //
 // Template handling: if the configured value contains `{file}` and/or
@@ -71,8 +71,15 @@ function firstNonEmpty(...candidates: Array<string | undefined>): string | null 
 export function resolveEditor(
   flag: string | undefined,
   env: EditorEnv,
+  configEditor?: string,
 ): EditorConfig | null {
-  const raw = firstNonEmpty(flag, env.TOUR_EDITOR, env.VISUAL, env.EDITOR);
+  const raw = firstNonEmpty(
+    flag,
+    env.TOUR_EDITOR,
+    configEditor,
+    env.VISUAL,
+    env.EDITOR,
+  );
   if (raw === null) return null;
 
   // Split on whitespace into bin + args. Naive split is fine for the

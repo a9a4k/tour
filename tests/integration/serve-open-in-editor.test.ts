@@ -54,7 +54,12 @@ interface ServerHandle {
   logPath: string;
 }
 
-async function setupRepoAndTour(): Promise<{
+function setupRepoAndTour(): Promise<{
+  dir: string;
+  tourId: string;
+  fakeBin: string;
+}>;
+async function setupRepoAndTour(tourHome?: string): Promise<{
   dir: string;
   tourId: string;
   fakeBin: string;
@@ -72,7 +77,10 @@ async function setupRepoAndTour(): Promise<{
   const { stdout } = await execP(
     BUN,
     [CLI, "create", "--head", "HEAD", "--json"],
-    { cwd: dir },
+    {
+      cwd: dir,
+      env: { ...process.env, ...(tourHome ? { TOUR_HOME: tourHome } : {}) },
+    },
   );
   const tour = JSON.parse(stdout);
 
@@ -88,6 +96,7 @@ async function startServerWithEditor(
   tourId: string,
   fakeBin: string,
   editorOverride?: string,
+  tourHome?: string,
 ): Promise<ServerHandle> {
   const logPath = join(dir, "argv.log");
   const editorArg = editorOverride ?? fakeBin;
@@ -97,6 +106,7 @@ async function startServerWithEditor(
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     FAKE_EDITOR_LOG: logPath,
+    ...(tourHome ? { TOUR_HOME: tourHome } : {}),
   };
   if (editorArg === "<NONE>") {
     delete env.TOUR_EDITOR;
@@ -202,6 +212,49 @@ describe("POST /api/tours/:id/open-in-editor — happy path", () => {
     // realpath collapses macOS's /var → /private/var symlink so the
     // comparison holds on both platforms — the subprocess's cwd is
     // realpath-resolved, but `handle.dir` is the unresolved tmpdir.
+    const expectedDir = await realpath(handle.dir);
+    expect(argv[argv.length - 1]).toBe(`${expectedDir}/hello.txt:1`);
+  });
+});
+
+describe("tour serve — Tour config editor default", () => {
+  let handle: ServerHandle;
+  beforeAll(async () => {
+    const tourHome = await mkdtemp(join(tmpdir(), "tour-open-editor-home-"));
+    const setup = await setupRepoAndTour(tourHome);
+    await writeFile(
+      join(tourHome, "config.toml"),
+      `editor = "${setup.fakeBin}"\n`,
+    );
+    handle = await startServerWithEditor(
+      setup.dir,
+      setup.tourId,
+      setup.fakeBin,
+      "<NONE>",
+      tourHome,
+    );
+  }, 30000);
+  afterAll(async () => {
+    await killServer(handle);
+    await rm(handle.dir, { recursive: true, force: true });
+  });
+
+  it("uses editor from Tour config when --editor and editor env vars are absent", async () => {
+    const res = await fetch(
+      `${handle.baseUrl}/api/tours/${handle.tourId}/open-in-editor`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: "hello.txt",
+          line: 1,
+          side: "additions",
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    await waitForLog(handle.logPath);
+    const argv = (await readFile(handle.logPath, "utf8")).trim().split("\n");
     const expectedDir = await realpath(handle.dir);
     expect(argv[argv.length - 1]).toBe(`${expectedDir}/hello.txt:1`);
   });

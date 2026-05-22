@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { join } from "node:path";
 import { create } from "./cli/create.js";
 import { comment } from "./cli/comment.js";
 import { list } from "./cli/list.js";
@@ -15,6 +16,8 @@ import { pickDefaultSurface } from "./core/surface-picker.js";
 import { isOnPath } from "./core/is-on-path.js";
 import { resolveEditor } from "./core/editor-config.js";
 import { resolveTourLocation } from "./core/tour-location.js";
+import { tourHome } from "./core/tour-home.js";
+import { loadUserConfig } from "./core/user-config.js";
 import { parseArgs } from "./core/parse-args.js";
 import { isNotGitWorkingTreeError } from "./core/not-git-working-tree-error.js";
 
@@ -62,13 +65,18 @@ Usage:
   tour pickup <id> [--json]
   tour --version
   tour --help
+
+Defaults:
+  --reply-agent uses: CLI flag, then $TOUR_HOME/config.toml, then none.
+  --editor uses: CLI flag, then $TOUR_EDITOR, then $TOUR_HOME/config.toml, then $VISUAL, then $EDITOR, then none.
 `;
 
-function firstRunBanner(tourStoreRoot: string): string {
+function firstRunBanner(tourStoreRoot: string, configPath: string): string {
   return `tour ${VERSION} — local code review with AI comments.
 
   No tours found for this worktree.
   Tours live at: ${tourStoreRoot}
+  Defaults at: ${configPath} (optional; run \`tour config show\`)
   Tours from other worktrees are hidden by default; run:
     tour list --all
 
@@ -111,6 +119,9 @@ async function main(): Promise<void> {
 
     const { repoRoot: cwd, tourStoreRoot, worktreeStamp } =
       await resolveTourLocation(process.cwd());
+    const tourHomePath = tourHome(process.env);
+    const userConfig = await loadUserConfig(tourHomePath);
+    const configPath = join(tourHomePath, "config.toml");
 
     switch (command) {
       case "create": {
@@ -207,8 +218,8 @@ async function main(): Promise<void> {
           cwd,
           tourStoreRoot,
           worktreeStamp,
-          replyAgent: flag(flags, "reply-agent"),
-          editor: resolveEditor(flag(flags, "editor"), process.env),
+          replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
+          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
         });
         break;
 
@@ -222,8 +233,8 @@ async function main(): Promise<void> {
           cwd,
           tourStoreRoot,
           worktreeStamp,
-          replyAgent: flag(flags, "reply-agent"),
-          editor: resolveEditor(flag(flags, "editor"), process.env),
+          replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
+          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
         });
         break;
       }
@@ -234,7 +245,7 @@ async function main(): Promise<void> {
           worktreeStamp,
         }).catch(() => []);
         if (tours.length === 0) {
-          console.log(firstRunBanner(tourStoreRoot));
+          console.log(firstRunBanner(tourStoreRoot, configPath));
           break;
         }
         // Smart-default surface (issue #174): webapp when a browser is
@@ -257,7 +268,7 @@ async function main(): Promise<void> {
               ? isOnPath("open")
               : isOnPath("xdg-open"),
         });
-        const editor = resolveEditor(flag(flags, "editor"), process.env);
+        const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig.editor);
         if (surface === "webapp") {
           await serve({
             port: defaultPreferredPort(),
@@ -266,7 +277,7 @@ async function main(): Promise<void> {
             cwd,
             tourStoreRoot,
             worktreeStamp,
-            replyAgent: flag(flags, "reply-agent"),
+            replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
             editor,
           });
         } else {
@@ -274,7 +285,7 @@ async function main(): Promise<void> {
             cwd,
             tourStoreRoot,
             worktreeStamp,
-            replyAgent: flag(flags, "reply-agent"),
+            replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
             editor,
           });
         }
