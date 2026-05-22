@@ -20,6 +20,7 @@ interface TuiArgs {
   tourStoreRoot?: string;
   worktreeStamp?: string;
   replyAgent?: string;
+  replyAgentSourcePath?: string;
   editor?: EditorConfig | null;
 }
 
@@ -34,7 +35,7 @@ export async function tui(args: TuiArgs): Promise<void> {
   // not at first reply (PRD #73, ADR 0012). Shipped agents are bundled in
   // the binary; there is no on-disk fallback.
   if (args.replyAgent) {
-    assertShippedAgent(args.replyAgent);
+    assertShippedAgent(args.replyAgent, args.replyAgentSourcePath);
   }
 
   let tourId: string;

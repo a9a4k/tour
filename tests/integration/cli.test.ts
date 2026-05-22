@@ -445,6 +445,21 @@ describe("CLI integration", () => {
       expect(result.stderr).toContain("Malformed Tour config");
     });
 
+    it("does not validate reply_agent when commands do not consume it", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "cursor"\n');
+
+      const listResult = await run(["list"], repo, { tourHome });
+      const createResult = await run(["create", "--head", "HEAD", "--json"], repo, {
+        tourHome,
+      });
+
+      expect(listResult.exitCode).toBe(0);
+      expect(listResult.stdout).toContain("No tours found");
+      expect(createResult.exitCode).toBe(0);
+      expect(JSON.parse(createResult.stdout).id).toMatch(/^\d{4}-\d{2}-\d{2}/);
+    });
+
     it("supports --json", async () => {
       await run(["create", "--head", "HEAD", "--json"], repo);
       const result = await run(["list", "--json"], repo);
@@ -1749,13 +1764,15 @@ editor      = "nvim" (from config)`);
       const tour = JSON.parse(cr.stdout);
       const result = await run(["tui", "--reply-agent=cursor", tour.id], repo);
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Unknown reply-agent "cursor"');
-      expect(result.stderr).toContain("claude");
+      expect(result.stderr).toBe(
+        'Error: Unknown reply-agent "cursor". Available agents: claude, codex, gemini, opencode, pi',
+      );
     });
 
     it("tui uses reply_agent from Tour config when --reply-agent is absent", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
-      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "cursor"\n');
+      const configPath = join(tourHome, "config.toml");
+      await writeFile(configPath, 'reply_agent = "cursor"\n');
       const cr = await run(["create", "--head", "HEAD", "--json"], repo, {
         tourHome,
       });
@@ -1765,6 +1782,10 @@ editor      = "nvim" (from config)`);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Unknown reply-agent "cursor"');
+      expect(result.stderr).toContain(`(from ${configPath})`);
+      expect(result.stderr).toContain(
+        "Available agents: claude, codex, gemini, opencode, pi",
+      );
     });
 
     it("tui --reply-agent wins over reply_agent from Tour config", async () => {
@@ -1781,6 +1802,7 @@ editor      = "nvim" (from config)`);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Unknown reply-agent "cursor"');
+      expect(result.stderr).not.toContain("(from ");
     });
 
     it("--flag= (empty value) errors with a missing-value message", async () => {

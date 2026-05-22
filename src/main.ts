@@ -35,6 +35,20 @@ function boolFlag(flags: Record<string, string | boolean>, key: string): boolean
   return flags[key] === true;
 }
 
+function resolveReplyAgent(
+  flagValue: string | undefined,
+  configValue: string | undefined,
+  configPath: string,
+): { replyAgent?: string; replyAgentSourcePath?: string } {
+  if (flagValue !== undefined) {
+    return { replyAgent: flagValue };
+  }
+  if (configValue !== undefined && configValue !== "") {
+    return { replyAgent: configValue, replyAgentSourcePath: configPath };
+  }
+  return {};
+}
+
 // 8687 is the documented default; `TOURDIFF_BASE_PORT` lets the tests
 // (and any user who wants a different preferred port without typing
 // `--port` every time) override it. Non-integer / non-positive values
@@ -230,7 +244,7 @@ async function main(): Promise<void> {
           cwd,
           tourStoreRoot,
           worktreeStamp,
-          replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
+          ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
         });
         break;
@@ -245,7 +259,7 @@ async function main(): Promise<void> {
           cwd,
           tourStoreRoot,
           worktreeStamp,
-          replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
+          ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
         });
         break;
@@ -281,6 +295,11 @@ async function main(): Promise<void> {
               : isOnPath("xdg-open"),
         });
         const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig.editor);
+        const replyAgent = resolveReplyAgent(
+          flag(flags, "reply-agent"),
+          userConfig.replyAgent,
+          configPath,
+        );
         if (surface === "webapp") {
           await serve({
             port: defaultPreferredPort(),
@@ -289,7 +308,7 @@ async function main(): Promise<void> {
             cwd,
             tourStoreRoot,
             worktreeStamp,
-            replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
+            ...replyAgent,
             editor,
           });
         } else {
@@ -297,7 +316,7 @@ async function main(): Promise<void> {
             cwd,
             tourStoreRoot,
             worktreeStamp,
-            replyAgent: flag(flags, "reply-agent") ?? userConfig.replyAgent,
+            ...replyAgent,
             editor,
           });
         }

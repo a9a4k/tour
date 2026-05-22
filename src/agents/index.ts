@@ -24,10 +24,11 @@ export function availableShippedAgents(): string[] {
 
 // Hard-fails at startup if `name` is not in the shipped registry. The error
 // message lists the supported names so users see what they can pick from.
-export function assertShippedAgent(name: string): void {
+export function assertShippedAgent(name: string, sourcePath?: string): void {
   if (!(name in SHIPPED_ADAPTERS)) {
+    const provenance = sourcePath ? ` (from ${sourcePath})` : "";
     throw new Error(
-      `Unknown reply-agent "${name}". Available agents: ${availableShippedAgents().join(", ")}`,
+      `Unknown reply-agent "${name}"${provenance}. Available agents: ${availableShippedAgents().join(", ")}`,
     );
   }
 }
