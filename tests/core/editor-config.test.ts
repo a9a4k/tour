@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { resolveEditor } from "../../src/core/editor-config.js";
 
 // Pure editor-config resolver (PRD #349 / ADR 0032 / issue #352).
-// Asserts the precedence chain (`--editor` > `$TOUR_EDITOR` > `$VISUAL`
-// > `$EDITOR` > null), the template substitution semantics, the smart-
-// default inference table by binary basename, and the terminal-editor
-// classification. Pure-function input — caller passes `env`, no
-// process.env reads here.
+// Asserts the precedence chain (`--editor` > `$TOUR_EDITOR` > Tour config
+// > `$VISUAL` > `$EDITOR` > null), the template substitution semantics,
+// the smart-default inference table by binary basename, and the
+// terminal-editor classification. Pure-function input — caller passes
+// `env`, no process.env reads here.
 
 describe("resolveEditor — precedence", () => {
   it("flag wins over every env var", () => {

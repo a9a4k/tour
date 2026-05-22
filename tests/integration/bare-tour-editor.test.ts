@@ -45,11 +45,6 @@ async function gitCmd(args: string[], cwd: string): Promise<void> {
   await execP("git", args, { cwd });
 }
 
-function createTempRepoWithTour(bunPath: string): Promise<{
-  dir: string;
-  tourId: string;
-  fakeBin: string;
-}>;
 async function createTempRepoWithTour(
   bunPath: string,
   tourHome?: string,

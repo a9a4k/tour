@@ -54,11 +54,6 @@ interface ServerHandle {
   logPath: string;
 }
 
-function setupRepoAndTour(): Promise<{
-  dir: string;
-  tourId: string;
-  fakeBin: string;
-}>;
 async function setupRepoAndTour(tourHome?: string): Promise<{
   dir: string;
   tourId: string;
