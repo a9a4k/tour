@@ -534,6 +534,156 @@ describe("CLI integration", () => {
     });
   });
 
+  describe("config show", () => {
+    it("reports missing config and default values", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (does not exist)
+
+reply_agent = null (from default)
+editor      = null (from default)`);
+    });
+
+    it("reports both values from Tour config", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(
+        join(tourHome, "config.toml"),
+        'reply_agent = "claude"\neditor = "code -g {file}:{line}"\n',
+      );
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
+
+reply_agent = "claude" (from config)
+editor      = "code -g {file}:{line}" (from config)`);
+    });
+
+    it("reports reply_agent from config while editor falls through to default", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude"\n');
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
+
+reply_agent = "claude" (from config)
+editor      = null (from default)`);
+    });
+
+    it("reports editor from config while reply_agent falls through to default", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'editor = "nvim"\n');
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
+
+reply_agent = null (from default)
+editor      = "nvim" (from config)`);
+    });
+
+    it("$TOUR_EDITOR wins over editor from config", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(join(tourHome, "config.toml"), 'editor = "nvim"\n');
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "code", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('editor      = "code" (from $TOUR_EDITOR)');
+    });
+
+    it("$VISUAL wins over $EDITOR when config and TOUR_EDITOR are absent", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "emacs", EDITOR: "vim" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('editor      = "emacs" (from $VISUAL)');
+    });
+
+    it("$EDITOR is the lowest-priority editor fallback", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "vim" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('editor      = "vim" (from $EDITOR)');
+    });
+
+    it("survives malformed Tour config and still reports env-driven values", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      const configPath = join(tourHome, "config.toml");
+      await writeFile(configPath, 'reply_agent = "claude\n');
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "code", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`Config file: ${configPath} (UNREADABLE:`);
+      expect(result.stdout).toContain("Malformed Tour config");
+      expect(result.stdout).toContain("reply_agent = null (from default)");
+      expect(result.stdout).toContain('editor      = "code" (from $TOUR_EDITOR)');
+    });
+
+    it("ignores config show flags", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(
+        join(tourHome, "config.toml"),
+        'reply_agent = "claude"\neditor = "code"\n',
+      );
+
+      const result = await run(
+        ["config", "show", "--reply-agent", "codex", "--editor", "vim"],
+        repo,
+        { tourHome, env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" } },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('reply_agent = "claude" (from config)');
+      expect(result.stdout).toContain('editor      = "code" (from config)');
+      expect(result.stdout).not.toContain("codex");
+      expect(result.stdout).not.toContain('"vim"');
+    });
+
+    it("prints one-line usage for unknown config subverbs", async () => {
+      const result = await run(["config", "set"], repo);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("Usage: tour config show");
+    });
+  });
+
   describe("show", () => {
     it("displays tour details", async () => {
       const cr = await run(["create", "--head", "HEAD", "--title", "Show Test", "--json"], repo);
@@ -1071,6 +1221,12 @@ describe("CLI integration", () => {
       expect(r.stdout).toContain(
         "--editor uses: CLI flag, then $TOUR_EDITOR, then $TOUR_HOME/config.toml, then $VISUAL, then $EDITOR, then none.",
       );
+    });
+
+    it("`tour --help` documents config show", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("tour config show");
     });
   });
 

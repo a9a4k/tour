@@ -9,6 +9,7 @@ import { close } from "./cli/close.js";
 import { del } from "./cli/delete.js";
 import { prune } from "./cli/prune.js";
 import { pickup } from "./cli/pickup.js";
+import { configShow } from "./cli/config.js";
 import { tui } from "./cli/tui.js";
 import { serve } from "./cli/serve.js";
 import { listTours } from "./core/tour-store.js";
@@ -63,6 +64,7 @@ Usage:
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
   tour pickup <id> [--json]
+  tour config show
   tour --version
   tour --help
 
@@ -117,9 +119,19 @@ async function main(): Promise<void> {
         return;
     }
 
+    const tourHomePath = tourHome(process.env);
+    if (command === "config") {
+      if (positional[0] !== "show") {
+        console.error("Usage: tour config show");
+        process.exitCode = 1;
+        return;
+      }
+      await configShow(tourHomePath, process.env);
+      return;
+    }
+
     const { repoRoot: cwd, tourStoreRoot, worktreeStamp } =
       await resolveTourLocation(process.cwd());
-    const tourHomePath = tourHome(process.env);
     const userConfig = await loadUserConfig(tourHomePath);
     const configPath = join(tourHomePath, "config.toml");
 
