@@ -447,7 +447,7 @@ describe("CLI integration", () => {
 
     it("does not validate reply_agent when commands do not consume it", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
-      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "cursor"\n');
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claud"\n');
 
       const listResult = await run(["list"], repo, { tourHome });
       const createResult = await run(["create", "--head", "HEAD", "--json"], repo, {
@@ -1772,7 +1772,7 @@ editor      = "nvim" (from config)`);
     it("tui uses reply_agent from Tour config when --reply-agent is absent", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       const configPath = join(tourHome, "config.toml");
-      await writeFile(configPath, 'reply_agent = "cursor"\n');
+      await writeFile(configPath, 'reply_agent = "claud"\n');
       const cr = await run(["create", "--head", "HEAD", "--json"], repo, {
         tourHome,
       });
@@ -1781,10 +1781,8 @@ editor      = "nvim" (from config)`);
       const result = await run(["tui", tour.id], repo, { tourHome });
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Unknown reply-agent "cursor"');
-      expect(result.stderr).toContain(`(from ${configPath})`);
-      expect(result.stderr).toContain(
-        "Available agents: claude, codex, gemini, opencode, pi",
+      expect(result.stderr).toBe(
+        `Error: Unknown reply-agent "claud" (from ${configPath}). Available agents: claude, codex, gemini, opencode, pi`,
       );
     });
 
@@ -1801,8 +1799,31 @@ editor      = "nvim" (from config)`);
       });
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Unknown reply-agent "cursor"');
-      expect(result.stderr).not.toContain("(from ");
+      expect(result.stderr).toBe(
+        'Error: Unknown reply-agent "cursor". Available agents: claude, codex, gemini, opencode, pi',
+      );
+    });
+
+    it("serve --reply-agent fails with the shipped-agent error and no provenance suffix", async () => {
+      const result = await run(["serve", "--reply-agent=claud"], repo);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe(
+        'Error: Unknown reply-agent "claud". Available agents: claude, codex, gemini, opencode, pi',
+      );
+    });
+
+    it("serve uses reply_agent provenance from Tour config when --reply-agent is absent", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      const configPath = join(tourHome, "config.toml");
+      await writeFile(configPath, 'reply_agent = "claud"\n');
+
+      const result = await run(["serve"], repo, { tourHome });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe(
+        `Error: Unknown reply-agent "claud" (from ${configPath}). Available agents: claude, codex, gemini, opencode, pi`,
+      );
     });
 
     it("--flag= (empty value) errors with a missing-value message", async () => {
