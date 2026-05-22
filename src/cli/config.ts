@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { chooseFirstWithSource } from "../core/editor-config.js";
 import { loadUserConfig, type UserConfig } from "../core/user-config.js";
 
-type ConfigSource = "config" | "$TOUR_EDITOR" | "$VISUAL" | "$EDITOR" | "default";
+type ConfigSource = "config" | "$TOUR_EDITOR" | "$VISUAL" | "$EDITOR";
 
 interface ResolvedConfigValue {
   value: string | null;
-  source: ConfigSource;
+  source: ConfigSource | "default";
 }
 
 interface ConfigEnv {
@@ -15,30 +16,19 @@ interface ConfigEnv {
   EDITOR?: string;
 }
 
-function firstNonEmptyWithSource(
-  ...candidates: Array<{ value: string | undefined; source: ConfigSource }>
-): ResolvedConfigValue {
-  for (const c of candidates) {
-    if (c.value !== undefined && c.value !== "") {
-      return { value: c.value, source: c.source };
-    }
-  }
-  return { value: null, source: "default" };
-}
-
 function renderValue(value: string | null): string {
   return value === null ? "null" : JSON.stringify(value);
 }
 
 function resolveReplyAgent(config: UserConfig): ResolvedConfigValue {
-  return firstNonEmptyWithSource({
+  return chooseFirstWithSource({
     value: config.replyAgent,
     source: "config",
   });
 }
 
 function resolveEditor(config: UserConfig, env: ConfigEnv): ResolvedConfigValue {
-  return firstNonEmptyWithSource(
+  return chooseFirstWithSource(
     { value: env.TOUR_EDITOR, source: "$TOUR_EDITOR" },
     { value: config.editor, source: "config" },
     { value: env.VISUAL, source: "$VISUAL" },

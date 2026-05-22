@@ -61,11 +61,15 @@ function basename(p: string): string {
   return slash === -1 ? p : p.slice(slash + 1);
 }
 
-function firstNonEmpty(...candidates: Array<string | undefined>): string | null {
+export function chooseFirstWithSource<Source extends string>(
+  ...candidates: Array<{ value: string | undefined; source: Source }>
+): { value: string | null; source: Source | "default" } {
   for (const c of candidates) {
-    if (c !== undefined && c !== "") return c;
+    if (c.value !== undefined && c.value !== "") {
+      return { value: c.value, source: c.source };
+    }
   }
-  return null;
+  return { value: null, source: "default" };
 }
 
 export function resolveEditor(
@@ -73,12 +77,12 @@ export function resolveEditor(
   env: EditorEnv,
   configEditor?: string,
 ): EditorConfig | null {
-  const raw = firstNonEmpty(
-    flag,
-    env.TOUR_EDITOR,
-    configEditor,
-    env.VISUAL,
-    env.EDITOR,
+  const { value: raw } = chooseFirstWithSource(
+    { value: flag, source: "flag" },
+    { value: env.TOUR_EDITOR, source: "$TOUR_EDITOR" },
+    { value: configEditor, source: "config" },
+    { value: env.VISUAL, source: "$VISUAL" },
+    { value: env.EDITOR, source: "$EDITOR" },
   );
   if (raw === null) return null;
 
