@@ -2660,11 +2660,10 @@ export function CommentCard({
   const showRequestReplyConfigHint =
     !!replyAgentConfigPath &&
     !!onSendToAgent &&
-    !!sendLeafId &&
     shouldShowRequestReplyConfigHint({
       replyAgentConfigured: !!replyAgent,
-      authorKind: "human",
-      hasReply: false,
+      authorKind: comment.author_kind,
+      hasReply: descendants.length > 0,
     });
   // PRD #397 / ADR 0038. Collapsed one-liner. Watcher-driven lock pills
   // still render below the one-liner ("honest signal over tidy hiding").

@@ -518,7 +518,7 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
     act(() => root!.unmount());
     root = null;
 
-    const reply: Comment = {
+    const agentReply: Comment = {
       ...baseComment,
       id: "ann-2",
       author: "claude",
@@ -526,10 +526,10 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
       thread_id: "ann-1",
       created_at: "2026-05-11T00:00:01Z",
     };
-    const alreadyReplied = mount(
+    const alreadyRepliedByAgent = mount(
       createElement(CommentCard, {
         comment: baseComment,
-        replies: [reply],
+        replies: [agentReply],
         isCurrent: false,
         navIndex: 1,
         navTotal: 1,
@@ -538,7 +538,35 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
         onOpenReply: () => {},
       }),
     );
-    expect(alreadyReplied.querySelector(".request-reply-config-hint")).toBeNull();
+    expect(
+      alreadyRepliedByAgent.querySelector(".request-reply-config-hint"),
+    ).toBeNull();
+    act(() => root!.unmount());
+    root = null;
+
+    const humanReply: Comment = {
+      ...baseComment,
+      id: "ann-3",
+      author: "almas",
+      author_kind: "human",
+      thread_id: "ann-1",
+      created_at: "2026-05-11T00:00:02Z",
+    };
+    const alreadyRepliedByHuman = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        replies: [agentReply, humanReply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgentConfigPath: "/tmp/tour-home/config.toml",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(
+      alreadyRepliedByHuman.querySelector(".request-reply-config-hint"),
+    ).toBeNull();
   });
 
   it("hides the button when a reply has already landed (already-replied terminal)", () => {

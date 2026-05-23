@@ -643,22 +643,29 @@ function App(props: AppProps) {
           hasReply: false,
         })
       : { visible: false, enabled: false };
+  const showRequestReplyConfigHintOnCursor =
+    !!sendTargetVal &&
+    cursorCardComment !== null &&
+    cursorCardComment.thread_id === undefined &&
+    sendTargetVal.leafId === cursorCardComment.id &&
+    shouldShowRequestReplyConfigHint({
+      replyAgentConfigured: !!props.replyAgent,
+      authorKind: cursorCardComment.author_kind,
+      hasReply:
+        (nav.repliesByRoot.get(cursorCardComment.id)?.length ?? 0) > 0,
+    });
   useEffect(() => {
     if (replyConfigHintShownRef.current) return;
     if (footerStatus !== null) return;
-    if (!sendTargetVal) return;
-    if (
-      !shouldShowRequestReplyConfigHint({
-        replyAgentConfigured: !!props.replyAgent,
-        authorKind: sendTargetVal.leaf.author_kind,
-        hasReply: false,
-      })
-    ) {
-      return;
-    }
+    if (!showRequestReplyConfigHintOnCursor) return;
     replyConfigHintShownRef.current = true;
     flash(requestReplyConfigHint(props.configPath));
-  }, [flash, footerStatus, props.configPath, props.replyAgent, sendTargetVal]);
+  }, [
+    flash,
+    footerStatus,
+    props.configPath,
+    showRequestReplyConfigHintOnCursor,
+  ]);
   // Issue #406 / ADR 0038 amended. The diff-mode `Enter` legend flips
   // by the cursor: `Enter: expand` (interactive row OR collapsed Card),
   // `Enter: collapse` (expanded Card), omitted (plain diff row).

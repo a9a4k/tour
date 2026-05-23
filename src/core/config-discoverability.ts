@@ -20,7 +20,7 @@ export function shouldShowRequestReplyConfigHint(input: {
       replyAgentConfigured: input.replyAgentConfigured,
       lockHeld: false,
       authorKind: input.authorKind,
-      hasReply: false,
+      hasReply: input.hasReply,
     }).reason === "no-reply-agent"
   );
 }
