@@ -16,6 +16,7 @@ import { detectAgentsOnPath } from "../core/agent-path-detector.js";
 import { isOnPath } from "../core/is-on-path.js";
 import { availableShippedAgents } from "../agents/index.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
+import { editorNotConfiguredMessage } from "../core/config-discoverability.js";
 import type { EditorConfig } from "../core/editor-config.js";
 import { html } from "./spa.js";
 import {
@@ -42,6 +43,7 @@ interface ServeArgs {
   tourStoreRoot?: string;
   worktreeStamp?: string;
   replyAgent?: string;
+  configPath: string;
   // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
   // main.ts. Powers the POST /api/tours/<id>/open-in-editor handler;
   // null when no editor was configured (the handler returns 412).
@@ -161,7 +163,7 @@ function contentTypeFor(path: string): string {
 }
 
 export async function startServer(args: ServeArgs): Promise<void> {
-  const { port, portExplicit, cwd, replyAgent } = args;
+  const { port, portExplicit, cwd, replyAgent, configPath } = args;
   const tourStoreRoot = args.tourStoreRoot ?? cwd;
   const editor = args.editor ?? null;
 
@@ -481,8 +483,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
             return Response.json(
               {
                 ok: false,
-                message:
-                  "o: editor not configured — set $TOUR_EDITOR or pass --editor",
+                message: editorNotConfiguredMessage(configPath),
               },
               { status: 412 },
             );
@@ -526,7 +527,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
           }
         }
 
-        return new Response(html(effectiveTourId, replyAgent), {
+        return new Response(html(effectiveTourId, replyAgent, configPath), {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       },

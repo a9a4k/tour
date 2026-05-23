@@ -123,6 +123,11 @@ import { copyFinishedTextSelection } from "./text-selection-copy.js";
 import { resolveOpenTarget } from "../core/open-target-resolver.js";
 import { spawnGuiEditor } from "../core/editor-spawn.js";
 import { spawnTerminalEditor } from "./terminal-editor-spawn.js";
+import {
+  editorNotConfiguredMessage,
+  requestReplyConfigHint,
+  shouldShowRequestReplyConfigHint,
+} from "../core/config-discoverability.js";
 import { existsSync as existsSyncSafe } from "node:fs";
 import { isAbsolute as isAbsolutePath, join as joinPath } from "node:path";
 import { useFlashFooter } from "../core/use-flash-footer.js";
@@ -395,6 +400,7 @@ function App(props: AppProps) {
   // Transient footer status: auto-dismisses after the shared footer timeout
   // with last-write-wins semantics across all TUI call sites.
   const { status: footerStatus, flash } = useFlashFooter();
+  const replyConfigHintShownRef = useRef(false);
   // PRD #343 follow-up: Esc-coalesce guard. Under tmux (and any terminal
   // where Kitty keyboard disambiguation isn't end-to-end), `\x1b` is
   // ambiguous — it's both bare Esc and the lead byte of every CSI
@@ -637,6 +643,22 @@ function App(props: AppProps) {
           hasReply: false,
         })
       : { visible: false, enabled: false };
+  useEffect(() => {
+    if (replyConfigHintShownRef.current) return;
+    if (footerStatus !== null) return;
+    if (!sendTargetVal) return;
+    if (
+      !shouldShowRequestReplyConfigHint({
+        replyAgentConfigured: !!props.replyAgent,
+        authorKind: sendTargetVal.leaf.author_kind,
+        hasReply: false,
+      })
+    ) {
+      return;
+    }
+    replyConfigHintShownRef.current = true;
+    flash(requestReplyConfigHint(props.configPath));
+  }, [flash, footerStatus, props.configPath, props.replyAgent, sendTargetVal]);
   // Issue #406 / ADR 0038 amended. The diff-mode `Enter` legend flips
   // by the cursor: `Enter: expand` (interactive row OR collapsed Card),
   // `Enter: collapse` (expanded Card), omitted (plain diff row).
@@ -1748,7 +1770,7 @@ function App(props: AppProps) {
         // distinct hint since the cursor is on a non-line synthetic.
         const editor = props.editor ?? null;
         if (!editor) {
-          flash("o: editor not configured — set $TOUR_EDITOR or pass --editor");
+          flash(editorNotConfiguredMessage(props.configPath));
           return;
         }
         const target = resolveOpenTarget({

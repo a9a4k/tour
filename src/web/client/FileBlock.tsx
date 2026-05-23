@@ -82,6 +82,7 @@ export interface CommentProps {
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
+  replyAgentConfigPath?: string | null;
   onSendToAgent?: (commentId: string) => void;
   /** 1-based position in the top-level nav order, per comment id.
    *  Pre-built by App so the lookup stays O(1). */
@@ -769,6 +770,7 @@ function renderComment(
       onCancelReply={commentProps?.onCancelReply}
       replyLock={commentProps?.replyLock ?? null}
       replyAgent={commentProps?.replyAgent ?? null}
+      replyAgentConfigPath={commentProps?.replyAgentConfigPath ?? null}
       onSendToAgent={commentProps?.onSendToAgent}
       onCardClick={onCardClick}
       onFileClick={onAnnotationFileClick}

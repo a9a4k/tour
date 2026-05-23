@@ -359,13 +359,17 @@ describe("POST /api/tours/:id/open-in-editor — terminal editor refused (409)",
 
 describe("POST /api/tours/:id/open-in-editor — editor not configured (412)", () => {
   let handle: ServerHandle;
+  let configPath: string;
   beforeAll(async () => {
-    const setup = await setupRepoAndTour();
+    const tourHome = await mkdtemp(join(tmpdir(), "tour-open-editor-home-"));
+    configPath = join(tourHome, "config.toml");
+    const setup = await setupRepoAndTour(tourHome);
     handle = await startServerWithEditor(
       setup.dir,
       setup.tourId,
       setup.fakeBin,
       "<NONE>",
+      tourHome,
     );
   }, 30000);
   afterAll(async () => {
@@ -390,7 +394,7 @@ describe("POST /api/tours/:id/open-in-editor — editor not configured (412)", (
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(false);
     expect(data.message).toBe(
-      "o: editor not configured — set $TOUR_EDITOR or pass --editor",
+      `o: editor not configured — set $TOUR_EDITOR, add \`editor\` to ${configPath}, or pass --editor`,
     );
   });
 });

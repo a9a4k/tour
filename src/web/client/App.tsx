@@ -29,6 +29,10 @@ import {
   canSendToAgent,
   type CanSendToAgentResult,
 } from "../../core/can-send-to-agent.js";
+import {
+  requestReplyConfigHint,
+  shouldShowRequestReplyConfigHint,
+} from "../../core/config-discoverability.js";
 import { revealAncestors, type VisibleRow } from "../../core/file-tree.js";
 import { TourSessionRuntime } from "../../core/tour-session-runtime.js";
 import { createWebTourSessionAdapter } from "./tour-session-adapter.js";
@@ -126,6 +130,7 @@ interface AppProps {
   // server was launched without `--reply-agent`; the "Request reply"
   // affordance and header chip both stay hidden in that case.
   replyAgent?: string | null;
+  replyAgentConfigPath?: string | null;
 }
 
 // Sentinel snapshot-lost bundle so `useTourSessionView` stays unconditional
@@ -168,7 +173,11 @@ function readTourOpenFromUrl(
   };
 }
 
-export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element {
+export function App({
+  initialTourId,
+  replyAgent,
+  replyAgentConfigPath,
+}: AppProps): React.JSX.Element {
   // Tour-session store (PRD #207 slice 1, issue #210; bundle hoisted into
   // the store in issue #211). One store per SPA mount. URL-derived
   // tour-open state enters through `tour.openedFromUrl` at mount/popstate
@@ -1989,6 +1998,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                 onCancel={closeComposer}
                 replyLock={replyLock}
                 replyAgent={replyAgent}
+                replyAgentConfigPath={replyAgentConfigPath}
                 onSendToAgent={sendToAgent}
                 onCardClick={setCursorFromCardClick}
                 onAnnotationFileClick={onAnnotationFileClick}
@@ -2116,6 +2126,7 @@ export function App({ initialTourId, replyAgent }: AppProps): React.JSX.Element 
                       onCancelReply: closeComposer,
                       replyLock,
                       replyAgent,
+                      replyAgentConfigPath,
                       onSendToAgent: sendToAgent,
                       navIndexById: view.nav.navIndexById,
                       navTotal: view.nav.navTotal,
@@ -2473,6 +2484,7 @@ interface CommentCardProps {
   // tooltip names the agent and clarifies the separate-session fact).
   // Null/undefined → the "Request reply" affordance is hidden.
   replyAgent?: string | null;
+  replyAgentConfigPath?: string | null;
   onSendToAgent?: (commentId: string) => void;
   // Cursor-landing callback (PRD #192 / ADR 0022 slice 2; broadened by
   // issue #411 / ADR 0037 mouse-path parity). Fires when the user clicks
@@ -2580,6 +2592,7 @@ export function CommentCard({
   onCancelReply,
   replyLock,
   replyAgent,
+  replyAgentConfigPath,
   onSendToAgent,
   onCardClick,
   onFileClick,
@@ -2644,6 +2657,15 @@ export function CommentCard({
   const composerOpen = replyTargetId != null;
   const showReplyButton = !!onOpenReply;
   const showSendButton = sendVerdict.visible && !!onSendToAgent && !!sendLeafId;
+  const showRequestReplyConfigHint =
+    !!replyAgentConfigPath &&
+    !!onSendToAgent &&
+    !!sendLeafId &&
+    shouldShowRequestReplyConfigHint({
+      replyAgentConfigured: !!replyAgent,
+      authorKind: "human",
+      hasReply: false,
+    });
   // PRD #397 / ADR 0038. Collapsed one-liner. Watcher-driven lock pills
   // still render below the one-liner ("honest signal over tidy hiding").
   // `💬 N` counts all live Replies under the projection.
@@ -2912,7 +2934,8 @@ export function CommentCard({
             onCancel={() => onCancelReply?.()}
           />
         </div>
-      ) : !composerOpen && (showReplyButton || showSendButton) ? (
+      ) : !composerOpen &&
+        (showReplyButton || showSendButton || showRequestReplyConfigHint) ? (
         <div className="ann-actions">
           {showReplyButton && onOpenReply ? (
             <button
@@ -2952,6 +2975,11 @@ export function CommentCard({
             >
               Request reply
             </button>
+          ) : null}
+          {showRequestReplyConfigHint ? (
+            <span className="request-reply-config-hint">
+              {requestReplyConfigHint(replyAgentConfigPath)}
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -3070,6 +3098,7 @@ interface CommentListSnapshotLostProps {
   onCancel: () => void;
   replyLock: ReplyLock | null;
   replyAgent?: string | null;
+  replyAgentConfigPath?: string | null;
   onSendToAgent: (commentId: string) => void;
   onCardClick: (commentId: string) => void;
   // Issue #383 / ADR 0035: clicking the annotation filename moves the
@@ -3104,6 +3133,7 @@ function CommentListSnapshotLost({
   onCancel,
   replyLock,
   replyAgent,
+  replyAgentConfigPath,
   onSendToAgent,
   onCardClick,
   onAnnotationFileClick,
@@ -3146,6 +3176,7 @@ function CommentListSnapshotLost({
             onCancelReply={onCancel}
             replyLock={replyLock}
             replyAgent={replyAgent}
+            replyAgentConfigPath={replyAgentConfigPath}
             onSendToAgent={onSendToAgent}
             onCardClick={onCardClick}
             onFileClick={onAnnotationFileClick}

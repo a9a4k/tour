@@ -483,6 +483,64 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
     expect(container.querySelector(".send-to-agent-button")).toBeNull();
   });
 
+  it("renders a Tour config hint instead of the button when replyAgent is unset", () => {
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+        replyAgentConfigPath: "/tmp/tour-home/config.toml",
+      }),
+    );
+    expect(container.querySelector(".send-to-agent-button")).toBeNull();
+    expect(
+      container.querySelector(".request-reply-config-hint")?.textContent,
+    ).toBe("Set `reply_agent` in /tmp/tour-home/config.toml to enable Request reply");
+  });
+
+  it("omits the Tour config hint when Request reply is configured or already terminal", () => {
+    const configured = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgent: "claude",
+        replyAgentConfigPath: "/tmp/tour-home/config.toml",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(configured.querySelector(".request-reply-config-hint")).toBeNull();
+    act(() => root!.unmount());
+    root = null;
+
+    const reply: Comment = {
+      ...baseComment,
+      id: "ann-2",
+      author: "claude",
+      author_kind: "agent",
+      thread_id: "ann-1",
+      created_at: "2026-05-11T00:00:01Z",
+    };
+    const alreadyReplied = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        replyAgentConfigPath: "/tmp/tour-home/config.toml",
+        onSendToAgent: () => {},
+        onOpenReply: () => {},
+      }),
+    );
+    expect(alreadyReplied.querySelector(".request-reply-config-hint")).toBeNull();
+  });
+
   it("hides the button when a reply has already landed (already-replied terminal)", () => {
     const reply: Comment = {
       ...baseComment,

@@ -245,6 +245,7 @@ async function main(): Promise<void> {
           tourStoreRoot,
           worktreeStamp,
           ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
+          configPath,
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
         });
         break;
@@ -260,6 +261,7 @@ async function main(): Promise<void> {
           tourStoreRoot,
           worktreeStamp,
           ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
+          configPath,
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
         });
         break;
@@ -309,6 +311,7 @@ async function main(): Promise<void> {
             tourStoreRoot,
             worktreeStamp,
             ...replyAgent,
+            configPath,
             editor,
           });
         } else {
@@ -317,6 +320,7 @@ async function main(): Promise<void> {
             tourStoreRoot,
             worktreeStamp,
             ...replyAgent,
+            configPath,
             editor,
           });
         }

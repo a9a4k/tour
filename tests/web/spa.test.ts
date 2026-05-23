@@ -29,6 +29,13 @@ describe("spa shell html()", () => {
     expect(html()).toContain("window.__INITIAL_REPLY_AGENT__ = null");
   });
 
+  it("threads the Tour config path into a window global", () => {
+    expect(html("abc123", "claude", "/tmp/tour-home/config.toml")).toContain(
+      'window.__INITIAL_REPLY_AGENT_CONFIG_PATH__ = "/tmp/tour-home/config.toml"',
+    );
+    expect(html()).toContain("window.__INITIAL_REPLY_AGENT_CONFIG_PATH__ = null");
+  });
+
   it("styles the Send-to-agent button with a focused-card accent + disabled treatment (issue #184)", () => {
     const out = html();
     expect(out).toMatch(/\.send-to-agent-button\s*\{/);

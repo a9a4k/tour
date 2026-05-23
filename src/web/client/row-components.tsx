@@ -662,6 +662,7 @@ export interface CardRowProps {
   onCancelReply?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
+  replyAgentConfigPath?: string | null;
   onSendToAgent?: (commentId: string) => void;
   onCardClick?: (commentId: string) => void;
   // Issue #383 / ADR 0035: pass-through for the annotation filename
@@ -711,6 +712,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     onCancelReply,
     replyLock,
     replyAgent,
+    replyAgentConfigPath,
     onSendToAgent,
     onCardClick,
     onFileClick,
@@ -741,6 +743,7 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         onCancelReply={onCancelReply}
         replyLock={replyLock}
         replyAgent={replyAgent}
+        replyAgentConfigPath={replyAgentConfigPath}
         onSendToAgent={onSendToAgent}
         onCardClick={onCardClick}
         onFileClick={onFileClick}

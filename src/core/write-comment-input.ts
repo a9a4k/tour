@@ -51,6 +51,7 @@ export interface StartTuiProps {
   cwd: string;
   tourStoreRoot?: string;
   replyAgent?: string;
+  configPath: string;
   /** PRD #349 / ADR 0032 / issue #352: resolved editor config (null
    *  when no flag and no env var was set). The TUI surfaces a footer
    *  hint when this is null and the user presses `o`. */

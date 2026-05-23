@@ -1,8 +1,15 @@
 import { themeCSSVars } from "../core/theme.js";
 
-export function html(initialTourId?: string, replyAgent?: string): string {
+export function html(
+  initialTourId?: string,
+  replyAgent?: string,
+  replyAgentConfigPath?: string,
+): string {
   const initialId = initialTourId ? JSON.stringify(initialTourId) : "null";
   const initialReplyAgent = replyAgent ? JSON.stringify(replyAgent) : "null";
+  const initialReplyAgentConfigPath = replyAgentConfigPath
+    ? JSON.stringify(replyAgentConfigPath)
+    : "null";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -470,6 +477,12 @@ export function html(initialTourId?: string, replyAgent?: string): string {
   .comment-block .send-to-agent-button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
+  }
+  .comment-block .request-reply-config-hint {
+    color: var(--fg-muted);
+    font-size: 12px;
+    line-height: 22px;
+    margin-right: auto;
   }
   .comment-block .ann-reply-composer {
     margin-top: 8px;
@@ -974,7 +987,7 @@ export function html(initialTourId?: string, replyAgent?: string): string {
 </head>
 <body>
 <div id="root"></div>
-<script>window.__INITIAL_TOUR_ID__ = ${initialId}; window.__INITIAL_REPLY_AGENT__ = ${initialReplyAgent};</script>
+<script>window.__INITIAL_TOUR_ID__ = ${initialId}; window.__INITIAL_REPLY_AGENT__ = ${initialReplyAgent}; window.__INITIAL_REPLY_AGENT_CONFIG_PATH__ = ${initialReplyAgentConfigPath};</script>
 <script type="module" src="/client.js"></script>
 </body>
 </html>`;

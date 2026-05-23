@@ -21,6 +21,7 @@ interface TuiArgs {
   worktreeStamp?: string;
   replyAgent?: string;
   replyAgentSourcePath?: string;
+  configPath: string;
   editor?: EditorConfig | null;
 }
 
@@ -127,6 +128,7 @@ export async function tui(args: TuiArgs): Promise<void> {
     cwd: args.cwd,
     tourStoreRoot,
     replyAgent: args.replyAgent,
+    configPath: args.configPath,
     editor: args.editor ?? null,
   });
 }
