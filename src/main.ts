@@ -85,6 +85,10 @@ Usage:
 Defaults:
   --reply-agent uses: CLI flag, then $TOUR_HOME/config.toml, then none.
   --editor uses: CLI flag, then $TOUR_EDITOR, then $TOUR_HOME/config.toml, then $VISUAL, then $EDITOR, then none.
+
+Editor template:
+  {file} = absolute file path, {line} = line number, {workspace} = current worktree root.
+  Example: editor = "code {workspace} -g {file}:{line}"
 `;
 
 function firstRunBanner(tourStoreRoot: string, configPath: string): string {
@@ -246,7 +250,7 @@ async function main(): Promise<void> {
           worktreeStamp,
           ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           configPath,
-          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
+          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd),
         });
         break;
 
@@ -262,7 +266,7 @@ async function main(): Promise<void> {
           worktreeStamp,
           ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           configPath,
-          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor),
+          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd),
         });
         break;
       }
@@ -296,7 +300,7 @@ async function main(): Promise<void> {
               ? isOnPath("open")
               : isOnPath("xdg-open"),
         });
-        const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig.editor);
+        const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd);
         const replyAgent = resolveReplyAgent(
           flag(flags, "reply-agent"),
           userConfig.replyAgent,

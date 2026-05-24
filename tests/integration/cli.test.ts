@@ -584,6 +584,24 @@ reply_agent = "claude" (from config)
 editor      = "code -g {file}:{line}" (from config)`);
     });
 
+    it("reports {workspace} literally in editor from Tour config", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      await writeFile(
+        join(tourHome, "config.toml"),
+        'editor = "code {workspace} -g {file}:{line}"\n',
+      );
+
+      const result = await run(["config", "show"], repo, {
+        tourHome,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(
+        'editor      = "code {workspace} -g {file}:{line}" (from config)',
+      );
+    });
+
     it("reports reply_agent from config while editor falls through to default", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude"\n');
@@ -1236,6 +1254,16 @@ editor      = "nvim" (from config)`);
       expect(r.stdout).toContain(
         "--editor uses: CLI flag, then $TOUR_EDITOR, then $TOUR_HOME/config.toml, then $VISUAL, then $EDITOR, then none.",
       );
+    });
+
+    it("`tour --help` documents editor template placeholders", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("Editor template:");
+      expect(r.stdout).toContain("{file}");
+      expect(r.stdout).toContain("{line}");
+      expect(r.stdout).toContain("{workspace}");
+      expect(r.stdout).toContain("code {workspace} -g {file}:{line}");
     });
 
     it("`tour --help` documents config show", async () => {

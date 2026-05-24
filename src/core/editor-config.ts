@@ -4,7 +4,8 @@
 // EditorConfig that downstream code never re-parses.
 //
 // Template handling: if the configured value contains `{file}` and/or
-// `{line}`, substitute. Otherwise infer per binary basename
+// `{line}`, substitute. `{workspace}` substitutes the current worktree
+// root when provided by the caller. Otherwise infer per binary basename
 // (code/cursor/codium → `-g {file}:{line}`; idea family → `--line
 // {line} {file}`; vim/nvim/nano/emacs/hx/vi/micro → `+{line} {file}`;
 // unknown → `{file}:{line}`). Spawn uses `execFile` with the parsed
@@ -76,6 +77,7 @@ export function resolveEditor(
   flag: string | undefined,
   env: EditorEnv,
   configEditor?: string,
+  repoRoot?: string,
 ): EditorConfig | null {
   const { value: raw } = chooseFirstWithSource(
     { value: flag, source: "flag" },
@@ -98,12 +100,18 @@ export function resolveEditor(
 
   const hasFile = rest.some((t) => t.includes("{file}"));
   const hasLine = rest.some((t) => t.includes("{line}"));
+  const substituteWorkspace = (token: string): string =>
+    repoRoot === undefined
+      ? token
+      : token.replace(/\{workspace\}/g, repoRoot);
   if (hasFile || hasLine) {
     return {
       bin,
       argv: (file, line) =>
         rest.map((t) =>
-          t.replace(/\{file\}/g, file).replace(/\{line\}/g, String(line)),
+          substituteWorkspace(t)
+            .replace(/\{file\}/g, file)
+            .replace(/\{line\}/g, String(line)),
         ),
       terminal,
     };
@@ -118,7 +126,10 @@ export function resolveEditor(
 
   return {
     bin,
-    argv: (file, line) => [...rest, ...suffix(file, line)],
+    argv: (file, line) => [
+      ...rest.map((t) => substituteWorkspace(t)),
+      ...suffix(file, line),
+    ],
     terminal,
   };
 }

@@ -255,6 +255,53 @@ describe("tour serve — Tour config editor default", () => {
   });
 });
 
+describe("tour serve — editor template {workspace}", () => {
+  let handle: ServerHandle;
+  beforeAll(async () => {
+    const tourHome = await mkdtemp(join(tmpdir(), "tour-open-editor-home-"));
+    const setup = await setupRepoAndTour(tourHome);
+    await writeFile(
+      join(tourHome, "config.toml"),
+      `editor = "${setup.fakeBin} {workspace} -g {file}:{line}"\n`,
+    );
+    handle = await startServerWithEditor(
+      setup.dir,
+      setup.tourId,
+      setup.fakeBin,
+      "<NONE>",
+      tourHome,
+    );
+  }, 30000);
+  afterAll(async () => {
+    await killServer(handle);
+    await rm(handle.dir, { recursive: true, force: true });
+  });
+
+  it("spawns with the current worktree root substituted into argv", async () => {
+    const res = await fetch(
+      `${handle.baseUrl}/api/tours/${handle.tourId}/open-in-editor`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: "hello.txt",
+          line: 1,
+          side: "additions",
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    await waitForLog(handle.logPath);
+    const argv = (await readFile(handle.logPath, "utf8")).trim().split("\n");
+    const expectedDir = await realpath(handle.dir);
+    expect(argv).toEqual([
+      expectedDir,
+      "-g",
+      `${expectedDir}/hello.txt:1`,
+    ]);
+  });
+});
+
 describe("POST /api/tours/:id/open-in-editor — file not in tour diff", () => {
   let handle: ServerHandle;
   beforeAll(async () => {

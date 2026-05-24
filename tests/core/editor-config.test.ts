@@ -96,6 +96,69 @@ describe("resolveEditor — template substitution", () => {
     expect(argv).toEqual(["--new-window", "/abs/path/foo.ts:42"]);
   });
 
+  it("substitutes {workspace} in explicit templates", () => {
+    const cfg = resolveEditor(
+      "code {workspace} -g {file}:{line}",
+      {},
+      undefined,
+      "/repo/worktree",
+    );
+    expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
+      "/repo/worktree",
+      "-g",
+      "/repo/worktree/src/app.ts:42",
+    ]);
+  });
+
+  it("substitutes embedded {workspace} inside one argv token", () => {
+    const cfg = resolveEditor(
+      "code --folder={workspace} -g {file}:{line}",
+      {},
+      undefined,
+      "/repo/worktree",
+    );
+    expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
+      "--folder=/repo/worktree",
+      "-g",
+      "/repo/worktree/src/app.ts:42",
+    ]);
+  });
+
+  it("leaves {workspace} literal when repoRoot is omitted", () => {
+    const cfg = resolveEditor("code {workspace} -g {file}:{line}", {});
+    expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
+      "{workspace}",
+      "-g",
+      "/repo/worktree/src/app.ts:42",
+    ]);
+  });
+
+  it("substitutes {workspace} from every editor chain layer", () => {
+    const raw = "code {workspace} -g {file}:{line}";
+    const file = "/repo/worktree/src/app.ts";
+    const cases: Array<{
+      name: string;
+      flag?: string;
+      env: Parameters<typeof resolveEditor>[1];
+      config?: string;
+    }> = [
+      { name: "flag", flag: raw, env: { TOUR_EDITOR: "vim" }, config: "nano" },
+      { name: "$TOUR_EDITOR", env: { TOUR_EDITOR: raw }, config: "nano" },
+      { name: "config", env: { VISUAL: "vim" }, config: raw },
+      { name: "$VISUAL", env: { VISUAL: raw, EDITOR: "vim" } },
+      { name: "$EDITOR", env: { EDITOR: raw } },
+    ];
+
+    for (const c of cases) {
+      const cfg = resolveEditor(c.flag, c.env, c.config, "/repo/worktree");
+      expect(cfg!.argv(file, 42), c.name).toEqual([
+        "/repo/worktree",
+        "-g",
+        `${file}:42`,
+      ]);
+    }
+  });
+
   it("template with only {file} (no {line}) substitutes file only", () => {
     const cfg = resolveEditor("myedit {file}", {});
     expect(cfg!.argv("/p/x.ts", 7)).toEqual(["/p/x.ts"]);
@@ -174,6 +237,15 @@ describe("resolveEditor — smart-default inference by basename", () => {
     // inferred (file, line) suffix is appended.
     const cfg = resolveEditor("code --wait", {});
     expect(cfg!.argv("/p/x.ts", 7)).toEqual(["--wait", "-g", "/p/x.ts:7"]);
+  });
+
+  it("substitutes {workspace} before appending code-family smart defaults", () => {
+    const cfg = resolveEditor("code {workspace}", {}, undefined, "/repo/worktree");
+    expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
+      "/repo/worktree",
+      "-g",
+      "/repo/worktree/src/app.ts:42",
+    ]);
   });
 });
 
