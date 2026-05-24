@@ -73,3 +73,33 @@ The resolution mirrors `y` (yank-file-path) and `e` (expand-file-all): row curso
 - **The 200ms early-failure window is a heuristic, not a guarantee.** Editors that fork-and-fail slower than 200ms will look like a successful launch from `o`'s perspective; the user discovers via the editor's own error reporting. Acceptable trade-off — tightening the window risks false negatives on slow disks.
 - **`side` is carried in the API body even though slice 1 ignores it.** Adding a future staleness warning that reasons over which side the line came from costs zero protocol churn.
 - **No new mouse affordance.** `o` is keyboard-only, mirroring `y`'s precedent. Footer-hint legends in both panes surface `o: open` next to `y` so mouse-only users can still discover it. A `↗` icon next to the file header's `↕` is the cheapest viable upgrade if feedback demands it.
+
+## Addendum: `{workspace}` template placeholder
+
+The editor template language gains a third placeholder alongside `{file}` and `{line}`: **`{workspace}`** substitutes the current worktree's working-tree directory (the value `findRepoRoot` returns; equivalent to `git rev-parse --show-toplevel`). The motivating gap: a Tour config user's natural attempt `editor = "code $(pwd) -g {file}:{line}"` fails silently because Tour spawns via `execFile` (not `sh -c`, per the section above) and the TOML parser performs no expansion. The substitution-language path is the safe, native equivalent.
+
+### Decisions
+
+- **Placeholder name: `{workspace}`.** Adopts VS Code's `${workspaceFolder}` convention (the dominant editor's vocabulary for this exact concept) without git-feature baggage. Rejected alternatives: `{repo}` (ambiguous in linked-worktree setups — does "repo" mean the main clone or this worktree?); `{worktree}` (collides with CONTEXT.md's **Worktree stamp** record field *and* implies the `git worktree` linked-checkout feature, which most users don't use); `{cwd}` / `{pwd}` (encode the wrong semantics — Tour substitutes `findRepoRoot(cwd)`, not `process.cwd()`); `{toplevel}` (requires git fluency to decode). VS Code's own evolution from `${workspaceRoot}` → `${workspaceFolder}` was driven by the same single-vs-multi ambiguity our `{repo}` walk surfaced; we inherit the conclusion.
+
+- **Value: the current worktree's working-tree directory.** Plain clones get the clone's working tree (their only worktree). Linked-worktree setups get the linked worktree's working tree, not the main clone's — matches the workspace a user is actually editing in and matches the file paths Tour already resolves via `o`. Source-of-truth is `repoRoot` from `resolveTourLocation`; the placeholder and the file path agree about which worktree is in play.
+
+- **Substitution timing: resolution-time, inside `resolveEditor`.** Add an optional fourth argument `repoRoot?: string` to `resolveEditor`; substitution happens once per Tour invocation when `EditorConfig` is built. The `argv(file, line)` closure signature is unchanged, so every downstream consumer (TUI editor-spawn, web `POST /api/tours/:id/open-in-editor`, integration tests) is unaffected. The spawn-time alternative — widening `argv` to `(file, line, workspace)` — was rejected as it propagates a context concern to every caller for a value they don't intrinsically care about.
+
+- **Substitution applies in both branches.** `{workspace}` is a per-token `.replace(...)` rule applied uniformly to `rest`, in both the template branch (fires on `{file}` / `{line}` presence) and the smart-default branch (fires when neither is present). Consequence: `editor = "code {workspace}"` is a valid, useful configuration — `{workspace}` substitutes inside `rest`, then the `code`-family smart-default suffix (`-g {file}:{line}`) is appended and itself substituted. The shortest path to "open my workspace at the right line" is one token.
+
+- **Optional arg with leave-literal fallback.** If `resolveEditor` is called without `repoRoot` and the configured value contains `{workspace}`, the token is left as the literal string `{workspace}`. Production never hits this case — `main.ts` only calls `resolveEditor` after `resolveTourLocation` succeeds (which requires a git working tree per ADR 0039). Tests that don't care about `{workspace}` can omit the arg without ceremony; tests that do exercise it pass `repoRoot` explicitly. A throw was considered and rejected as louder-than-warranted for a production-unreachable branch.
+
+- **`tour config show` is unaffected.** The `show` inspector renders the raw configured `editor` string verbatim — it doesn't substitute `{file}` / `{line}` today and doesn't substitute `{workspace}` either. Users see exactly what's in their `~/.tour/config.toml`. The substitution is a spawn-path concern, not an inspection-path concern.
+
+- **Scope: only `{workspace}`.** No siblings (`{tour_id}`, `{head_sha}`, `{file_dir}`, `{file_relative}`) ship in this addendum. Each would require its own naming walk and semantic decisions (full SHA vs short SHA? relative to what in linked worktrees?), and none have a motivating user ask. The substitution mechanism is one `.replace(...)` per variable; additions are trivially additive when warranted.
+
+- **`--help` documents the template language.** USAGE gains a short "Editor template:" section naming the three placeholders with one concrete example. Lands an existing gap — `{file}` / `{line}` were undocumented in USAGE until now. The error message at the `editor not configured` chokepoint (issue #459) is unchanged; adding template syntax to it would bloat the error past usefulness.
+
+### What did NOT change
+
+- The editor resolution chain (flag → `$TOUR_EDITOR` → Tour config → `$VISUAL` → `$EDITOR` → null) — unchanged.
+- The `execFile`-not-`sh-c` spawn posture — explicitly re-affirmed. `{workspace}` is substituted by Tour, not by a shell.
+- The smart-default-per-binary inference table (vscode-family, jetbrains-family, terminal-allowlist) — unchanged.
+- The terminal-editor classification — unchanged.
+- The `EditorConfig.argv(file, line)` signature — unchanged. The new `repoRoot` arg is captured in `resolveEditor`'s closure.
