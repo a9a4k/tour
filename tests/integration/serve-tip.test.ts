@@ -104,11 +104,18 @@ function killProc(proc: ChildProcess): Promise<void> {
 describe("tour serve — reply-agent discovery tip (issue #174)", () => {
   let dir: string;
   let bunPath: string;
+  let tourHome: string;
   let activeProc: ChildProcess | null = null;
 
   beforeAll(async () => {
     bunPath = await resolveBunPath();
     dir = await createTempRepoWithTour(bunPath);
+    // Isolated TOUR_HOME so the tip's `replyAgent === undefined` precondition
+    // isn't polluted by the developer's personal `~/.tour/config.toml`
+    // (ADR 0042). `tourHome()` resolves the default via `homedir()`, which
+    // reads OS user info directly — passing `env: { PATH }` to `spawn`
+    // doesn't shield the subprocess from the dev's real home dir.
+    tourHome = await mkdtemp(join(tmpdir(), "tour-tip-home-"));
   }, 30000);
 
   afterEach(async () => {
@@ -120,7 +127,10 @@ describe("tour serve — reply-agent discovery tip (issue #174)", () => {
 
   it("emits a tip when exactly one shipped agent is on PATH", async () => {
     const stubDir = await makePathWithStubs(["claude"]);
-    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir });
+    const result = await spawnServeUntilReady(bunPath, dir, [], {
+      PATH: stubDir,
+      TOUR_HOME: tourHome,
+    });
     activeProc = result.proc;
     expect(result.stdout).toContain("Tip: detected 'claude' on PATH");
     expect(result.stdout).toContain("--reply-agent claude");
@@ -128,14 +138,20 @@ describe("tour serve — reply-agent discovery tip (issue #174)", () => {
 
   it("is silent when zero shipped agents are on PATH", async () => {
     const stubDir = await makePathWithStubs([]);
-    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir });
+    const result = await spawnServeUntilReady(bunPath, dir, [], {
+      PATH: stubDir,
+      TOUR_HOME: tourHome,
+    });
     activeProc = result.proc;
     expect(result.stdout).not.toContain("Tip:");
   }, 30000);
 
   it("is silent when multiple shipped agents are on PATH", async () => {
     const stubDir = await makePathWithStubs(["claude", "codex"]);
-    const result = await spawnServeUntilReady(bunPath, dir, [], { PATH: stubDir });
+    const result = await spawnServeUntilReady(bunPath, dir, [], {
+      PATH: stubDir,
+      TOUR_HOME: tourHome,
+    });
     activeProc = result.proc;
     expect(result.stdout).not.toContain("Tip:");
   }, 30000);
@@ -146,7 +162,7 @@ describe("tour serve — reply-agent discovery tip (issue #174)", () => {
       bunPath,
       dir,
       ["--reply-agent", "claude"],
-      { PATH: stubDir },
+      { PATH: stubDir, TOUR_HOME: tourHome },
     );
     activeProc = result.proc;
     expect(result.stdout).not.toContain("Tip:");
