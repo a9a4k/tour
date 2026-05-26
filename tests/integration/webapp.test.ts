@@ -390,6 +390,53 @@ describe("Webapp integration", () => {
     expect(eventData).toContain("comment-changed");
     controller.abort();
   });
+
+  it("keeps the SSE stream alive while idle so delayed comment changes are delivered (Issue #462)", async () => {
+    const controller = new AbortController();
+    const res = await fetch(`${baseUrl}/api/tours/${tourId}/events`, {
+      signal: controller.signal,
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+
+    const firstChunk = await reader.read();
+    const firstData = decoder.decode(firstChunk.value);
+    expect(firstData).toContain("connected");
+
+    await new Promise((r) => setTimeout(r, 12_000));
+    await execP(BUN, [
+      CLI, "annotate", tourId,
+      "--file", "hello.txt",
+      "--side", "additions",
+      "--line", "1",
+      "--body", "SSE idle-timeout regression comment",
+      "--author", "test",
+    ], { cwd: dir });
+
+    const readUntilCommentChanged = async (): Promise<string> => {
+      const deadline = Date.now() + 3_000;
+      let data = "";
+      while (Date.now() < deadline) {
+        const remaining = deadline - Date.now();
+        const chunk = await Promise.race([
+          reader.read(),
+          new Promise<ReadableStreamReadResult<Uint8Array>>((_, reject) =>
+            setTimeout(() => reject(new Error("SSE timeout")), remaining),
+          ),
+        ]);
+        data += decoder.decode(chunk.value);
+        if (data.includes("comment-changed")) return data;
+      }
+      throw new Error(`SSE timeout: ${data}`);
+    };
+
+    const eventData = await readUntilCommentChanged();
+    expect(eventData).toContain("comment-changed");
+    controller.abort();
+  }, 20_000);
 });
 
 describe("Webapp worktree-scoped tour list", () => {

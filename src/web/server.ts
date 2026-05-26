@@ -276,18 +276,37 @@ export async function startServer(args: ServeArgs): Promise<void> {
             const watcher = getOrCreateWatcher(resolvedId);
             const stream = new ReadableStream({
               start(controller) {
-                controller.enqueue("data: {\"type\":\"connected\"}\n\n");
-                const callback = (event: import("../core/watcher.js").WatchEvent) => {
+                let heartbeat: ReturnType<typeof setInterval> | null = null;
+                let callback:
+                  | ((event: import("../core/watcher.js").WatchEvent) => void)
+                  | null = null;
+                let cleanedUp = false;
+                const cleanup = () => {
+                  if (cleanedUp) return;
+                  cleanedUp = true;
+                  if (heartbeat !== null) clearInterval(heartbeat);
+                  if (callback !== null) watcher.off(callback);
+                  req.signal.removeEventListener("abort", cleanup);
+                };
+                const enqueue = (chunk: string): boolean => {
                   try {
-                    controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
+                    controller.enqueue(chunk);
+                    return true;
                   } catch {
-                    watcher.off(callback);
+                    cleanup();
+                    return false;
                   }
                 };
+
+                if (!enqueue("data: {\"type\":\"connected\"}\n\n")) return;
+                callback = (event: import("../core/watcher.js").WatchEvent) => {
+                  enqueue(`data: ${JSON.stringify(event)}\n\n`);
+                };
                 watcher.on(callback);
-                req.signal.addEventListener("abort", () => {
-                  watcher.off(callback);
-                });
+                heartbeat = setInterval(() => {
+                  enqueue(": keepalive\n\n");
+                }, 5_000);
+                req.signal.addEventListener("abort", cleanup);
               },
             });
             return new Response(stream, {
