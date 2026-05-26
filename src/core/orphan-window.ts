@@ -30,21 +30,20 @@ export function computeOrphanWindows(
 ): Map<number, HunkExpansionRegion> {
   const spans = new Map<number, OrphanSpan>();
 
-  for (const a of comments) {
-    if (a.file !== file.name) continue;
-    const span = orphanSpanFor(file, a, opts);
+  for (const comment of comments) {
+    if (comment.file !== file.name) continue;
+    const span = orphanSpanFor(file, comment, opts);
     if (!span) continue;
     const prev = spans.get(span.hunkIndex);
-    spans.set(
-      span.hunkIndex,
-      prev
-        ? {
-            ...prev,
-            startOffset: Math.min(prev.startOffset, span.startOffset),
-            endOffset: Math.max(prev.endOffset, span.endOffset),
-          }
-        : span,
-    );
+    if (!prev) {
+      spans.set(span.hunkIndex, span);
+      continue;
+    }
+    spans.set(span.hunkIndex, {
+      ...prev,
+      startOffset: Math.min(prev.startOffset, span.startOffset),
+      endOffset: Math.max(prev.endOffset, span.endOffset),
+    });
   }
 
   const result = new Map<number, HunkExpansionRegion>();
@@ -104,21 +103,21 @@ function hunkRangeOn(h: DiffHunk, isAdditions: boolean): { start: number; count:
 
 function orphanSpanFor(
   file: DiffFile,
-  a: Comment,
+  comment: Comment,
   opts: OrphanWindowOptions,
 ): OrphanSpan | null {
-  const isAdditions = a.side === "additions";
+  const isAdditions = comment.side === "additions";
   const lineCount = isAdditions ? opts.newLineCount : opts.oldLineCount;
-  const L = a.line_start;
-  if (L < 1 || L > lineCount) return null;
+  const line = comment.line_start;
+  if (line < 1 || line > lineCount) return null;
 
   let hunkIndex = file.hunks.length;
   for (let i = 0; i < file.hunks.length; i++) {
     const { start, count } = hunkRangeOn(file.hunks[i], isAdditions);
     if (count === 0) continue;
     const end = start + count - 1;
-    if (L >= start && L <= end) return null;
-    if (L < start) {
+    if (line >= start && line <= end) return null;
+    if (line < start) {
       hunkIndex = i;
       break;
     }
@@ -127,8 +126,8 @@ function orphanSpanFor(
   const { gapStart, gapEnd } = gapBoundsFor(file, hunkIndex, isAdditions, lineCount);
   if (gapEnd < gapStart) return null;
 
-  const wStart = Math.max(1, L - WINDOW_RADIUS);
-  const wEnd = Math.min(lineCount, L + WINDOW_RADIUS);
+  const wStart = Math.max(1, line - WINDOW_RADIUS);
+  const wEnd = Math.min(lineCount, line + WINDOW_RADIUS);
   const wStartG = Math.max(wStart, gapStart);
   const wEndG = Math.min(wEnd, gapEnd);
 

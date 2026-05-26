@@ -75,7 +75,7 @@ describe("computeOrphanWindows", () => {
   it("comment before first hunk with small file lineCount clamps window correctly", () => {
     // Single hunk at lines 50..54, file lineCount = 100, comment at line 5.
     // Window = [1, 15]. Top gap = [1, 49].
-    // fromStart = 15 - 1 + 1 = 15. fromEnd = 49 - 1 + 1 = 49.
+    // Top projection costs 15 lines; bottom projection costs 49.
     const file: DiffFile = {
       name: "src/foo.ts",
       type: "change",
