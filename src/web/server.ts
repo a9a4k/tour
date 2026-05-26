@@ -5,7 +5,7 @@ import {
   createDelete,
   createReply,
 } from "../core/comments-store.js";
-import { TourWatcher } from "../core/watcher.js";
+import { TourWatcher, type WatchCallback } from "../core/watcher.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import {
   requestReply,
@@ -76,6 +76,8 @@ interface BunBuildOutput {
   text: () => Promise<string>;
   arrayBuffer: () => Promise<ArrayBuffer>;
 }
+
+const SSE_HEARTBEAT_MS = 5_000;
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
@@ -277,9 +279,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
             const stream = new ReadableStream({
               start(controller) {
                 let heartbeat: ReturnType<typeof setInterval> | null = null;
-                let callback:
-                  | ((event: import("../core/watcher.js").WatchEvent) => void)
-                  | null = null;
+                let callback: WatchCallback | null = null;
                 let cleanedUp = false;
                 const cleanup = () => {
                   if (cleanedUp) return;
@@ -305,7 +305,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
                 watcher.on(callback);
                 heartbeat = setInterval(() => {
                   enqueue(": keepalive\n\n");
-                }, 5_000);
+                }, SSE_HEARTBEAT_MS);
                 req.signal.addEventListener("abort", cleanup);
               },
             });
