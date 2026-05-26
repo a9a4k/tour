@@ -56,21 +56,20 @@ describe("computeOrphanWindows", () => {
   it("comment between hunks produces a window assigned to the next hunk", () => {
     // Comment at line 25 on additions side; gap is [15, 39].
     // Window = [25-10, 25+10] = [15, 35], clamped to gap = [15, 35].
-    // fromStart = 35 - 15 + 1 = 21 (lines from gap top down to W_end).
-    // fromEnd = 39 - 15 + 1 = 25 (lines from gap bottom up to W_start).
+    // Top projection costs 21 lines; bottom projection costs 25, so the
+    // producer chooses the top edge and leaves fromEnd at 0.
     const map = computeOrphanWindows(TWO_HUNKS, [ann("additions", 25)], OPTS);
     expect(map.size).toBe(1);
-    expect(map.get(1)).toEqual({ fromStart: 21, fromEnd: 25 });
+    expect(map.get(1)).toEqual({ fromStart: 21, fromEnd: 0 });
   });
 
   it("comment before first hunk attaches to hunk 0 with top semantics", () => {
     // Comment at line 3 on additions side; top gap is [1, 9].
     // Window = [max(1, -7), min(100, 13)] = [1, 13], clamped to gap = [1, 9].
-    // fromStart = 9 - 1 + 1 = 9 (full top gap below W_end of 13).
-    // fromEnd = 9 - 1 + 1 = 9 (full top gap above W_start of 1).
+    // Both edges cost 9 lines, so ties choose the top edge.
     const map = computeOrphanWindows(TWO_HUNKS, [ann("additions", 3)], OPTS);
     expect(map.size).toBe(1);
-    expect(map.get(0)).toEqual({ fromStart: 9, fromEnd: 9 });
+    expect(map.get(0)).toEqual({ fromStart: 9, fromEnd: 0 });
   });
 
   it("comment before first hunk with small file lineCount clamps window correctly", () => {
@@ -91,38 +90,48 @@ describe("computeOrphanWindows", () => {
       ],
     };
     const map = computeOrphanWindows(file, [ann("additions", 5)], OPTS);
-    expect(map.get(0)).toEqual({ fromStart: 15, fromEnd: 49 });
+    expect(map.get(0)).toEqual({ fromStart: 15, fromEnd: 0 });
   });
 
   it("comment after last hunk attaches past the last hunk", () => {
     // Comment at line 60 on additions side; trailing gap is [45, 100].
     // Window = [50, 70], clamped to gap = [50, 70].
-    // fromStart = 70 - 45 + 1 = 26 (lines from gap start down to W_end).
-    // fromEnd = 100 - 50 + 1 = 51.
+    // Top projection costs 26 lines; bottom projection costs 51.
     const map = computeOrphanWindows(TWO_HUNKS, [ann("additions", 60)], OPTS);
     expect(map.size).toBe(1);
-    expect(map.get(2)).toEqual({ fromStart: 26, fromEnd: 51 });
+    expect(map.get(2)).toEqual({ fromStart: 26, fromEnd: 0 });
   });
 
   it("comment near end of file clamps window to lineCount", () => {
     // lineCount = 100, comment at line 98 → window = [88, 100].
-    // Trailing gap [45, 100]. fromStart = 100 - 45 + 1 = 56. fromEnd = 100 - 88 + 1 = 13.
+    // Trailing gap [45, 100]. Bottom projection is cheaper: 13 lines.
     const map = computeOrphanWindows(TWO_HUNKS, [ann("additions", 98)], OPTS);
-    expect(map.get(2)).toEqual({ fromStart: 56, fromEnd: 13 });
+    expect(map.get(2)).toEqual({ fromStart: 0, fromEnd: 13 });
   });
 
   it("two close comments produce a single unioned window", () => {
     // Comments at line 22 and 28 on additions side. Both in gap [15, 39].
-    // a1 (line 22): window [15, 32]. fromStart = 18, fromEnd = 25.
-    // a2 (line 28): window [18, 38]. fromStart = 24, fromEnd = 22.
-    // Union (max of each): fromStart = 24, fromEnd = 25.
+    // Their clamped spans union to [15, 38]. Top projection costs 24
+    // lines; bottom projection costs 25.
     const map = computeOrphanWindows(
       TWO_HUNKS,
       [ann("additions", 22, { id: "a1" }), ann("additions", 28, { id: "a2" })],
       OPTS,
     );
     expect(map.size).toBe(1);
-    expect(map.get(1)).toEqual({ fromStart: 24, fromEnd: 25 });
+    expect(map.get(1)).toEqual({ fromStart: 24, fromEnd: 0 });
+  });
+
+  it("comments whose windows collectively cover a gap still produce one edge reveal", () => {
+    // Comments at line 18 and 36 in gap [15, 39]. Their windows union to
+    // the full gap, so the tie-break chooses one top-edge reveal.
+    const map = computeOrphanWindows(
+      TWO_HUNKS,
+      [ann("additions", 18, { id: "a1" }), ann("additions", 36, { id: "a2" })],
+      OPTS,
+    );
+    expect(map.size).toBe(1);
+    expect(map.get(1)).toEqual({ fromStart: 25, fromEnd: 0 });
   });
 
   it("comment beyond file line count is silently dropped", () => {
@@ -158,9 +167,9 @@ describe("computeOrphanWindows", () => {
     };
     // Comment on deletions side at line 20 (between deletion-side hunks at 8-12 and 36-40).
     // Deletions gap = [13, 35]. Window [10, 30] clamped to gap = [13, 30].
-    // fromStart = 30 - 13 + 1 = 18. fromEnd = 35 - 13 + 1 = 23.
+    // Top projection costs 18 lines; bottom projection costs 23.
     const map = computeOrphanWindows(file, [ann("deletions", 20)], { oldLineCount: 90, newLineCount: 100 });
-    expect(map.get(1)).toEqual({ fromStart: 18, fromEnd: 23 });
+    expect(map.get(1)).toEqual({ fromStart: 18, fromEnd: 0 });
   });
 
   it("ignores comments for other files", () => {
@@ -182,21 +191,21 @@ describe("orphanSeedWindows", () => {
   it("maps a leading-gap orphan (hunkIndex 0) to ref 'top'", () => {
     const result = orphanSeedWindows(TWO_HUNKS, [ann("additions", 3)], OPTS);
     expect(result).toEqual([
-      { file: "src/foo.ts", ref: "top", fromStart: 9, fromEnd: 9 },
+      { file: "src/foo.ts", ref: "top", fromStart: 9, fromEnd: 0 },
     ]);
   });
 
   it("maps a trailing-gap orphan (hunkIndex === hunks.length) to ref 'bottom'", () => {
     const result = orphanSeedWindows(TWO_HUNKS, [ann("additions", 60)], OPTS);
     expect(result).toEqual([
-      { file: "src/foo.ts", ref: "bottom", fromStart: 26, fromEnd: 51 },
+      { file: "src/foo.ts", ref: "bottom", fromStart: 26, fromEnd: 0 },
     ]);
   });
 
   it("maps a between-hunks orphan to its numeric hunkIndex", () => {
     const result = orphanSeedWindows(TWO_HUNKS, [ann("additions", 25)], OPTS);
     expect(result).toEqual([
-      { file: "src/foo.ts", ref: 1, fromStart: 21, fromEnd: 25 },
+      { file: "src/foo.ts", ref: 1, fromStart: 21, fromEnd: 0 },
     ]);
   });
 

@@ -28,17 +28,28 @@ export function computeOrphanWindows(
   comments: Comment[],
   opts: OrphanWindowOptions,
 ): Map<number, HunkExpansionRegion> {
-  const result = new Map<number, HunkExpansionRegion>();
+  const spans = new Map<number, OrphanSpan>();
 
   for (const a of comments) {
     if (a.file !== file.name) continue;
-    const region = orphanRegionFor(file, a, opts);
-    if (!region) continue;
-    const prev = result.get(region.hunkIndex) ?? { fromStart: 0, fromEnd: 0 };
-    result.set(region.hunkIndex, {
-      fromStart: Math.max(prev.fromStart, region.fromStart),
-      fromEnd: Math.max(prev.fromEnd, region.fromEnd),
-    });
+    const span = orphanSpanFor(file, a, opts);
+    if (!span) continue;
+    const prev = spans.get(span.hunkIndex);
+    spans.set(
+      span.hunkIndex,
+      prev
+        ? {
+            ...prev,
+            startOffset: Math.min(prev.startOffset, span.startOffset),
+            endOffset: Math.max(prev.endOffset, span.endOffset),
+          }
+        : span,
+    );
+  }
+
+  const result = new Map<number, HunkExpansionRegion>();
+  for (const span of spans.values()) {
+    result.set(span.hunkIndex, projectSpanToEdge(span));
   }
 
   return result;
@@ -78,8 +89,11 @@ export function hunkIndexToBoundaryRef(hunkIndex: number, hunkCount: number): Bo
   return hunkIndex;
 }
 
-interface OrphanRegion extends HunkExpansionRegion {
+interface OrphanSpan {
   hunkIndex: number;
+  gapSize: number;
+  startOffset: number;
+  endOffset: number;
 }
 
 function hunkRangeOn(h: DiffHunk, isAdditions: boolean): { start: number; count: number } {
@@ -88,11 +102,11 @@ function hunkRangeOn(h: DiffHunk, isAdditions: boolean): { start: number; count:
     : { start: h.deletionStart, count: h.deletionCount };
 }
 
-function orphanRegionFor(
+function orphanSpanFor(
   file: DiffFile,
   a: Comment,
   opts: OrphanWindowOptions,
-): OrphanRegion | null {
+): OrphanSpan | null {
   const isAdditions = a.side === "additions";
   const lineCount = isAdditions ? opts.newLineCount : opts.oldLineCount;
   const L = a.line_start;
@@ -120,9 +134,18 @@ function orphanRegionFor(
 
   return {
     hunkIndex,
-    fromStart: Math.max(0, wEndG - gapStart + 1),
-    fromEnd: Math.max(0, gapEnd - wStartG + 1),
+    gapSize: gapEnd - gapStart + 1,
+    startOffset: wStartG - gapStart + 1,
+    endOffset: wEndG - gapStart + 1,
   };
+}
+
+function projectSpanToEdge(span: OrphanSpan): HunkExpansionRegion {
+  const fromStart = span.endOffset;
+  const fromEnd = span.gapSize - span.startOffset + 1;
+  return fromStart <= fromEnd
+    ? { fromStart, fromEnd: 0 }
+    : { fromStart: 0, fromEnd };
 }
 
 function gapBoundsFor(

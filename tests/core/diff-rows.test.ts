@@ -2,6 +2,13 @@ import { describe, it, expect } from "vitest";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import {
+  emptyExpansion,
+  seedFromOrphans,
+  type ExpansionState,
+} from "../../src/core/expansion-state.js";
+import { orphanSeedWindows } from "../../src/core/orphan-window.js";
+import type { DiffFile } from "../../src/core/diff-model.js";
+import {
   fileExpandableGapCount,
   fileHasHiddenGap,
   hunkHeaderExpandPlan,
@@ -905,6 +912,66 @@ index 1..2 100644
     expect(ctxLines).toContain("g13");
     // Lines NOT in the expanded windows stay hidden.
     expect(ctxLines).not.toContain("g8");
+  });
+
+  it("orphan seeding for an interior hidden-context comment does not duplicate context rows (issue #461)", () => {
+    const diff = `diff --git a/x.txt b/x.txt
+index 1..2 100644
+--- a/x.txt
++++ b/x.txt
+@@ -10,5 +10,5 @@
+ ctx10
+-old11
++new11
+ ctx12
+ ctx13
+ ctx14
+@@ -40,5 +40,5 @@
+ ctx40
+-old41
++new41
+ ctx42
+ ctx43
+ ctx44
+`;
+    const file = parseFile(diff);
+    const orphanFile: DiffFile = {
+      name: "x.txt",
+      type: "change",
+      hunks: file.hunks.map((h) => ({
+        additionStart: h.additionStart,
+        additionCount: h.additionCount,
+        deletionStart: h.deletionStart,
+        deletionCount: h.deletionCount,
+        content: [],
+      })),
+    };
+    const oldContent = Array.from({ length: 50 }, (_, i) =>
+      i + 1 === 11 ? "old11" : i + 1 === 41 ? "old41" : `line${i + 1}`,
+    ).join("\n") + "\n";
+    const newContent = Array.from({ length: 50 }, (_, i) =>
+      i + 1 === 11 ? "new11" : i + 1 === 41 ? "new41" : `line${i + 1}`,
+    ).join("\n") + "\n";
+    const comment = ann({ id: "orphan", side: "additions", line_start: 25, line_end: 25 });
+    const expansion: ExpansionState = seedFromOrphans(
+      emptyExpansion(),
+      orphanSeedWindows(orphanFile, [comment], { oldLineCount: 50, newLineCount: 50 }),
+    );
+
+    const rows = planRows(file, [comment], "split", { oldContent, newContent, expansion });
+    const hiddenContextLines = rows
+      .filter(
+        (r): r is Extract<PlannedRow, { kind: "diff-row" }> =>
+          r.kind === "diff-row" &&
+          r.type === "context" &&
+          r.rightLineNumber !== null &&
+          r.rightLineNumber >= 15 &&
+          r.rightLineNumber <= 39,
+      )
+      .map((r) => r.rightLineNumber);
+
+    expect(hiddenContextLines).toContain(25);
+    expect(new Set(hiddenContextLines).size).toBe(hiddenContextLines.length);
   });
 
   it("gapAbove shrinks as expansion reveals lines from the gap", () => {

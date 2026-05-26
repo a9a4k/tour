@@ -268,7 +268,7 @@ describe("loadTourBundle", () => {
       // hunkIndex 0 → top boundary
       expect(w.ref).toBe("top");
       expect(w.fromStart).toBeGreaterThan(0);
-      expect(w.fromEnd).toBeGreaterThan(0);
+      expect(w.fromEnd).toBe(0);
     });
   });
 });
