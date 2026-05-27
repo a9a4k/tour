@@ -92,6 +92,7 @@ function makeAdapter(sb: FakeScrollBox | null, opts: { setScrollPending?: (pendi
     writeComment: async () => {
       throw new Error("unused");
     },
+    writeCommentEdit: async () => {},
     deleteComment: async () => {},
     diffScrollBoxRef: { current: sb as unknown as ScrollBoxRenderable | null },
     pickerScrollBoxRef: { current: null },

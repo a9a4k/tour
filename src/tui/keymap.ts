@@ -63,6 +63,7 @@ export type KeyAction =
   | { type: "open-picker" }
   | { type: "open-top-level-composer" }
   | { type: "open-reply-composer" }
+  | { type: "open-edit-composer" }
   | { type: "send-to-agent" }
   | { type: "page-diff-down" }
   | { type: "page-diff-up" }
@@ -84,7 +85,8 @@ export type KeyAction =
   | { type: "noop-send-on-row" }
   | { type: "noop-comment-on-card" }
   | { type: "noop-delete-on-row" }
-  | { type: "noop-delete-on-stub" };
+  | { type: "noop-delete-on-stub" }
+  | { type: "noop-edit-on-stub" };
 
 export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (key.name === "q" || (key.ctrl && key.name === "c")) {
@@ -172,7 +174,14 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
     // anchored on any row inside the file). When no file is in scope
     // (empty tour, null cursor + sidebar focused on a folder), the
     // App-side handler is a labelled no-op.
-    if (key.name === "e") return { type: "expand-file-all" };
+    if (key.name === "e") {
+      if (ctx.cursorOnCard) {
+        if (ctx.cursorOnDeletedStub) return { type: "noop-edit-on-stub" };
+        return { type: "open-edit-composer" };
+      }
+      if (ctx.cursorOnInteractive) return { type: "noop" };
+      return { type: "expand-file-all" };
+    }
     // Issue #326 / PRD #356 / issue #357: `y` yanks the context-aware
     // target at the cursor. Diff-pane row cursor on a source line →
     // yanks the line text; row cursor on an interactive row or card →

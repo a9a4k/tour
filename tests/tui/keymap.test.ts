@@ -497,15 +497,24 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("t"), diffPaneOnCard).type).toBe("noop");
   });
 
-  // Issue #297: per-file Expand-all keyboard binding. Mirrors the
-  // file-header's `↕` mouse affordance — both end on
-  // `expansion.expandFileAll(cursor.file)`. Available in both panes so
-  // the user can fire it from the sidebar (cursor on a file row) or
-  // the diff pane (cursor on any row inside the file).
-  it("e dispatches expand-file-all regardless of pane focus", () => {
+  it("e on a row dispatches expand-file-all", () => {
     expect(dispatchKey(k("e"), sidebar).type).toBe("expand-file-all");
     expect(dispatchKey(k("e"), diffPane).type).toBe("expand-file-all");
     expect(dispatchKey(k("e"), sidebarFolder).type).toBe("expand-file-all");
+  });
+
+  it("e on a card opens edit mode", () => {
+    expect(dispatchKey(k("e"), diffPaneOnCard).type).toBe("open-edit-composer");
+    expect(dispatchKey(k("e"), sidebarOnCard).type).toBe("open-edit-composer");
+  });
+
+  it("e on a `[deleted]` stub returns noop-edit-on-stub", () => {
+    const stub: KeymapContext = { ...diffPaneOnCard, cursorOnDeletedStub: true };
+    expect(dispatchKey(k("e"), stub).type).toBe("noop-edit-on-stub");
+  });
+
+  it("e on an interactive row is a clean no-op", () => {
+    expect(dispatchKey(k("e"), diffPaneInteractive).type).toBe("noop");
   });
 
   it("Ctrl+E is not consumed as expand-file-all", () => {

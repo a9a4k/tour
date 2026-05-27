@@ -2,6 +2,7 @@ import { listTours, resolveIdPrefix } from "../core/tour-store.js";
 import {
   createComment,
   createDelete,
+  createEdit,
   createReply,
   readComments,
 } from "../core/comments-store.js";
@@ -96,6 +97,13 @@ export async function tui(args: TuiArgs): Promise<void> {
         },
         input.bundle,
       );
+    },
+    writeCommentEdit: async (id, targetId, body) => {
+      await createEdit(tourStoreRoot, id, {
+        target_id: targetId,
+        body,
+        by_kind: "human",
+      });
     },
     deleteComment: async (id, targetId) => {
       // ADR 0036 Slice D / issue #388. TUI delete is implicitly human —

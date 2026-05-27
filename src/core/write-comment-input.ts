@@ -45,6 +45,7 @@ export interface StartTuiProps {
     scope: TourPickerScope,
   ) => Promise<{ tours: Tour[]; commentCounts: Record<string, number> }>;
   writeComment: (tourId: string, input: WriteCommentInput) => Promise<Comment>;
+  writeCommentEdit: (tourId: string, targetId: string, body: string) => Promise<void>;
   /** ADR 0036 Slice D / issue #388. Wraps `createDelete` — humans-only
    *  contract enforced at the seam in `core/comments-store`. */
   deleteComment: (tourId: string, targetId: string) => Promise<void>;

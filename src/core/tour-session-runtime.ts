@@ -43,6 +43,7 @@ export interface TourSessionAdapter {
   fetchBundle(id: string): Promise<TourBundle>;
   fetchReplyLock(id: string): Promise<ReplyLock | null>;
   writeComment(tourId: string, input: WriteCommentInput): Promise<Comment>;
+  writeCommentEdit(tourId: string, targetId: string, body: string): Promise<void>;
   /** ADR 0036 Slice D / issue #388. Appends a `comment.deleted` event via
    *  the `createDelete` write seam. Humans-only enforced at the seam — the
    *  TUI / webapp only ever call this for human deletes. */
@@ -200,6 +201,9 @@ export class TourSessionRuntime {
               // transient — the watcher's reload surfaces any state change
             });
           return;
+        case "requestEdit":
+          void this.handleRequestEdit(intent.tourId, intent.targetId, intent.body);
+          return;
         case "deleteComment":
           // ADR 0036 Slice D / issue #388. Realises the `deleteComment`
           // intent by calling the adapter's `deleteComment` seam (which
@@ -320,6 +324,28 @@ export class TourSessionRuntime {
       return;
     }
     this.store.dispatch({ type: "composer.submitted", comment: created });
+  }
+
+  private async handleRequestEdit(
+    tourId: string,
+    targetId: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      await this.adapter.writeCommentEdit(tourId, targetId, body);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.store.dispatch({ type: "composer.editFailed", error });
+      return;
+    }
+    this.store.dispatch({ type: "composer.editSubmitted" });
+    try {
+      const bundle = await this.adapter.fetchBundle(tourId);
+      if (this.store.getState().currentTourId !== tourId) return;
+      this.store.dispatch({ type: "bundle.refreshed", bundle });
+    } catch {
+      // transient — watcher refresh can still surface the edit
+    }
   }
 
   // ADR 0036 Slice D / issue #388. Realises `deleteComment` via the

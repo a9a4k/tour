@@ -1,15 +1,14 @@
 import type { TextareaRenderable } from "@opentui/core";
 import type { Comment } from "../core/types.js";
-import type { ComposerSlice, ComposerTarget } from "../core/tour-session.js";
+import type { ComposerTarget, TargetComposerSlice } from "../core/tour-session.js";
 import { theme } from "../core/theme.js";
 import { shortId } from "../core/ids.js";
 
-// The full composer slice — the renderer dispatches on `state.kind` to
-// show the open / submitting / errored affordances. Pre-fix the App
-// rendered only `kind === "open"`; the `errored` branch had no UI so
-// failed submits looked like the composer silently vanished (issue #254).
+// The floating Composer renders only target-based new/reply comments.
+// Edit mode renders inline on the host CommentCard so the card identity
+// stays visible while the body is replaced by the textarea.
 interface ComposerProps {
-  state: Exclude<ComposerSlice, { kind: "closed" }>;
+  state: TargetComposerSlice;
   /**
    * Parent comment resolved from the live bundle when `state.target.kind
    * === "reply"`. Null otherwise. Used purely to render the context label —

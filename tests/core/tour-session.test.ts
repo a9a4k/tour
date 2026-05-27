@@ -1708,6 +1708,97 @@ describe("reduce — composer slice (slice 3 foundation)", () => {
     expect(r.intents).toEqual([]);
   });
 
+  it("composer.openEdit opens edit mode with the target id and prefilled body", () => {
+    const r = reduce(initialTourSessionState(), {
+      type: "composer.openEdit",
+      targetId: "ann-1",
+      body: "current body",
+    });
+
+    expect(r.state.composer).toEqual({
+      kind: "editing",
+      targetId: "ann-1",
+      body: "current body",
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.submitEdit on editing → submittingEdit; emits requestEdit", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, {
+      type: "composer.openEdit",
+      targetId: "ann-1",
+      body: "updated",
+    }).state;
+    const r = reduce(s, { type: "composer.submitEdit" });
+
+    expect(r.state.composer).toEqual({
+      kind: "submittingEdit",
+      targetId: "ann-1",
+      body: "updated",
+    });
+    expect(r.intents).toEqual([
+      { type: "requestEdit", tourId: "tour-a", targetId: "ann-1", body: "updated" },
+    ]);
+  });
+
+  it("composer.editSubmitted closes only from submittingEdit", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, {
+      type: "composer.openEdit",
+      targetId: "ann-1",
+      body: "updated",
+    }).state;
+    s = reduce(s, { type: "composer.submitEdit" }).state;
+
+    const r = reduce(s, { type: "composer.editSubmitted" });
+
+    expect(r.state.composer).toEqual({ kind: "closed" });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.editFailed preserves the edit draft for retry", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, {
+      type: "composer.openEdit",
+      targetId: "ann-1",
+      body: "updated",
+    }).state;
+    s = reduce(s, { type: "composer.submitEdit" }).state;
+
+    const r = reduce(s, { type: "composer.editFailed", error: "disk full" });
+
+    expect(r.state.composer).toEqual({
+      kind: "erroredEdit",
+      targetId: "ann-1",
+      body: "updated",
+      error: "disk full",
+    });
+    expect(r.intents).toEqual([]);
+  });
+
+  it("composer.retryEdit re-emits requestEdit from erroredEdit", () => {
+    let s = stateWithTourLoaded("tour-a");
+    s = reduce(s, {
+      type: "composer.openEdit",
+      targetId: "ann-1",
+      body: "updated",
+    }).state;
+    s = reduce(s, { type: "composer.submitEdit" }).state;
+    s = reduce(s, { type: "composer.editFailed", error: "disk full" }).state;
+
+    const r = reduce(s, { type: "composer.retryEdit" });
+
+    expect(r.state.composer).toEqual({
+      kind: "submittingEdit",
+      targetId: "ann-1",
+      body: "updated",
+    });
+    expect(r.intents).toEqual([
+      { type: "requestEdit", tourId: "tour-a", targetId: "ann-1", body: "updated" },
+    ]);
+  });
+
   it("composer.open from open re-targets and clears body (no stale draft text)", () => {
     let s = reduce(initialTourSessionState(), {
       type: "composer.open",
@@ -3509,6 +3600,36 @@ describe("composer-survives-watcher-reload killer fixture (slice 3)", () => {
     expect(store.getState().composer).toBe(composerBefore);
     // No cursor → no revalidateCursor either; the intent stream is empty.
     expect(intents).toEqual([]);
+  });
+
+  it("editing draft survives bundle.refreshed when another edit lands mid-draft", () => {
+    const store = new TourSessionStore();
+    const original = mkComment({ id: "ann-1", body: "old body" });
+    const refreshed = mkComment({ id: "ann-1", body: "other user's edit" });
+
+    store.dispatch({
+      type: "tour.switched",
+      tourId: "tour-a",
+      bundle: { ...okBundle("tour-a", [bundleFile("foo.ts")]), comments: [original] },
+    });
+    store.dispatch({
+      type: "composer.openEdit",
+      targetId: "ann-1",
+      body: "my draft",
+    });
+
+    const composerBefore = store.getState().composer;
+    store.dispatch({
+      type: "bundle.refreshed",
+      bundle: { ...okBundle("tour-a", [bundleFile("foo.ts")]), comments: [refreshed] },
+    });
+
+    expect(store.getState().composer).toBe(composerBefore);
+    expect(store.getState().composer).toEqual({
+      kind: "editing",
+      targetId: "ann-1",
+      body: "my draft",
+    });
   });
 });
 

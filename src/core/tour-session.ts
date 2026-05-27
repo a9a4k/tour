@@ -98,7 +98,23 @@ export type ComposerSlice =
   | { kind: "closed" }
   | { kind: "open"; target: ComposerTarget; body: string }
   | { kind: "submitting"; target: ComposerTarget; body: string }
-  | { kind: "errored"; target: ComposerTarget; body: string; error: string };
+  | { kind: "errored"; target: ComposerTarget; body: string; error: string }
+  | { kind: "editing"; targetId: string; body: string }
+  | { kind: "submittingEdit"; targetId: string; body: string }
+  | { kind: "erroredEdit"; targetId: string; body: string; error: string };
+
+export type TargetComposerSlice = Extract<ComposerSlice, { target: ComposerTarget }>;
+export type EditComposerSlice = Extract<ComposerSlice, { targetId: string }>;
+
+export function hasComposerTarget(
+  composer: ComposerSlice,
+): composer is TargetComposerSlice {
+  return "target" in composer;
+}
+
+export function isEditComposer(composer: ComposerSlice): composer is EditComposerSlice {
+  return "targetId" in composer;
+}
 
 // Delete-confirm modal slice (ADR 0036, Slice D / issue #388). Mirrors the
 // composer's open / submitting / errored shape so the App's modal-unwind
@@ -206,13 +222,19 @@ export type Action =
     }
   | { type: "expansion.seedFromOrphans"; windows: OrphanWindow[] }
   | { type: "composer.open"; target: ComposerTarget }
+  | { type: "composer.openEdit"; targetId: string; body: string }
   | { type: "composer.close" }
   | { type: "composer.setBody"; body: string }
   | { type: "composer.submit" }
+  | { type: "composer.submitEdit" }
   | { type: "composer.submitted"; comment: Comment }
+  | { type: "composer.editSubmitted" }
   | { type: "composer.failed"; error: string }
+  | { type: "composer.editFailed"; error: string }
   | { type: "composer.retry" }
+  | { type: "composer.retryEdit" }
   | { type: "composer.dismissError" }
+  | { type: "composer.dismissEditError" }
   | { type: "composer.recall" }
   | { type: "deleteConfirm.open"; targetId: string }
   | { type: "deleteConfirm.close" }
@@ -285,6 +307,7 @@ export type Intent =
   | { type: "scrollToComposer"; target: ComposerTarget }
   | { type: "reanchorApply"; token: AnchorToken }
   | { type: "requestReply"; tourId: string; commentId: string }
+  | { type: "requestEdit"; tourId: string; targetId: string; body: string }
   | { type: "deleteComment"; tourId: string; targetId: string };
 
 export interface ReduceResult {
@@ -624,6 +647,19 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
         intents: NO_INTENTS,
       };
 
+    case "composer.openEdit":
+      return {
+        state: {
+          ...state,
+          composer: {
+            kind: "editing",
+            targetId: action.targetId,
+            body: action.body,
+          },
+        },
+        intents: NO_INTENTS,
+      };
+
     case "composer.close":
       if (state.composer.kind === "closed") return { state, intents: NO_INTENTS };
       return { state: { ...state, composer: { kind: "closed" } }, intents: NO_INTENTS };
@@ -640,6 +676,9 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
 
     case "composer.submit":
       return enterSubmitting(state, "open");
+
+    case "composer.submitEdit":
+      return enterEditSubmitting(state, "editing");
 
     case "composer.submitted": {
       // Submitting → closed. The cursor does NOT re-anchor here (issue
@@ -736,8 +775,27 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       };
     }
 
+    case "composer.editSubmitted":
+      if (state.composer.kind !== "submittingEdit") return { state, intents: NO_INTENTS };
+      return { state: { ...state, composer: { kind: "closed" } }, intents: NO_INTENTS };
+
+    case "composer.editFailed": {
+      if (state.composer.kind !== "submittingEdit") return { state, intents: NO_INTENTS };
+      const { targetId, body } = state.composer;
+      return {
+        state: {
+          ...state,
+          composer: { kind: "erroredEdit", targetId, body, error: action.error },
+        },
+        intents: NO_INTENTS,
+      };
+    }
+
     case "composer.retry":
       return enterSubmitting(state, "errored");
+
+    case "composer.retryEdit":
+      return enterEditSubmitting(state, "erroredEdit");
 
     case "composer.dismissError": {
       // Errored → open with body preserved (target stays put; the
@@ -746,6 +804,17 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       const { target, body } = state.composer;
       return {
         state: { ...state, composer: { kind: "open", target, body } },
+        intents: NO_INTENTS,
+      };
+    }
+
+    case "composer.dismissEditError": {
+      if (state.composer.kind !== "erroredEdit") {
+        return { state, intents: NO_INTENTS };
+      }
+      const { targetId, body } = state.composer;
+      return {
+        state: { ...state, composer: { kind: "editing", targetId, body } },
         intents: NO_INTENTS,
       };
     }
@@ -890,6 +959,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // `+`-button branch dispatches it, and only while non-closed —
       // the guard is defence in depth).
       if (state.composer.kind === "closed") return { state, intents: NO_INTENTS };
+      if (!hasComposerTarget(state.composer)) return { state, intents: NO_INTENTS };
       return {
         state,
         intents: [{ type: "scrollToComposer", target: state.composer.target }],
@@ -1271,6 +1341,19 @@ function enterSubmitting(
   return {
     state: { ...state, composer: { kind: "submitting", target, body } },
     intents: [{ type: "submitComment", tourId: state.currentTourId, target, body }],
+  };
+}
+
+function enterEditSubmitting(
+  state: TourSessionState,
+  from: "editing" | "erroredEdit",
+): ReduceResult {
+  if (state.composer.kind !== from) return { state, intents: NO_INTENTS };
+  if (state.currentTourId === null) return { state, intents: NO_INTENTS };
+  const { targetId, body } = state.composer;
+  return {
+    state: { ...state, composer: { kind: "submittingEdit", targetId, body } },
+    intents: [{ type: "requestEdit", tourId: state.currentTourId, targetId, body }],
   };
 }
 

@@ -128,6 +128,7 @@ interface FakeAdapter extends TourSessionAdapter {
   bundleCalls: string[];
   lockCalls: string[];
   writeCalls: Array<{ tourId: string; input: WriteCommentInput }>;
+  editCalls: Array<{ tourId: string; targetId: string; body: string }>;
   deleteCalls: Array<{ tourId: string; targetId: string }>;
   requestReplyCalls: Array<{ tourId: string; commentId: string }>;
   scrollCardCalls: Array<{ id: string; mode: ScrollPlacement; behavior: ScrollMotion }>;
@@ -153,6 +154,7 @@ interface FakeAdapterOptions {
   fetchReplyLockError?: boolean;
   writeCommentError?: string;
   writeCommentResult?: Comment;
+  writeCommentEditError?: string;
   deleteCommentError?: string;
   requestReplyError?: string;
 }
@@ -161,6 +163,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
   const bundleCalls: string[] = [];
   const lockCalls: string[] = [];
   const writeCalls: FakeAdapter["writeCalls"] = [];
+  const editCalls: FakeAdapter["editCalls"] = [];
   const deleteCalls: FakeAdapter["deleteCalls"] = [];
   const requestReplyCalls: FakeAdapter["requestReplyCalls"] = [];
   const scrollCardCalls: FakeAdapter["scrollCardCalls"] = [];
@@ -177,6 +180,7 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
     bundleCalls,
     lockCalls,
     writeCalls,
+    editCalls,
     deleteCalls,
     requestReplyCalls,
     scrollCardCalls,
@@ -213,6 +217,10 @@ function createFakeAdapter(opts: FakeAdapterOptions = {}): FakeAdapter {
         created_at: "2026-05-14T00:00:00Z",
         ...(input.kind === "reply" ? { thread_id: input.parent.id } : {}),
       };
+    },
+    writeCommentEdit: async (tourId, targetId, body) => {
+      editCalls.push({ tourId, targetId, body });
+      if (opts.writeCommentEditError) throw new Error(opts.writeCommentEditError);
     },
     deleteComment: async ({ tourId, targetId }) => {
       deleteCalls.push({ tourId, targetId });
@@ -1001,6 +1009,62 @@ describe("TourSessionRuntime", () => {
       if (composer.kind === "errored") {
         expect(composer.error).toBe("Parent comment no longer exists");
       }
+      stop();
+    });
+
+    it("requestEdit intent writes through adapter.writeCommentEdit, closes composer, and refreshes the bundle", async () => {
+      const store = storeWithTour(null);
+      const before = commentFixture("ann-1", { body: "old body" });
+      const after = commentFixture("ann-1", { body: "new body" });
+      const initial = okBundle("tour-a", [before]);
+      const fresh = okBundle("tour-a", [after]);
+      const adapter = createFakeAdapter({ bundleByTour: { "tour-a": fresh } });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, initial);
+
+      store.dispatch({
+        type: "composer.openEdit",
+        targetId: "ann-1",
+        body: "new body",
+      });
+      store.dispatch({ type: "composer.submitEdit" });
+      await flush();
+
+      expect(adapter.editCalls).toEqual([
+        { tourId: "tour-a", targetId: "ann-1", body: "new body" },
+      ]);
+      expect(adapter.bundleCalls).toContain("tour-a");
+      expect(store.getState().composer).toEqual({ kind: "closed" });
+      expect(store.getState().bundle).toEqual({ kind: "ok", value: fresh });
+      stop();
+    });
+
+    it("requestEdit intent dispatches composer.editFailed on write rejection", async () => {
+      const store = storeWithTour(null);
+      const target = commentFixture("ann-1", { body: "old body" });
+      const adapter = createFakeAdapter({ writeCommentEditError: "no changes" });
+      const runtime = new TourSessionRuntime(store, adapter);
+      const stop = runtime.start();
+      seedTour(store, okBundle("tour-a", [target]));
+
+      store.dispatch({
+        type: "composer.openEdit",
+        targetId: "ann-1",
+        body: "old body",
+      });
+      store.dispatch({ type: "composer.submitEdit" });
+      await flush();
+
+      expect(adapter.editCalls).toEqual([
+        { tourId: "tour-a", targetId: "ann-1", body: "old body" },
+      ]);
+      expect(store.getState().composer).toEqual({
+        kind: "erroredEdit",
+        targetId: "ann-1",
+        body: "old body",
+        error: "no changes",
+      });
       stop();
     });
   });

@@ -49,6 +49,8 @@ import {
   pickerHighlighted,
   isBundleResolved,
   initialTourSessionState,
+  hasComposerTarget,
+  isEditComposer,
   type TourSummary,
 } from "../core/tour-session.js";
 import {
@@ -202,6 +204,12 @@ interface DiffPaneFileProps {
   ) => void;
   onCardClick: (commentId: string) => void;
   onCardToggleCollapse: (commentId: string) => void;
+  editingTargetId?: string | null;
+  editingBody?: string;
+  editingSubmitting?: boolean;
+  editingError?: string | null;
+  onEditInput?: (body: string) => void;
+  onEditSubmit?: () => void;
   collapsedThreads: ReadonlySet<string>;
   replyLock: ReplyLock | null;
   now: number;
@@ -230,6 +238,12 @@ function DiffPaneFile({
   onInteractiveClick,
   onCardClick,
   onCardToggleCollapse,
+  editingTargetId,
+  editingBody,
+  editingSubmitting,
+  editingError,
+  onEditInput,
+  onEditSubmit,
   collapsedThreads,
   replyLock,
   now,
@@ -254,6 +268,12 @@ function DiffPaneFile({
       onInteractiveClick={onInteractiveClick}
       onCardClick={onCardClick}
       onCardToggleCollapse={onCardToggleCollapse}
+      editingTargetId={editingTargetId}
+      editingBody={editingBody}
+      editingSubmitting={editingSubmitting}
+      editingError={editingError}
+      onEditInput={onEditInput}
+      onEditSubmit={onEditSubmit}
       collapsedThreads={collapsedThreads}
       replyLock={replyLock}
       now={now}
@@ -431,6 +451,7 @@ function App(props: AppProps) {
   // `bundle.tour` / `bundle.comments` are present in both bundle
   // kinds; the view's ok-branch namespaces gate the rest.
   const comments: ReadonlyArray<Comment> = bundle.comments;
+  const editingComposer = isEditComposer(composer) ? composer : null;
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
   // second only when a lock is present so we don't burn renders on the idle
@@ -448,6 +469,7 @@ function App(props: AppProps) {
       !props.loadTour ||
       !props.loadReplyLock ||
       !props.writeComment ||
+      !props.writeCommentEdit ||
       !props.deleteComment
     ) {
       return null;
@@ -459,6 +481,7 @@ function App(props: AppProps) {
       loadTour: props.loadTour,
       loadReplyLock: props.loadReplyLock,
       writeComment: props.writeComment,
+      writeCommentEdit: props.writeCommentEdit,
       deleteComment: props.deleteComment,
       diffScrollBoxRef: diffScrollRef,
       pickerScrollBoxRef: pickerScrollRef,
@@ -473,6 +496,7 @@ function App(props: AppProps) {
     props.loadTour,
     props.loadReplyLock,
     props.writeComment,
+    props.writeCommentEdit,
     props.deleteComment,
     props.replyAgent,
   ]);
@@ -695,6 +719,7 @@ function App(props: AppProps) {
     enterHintCursor,
     allThreadsCollapsed,
     anyThreads,
+    eHintLabel: cursor?.kind === "card" ? "e: edit comment" : "e: expand file",
   });
   // Action-target preview line (PRD #192 / ADR 0022). Renders the
   // cursor's `r` target so the user knows what `r` will do before
@@ -1201,6 +1226,44 @@ function App(props: AppProps) {
     store.dispatch({ type: "composer.open", target });
   };
 
+  const openEditComposer = () => {
+    if (!cursorCardComment) return;
+    if (cursorCardComment.deleted !== undefined) {
+      flash("e: comment already deleted");
+      return;
+    }
+    const rootId = cursorCardComment.thread_id ?? cursorCardComment.id;
+    if (collapsedThreads.has(rootId)) {
+      store.dispatch({ type: "thread.expand", id: rootId });
+    }
+    const sb = diffScrollRef.current;
+    if (sb) scrollChildIntoView(sb, `comment-${cursorCardComment.id}`);
+    store.dispatch({
+      type: "composer.openEdit",
+      targetId: cursorCardComment.id,
+      body: cursorCardComment.body,
+    });
+  };
+
+  const submitEditComposer = () => {
+    if (!editingComposer || editingComposer.kind === "submittingEdit") return;
+    const draft = editingComposer.body;
+    if (draft.trim().length === 0) {
+      flash("e: comment body cannot be empty");
+      return;
+    }
+    const current = comments.find((a) => a.id === editingComposer.targetId);
+    if (current && current.body.trim() === draft.trim()) {
+      flash("e: no changes to save");
+      return;
+    }
+    if (editingComposer.kind === "erroredEdit") {
+      store.dispatch({ type: "composer.retryEdit" });
+      return;
+    }
+    store.dispatch({ type: "composer.submitEdit" });
+  };
+
   // Send the latest human leaf in the focused Thread to the configured
   // reply-agent (issue #196, PRD #181). The cursor walks top-levels
   // only — once the conversation has started, the cursor-focused
@@ -1300,11 +1363,23 @@ function App(props: AppProps) {
       }
       return;
     }
+    if (composer.kind === "editing") {
+      if (key.name === "escape") {
+        store.dispatch({ type: "composer.close" });
+      }
+      return;
+    }
     if (composer.kind === "submitting") {
       // Esc abandons the in-flight write (the writer's promise resolves
       // into a closed slice — the reducer's `composer.submitted` /
       // `composer.failed` branches no-op on non-submitting). All other
       // keys are swallowed so the user can't fire actions on stale state.
+      if (key.name === "escape") {
+        store.dispatch({ type: "composer.close" });
+      }
+      return;
+    }
+    if (composer.kind === "submittingEdit") {
       if (key.name === "escape") {
         store.dispatch({ type: "composer.close" });
       }
@@ -1320,6 +1395,17 @@ function App(props: AppProps) {
       }
       if (key.name === "return") {
         store.dispatch({ type: "composer.retry" });
+        return;
+      }
+      return;
+    }
+    if (composer.kind === "erroredEdit") {
+      if (key.name === "escape") {
+        store.dispatch({ type: "composer.dismissEditError" });
+        return;
+      }
+      if (key.name === "return") {
+        submitEditComposer();
         return;
       }
       return;
@@ -1591,6 +1677,9 @@ function App(props: AppProps) {
       case "open-reply-composer":
         openReplyComposer();
         return;
+      case "open-edit-composer":
+        openEditComposer();
+        return;
       case "send-to-agent":
         sendCurrentToAgent();
         return;
@@ -1836,6 +1925,9 @@ function App(props: AppProps) {
         // error on confirm.
         flash("d: comment already deleted");
         return;
+      case "noop-edit-on-stub":
+        flash("e: comment already deleted");
+        return;
       case "open-delete-confirm": {
         // ADR 0036 Slice D / issue #388. The cursor's CardAnchor.commentId
         // is the modal target — generalised across parents and Replies by
@@ -2039,6 +2131,18 @@ function App(props: AppProps) {
                           onInteractiveClick={onInteractiveClick}
                           onCardClick={onCardClick}
                           onCardToggleCollapse={onCardToggleCollapse}
+                          editingTargetId={editingComposer?.targetId ?? null}
+                          editingBody={editingComposer?.body}
+                          editingSubmitting={editingComposer?.kind === "submittingEdit"}
+                          editingError={
+                            editingComposer?.kind === "erroredEdit"
+                              ? editingComposer.error
+                              : null
+                          }
+                          onEditInput={(body) =>
+                            store.dispatch({ type: "composer.setBody", body })
+                          }
+                          onEditSubmit={submitEditComposer}
                           collapsedThreads={collapsedThreads}
                           replyLock={replyLock}
                           now={now}
@@ -2088,7 +2192,7 @@ function App(props: AppProps) {
         />
       )}
 
-      {composer.kind !== "closed" && (
+      {hasComposerTarget(composer) && (
         <Composer
           state={composer}
           parent={

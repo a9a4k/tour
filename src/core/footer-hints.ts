@@ -75,6 +75,7 @@ export interface ComposeFooterHintsOptions {
   // undefined as the initial visible state so its default legend includes
   // the new `B: hide sidebar` hint.
   sidebarVisible?: boolean;
+  eHintLabel?: string;
 }
 
 function composeSidebarVisibilityHint(opts: ComposeFooterHintsOptions): string | null {
@@ -101,7 +102,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // issue #352: `o: open` slots next to `y` since both are
     // "side-effect on cursor's file."
     return (
-      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  e: expand all  ·  y: yank  ·  o: open  ·  L: layout${sidebarVisibilityFragment}  ·  T: picker  ·  Esc: diff  ·  q: quit`
+      `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  ${opts.eHintLabel ?? "e: expand all"}  ·  y: yank  ·  o: open  ·  L: layout${sidebarVisibilityFragment}  ·  T: picker  ·  Esc: diff  ·  q: quit`
     );
   }
   if (opts.surface === "web" && paneFocus === "sidebar") {
@@ -171,7 +172,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       "c: comment",
       `r: reply  ·  d: delete${send}`,
       ...(enterFragment ? [enterFragment] : []),
-      "e: expand all",
+      opts.eHintLabel ?? "e: expand all",
       ...(collapseHint ? [collapseHint] : []),
       "y: yank",
       "o: open",
