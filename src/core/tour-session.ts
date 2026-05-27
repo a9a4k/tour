@@ -103,6 +103,19 @@ export type ComposerSlice =
   | { kind: "submittingEdit"; targetId: string; body: string }
   | { kind: "erroredEdit"; targetId: string; body: string; error: string };
 
+export type TargetComposerSlice = Extract<ComposerSlice, { target: ComposerTarget }>;
+export type EditComposerSlice = Extract<ComposerSlice, { targetId: string }>;
+
+export function hasComposerTarget(
+  composer: ComposerSlice,
+): composer is TargetComposerSlice {
+  return "target" in composer;
+}
+
+export function isEditComposer(composer: ComposerSlice): composer is EditComposerSlice {
+  return "targetId" in composer;
+}
+
 // Delete-confirm modal slice (ADR 0036, Slice D / issue #388). Mirrors the
 // composer's open / submitting / errored shape so the App's modal-unwind
 // precedence (ADR 0031: Esc closes modals before any other gesture) treats
@@ -946,7 +959,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
       // `+`-button branch dispatches it, and only while non-closed —
       // the guard is defence in depth).
       if (state.composer.kind === "closed") return { state, intents: NO_INTENTS };
-      if (!("target" in state.composer)) return { state, intents: NO_INTENTS };
+      if (!hasComposerTarget(state.composer)) return { state, intents: NO_INTENTS };
       return {
         state,
         intents: [{ type: "scrollToComposer", target: state.composer.target }],

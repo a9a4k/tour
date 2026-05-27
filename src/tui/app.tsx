@@ -49,6 +49,8 @@ import {
   pickerHighlighted,
   isBundleResolved,
   initialTourSessionState,
+  hasComposerTarget,
+  isEditComposer,
   type TourSummary,
 } from "../core/tour-session.js";
 import {
@@ -449,12 +451,7 @@ function App(props: AppProps) {
   // `bundle.tour` / `bundle.comments` are present in both bundle
   // kinds; the view's ok-branch namespaces gate the rest.
   const comments: ReadonlyArray<Comment> = bundle.comments;
-  const editingComposer =
-    composer.kind === "editing" ||
-    composer.kind === "submittingEdit" ||
-    composer.kind === "erroredEdit"
-      ? composer
-      : null;
+  const editingComposer = isEditComposer(composer) ? composer : null;
 
   // Wall clock used by the in-flight pill to render "(Ns)". Ticks once per
   // second only when a lock is present so we don't burn renders on the idle
@@ -2195,7 +2192,7 @@ function App(props: AppProps) {
         />
       )}
 
-      {composer.kind !== "closed" && "target" in composer && (
+      {hasComposerTarget(composer) && (
         <Composer
           state={composer}
           parent={
