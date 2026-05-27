@@ -494,6 +494,8 @@ export function html(
   .comment-block .ann-header {
     position: relative;
   }
+  .comment-block .ann-edit-button,
+  .comment-block .ann-reply .ann-edit-button,
   .comment-block .ann-trash-button,
   .comment-block .ann-reply .ann-trash-button {
     background: transparent;
@@ -509,14 +511,21 @@ export function html(
     transition: opacity 80ms ease-in;
     vertical-align: middle;
   }
+  .comment-block:hover .ann-edit-button,
+  .comment-block .ann-reply:hover .ann-edit-button,
+  .comment-block .ann-edit-button:focus-visible,
   .comment-block:hover .ann-trash-button,
   .comment-block .ann-reply:hover .ann-trash-button,
   .comment-block .ann-trash-button:focus-visible {
     opacity: 1;
   }
+  .comment-block .ann-edit-button:hover {
+    color: var(--fg-accent);
+  }
   .comment-block .ann-trash-button:hover {
     color: var(--fg-danger);
   }
+  .comment-block .ann-edit-button:focus-visible,
   .comment-block .ann-trash-button:focus-visible {
     outline: 1px solid var(--border-accent);
     outline-offset: 1px;
@@ -974,6 +983,7 @@ export function html(
   }
   .comment-block .selection-marker,
   .comment-block .ann-collapse-chevron,
+  .comment-block .ann-edit-button,
   .comment-block .ann-trash-button,
   .comment-block .ann-actions,
   .tour-file-chevron,

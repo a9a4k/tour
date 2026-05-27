@@ -1758,6 +1758,260 @@ describe("App comment-create failure status (Issue #334)", () => {
   });
 });
 
+describe("App comment edit flow (Issue #465 / ADR 0043)", () => {
+  it("opens a prefilled edit composer from the pencil button and repaints after save", async () => {
+    let currentBundle = failBundleWithAnn;
+    let posted: Record<string, unknown> | null = null;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([failTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}`) && method === "GET") {
+        return Promise.resolve(
+          new Response(JSON.stringify(currentBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (
+        u.endsWith(`/api/tours/${failTourId}/edit-comment`) &&
+        method === "POST"
+      ) {
+        posted = JSON.parse(String(init?.body));
+        currentBundle = {
+          ...failBundleWithAnn,
+          comments: [{ ...failHumanAnn, body: "edited from app" }],
+        };
+        return Promise.resolve(
+          new Response(JSON.stringify(currentBundle), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      container.querySelector<HTMLElement>(".comment-block")!.click();
+    });
+    await flush();
+    expect(window.location.hash).toBe("#ann-human-fail");
+
+    const edit = container.querySelector<HTMLButtonElement>(".ann-edit-button");
+    expect(edit).not.toBeNull();
+    await act(async () => {
+      edit!.click();
+    });
+    await flush();
+
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    );
+    expect(ta).not.toBeNull();
+    expect(ta!.value).toBe("human comment");
+    const submit = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    );
+    expect(submit?.textContent).toBe("Save");
+
+    await act(async () => {
+      setTextareaValue(ta!, "edited from app");
+    });
+    await act(async () => {
+      submit!.click();
+    });
+    await flush();
+
+    expect(posted).toEqual({
+      target_id: "ann-human-fail",
+      body: "edited from app",
+    });
+    expect(container.querySelector("textarea.composer-textarea")).toBeNull();
+    expect(container.textContent).toContain("edited from app");
+    expect(container.textContent).not.toContain("human comment");
+    expect(window.location.hash).toBe("#ann-human-fail");
+  });
+
+  it("keeps Save disabled for whitespace edit drafts and flashes body required on keyboard submit", async () => {
+    let postCount = 0;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([failTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}`) && method === "GET") {
+        return Promise.resolve(
+          new Response(JSON.stringify(failBundleWithAnn), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (
+        u.endsWith(`/api/tours/${failTourId}/edit-comment`) &&
+        method === "POST"
+      ) {
+        postCount += 1;
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".ann-edit-button")!.click();
+    });
+    await flush();
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    )!;
+    await act(async () => {
+      setTextareaValue(ta, "   ");
+    });
+    const submit = container.querySelector<HTMLButtonElement>(
+      "button.composer-submit",
+    )!;
+    expect(submit.disabled).toBe(true);
+
+    await act(async () => {
+      ta.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    await flush();
+
+    expect(postCount).toBe(0);
+    expect(
+      container.querySelector("footer.app-footer .app-footer-status")?.textContent,
+    ).toContain("body required");
+  });
+
+  it("flashes no changes and does not POST for an identical-after-trim edit", async () => {
+    let postCount = 0;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/tours?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([failTourSummary]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}`) && method === "GET") {
+        return Promise.resolve(
+          new Response(JSON.stringify(failBundleWithAnn), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (u.endsWith(`/api/tours/${failTourId}/reply-lock`)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(null), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (
+        u.endsWith(`/api/tours/${failTourId}/edit-comment`) &&
+        method === "POST"
+      ) {
+        postCount += 1;
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const container = document.getElementById("root")!;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(App, { initialTourId: failTourId }));
+    });
+    await flush();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".ann-edit-button")!.click();
+    });
+    await flush();
+    const ta = container.querySelector<HTMLTextAreaElement>(
+      "textarea.composer-textarea",
+    )!;
+    await act(async () => {
+      setTextareaValue(ta, "  human comment  ");
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button.composer-submit")!.click();
+    });
+    await flush();
+
+    expect(postCount).toBe(0);
+    expect(
+      container.querySelector("footer.app-footer .app-footer-status")?.textContent,
+    ).toContain("no changes");
+  });
+});
+
 // PRD #343 / ADR 0031 / issue #346: cross-surface pane-focus. The
 // webapp gains keyboard sidebar navigation (Esc/Enter, j/k/h/l) plus
 // ARIA tree-widget semantics (role=tree / role=treeitem / aria-

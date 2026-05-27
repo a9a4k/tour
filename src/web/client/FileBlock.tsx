@@ -77,9 +77,13 @@ export interface CommentProps {
   composerError?: string | null;
   onComposerBodyChange?: (body: string) => void;
   replyTargetId?: string | null;
+  editTargetId?: string | null;
   onOpenReply?: (commentId: string) => void;
+  onOpenEdit?: (commentId: string, body: string) => void;
   onSubmitReply?: () => void;
+  onSubmitEdit?: () => void;
   onCancelReply?: () => void;
+  onCancelEdit?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
   replyAgentConfigPath?: string | null;
@@ -765,9 +769,13 @@ function renderComment(
       composerError={commentProps?.composerError ?? null}
       onComposerBodyChange={commentProps?.onComposerBodyChange}
       replyTargetId={commentProps?.replyTargetId ?? null}
+      editTargetId={commentProps?.editTargetId ?? null}
       onOpenReply={commentProps?.onOpenReply}
+      onOpenEdit={commentProps?.onOpenEdit}
       onSubmitReply={commentProps?.onSubmitReply}
+      onSubmitEdit={commentProps?.onSubmitEdit}
       onCancelReply={commentProps?.onCancelReply}
+      onCancelEdit={commentProps?.onCancelEdit}
       replyLock={commentProps?.replyLock ?? null}
       replyAgent={commentProps?.replyAgent ?? null}
       replyAgentConfigPath={commentProps?.replyAgentConfigPath ?? null}

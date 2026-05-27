@@ -320,6 +320,48 @@ describe("createWebTourSessionAdapter.requestReply — non-2xx rejection (Issue 
   });
 });
 
+describe("createWebTourSessionAdapter.writeCommentEdit (Issue #465)", () => {
+  it("POSTs target_id/body to /api/tours/:id/edit-comment", async () => {
+    let postedUrl = "";
+    let postedBody: unknown = null;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      postedUrl = typeof input === "string" ? input : input.toString();
+      postedBody = JSON.parse(String(init?.body));
+      return Promise.resolve(
+        new Response(JSON.stringify({ comments: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    const adapter = makeAdapter();
+    await adapter.writeCommentEdit("tour-a", "ann-1", "edited body");
+
+    expect(postedUrl).toBe("/api/tours/tour-a/edit-comment");
+    expect(postedBody).toEqual({
+      target_id: "ann-1",
+      body: "edited body",
+    });
+  });
+
+  it("rejects with the parsed structured error on non-2xx", async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: "no changes" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const adapter = makeAdapter();
+    await expect(
+      adapter.writeCommentEdit("tour-a", "ann-1", "same body"),
+    ).rejects.toThrow("no changes");
+  });
+});
+
 // Issue #324. `composer.recall` (auto-recall on `+`-button click while a
 // Composer is in flight) must reveal its anchor before scrolling. The
 // fix dispatches `folds.setOverride { value: false }` for the anchor

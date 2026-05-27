@@ -3,6 +3,7 @@ import { pickAutoTour } from "../core/tour-list.js";
 import {
   createComment,
   createDelete,
+  createEdit,
   createReply,
 } from "../core/comments-store.js";
 import { TourWatcher, type WatchCallback } from "../core/watcher.js";
@@ -371,6 +372,34 @@ export async function startServer(args: ServeArgs): Promise<void> {
               bundle,
             );
             return Response.json(ann, { status: 201 });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: message }, { status: 400 });
+          }
+        }
+
+        const editCommentMatch = url.pathname.match(
+          /^\/api\/tours\/([^/]+)\/edit-comment$/,
+        );
+        if (editCommentMatch && req.method === "POST") {
+          const idOrPrefix = editCommentMatch[1];
+          try {
+            const resolvedId = await resolveIdPrefix(tourStoreRoot, idOrPrefix);
+            const body = (await req.json().catch(() => null)) as
+              | Record<string, unknown>
+              | null;
+            if (!body) throw new Error("body is required");
+            const targetId = asString(body.target_id);
+            const text = asString(body.body);
+            if (!targetId) throw new Error("target_id is required");
+            if (text === undefined) throw new Error("body is required");
+            await createEdit(tourStoreRoot, resolvedId, {
+              target_id: targetId,
+              body: text,
+              by_kind: "human",
+            });
+            const bundle = await loadTourBundle(tourStoreRoot, resolvedId, cwd);
+            return Response.json(bundle, { status: 200 });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             return Response.json({ error: message }, { status: 400 });

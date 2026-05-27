@@ -330,6 +330,145 @@ describe("Webapp integration", () => {
     expect(data.error).toContain("no-such-id");
   });
 
+  it("POST /api/tours/:id/edit-comment writes comment.edited and returns the updated projection (Issue #465 / ADR 0043)", async () => {
+    const createRes = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: "hello.txt",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "editable comment",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const ann = await createRes.json() as { id: string };
+
+    const editRes = await fetch(`${baseUrl}/api/tours/${tourId}/edit-comment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_id: ann.id,
+        body: "edited comment",
+      }),
+    });
+    expect(editRes.status).toBe(200);
+    const editedProjection = await editRes.json() as {
+      comments: Array<{ id: string; body: string }>;
+    };
+    expect(editedProjection.comments.find((c) => c.id === ann.id)?.body).toBe(
+      "edited comment",
+    );
+
+    const tourRes = await fetch(`${baseUrl}/api/tours/${tourId}`);
+    const tour = await tourRes.json() as {
+      comments: Array<{ id: string; body: string }>;
+    };
+    expect(tour.comments.find((c) => c.id === ann.id)?.body).toBe(
+      "edited comment",
+    );
+  });
+
+  it.each([
+    {
+      name: "non-existent target",
+      payload: { target_id: "no-such-id", body: "new body" },
+      expected: "no-such-id",
+    },
+    {
+      name: "empty body",
+      payload: { target_id: "__TARGET__", body: "   " },
+      expected: "empty",
+    },
+    {
+      name: "identical-after-trim body",
+      payload: { target_id: "__TARGET__", body: "  reject me  " },
+      expected: "no changes",
+    },
+  ])(
+    "POST /api/tours/:id/edit-comment rejects $name with a structured error (Issue #465)",
+    async ({ payload, expected }) => {
+      const createRes = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: "hello.txt",
+          side: "additions",
+          line_start: 1,
+          line_end: 1,
+          body: "reject me",
+        }),
+      });
+      expect(createRes.status).toBe(201);
+      const ann = await createRes.json() as { id: string };
+      const body = JSON.stringify({
+        ...payload,
+        target_id:
+          payload.target_id === "__TARGET__" ? ann.id : payload.target_id,
+      });
+
+      const res = await fetch(`${baseUrl}/api/tours/${tourId}/edit-comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      expect(res.status).toBe(400);
+      const data = await res.json() as { error?: string };
+      expect(data.error?.toLowerCase()).toContain(expected);
+
+      const tourRes = await fetch(`${baseUrl}/api/tours/${tourId}`);
+      const tour = await tourRes.json() as {
+        comments: Array<{ id: string; body: string }>;
+      };
+      expect(tour.comments.find((c) => c.id === ann.id)?.body).toBe(
+        "reject me",
+      );
+    },
+  );
+
+  it("POST /api/tours/:id/edit-comment rejects a deleted target with a structured error (Issue #465)", async () => {
+    const createRes = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: "hello.txt",
+        side: "additions",
+        line_start: 1,
+        line_end: 1,
+        body: "deleted edit target",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const ann = await createRes.json() as { id: string };
+    const replyRes = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        thread_id: ann.id,
+        body: "surviving reply",
+      }),
+    });
+    expect(replyRes.status).toBe(201);
+    const delRes = await fetch(
+      `${baseUrl}/api/tours/${tourId}/comments/${ann.id}`,
+      { method: "DELETE" },
+    );
+    expect(delRes.status).toBe(200);
+
+    const editRes = await fetch(`${baseUrl}/api/tours/${tourId}/edit-comment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_id: ann.id,
+        body: "should not land",
+      }),
+    });
+    expect(editRes.status).toBe(400);
+    const data = await editRes.json() as { error?: string };
+    expect(data.error?.toLowerCase()).toContain("deleted");
+  });
+
   it("POST /api/tours/:id/comments rejects an empty body with 400 (Issue #77)", async () => {
     const res = await fetch(`${baseUrl}/api/tours/${tourId}/comments`, {
       method: "POST",

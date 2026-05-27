@@ -1252,6 +1252,68 @@ describe("CommentCard annotation filename link (issue #383)", () => {
 });
 
 describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", () => {
+  it("renders a pencil edit button on the parent header and calls onEditClick with the current body (Issue #465)", () => {
+    const calls: Array<{ id: string; body: string }> = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: baseComment,
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+        onEditClick: (id: string, body: string) => {
+          calls.push({ id, body });
+        },
+      }),
+    );
+    const edit = container.querySelector(
+      ".comment-block > .ann-header .ann-edit-button",
+    ) as HTMLButtonElement | null;
+    const trash = container.querySelector(
+      ".comment-block > .ann-header .ann-trash-button",
+    ) as HTMLButtonElement | null;
+    expect(edit).not.toBeNull();
+    expect(edit!.getAttribute("aria-label")).toBe("Edit comment");
+    expect(trash).not.toBeNull();
+
+    act(() => {
+      edit!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([{ id: "ann-1", body: "hello" }]);
+  });
+
+  it("renders a pencil edit button on each inline Reply header (Issue #465)", () => {
+    const parent = { ...baseComment, id: "p" };
+    const reply: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "reply body",
+      thread_id: parent.id,
+    };
+    const calls: Array<{ id: string; body: string }> = [];
+    const container = mount(
+      createElement(CommentCard, {
+        comment: parent,
+        replies: [reply],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+        onEditClick: (id: string, body: string) => calls.push({ id, body }),
+      }),
+    );
+    const edit = container.querySelector(
+      ".ann-reply .ann-edit-button",
+    ) as HTMLButtonElement | null;
+    expect(edit).not.toBeNull();
+    expect(edit!.getAttribute("aria-label")).toBe("Edit comment");
+
+    act(() => {
+      edit!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual([{ id: "r1", body: "reply body" }]);
+  });
+
   it("renders a trash button on the parent header when onDeleteClick is supplied", () => {
     const container = mount(
       createElement(CommentCard, {
@@ -1566,6 +1628,38 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
     // strip the per-reply affordance).
     expect(
       block.querySelector(".ann-reply .ann-trash-button"),
+    ).not.toBeNull();
+  });
+
+  it("suppresses the edit button on the parent header when the card is a `[deleted]` stub", () => {
+    const stubbed: Comment = {
+      ...baseComment,
+      body: "",
+      deleted: { at: "2026-05-16T00:00:00Z" },
+    };
+    const r1: Comment = {
+      ...baseComment,
+      id: "r1",
+      body: "alive",
+      thread_id: stubbed.id,
+    };
+    const container = mount(
+      createElement(CommentCard, {
+        comment: stubbed,
+        replies: [r1],
+        isCurrent: false,
+        navIndex: 1,
+        navTotal: 1,
+        onDeleteClick: () => {},
+        onEditClick: () => {},
+      }),
+    );
+    const block = container.querySelector(".comment-block") as HTMLElement;
+    expect(
+      block.querySelector(":scope > .ann-header .ann-edit-button"),
+    ).toBeNull();
+    expect(
+      block.querySelector(".ann-reply .ann-edit-button"),
     ).not.toBeNull();
   });
 });

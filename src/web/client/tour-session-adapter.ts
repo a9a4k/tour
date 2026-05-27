@@ -134,8 +134,20 @@ export function createWebTourSessionAdapter(
       }
       return (await res.json()) as Comment;
     },
-    writeCommentEdit: async () => {
-      throw new Error("Comment editing is not implemented in the webapp");
+    writeCommentEdit: async (
+      tourId: string,
+      targetId: string,
+      body: string,
+    ): Promise<void> => {
+      const res = await fetch(`/api/tours/${tourId}/edit-comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_id: targetId, body }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
     },
     deleteComment: async ({ tourId, targetId }) => {
       // ADR 0036 Slice D / issue #388. Webapp trash icon + modal land in

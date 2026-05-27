@@ -20,6 +20,7 @@ import {
   pickerHighlighted,
   initialTourSessionState,
   hasComposerTarget,
+  isEditComposer,
   type ComposerTarget,
   type Layout,
   type TourSummary as SessionTourSummary,
@@ -111,6 +112,15 @@ function truncateForPreview(text: string): string {
   return text.length <= YANK_PREVIEW_MAX
     ? text
     : `${text.slice(0, YANK_PREVIEW_MAX)}…`;
+}
+
+function editFailureStatus(error: string): string {
+  const lower = error.toLowerCase();
+  if (lower.includes("no changes")) return "no changes";
+  if (lower.includes("empty") || lower.includes("whitespace")) {
+    return "body required";
+  }
+  return `Edit failed: ${error}`;
 }
 
 // Escape a string for safe interpolation into a CSS attribute selector
@@ -237,6 +247,7 @@ export function App({
   // errored re-flashes even when the new error string matches the
   // previous (the slice-deps re-render alone would not pick that up).
   const wasComposerErroredRef = useRef(false);
+  const wasEditComposerErroredRef = useRef(false);
   const composerSlice = sessionState.composer;
   useEffect(() => {
     const isErrored = composerSlice.kind === "errored";
@@ -245,7 +256,12 @@ export function App({
         composerSlice.target.kind === "reply" ? "Reply" : "Comment";
       flash(`${verb} failed: ${composerSlice.error}`);
     }
+    const isEditErrored = composerSlice.kind === "erroredEdit";
+    if (isEditErrored && !wasEditComposerErroredRef.current) {
+      flash(editFailureStatus(composerSlice.error));
+    }
     wasComposerErroredRef.current = isErrored;
+    wasEditComposerErroredRef.current = isEditErrored;
   }, [composerSlice, flash]);
   // Folds (collapsedFolders + collapsedOverrides), layout, and composer
   // (target / body / error as one tagged-union slice) all live in the Tour-
@@ -259,8 +275,12 @@ export function App({
   const composer = sessionState.composer;
   const composerTarget: ComposerTarget | null =
     hasComposerTarget(composer) ? composer.target : null;
+  const editTargetId: string | null =
+    isEditComposer(composer) ? composer.targetId : null;
   const composerError: string | null =
-    composer.kind === "errored" ? composer.error : null;
+    composer.kind === "errored" || composer.kind === "erroredEdit"
+      ? composer.error
+      : null;
   const composerBody: string = composer.kind === "closed" ? "" : composer.body;
   // Unified cursor (ADR 0022 / PRD #192) lives in the Tour-session store
   // (PRD #229 slice 2, issue #232): the local `useState<Cursor | null>`
@@ -1732,6 +1752,17 @@ export function App({
     [store, view.nav.threads],
   );
 
+  const openEditComposer = useCallback(
+    (commentId: string, body: string) => {
+      store.dispatch({
+        type: "composer.openEdit",
+        targetId: commentId,
+        body,
+      });
+    },
+    [store],
+  );
+
   // Issue #383 / ADR 0035: mouse paths to open-in-editor. Two callers:
   // the annotation card filename link (cursor moves first, then dispatch
   // at line_end) and the file-header `↗` icon (no cursor move, dispatch
@@ -1793,7 +1824,28 @@ export function App({
   // round-trip whitespace-only drafts; the reducer doesn't validate body
   // shape.
   const submitComposer = useCallback(() => {
-    const c = store.getState().composer;
+    const state = store.getState();
+    const c = state.composer;
+    if (c.kind === "editing" || c.kind === "erroredEdit") {
+      if (c.body.trim().length === 0) {
+        flash("body required");
+        return;
+      }
+      const liveBundle = isBundleResolved(state);
+      const target = liveBundle?.comments.find(
+        (comment) => comment.id === c.targetId,
+      );
+      if (target && target.body.trim() === c.body.trim()) {
+        flash("no changes");
+        return;
+      }
+      store.dispatch(
+        c.kind === "editing"
+          ? { type: "composer.submitEdit" }
+          : { type: "composer.retryEdit" },
+      );
+      return;
+    }
     if (c.kind !== "open" && c.kind !== "errored") return;
     if (c.body.trim().length === 0) return;
     store.dispatch(
@@ -1801,7 +1853,7 @@ export function App({
         ? { type: "composer.submit" }
         : { type: "composer.retry" },
     );
-  }, [store]);
+  }, [store, flash]);
 
   const onComposerBodyChange = useCallback(
     (body: string) => {
@@ -1991,10 +2043,12 @@ export function App({
                 cursor={cursor}
                 registerCommentRef={registerCommentRef}
                 composerTarget={composerTarget}
+                editTargetId={editTargetId}
                 composerBody={composerBody}
                 composerError={composerError}
                 onComposerBodyChange={onComposerBodyChange}
                 onOpenReply={openReplyComposer}
+                onOpenEdit={openEditComposer}
                 onSubmit={submitComposer}
                 onCancel={closeComposer}
                 replyLock={replyLock}
@@ -2122,9 +2176,13 @@ export function App({
                       composerError,
                       onComposerBodyChange,
                       replyTargetId,
+                      editTargetId,
                       onOpenReply: openReplyComposer,
+                      onOpenEdit: openEditComposer,
                       onSubmitReply: submitComposer,
+                      onSubmitEdit: submitComposer,
                       onCancelReply: closeComposer,
+                      onCancelEdit: closeComposer,
                       replyLock,
                       replyAgent,
                       replyAgentConfigPath,
@@ -2472,13 +2530,17 @@ interface CommentCardProps {
   // action row — top-level beneath the replies list, inline Reply
   // beneath the Reply itself.
   replyTargetId?: string | null;
+  editTargetId?: string | null;
   // Callbacks now take the comment id so inline-Reply rows can address
   // themselves (issue #189, PRD #181 story 11). Top-level callers pass
   // the function directly; the action row computes the right id at
   // click time.
   onOpenReply?: (commentId: string) => void;
+  onOpenEdit?: (commentId: string, body: string) => void;
   onSubmitReply?: () => void;
+  onSubmitEdit?: () => void;
   onCancelReply?: () => void;
+  onCancelEdit?: () => void;
   replyLock?: ReplyLock | null;
   // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181;
   // relabelled in issue #390 — the button now reads "Request reply",
@@ -2511,6 +2573,10 @@ interface CommentCardProps {
   // so call sites that haven't wired the modal (snapshot-lost branch,
   // unit-test mounts) keep their existing behaviour.
   onDeleteClick?: (commentId: string) => void;
+  // Issue #465 / ADR 0043: pencil edit affordance. Receives the target
+  // id plus the currently rendered body so App can open the shared
+  // composer slice in edit mode without recovering the Comment.
+  onEditClick?: (commentId: string, body: string) => void;
   // PRD #397 / ADR 0038. When true, the Card collapses to a single
   // one-liner row (chevron + author kind + file:line + first 60 chars
   // of the parent body + `💬 N` reply count). The in-flight reply pill
@@ -2588,9 +2654,13 @@ export function CommentCard({
   composerError,
   onComposerBodyChange,
   replyTargetId,
+  editTargetId,
   onOpenReply,
+  onOpenEdit,
   onSubmitReply,
+  onSubmitEdit,
   onCancelReply,
+  onCancelEdit,
   replyLock,
   replyAgent,
   replyAgentConfigPath,
@@ -2598,6 +2668,7 @@ export function CommentCard({
   onCardClick,
   onFileClick,
   onDeleteClick,
+  onEditClick,
   collapsed,
   onToggleCollapse,
   activeNodeId,
@@ -2655,7 +2726,7 @@ export function CommentCard({
       : replyAgent
         ? `Request a reply from ${replyAgent} — runs in a separate session, does not message your current chat`
         : undefined;
-  const composerOpen = replyTargetId != null;
+  const composerOpen = replyTargetId != null || editTargetId != null;
   const showReplyButton = !!onOpenReply;
   const showSendButton = sendVerdict.visible && !!onSendToAgent && !!sendLeafId;
   const showRequestReplyConfigHint =
@@ -2825,22 +2896,48 @@ export function CommentCard({
           <span className={TEXT_SELECTABLE_CLASS}>{comment.file}:{range}</span>
         )}
         {onDeleteClick && !isDeletedStub ? (
-          <button
-            type="button"
-            className="ann-trash-button"
-            aria-label="Delete comment"
-            title="Delete comment"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDeleteClick(comment.id);
-            }}
-          >
-            🗑
-          </button>
+          <>
+            {onEditClick || onOpenEdit ? (
+              <button
+                type="button"
+                className="ann-edit-button"
+                aria-label="Edit comment"
+                title="Edit comment"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  (onEditClick ?? onOpenEdit)?.(comment.id, comment.body);
+                }}
+              >
+                ✏️
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="ann-trash-button"
+              aria-label="Delete comment"
+              title="Delete comment"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDeleteClick(comment.id);
+              }}
+            >
+              🗑
+            </button>
+          </>
         ) : null}
       </div>
       <div className={`ann-body ${TEXT_SELECTABLE_CLASS}`}>
-        {isDeletedStub ? (
+        {editTargetId === comment.id ? (
+          <Composer
+            placeholder="Edit comment"
+            submitLabel="Save"
+            body={composerBody}
+            error={composerError ?? null}
+            onBodyChange={(b) => onComposerBodyChange?.(b)}
+            onSubmit={() => onSubmitEdit?.()}
+            onCancel={() => onCancelEdit?.()}
+          />
+        ) : isDeletedStub ? (
           <span aria-label="Deleted comment placeholder">[deleted]</span>
         ) : (
           <CommentMarkdown body={comment.body} />
@@ -2886,22 +2983,50 @@ export function CommentCard({
                     </span>
                   ) : null}
                   {onDeleteClick ? (
-                    <button
-                      type="button"
-                      className="ann-trash-button"
-                      aria-label="Delete reply"
-                      title="Delete reply"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDeleteClick(r.id);
-                      }}
-                    >
-                      🗑
-                    </button>
+                    <>
+                      {onEditClick || onOpenEdit ? (
+                        <button
+                          type="button"
+                          className="ann-edit-button"
+                          aria-label="Edit comment"
+                          title="Edit comment"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            (onEditClick ?? onOpenEdit)?.(r.id, r.body);
+                          }}
+                        >
+                          ✏️
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="ann-trash-button"
+                        aria-label="Delete reply"
+                        title="Delete reply"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteClick(r.id);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </>
                   ) : null}
                 </div>
                 <div className={`ann-body ${TEXT_SELECTABLE_CLASS}`}>
-                  <CommentMarkdown body={r.body} />
+                  {editTargetId === r.id ? (
+                    <Composer
+                      placeholder="Edit comment"
+                      submitLabel="Save"
+                      body={composerBody}
+                      error={composerError ?? null}
+                      onBodyChange={(b) => onComposerBodyChange?.(b)}
+                      onSubmit={() => onSubmitEdit?.()}
+                      onCancel={() => onCancelEdit?.()}
+                    />
+                  ) : (
+                    <CommentMarkdown body={r.body} />
+                  )}
                 </div>
                 {replyTargetId === r.id ? (
                   <div className="ann-reply-composer">
@@ -3024,7 +3149,6 @@ function Composer({
   const canSubmit = trimmed.length > 0;
 
   const submit = () => {
-    if (!canSubmit) return;
     onSubmit();
   };
 
@@ -3090,10 +3214,12 @@ interface CommentListSnapshotLostProps {
   cursor: Cursor | null;
   registerCommentRef: (id: string, el: HTMLDivElement | null) => void;
   composerTarget: ComposerTarget | null;
+  editTargetId: string | null;
   composerBody: string;
   composerError: string | null;
   onComposerBodyChange: (body: string) => void;
   onOpenReply: (commentId: string) => void;
+  onOpenEdit: (commentId: string, body: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
   replyLock: ReplyLock | null;
@@ -3125,10 +3251,12 @@ function CommentListSnapshotLost({
   cursor,
   registerCommentRef,
   composerTarget,
+  editTargetId,
   composerBody,
   composerError,
   onComposerBodyChange,
   onOpenReply,
+  onOpenEdit,
   onSubmit,
   onCancel,
   replyLock,
@@ -3168,12 +3296,20 @@ function CommentListSnapshotLost({
             navTotal={navTotal}
             registerRef={registerCommentRef}
             replyTargetId={replyTargetId}
-            composerBody={replyTargetId !== null ? composerBody : ""}
-            composerError={replyTargetId !== null ? composerError : null}
+            editTargetId={editTargetId}
+            composerBody={
+              replyTargetId !== null || editTargetId !== null ? composerBody : ""
+            }
+            composerError={
+              replyTargetId !== null || editTargetId !== null ? composerError : null
+            }
             onComposerBodyChange={onComposerBodyChange}
             onOpenReply={onOpenReply}
+            onOpenEdit={onOpenEdit}
             onSubmitReply={onSubmit}
+            onSubmitEdit={onSubmit}
             onCancelReply={onCancel}
+            onCancelEdit={onCancel}
             replyLock={replyLock}
             replyAgent={replyAgent}
             replyAgentConfigPath={replyAgentConfigPath}

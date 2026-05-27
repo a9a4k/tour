@@ -657,9 +657,13 @@ export interface CardRowProps {
   composerError?: string | null;
   onComposerBodyChange?: (body: string) => void;
   replyTargetId?: string | null;
+  editTargetId?: string | null;
   onOpenReply?: (commentId: string) => void;
-  onSubmitReply?: (body: string) => void;
+  onOpenEdit?: (commentId: string, body: string) => void;
+  onSubmitReply?: () => void;
+  onSubmitEdit?: () => void;
   onCancelReply?: () => void;
+  onCancelEdit?: () => void;
   replyLock?: ReplyLock | null;
   replyAgent?: string | null;
   replyAgentConfigPath?: string | null;
@@ -707,9 +711,13 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
     composerError,
     onComposerBodyChange,
     replyTargetId,
+    editTargetId,
     onOpenReply,
+    onOpenEdit,
     onSubmitReply,
+    onSubmitEdit,
     onCancelReply,
+    onCancelEdit,
     replyLock,
     replyAgent,
     replyAgentConfigPath,
@@ -738,9 +746,13 @@ function CardRowImpl(props: CardRowProps): React.JSX.Element {
         composerError={composerError}
         onComposerBodyChange={onComposerBodyChange}
         replyTargetId={replyTargetId}
+        editTargetId={editTargetId}
         onOpenReply={onOpenReply}
+        onOpenEdit={onOpenEdit}
         onSubmitReply={onSubmitReply}
+        onSubmitEdit={onSubmitEdit}
         onCancelReply={onCancelReply}
+        onCancelEdit={onCancelEdit}
         replyLock={replyLock}
         replyAgent={replyAgent}
         replyAgentConfigPath={replyAgentConfigPath}
