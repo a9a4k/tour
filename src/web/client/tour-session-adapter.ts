@@ -134,6 +134,9 @@ export function createWebTourSessionAdapter(
       }
       return (await res.json()) as Comment;
     },
+    writeCommentEdit: async () => {
+      throw new Error("Comment editing is not implemented in the webapp");
+    },
     deleteComment: async ({ tourId, targetId }) => {
       // ADR 0036 Slice D / issue #388. Webapp trash icon + modal land in
       // a follow-up slice (issue #389); the seam is wired here against

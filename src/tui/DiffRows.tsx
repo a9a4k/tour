@@ -57,6 +57,12 @@ interface DiffRowsProps {
    *  `thread.toggle` on the parent's id (the chevron lives on the
    *  top-level Comment, no Reply normalisation needed). */
   onCardToggleCollapse?: (commentId: string) => void;
+  editingTargetId?: string | null;
+  editingBody?: string;
+  editingSubmitting?: boolean;
+  editingError?: string | null;
+  onEditInput?: (body: string) => void;
+  onEditSubmit?: () => void;
   /** PRD #397 / ADR 0038. Top-level Comment ids the user has minimised
    *  to a one-liner via per-Thread `Enter` (or the header chevron).
    *  Threaded into each CommentCard so the Card paints the one-liner
@@ -221,6 +227,12 @@ export function DiffRows({
   onInteractiveClick,
   onCardClick,
   onCardToggleCollapse,
+  editingTargetId,
+  editingBody,
+  editingSubmitting,
+  editingError,
+  onEditInput,
+  onEditSubmit,
   collapsedThreads,
   replyLock,
   now,
@@ -435,6 +447,12 @@ export function DiffRows({
               navIndex={navIndexById?.get(row.comment.id) ?? null}
               navTotal={navTotal ?? 0}
               onToggleCollapse={onCardToggleCollapse}
+              editingTargetId={editingTargetId}
+              editingBody={editingBody}
+              editingSubmitting={editingSubmitting}
+              editingError={editingError}
+              onEditInput={onEditInput}
+              onEditSubmit={onEditSubmit}
             />
           );
           // Issue #261: click anywhere on the card (or a nested reply)

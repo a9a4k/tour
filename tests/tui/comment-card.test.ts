@@ -28,6 +28,10 @@ function flatten(node: unknown, out: AnyElement[] = []): AnyElement[] {
     return out;
   }
   if (!isElement(node)) return out;
+  if (typeof node.type === "function") {
+    flatten(node.type(node.props), out);
+    return out;
+  }
   out.push(node);
   flatten(node.props.children, out);
   return out;
@@ -52,6 +56,10 @@ function visibleText(tree: unknown): string {
 
 function textElements(tree: unknown): AnyElement[] {
   return flatten(tree).filter((el) => el.type === "text");
+}
+
+function textareaElements(tree: unknown): AnyElement[] {
+  return flatten(tree).filter((el) => el.type === "textarea");
 }
 
 const comment: Comment = {
@@ -190,6 +198,22 @@ describe("CommentCard selection cues", () => {
   it("does not render the `●` selection marker on non-selected cards", () => {
     const tree = CommentCard({ comment, isCurrent: false });
     expect(visibleText(tree)).not.toMatch(/●/);
+  });
+
+  it("replaces the active comment body with an inline edit textarea and Save chrome", () => {
+    const tree = CommentCard({
+      comment,
+      isCurrent: true,
+      editingTargetId: comment.id,
+      editingBody: "draft edit",
+      onEditInput: () => {},
+      onEditSubmit: () => {},
+    });
+    const textareas = textareaElements(tree);
+    expect(textareas).toHaveLength(1);
+    expect(textareas[0].props["initialValue"]).toBe("draft edit");
+    expect(visibleText(tree)).toContain("Enter: Save");
+    expect(visibleText(tree)).not.toContain("hello");
   });
 
   it("differs along at least two independent visual axes between true/false (redundant cue)", () => {

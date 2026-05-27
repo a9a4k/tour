@@ -40,6 +40,7 @@ export interface FooterHintOptions {
    *  (Shift+C is a labelled footer no-op then). */
   anyThreads?: boolean;
   sidebarVisible?: boolean;
+  eHintLabel?: string;
 }
 
 export function composeFooterHints(opts: FooterHintOptions = {}): string {
@@ -87,7 +88,7 @@ export interface FooterPreviewOptions {
  * Action-target preview line (PRD #192 / ADR 0022). Renders the cursor's
  * `r` target so the user knows what `r` will do before pressing it:
  *
- *   on a card                : `r: reply to "<title>"`
+ *   on a card                : `e: edit "<title>"  ·  r: reply to "<title>"`
  *   on a card (off-screen up): `r: reply to "<title>"  (cursor ↑ above viewport)`
  *   on a card (off-screen dn): `r: reply to "<title>"  (cursor ↓ below viewport)`
  *   on a row                 : `` (empty — pressing `r` already flashes a
@@ -104,7 +105,7 @@ export function composeFooterPreview(opts: FooterPreviewOptions): string {
   const ann = comments.find((a) => a.id === cursor.commentId);
   if (!ann) return "";
   const title = truncateTitle(ann.body);
-  const base = `r: reply to "${title}"`;
+  const base = `e: edit "${title}"  ·  r: reply to "${title}"`;
   if (cardViewportPosition === "above") return `${base}  (cursor ↑ above viewport)`;
   if (cardViewportPosition === "below") return `${base}  (cursor ↓ below viewport)`;
   return base;

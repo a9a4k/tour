@@ -163,11 +163,11 @@ describe("composeFooterPreview (PRD #192)", () => {
     expect(composeFooterPreview({ cursor, comments: [] })).toBe("");
   });
 
-  it("renders `r: reply to \"<title>\"` when the cursor is on a card", () => {
+  it("renders edit and reply targets when the cursor is on a card", () => {
     const cursor: Cursor = { kind: "card", commentId: "a1", preferredSide: "additions" };
     const comments = [ann({ id: "a1", body: "fix the null check" })];
     expect(composeFooterPreview({ cursor, comments })).toBe(
-      'r: reply to "fix the null check"',
+      'e: edit "fix the null check"  ·  r: reply to "fix the null check"',
     );
   });
 
@@ -185,9 +185,10 @@ describe("composeFooterPreview (PRD #192)", () => {
     // output — the exact width budget lives in the helper but the
     // contract is "title is shorter than the body and ends with an
     // ellipsis when truncated".
+    expect(out).toContain('e: edit "');
     expect(out).toContain('r: reply to "');
     expect(out).toContain("…");
-    expect(out.length).toBeLessThan(longBody.length);
+    expect(out.length).toBeLessThan(longBody.length + 20);
   });
 
   it("uses only the first line of a multi-line body for the preview", () => {
@@ -250,6 +251,6 @@ describe("composeFooterPreview (PRD #192)", () => {
       comments,
       cardViewportPosition: undefined,
     });
-    expect(out).toBe('r: reply to "hi"');
+    expect(out).toBe('e: edit "hi"  ·  r: reply to "hi"');
   });
 });

@@ -1,6 +1,7 @@
 import type { Comment, AuthorKind } from "../core/types.js";
 import { theme } from "../core/theme.js";
 import { ageMs, isStale, type ReplyLock } from "../core/reply-lock.js";
+import type { TextareaRenderable } from "@opentui/core";
 
 interface CommentCardProps {
   comment: Comment;
@@ -36,6 +37,12 @@ interface CommentCardProps {
    *  root. Omitted in unit-test mounts that don't wire the callback path;
    *  the chevron renders as plain text in that case. */
   onToggleCollapse?: (commentId: string) => void;
+  editingTargetId?: string | null;
+  editingBody?: string;
+  editingSubmitting?: boolean;
+  editingError?: string | null;
+  onEditInput?: (body: string) => void;
+  onEditSubmit?: () => void;
 }
 
 // PRD #397 / ADR 0038 — body preview cap on the collapsed one-liner.
@@ -102,6 +109,65 @@ function pillTargetsThisCard(
   return replies.some((r) => r.id === lock.responding_to);
 }
 
+const EDIT_TEXTAREA_HEIGHT = 4;
+const EDIT_KEY_BINDINGS = [
+  { name: "return", action: "submit" as const },
+  { name: "return", shift: true, action: "newline" as const },
+];
+
+function InlineEditComposer({
+  body,
+  submitting,
+  error,
+  onInput,
+  onSubmit,
+}: {
+  body: string;
+  submitting: boolean;
+  error: string | null;
+  onInput?: (body: string) => void;
+  onSubmit?: () => void;
+}) {
+  const textareaRef: { current: TextareaRenderable | null } = { current: null };
+  if (submitting) {
+    return (
+      <box flexDirection="column">
+        <text fg={theme.fg.default} wrapMode="word">{body.length === 0 ? " " : body}</text>
+        <text fg={theme.fg.muted}>{"Saving..."}</text>
+      </box>
+    );
+  }
+  return (
+    <box flexDirection="column">
+      <textarea
+        ref={(r) => {
+          textareaRef.current = r;
+        }}
+        focused
+        initialValue={body}
+        wrapMode="word"
+        scrollMargin={0}
+        keyBindings={EDIT_KEY_BINDINGS}
+        onContentChange={() => {
+          const ta = textareaRef.current;
+          if (ta) onInput?.(ta.plainText);
+        }}
+        onSubmit={() => {
+          const ta = textareaRef.current;
+          if (ta) onInput?.(ta.plainText);
+          onSubmit?.();
+        }}
+        style={{ height: EDIT_TEXTAREA_HEIGHT }}
+      />
+      <text fg={error ? theme.fg.attention : theme.fg.muted}>
+        {error
+          ? `Error: ${error}  ·  Enter: retry  ·  Esc: dismiss`
+          : "Enter: Save  ·  Shift+Enter / Ctrl+J: newline  ·  Esc: cancel"}
+      </text>
+    </box>
+  );
+}
+
 export function CommentCard({
   comment,
   isCurrent,
@@ -113,6 +179,12 @@ export function CommentCard({
   navTotal,
   activeNodeId,
   onToggleCollapse,
+  editingTargetId,
+  editingBody,
+  editingSubmitting = false,
+  editingError = null,
+  onEditInput,
+  onEditSubmit,
 }: CommentCardProps) {
   const visibleReplies = collapsed ? [] : replies ?? [];
   const showPill =
@@ -212,7 +284,17 @@ export function CommentCard({
         ) : null}
       </box>
       <box flexGrow={1}>
-        <text fg={theme.fg.default} wrapMode="word">{comment.body}</text>
+        {editingTargetId === comment.id ? (
+          <InlineEditComposer
+            body={editingBody ?? comment.body}
+            submitting={editingSubmitting}
+            error={editingError}
+            onInput={onEditInput}
+            onSubmit={onEditSubmit}
+          />
+        ) : (
+          <text fg={theme.fg.default} wrapMode="word">{comment.body}</text>
+        )}
       </box>
       {visibleReplies.map((r) => {
         const replyActive = isCurrent && activeId === r.id;
@@ -246,7 +328,17 @@ export function CommentCard({
                 <text fg={theme.fg.muted}>{` · reply-agent`}</text>
               ) : null}
             </box>
-            <text fg={theme.fg.default} wrapMode="word">{r.body}</text>
+            {editingTargetId === r.id ? (
+              <InlineEditComposer
+                body={editingBody ?? r.body}
+                submitting={editingSubmitting}
+                error={editingError}
+                onInput={onEditInput}
+                onSubmit={onEditSubmit}
+              />
+            ) : (
+              <text fg={theme.fg.default} wrapMode="word">{r.body}</text>
+            )}
           </box>
         );
       })}

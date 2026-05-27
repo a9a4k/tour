@@ -257,7 +257,7 @@ export function App({
   const layout = sessionState.layout;
   const composer = sessionState.composer;
   const composerTarget: ComposerTarget | null =
-    composer.kind === "closed" ? null : composer.target;
+    composer.kind !== "closed" && "target" in composer ? composer.target : null;
   const composerError: string | null =
     composer.kind === "errored" ? composer.error : null;
   const composerBody: string = composer.kind === "closed" ? "" : composer.body;
