@@ -1252,7 +1252,7 @@ describe("CommentCard annotation filename link (issue #383)", () => {
 });
 
 describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", () => {
-  it("renders a pencil edit button on the parent header and calls onEditClick with the current body (Issue #465)", () => {
+  it("renders a pencil edit button on the parent header and calls onOpenEdit with the current body (Issue #465)", () => {
     const calls: Array<{ id: string; body: string }> = [];
     const container = mount(
       createElement(CommentCard, {
@@ -1261,7 +1261,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
         navIndex: 1,
         navTotal: 1,
         onDeleteClick: () => {},
-        onEditClick: (id: string, body: string) => {
+        onOpenEdit: (id: string, body: string) => {
           calls.push({ id, body });
         },
       }),
@@ -1299,7 +1299,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
         navIndex: 1,
         navTotal: 1,
         onDeleteClick: () => {},
-        onEditClick: (id: string, body: string) => calls.push({ id, body }),
+        onOpenEdit: (id: string, body: string) => calls.push({ id, body }),
       }),
     );
     const edit = container.querySelector(
@@ -1651,7 +1651,7 @@ describe("CommentCard trash icon + `[deleted]` stub (issue #389 / ADR 0036)", ()
         navIndex: 1,
         navTotal: 1,
         onDeleteClick: () => {},
-        onEditClick: () => {},
+        onOpenEdit: () => {},
       }),
     );
     const block = container.querySelector(".comment-block") as HTMLElement;

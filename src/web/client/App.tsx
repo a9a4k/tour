@@ -1816,11 +1816,10 @@ export function App({
     [store],
   );
 
-  // Submit-or-retry dispatcher (PRD #234 slice 3, issue #238). Reads the
-  // current composer kind and routes to `composer.submit` (open) or
-  // `composer.retry` (errored); both transitions land on `submitting` and
-  // emit the `submitComment` intent which the intent listener realises
-  // as an HTTP POST. The body-trimming gate stays in the UI so we don't
+  // Submit-or-retry dispatcher (PRD #234 slice 3, issue #238; edit mode
+  // added by ADR 0043 / issue #465). Reads the current composer kind and
+  // routes new comments through `submitComment` or edits through
+  // `requestEdit`. The body-trimming gate stays in the UI so we don't
   // round-trip whitespace-only drafts; the reducer doesn't validate body
   // shape.
   const submitComposer = useCallback(() => {
@@ -1839,20 +1838,20 @@ export function App({
         flash("no changes");
         return;
       }
-      store.dispatch(
-        c.kind === "editing"
-          ? { type: "composer.submitEdit" }
-          : { type: "composer.retryEdit" },
-      );
+      if (c.kind === "editing") {
+        store.dispatch({ type: "composer.submitEdit" });
+      } else {
+        store.dispatch({ type: "composer.retryEdit" });
+      }
       return;
     }
     if (c.kind !== "open" && c.kind !== "errored") return;
     if (c.body.trim().length === 0) return;
-    store.dispatch(
-      c.kind === "open"
-        ? { type: "composer.submit" }
-        : { type: "composer.retry" },
-    );
+    if (c.kind === "open") {
+      store.dispatch({ type: "composer.submit" });
+    } else {
+      store.dispatch({ type: "composer.retry" });
+    }
   }, [store, flash]);
 
   const onComposerBodyChange = useCallback(
@@ -2573,10 +2572,6 @@ interface CommentCardProps {
   // so call sites that haven't wired the modal (snapshot-lost branch,
   // unit-test mounts) keep their existing behaviour.
   onDeleteClick?: (commentId: string) => void;
-  // Issue #465 / ADR 0043: pencil edit affordance. Receives the target
-  // id plus the currently rendered body so App can open the shared
-  // composer slice in edit mode without recovering the Comment.
-  onEditClick?: (commentId: string, body: string) => void;
   // PRD #397 / ADR 0038. When true, the Card collapses to a single
   // one-liner row (chevron + author kind + file:line + first 60 chars
   // of the parent body + `💬 N` reply count). The in-flight reply pill
@@ -2668,7 +2663,6 @@ export function CommentCard({
   onCardClick,
   onFileClick,
   onDeleteClick,
-  onEditClick,
   collapsed,
   onToggleCollapse,
   activeNodeId,
@@ -2765,6 +2759,42 @@ export function CommentCard({
     event.preventDefault();
     event.stopPropagation();
     return true;
+  };
+  const renderHeaderActions = (
+    target: Comment,
+    deleteLabel: "Delete comment" | "Delete reply",
+  ) => {
+    if (!onDeleteClick || target.deleted) return null;
+    return (
+      <>
+        {onOpenEdit ? (
+          <button
+            type="button"
+            className="ann-edit-button"
+            aria-label="Edit comment"
+            title="Edit comment"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenEdit(target.id, target.body);
+            }}
+          >
+            ✏️
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ann-trash-button"
+          aria-label={deleteLabel}
+          title={deleteLabel}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDeleteClick(target.id);
+          }}
+        >
+          🗑
+        </button>
+      </>
+    );
   };
   if (collapsed) {
     const replyCount = replies?.length ?? 0;
@@ -2895,36 +2925,7 @@ export function CommentCard({
         ) : (
           <span className={TEXT_SELECTABLE_CLASS}>{comment.file}:{range}</span>
         )}
-        {onDeleteClick && !isDeletedStub ? (
-          <>
-            {onEditClick || onOpenEdit ? (
-              <button
-                type="button"
-                className="ann-edit-button"
-                aria-label="Edit comment"
-                title="Edit comment"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  (onEditClick ?? onOpenEdit)?.(comment.id, comment.body);
-                }}
-              >
-                ✏️
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="ann-trash-button"
-              aria-label="Delete comment"
-              title="Delete comment"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDeleteClick(comment.id);
-              }}
-            >
-              🗑
-            </button>
-          </>
-        ) : null}
+        {renderHeaderActions(comment, "Delete comment")}
       </div>
       <div className={`ann-body ${TEXT_SELECTABLE_CLASS}`}>
         {editTargetId === comment.id ? (
@@ -2982,36 +2983,7 @@ export function CommentCard({
                       {" "}· reply-agent
                     </span>
                   ) : null}
-                  {onDeleteClick ? (
-                    <>
-                      {onEditClick || onOpenEdit ? (
-                        <button
-                          type="button"
-                          className="ann-edit-button"
-                          aria-label="Edit comment"
-                          title="Edit comment"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            (onEditClick ?? onOpenEdit)?.(r.id, r.body);
-                          }}
-                        >
-                          ✏️
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="ann-trash-button"
-                        aria-label="Delete reply"
-                        title="Delete reply"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDeleteClick(r.id);
-                        }}
-                      >
-                        🗑
-                      </button>
-                    </>
-                  ) : null}
+                  {renderHeaderActions(r, "Delete reply")}
                 </div>
                 <div className={`ann-body ${TEXT_SELECTABLE_CLASS}`}>
                   {editTargetId === r.id ? (
@@ -3148,10 +3120,6 @@ function Composer({
   const trimmed = body.trim();
   const canSubmit = trimmed.length > 0;
 
-  const submit = () => {
-    onSubmit();
-  };
-
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -3168,7 +3136,7 @@ function Composer({
       !e.altKey;
     if (isSubmitAlias || isBareEnter) {
       e.preventDefault();
-      submit();
+      onSubmit();
     }
   };
 
@@ -3200,7 +3168,7 @@ function Composer({
           type="button"
           className="composer-submit"
           disabled={!canSubmit}
-          onClick={submit}
+          onClick={onSubmit}
         >
           {submitLabel}
         </button>
