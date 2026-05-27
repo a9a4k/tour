@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, mkdir, writeFile, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, realpath } from "node:fs/promises";
 import { dirname, join, parse } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -1603,6 +1603,211 @@ editor      = "nvim" (from config)`);
       );
       expect(second.exitCode).toBe(1);
       expect(second.stderr).toContain(ann.id);
+    });
+  });
+
+  describe("comment --edit (ADR 0043, issue #463)", () => {
+    async function annotate(
+      repo: string,
+      tourId: string,
+      body: string,
+      extra: string[] = [],
+    ): Promise<{ id: string }> {
+      const r = await run(
+        [
+          "comment",
+          tourId,
+          "--file",
+          "hello.txt",
+          "--side",
+          "additions",
+          "--line",
+          "1",
+          "--body",
+          body,
+          "--json",
+          ...extra,
+        ],
+        repo,
+      );
+      if (r.exitCode !== 0) throw new Error(`annotate failed: ${r.stderr}`);
+      return JSON.parse(r.stdout);
+    }
+
+    it("non-JSON: writes a comment.edited event and prints a success line", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "old body");
+
+      const r = await run(
+        ["comment", tour.id, "--as-human", "--edit", ann.id, "--body", "new body"],
+        repo,
+      );
+
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toBe(`Edited comment ${ann.id}`);
+      const show = await run(["show", tour.id, "--json"], repo);
+      const data = JSON.parse(show.stdout);
+      expect(data.comments[0].body).toBe("new body");
+
+      const location = await resolveTourLocation(repo, {
+        env: { TOUR_HOME: tourHomeFor(repo) },
+      });
+      const log = await readFile(
+        join(location.tourStoreRoot, tour.id, "tour-events.jsonl"),
+        "utf-8",
+      );
+      const lines = log.split("\n").filter((l) => l).map((l) => JSON.parse(l));
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toMatchObject({
+        kind: "comment.created",
+        id: ann.id,
+        body: "old body",
+      });
+      expect(lines[1]).toMatchObject({
+        kind: "comment.edited",
+        target_id: ann.id,
+        body: "new body",
+      });
+      expect(lines[1].author_kind).toBeUndefined();
+      expect(lines[1].file).toBeUndefined();
+    });
+
+    it("--json emits { edited: <comment-id> }", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "old body");
+
+      const r = await run(
+        ["comment", tour.id, "--as-human", "--edit", ann.id, "--body", "new body", "--json"],
+        repo,
+      );
+
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout)).toEqual({ edited: ann.id });
+    });
+
+    it("--as-agent --edit is rejected at parse with an ADR 0043 humans-only error", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "old body");
+
+      const r = await run(
+        ["comment", tour.id, "--as-agent", "--edit", ann.id, "--body", "new body"],
+        repo,
+      );
+
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("ADR 0043");
+      expect(r.stderr).toMatch(/human/i);
+      const show = await run(["show", tour.id, "--json"], repo);
+      const data = JSON.parse(show.stdout);
+      expect(data.comments[0].body).toBe("old body");
+    });
+
+    it("--edit rejects create/reply/delete/batch mutex combinations at parse", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "old body");
+      const cases = [
+        ["--file", "hello.txt"],
+        ["--side", "additions"],
+        ["--line", "1"],
+        ["--reply-to", ann.id],
+        ["--delete", ann.id],
+        ["--batch", "-"],
+      ];
+
+      for (const extra of cases) {
+        const r = await run(
+          [
+            "comment",
+            tour.id,
+            "--as-human",
+            "--edit",
+            ann.id,
+            "--body",
+            "new body",
+            ...extra,
+          ],
+          repo,
+        );
+        expect(r.exitCode).toBe(1);
+        expect(r.stderr).toMatch(/mutually exclusive/i);
+      }
+    });
+
+    it("--edit against an unknown id fails at the seam", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+
+      const r = await run(
+        ["comment", tour.id, "--as-human", "--edit", "ghost-id", "--body", "new body"],
+        repo,
+      );
+
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("ghost-id");
+    });
+
+    it("--edit against a deleted parent stub fails at the seam", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = await annotate(repo, tour.id, "parent");
+      await run(
+        ["comment", tour.id, "--reply-to", root.id, "--body", "reply", "--as-human", "--json"],
+        repo,
+      );
+      await run(["comment", tour.id, "--delete", root.id], repo);
+
+      const r = await run(
+        ["comment", tour.id, "--as-human", "--edit", root.id, "--body", "new parent"],
+        repo,
+      );
+
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toMatch(/deleted/i);
+    });
+
+    it("--edit rejects empty, whitespace-only, and unchanged bodies at the seam", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const ann = await annotate(repo, tour.id, "same body");
+
+      for (const body of ["", "   ", "  same body  "]) {
+        const r = await run(
+          ["comment", tour.id, "--as-human", "--edit", ann.id, "--body", body],
+          repo,
+        );
+        expect(r.exitCode).toBe(1);
+        expect(r.stderr).toMatch(/body|no changes/i);
+      }
+
+      const show = await run(["show", tour.id, "--json"], repo);
+      const data = JSON.parse(show.stdout);
+      expect(data.comments[0].body).toBe("same body");
+    });
+
+    it("edits replies by id", async () => {
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
+      const tour = JSON.parse(cr.stdout);
+      const root = await annotate(repo, tour.id, "parent");
+      const replyR = await run(
+        ["comment", tour.id, "--reply-to", root.id, "--body", "reply old", "--as-human", "--json"],
+        repo,
+      );
+      const reply = JSON.parse(replyR.stdout);
+
+      const edit = await run(
+        ["comment", tour.id, "--as-human", "--edit", reply.id, "--body", "reply new"],
+        repo,
+      );
+
+      expect(edit.exitCode).toBe(0);
+      const pickup = await run(["pickup", tour.id, "--json"], repo);
+      const tree = JSON.parse(pickup.stdout);
+      expect(tree.comments[0].replies[0].body).toBe("reply new");
+      expect(tree.comments[0].replies[0]).not.toHaveProperty("edits");
     });
   });
 

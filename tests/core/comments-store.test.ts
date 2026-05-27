@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   createComment,
   createDelete,
+  createEdit,
   createReply,
   createComments,
   readComments,
@@ -855,6 +856,163 @@ describe("comments-store", () => {
       expect(new Date(stub.deleted!.at).getTime()).toBeGreaterThanOrEqual(
         before - 1000,
       );
+    });
+  });
+
+  describe("createEdit (ADR 0043 / issue #463)", () => {
+    it("appends a comment.edited event for a known comment authored by a human", async () => {
+      await seedTopLevel(dir, tourId, { id: "to-edit", body: "old body" });
+
+      const result = await createEdit(dir, tourId, {
+        target_id: "to-edit",
+        body: "new body",
+        by_kind: "human",
+      });
+
+      expect(result.target_id).toBe("to-edit");
+      expect(result.body).toBe("new body");
+      expect(typeof result.at).toBe("string");
+      const loaded = await readComments(dir, tourId);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0].body).toBe("new body");
+    });
+
+    it("writes a comment.edited event line with only kind, target_id, body, at", async () => {
+      await seedTopLevel(dir, tourId, { id: "event-shape", body: "old" });
+
+      await createEdit(dir, tourId, {
+        target_id: "event-shape",
+        body: "new",
+        by_kind: "human",
+      });
+
+      const content = await readFile(eventsPath(dir, tourId), "utf-8");
+      const lines = content.split("\n").filter((l) => l);
+      expect(lines).toHaveLength(2);
+      const parsed = JSON.parse(lines[1]);
+      expect(parsed.kind).toBe("comment.edited");
+      expect(parsed.target_id).toBe("event-shape");
+      expect(parsed.body).toBe("new");
+      expect(typeof parsed.at).toBe("string");
+      expect(parsed.by_kind).toBeUndefined();
+      expect(parsed.author).toBeUndefined();
+      expect(parsed.author_kind).toBeUndefined();
+      expect(parsed.file).toBeUndefined();
+      expect(parsed.line_start).toBeUndefined();
+    });
+
+    it("rejects by_kind agent — humans-only contract, no write", async () => {
+      await seedTopLevel(dir, tourId, { id: "human-only", body: "old" });
+
+      await expect(
+        createEdit(dir, tourId, {
+          target_id: "human-only",
+          body: "new",
+          by_kind: "agent",
+        }),
+      ).rejects.toThrow(/human/i);
+
+      const loaded = await readComments(dir, tourId);
+      expect(loaded[0].body).toBe("old");
+    });
+
+    it("rejects unknown target id and writes nothing", async () => {
+      await seedTopLevel(dir, tourId, { id: "known", body: "old" });
+
+      await expect(
+        createEdit(dir, tourId, {
+          target_id: "ghost",
+          body: "new",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/ghost/);
+
+      const loaded = await readComments(dir, tourId);
+      expect(loaded.map((c) => [c.id, c.body])).toEqual([["known", "old"]]);
+    });
+
+    it("rejects an already-deleted target", async () => {
+      await seedTopLevel(dir, tourId, { id: "p", body: "parent" });
+      await createReply(dir, tourId, {
+        thread_id: "p",
+        body: "surviving reply",
+        author_kind: "human",
+      });
+      await createDelete(dir, tourId, {
+        target_id: "p",
+        by_kind: "human",
+      });
+
+      await expect(
+        createEdit(dir, tourId, {
+          target_id: "p",
+          body: "new parent",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/deleted/i);
+    });
+
+    it("rejects an empty body and writes nothing", async () => {
+      await seedTopLevel(dir, tourId, { id: "empty", body: "old" });
+
+      await expect(
+        createEdit(dir, tourId, {
+          target_id: "empty",
+          body: "",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/body/i);
+
+      const loaded = await readComments(dir, tourId);
+      expect(loaded[0].body).toBe("old");
+    });
+
+    it("rejects a whitespace-only body and writes nothing", async () => {
+      await seedTopLevel(dir, tourId, { id: "blank", body: "old" });
+
+      await expect(
+        createEdit(dir, tourId, {
+          target_id: "blank",
+          body: "   ",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/body/i);
+
+      const loaded = await readComments(dir, tourId);
+      expect(loaded[0].body).toBe("old");
+    });
+
+    it("rejects a body identical to the current body after trim", async () => {
+      await seedTopLevel(dir, tourId, { id: "same", body: "current body" });
+
+      await expect(
+        createEdit(dir, tourId, {
+          target_id: "same",
+          body: "  current body  ",
+          by_kind: "human",
+        }),
+      ).rejects.toThrow(/no changes/i);
+
+      const content = await readFile(eventsPath(dir, tourId), "utf-8");
+      expect(content.split("\n").filter((l) => l)).toHaveLength(1);
+    });
+
+    it("edits a reply through the same seam", async () => {
+      await seedTopLevel(dir, tourId, { id: "p" });
+      const reply = await createReply(dir, tourId, {
+        thread_id: "p",
+        body: "reply old",
+        author_kind: "human",
+      });
+
+      await createEdit(dir, tourId, {
+        target_id: reply.id,
+        body: "reply new",
+        by_kind: "human",
+      });
+
+      const loaded = await readComments(dir, tourId);
+      expect(loaded.find((c) => c.id === reply.id)?.body).toBe("reply new");
     });
   });
 

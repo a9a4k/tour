@@ -301,3 +301,41 @@ export async function createDelete(
   await appendEvent(tourStoreRoot, tourId, event);
   return { target_id: event.target_id, at: event.at };
 }
+
+export interface CreateEditRequest {
+  target_id: string;
+  body: string;
+  by_kind: AuthorKind;
+}
+
+export async function createEdit(
+  tourStoreRoot: string,
+  tourId: string,
+  request: CreateEditRequest,
+): Promise<{ target_id: string; body: string; at: string }> {
+  if (request.by_kind !== "human") {
+    throw new Error(
+      `comment.edited is humans-only (ADR 0043) — refused by_kind="${request.by_kind}"`,
+    );
+  }
+  validateBody(request.body);
+  const existing = await readComments(tourStoreRoot, tourId);
+  const target = existing.find((c) => c.id === request.target_id);
+  if (!target) {
+    throw new Error(`No comment with id "${request.target_id}" in this tour`);
+  }
+  if (target.deleted) {
+    throw new Error(`Comment "${request.target_id}" is already deleted`);
+  }
+  if (target.body.trim() === request.body.trim()) {
+    throw new Error(`Comment "${request.target_id}" has no changes after trim`);
+  }
+  const event: TourEvent = {
+    kind: "comment.edited",
+    target_id: request.target_id,
+    body: request.body,
+    at: new Date().toISOString(),
+  };
+  await appendEvent(tourStoreRoot, tourId, event);
+  return { target_id: event.target_id, body: event.body, at: event.at };
+}

@@ -2,6 +2,7 @@ import {
   createComment,
   createComments,
   createDelete,
+  createEdit,
   createReply,
   type CreateRequest,
 } from "../core/comments-store.js";
@@ -22,6 +23,7 @@ interface CommentArgs {
   asHuman?: boolean;
   replyTo?: string;
   deleteId?: string;
+  editId?: string;
   batch?: boolean;
   json: boolean;
   cwd: string;
@@ -68,6 +70,44 @@ function resolveAuthorKind(asAgent?: boolean, asHuman?: boolean): AuthorKind {
 
 export async function comment(args: CommentArgs): Promise<void> {
   const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
+  // Edit verb (ADR 0043 / issue #463). Body-only, humans-only, and
+  // mutually exclusive with create / reply / delete / batch flag
+  // families. `--body` is the edit payload, so it is required here.
+  if (args.editId !== undefined) {
+    if (args.asAgent) {
+      throw new Error(
+        "--as-agent --edit is refused: comment.edited is humans-only (ADR 0043)",
+      );
+    }
+    if (
+      args.file !== undefined ||
+      args.side !== undefined ||
+      args.line !== undefined ||
+      args.replyTo !== undefined ||
+      args.deleteId !== undefined ||
+      args.batch
+    ) {
+      throw new Error(
+        "--edit is mutually exclusive with --file/--side/--line, --reply-to, --delete, and --batch",
+      );
+    }
+    if (args.body === undefined) {
+      throw new Error("--body is required (with --edit)");
+    }
+    const resolvedIdForEdit = await resolveIdPrefix(tourStoreRoot, args.tourId);
+    const result = await createEdit(tourStoreRoot, resolvedIdForEdit, {
+      target_id: args.editId,
+      body: args.body,
+      by_kind: "human",
+    });
+    if (args.json) {
+      printOutput({ edited: result.target_id }, true);
+    } else {
+      console.log(`Edited comment ${result.target_id}`);
+    }
+    return;
+  }
+
   // Delete verb (Slice C / issue #387 / ADR 0036). Mutually exclusive
   // with the create / reply flag families. `--as-agent --delete` is
   // refused here — before any I/O — so the humans-only protocol error

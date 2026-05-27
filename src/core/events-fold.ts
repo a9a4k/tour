@@ -63,6 +63,11 @@ export function foldEventsToComments(events: TourEvent[]): CommentState[] {
       order.push(ev.id);
     } else if (ev.kind === "comment.deleted") {
       if (!deletions.has(ev.target_id)) deletions.set(ev.target_id, ev.at);
+    } else if (ev.kind === "comment.edited") {
+      if (deletions.has(ev.target_id)) continue;
+      const target = created.get(ev.target_id);
+      if (!target) continue;
+      target.body = ev.body;
     }
   }
 

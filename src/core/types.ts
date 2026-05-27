@@ -73,4 +73,10 @@ export type TourEvent =
       kind: "comment.deleted";
       target_id: string;
       at: string;
+    }
+  | {
+      kind: "comment.edited";
+      target_id: string;
+      body: string;
+      at: string;
     };

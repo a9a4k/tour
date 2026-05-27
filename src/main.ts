@@ -71,6 +71,7 @@ Usage:
   tour comment <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour comment <id> --reply-to <ann-id> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
   tour comment <id> --delete <comment-id> [--json]
+  tour comment <id> --edit <comment-id> --body <b> [--as-human] [--json]
   tour comment <id> --batch - [--json]                            (alias: annotate)
   tour list [--all] [--status open|closed|all] [--json]
   tour show <id> [--json]
@@ -188,6 +189,7 @@ async function main(): Promise<void> {
           asHuman: boolFlag(flags, "as-human"),
           replyTo: flag(flags, "reply-to"),
           deleteId: flag(flags, "delete"),
+          editId: flag(flags, "edit"),
           batch: boolFlag(flags, "batch") || flag(flags, "batch") === "-",
           json,
           cwd,

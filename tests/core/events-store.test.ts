@@ -41,6 +41,16 @@ function replyCreated(id: string, thread_id: string):
   };
 }
 
+function commentEdited(target_id: string, body = "edited"):
+  Extract<TourEvent, { kind: "comment.edited" }> {
+  return {
+    kind: "comment.edited",
+    target_id,
+    body,
+    at: "2026-05-16T10:02:00Z",
+  };
+}
+
 describe("events-store", () => {
   let dir: string;
 
@@ -72,15 +82,17 @@ describe("events-store", () => {
       expect(events).toEqual([ev]);
     });
 
-    it("roundtrips a heterogeneous sequence (comment.created, reply.created, comment.deleted)", async () => {
+    it("roundtrips a heterogeneous sequence (comment.created, reply.created, comment.deleted, comment.edited)", async () => {
       const e1 = commentCreated("p");
       const e2 = replyCreated("r", "p");
       const e3: TourEvent = { kind: "comment.deleted", target_id: "r", at: "2026-05-16T11:00:00Z" };
+      const e4 = commentEdited("p", "new body");
       await appendEvent(dir, tourId, e1);
       await appendEvent(dir, tourId, e2);
       await appendEvent(dir, tourId, e3);
+      await appendEvent(dir, tourId, e4);
       const events = await readEvents(dir, tourId);
-      expect(events).toEqual([e1, e2, e3]);
+      expect(events).toEqual([e1, e2, e3, e4]);
     });
 
     it("writes one line per appendEvent call (newline-terminated)", async () => {
@@ -125,7 +137,7 @@ describe("events-store", () => {
 
     it("skips lines with an unknown `kind`", async () => {
       const path = eventsPath(dir, tourId);
-      const unknown = JSON.stringify({ kind: "comment.edited", id: "x", at: "z" });
+      const unknown = JSON.stringify({ kind: "comment.resolved", id: "x", at: "z" });
       const valid = JSON.stringify(commentCreated("c1"));
       await writeFile(path, unknown + "\n" + valid + "\n");
       const events = await readEvents(dir, tourId);

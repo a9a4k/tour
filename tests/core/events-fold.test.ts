@@ -38,7 +38,85 @@ function deleteEvent(target_id: string, at = "2026-05-16T11:00:00Z"):
   return { kind: "comment.deleted", target_id, at };
 }
 
+function editEvent(
+  target_id: string,
+  body: string,
+  at = "2026-05-16T11:15:00Z",
+): Extract<TourEvent, { kind: "comment.edited" }> {
+  return { kind: "comment.edited", target_id, body, at };
+}
+
 describe("foldEventsToComments", () => {
+  describe("comment.edited", () => {
+    it("applies an edit event to the targeted comment body", () => {
+      const events: TourEvent[] = [
+        createTop({ id: "p", body: "old body" }),
+        editEvent("p", "new body"),
+      ];
+
+      const out = foldEventsToComments(events);
+
+      expect(out).toHaveLength(1);
+      expect(out[0].body).toBe("new body");
+    });
+
+    it("collapses multiple edits so the last edit wins", () => {
+      const events: TourEvent[] = [
+        createTop({ id: "p", body: "original" }),
+        editEvent("p", "first edit"),
+        editEvent("p", "second edit"),
+      ];
+
+      const out = foldEventsToComments(events);
+
+      expect(out[0].body).toBe("second edit");
+    });
+
+    it("applies edits to replies", () => {
+      const events: TourEvent[] = [
+        createTop({ id: "p" }),
+        createReply({ id: "r", thread_id: "p", body: "reply old" }),
+        editEvent("r", "reply new"),
+      ];
+
+      const out = foldEventsToComments(events);
+
+      expect(out.map((c) => [c.id, c.body])).toEqual([
+        ["p", "body of p"],
+        ["r", "reply new"],
+      ]);
+    });
+
+    it("ignores edits targeting unknown ids", () => {
+      const events: TourEvent[] = [
+        createTop({ id: "p", body: "original" }),
+        editEvent("ghost", "ignored"),
+      ];
+
+      const out = foldEventsToComments(events);
+
+      expect(out).toHaveLength(1);
+      expect(out[0].body).toBe("original");
+    });
+
+    it("ignores edits targeting an already-deleted parent stub", () => {
+      const events: TourEvent[] = [
+        createTop({ id: "p", body: "parent body" }),
+        createReply({ id: "r", thread_id: "p", body: "survives" }),
+        deleteEvent("p", "2026-05-16T11:00:00Z"),
+        editEvent("p", "must not surface", "2026-05-16T11:30:00Z"),
+      ];
+
+      const out = foldEventsToComments(events);
+
+      expect(out).toHaveLength(2);
+      expect(out[0].id).toBe("p");
+      expect(out[0].body).toBe("");
+      expect(out[0].deleted).toEqual({ at: "2026-05-16T11:00:00Z" });
+      expect(out[1].body).toBe("survives");
+    });
+  });
+
   describe("creates and replies (no delete)", () => {
     it("projects an empty event log to an empty list", () => {
       expect(foldEventsToComments([])).toEqual([]);

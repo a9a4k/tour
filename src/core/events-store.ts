@@ -98,6 +98,17 @@ function parseEvent(parsed: unknown): TourEvent | null {
       if (typeof o.target_id !== "string") return null;
       return { kind: "comment.deleted", target_id: o.target_id, at: o.at };
     }
+    case "comment.edited": {
+      if (typeof o.target_id !== "string" || typeof o.body !== "string") {
+        return null;
+      }
+      return {
+        kind: "comment.edited",
+        target_id: o.target_id,
+        body: o.body,
+        at: o.at,
+      };
+    }
     default:
       return null;
   }
