@@ -265,6 +265,32 @@ export async function readComments(
   return foldEventsToComments(events);
 }
 
+function assertHumanOnly(
+  eventKind: "comment.deleted" | "comment.edited",
+  adr: "ADR 0036" | "ADR 0043",
+  byKind: AuthorKind,
+): void {
+  if (byKind !== "human") {
+    throw new Error(
+      `${eventKind} is humans-only (${adr}) — refused by_kind="${byKind}"`,
+    );
+  }
+}
+
+function findActiveCommentTarget(
+  comments: readonly CommentState[],
+  targetId: string,
+): CommentState {
+  const target = comments.find((c) => c.id === targetId);
+  if (!target) {
+    throw new Error(`No comment with id "${targetId}" in this tour`);
+  }
+  if (target.deleted) {
+    throw new Error(`Comment "${targetId}" is already deleted`);
+  }
+  return target;
+}
+
 // Slice C / ADR 0036: the single write seam for `comment.deleted` events.
 // Humans-only by protocol contract — agents-asserted callers reject here.
 // Existence + already-deleted guards mirror `createReply`'s parent check;
@@ -280,19 +306,9 @@ export async function createDelete(
   tourId: string,
   request: CreateDeleteRequest,
 ): Promise<{ target_id: string; at: string }> {
-  if (request.by_kind !== "human") {
-    throw new Error(
-      `comment.deleted is humans-only (ADR 0036) — refused by_kind="${request.by_kind}"`,
-    );
-  }
+  assertHumanOnly("comment.deleted", "ADR 0036", request.by_kind);
   const existing = await readComments(tourStoreRoot, tourId);
-  const target = existing.find((c) => c.id === request.target_id);
-  if (!target) {
-    throw new Error(`No comment with id "${request.target_id}" in this tour`);
-  }
-  if (target.deleted) {
-    throw new Error(`Comment "${request.target_id}" is already deleted`);
-  }
+  findActiveCommentTarget(existing, request.target_id);
   const event: TourEvent = {
     kind: "comment.deleted",
     target_id: request.target_id,
@@ -313,20 +329,10 @@ export async function createEdit(
   tourId: string,
   request: CreateEditRequest,
 ): Promise<{ target_id: string; body: string; at: string }> {
-  if (request.by_kind !== "human") {
-    throw new Error(
-      `comment.edited is humans-only (ADR 0043) — refused by_kind="${request.by_kind}"`,
-    );
-  }
+  assertHumanOnly("comment.edited", "ADR 0043", request.by_kind);
   validateBody(request.body);
   const existing = await readComments(tourStoreRoot, tourId);
-  const target = existing.find((c) => c.id === request.target_id);
-  if (!target) {
-    throw new Error(`No comment with id "${request.target_id}" in this tour`);
-  }
-  if (target.deleted) {
-    throw new Error(`Comment "${request.target_id}" is already deleted`);
-  }
+  const target = findActiveCommentTarget(existing, request.target_id);
   if (target.body.trim() === request.body.trim()) {
     throw new Error(`Comment "${request.target_id}" has no changes after trim`);
   }
