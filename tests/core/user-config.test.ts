@@ -32,6 +32,16 @@ describe("loadUserConfig", () => {
     await expect(readFile(configPath, "utf8")).resolves.toBe(USER_CONFIG_SEED);
   });
 
+  it("returns an empty config without writing when auto-create is disabled", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+
+    await expect(loadUserConfig(tourHome, { autoCreate: false })).resolves.toEqual({});
+    await expect(readFile(configPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("does not overwrite an existing config.toml", async () => {
     const tourHome = await tempTourHome();
     const configPath = join(tourHome, "config.toml");
@@ -53,7 +63,7 @@ describe("loadUserConfig", () => {
     await chmod(tourHome, 0o500);
 
     try {
-      await expect(loadUserConfig(tourHome)).resolves.toEqual({});
+      await expect(loadUserConfig(tourHome, { autoCreate: true })).resolves.toEqual({});
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining(`could not write ${configPath}`),
       );
@@ -68,10 +78,12 @@ describe("loadUserConfig", () => {
     const tourHome = await tempTourHome();
     const configPath = join(tourHome, "config.toml");
 
-    await expect(Promise.all([loadUserConfig(tourHome), loadUserConfig(tourHome)])).resolves.toEqual([
-      {},
-      {},
-    ]);
+    await expect(
+      Promise.all([
+        loadUserConfig(tourHome, { autoCreate: true }),
+        loadUserConfig(tourHome, { autoCreate: true }),
+      ]),
+    ).resolves.toEqual([{}, {}]);
     await expect(readFile(configPath, "utf8")).resolves.toBe(USER_CONFIG_SEED);
   });
 

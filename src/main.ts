@@ -235,7 +235,7 @@ async function main(): Promise<void> {
       }
 
       case "tui": {
-        const userConfig = await loadUserConfig(tourHomePath);
+        const userConfig = await loadUserConfig(tourHomePath, { autoCreate: true });
         await tui({
           tourId: positional[0],
           cwd,
@@ -249,7 +249,7 @@ async function main(): Promise<void> {
       }
 
       case "serve": {
-        const userConfig = await loadUserConfig(tourHomePath);
+        const userConfig = await loadUserConfig(tourHomePath, { autoCreate: true });
         const portFlag = flag(flags, "port");
         await serve({
           port: portFlag !== undefined ? parseInt(portFlag, 10) : defaultPreferredPort(),
