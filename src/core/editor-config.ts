@@ -8,6 +8,7 @@ import {
   placeholdersIn,
   renderCommandTemplate,
 } from "./command-template.js";
+import { USER_CONFIG_SEED } from "./user-config-seed.js";
 
 export interface EditorConfig {
   /** Raw command template selected by the resolution chain. */
@@ -56,12 +57,7 @@ export function invalidEditorTemplateMessage(value: string, configPath?: string)
   const location = editorTemplateLocation(configPath);
   return `${location} must include {file}. Rejected value: ${JSON.stringify(value)}
 Placeholders: {file} required, {line} optional.
-Examples:
-  code -g {file}:{line}
-  cursor -g {file}:{line}
-  idea --line {line} {file}
-  vim +{line} {file}
-  nvim +{line} {file}`;
+${USER_CONFIG_SEED}`;
 }
 
 export function validateEditorTemplate(value: string, configPath?: string): void {

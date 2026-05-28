@@ -1,8 +1,10 @@
 # User-scoped config file for `--reply-agent` and `--editor` defaults
 
-> **Status:** Accepted — 2026-05-22. Adds a single optional TOML file at `$TOUR_HOME/config.toml` holding persistent defaults for the `--reply-agent` and `--editor` flags. Read once at `main.ts` entry; values feed the existing resolution chains as one new layer. New read-only subcommand `tour config show` inspects the resolved values and their sources. No write surface — users hand-edit. Complements ADR 0032 (editor resolution chain) and ADR 0039 (storage in `$TOUR_HOME`).
+> **Status:** Accepted — 2026-05-22. Adds a single TOML file at `$TOUR_HOME/config.toml` holding persistent defaults for the `--reply-agent` and `--editor` flags. Explicit `tour tui` and `tour serve` auto-create it with commented examples on first launch; values feed the existing resolution chains as one new layer. New read-only subcommand `tour config show` inspects the resolved values and their sources without auto-creating the file. No mutation surface after seeding — users hand-edit. Complements ADR 0032 (editor resolution chain) and ADR 0039 (storage in `$TOUR_HOME`).
 >
 > **Amended 2026-05-28:** ADR 0044 changes `reply_agent` from a shipped-agent name to a command template and validates it at config load. Bare names now fail with inline migration examples.
+>
+> **Amended 2026-05-28:** Issue #469 reverses the original "no auto-creation" decision for explicit launch surfaces only. `tour tui` and `tour serve` seed `$TOUR_HOME/config.toml` via temp-file + rename when it is missing, warn and continue with empty config when seeding fails, and never rewrite an existing file. Bare `tour` may read an existing config for its smart-default launch, but it does not seed a missing file. Read-only / one-shot verbs and `tour config show` do not load the seeding path.
 
 ## Why
 
@@ -32,14 +34,15 @@ A file beats a second env var. A hypothetical `$TOUR_REPLY_AGENT` would solve th
 
 ### Location and shape
 
-- **Path:** `$TOUR_HOME/config.toml`. Single user-scoped file. Optional — missing file is the documented happy path for any user who only uses CLI flags or env vars.
+- **Path:** `$TOUR_HOME/config.toml`. Single user-scoped file. Missing file remains honest for diagnostics, but explicit `tour tui` / `tour serve` create it on first launch from the canonical commented seed template.
 - **Format:** TOML, parsed via `smol-toml` (already in the tree for `tour.toml`).
-- **Schema:** flat — keys at the file root, no `[section]` headers. Current keys: `reply_agent` (string) and `editor` (string). Adding a third scalar later is a one-line schema change; promoting to sections is an additive migration with no breakage.
+- **Schema:** flat — keys at the file root, no `[section]` headers. Current keys: `reply_agent` (string), `editor` (string), and `editor_terminal` (boolean, default false). Adding another scalar later is a one-line schema change; promoting to sections is an additive migration with no breakage.
 
 ```toml
 # ~/.tour/config.toml
-reply_agent = "claude"
+reply_agent = "claude --print --system-prompt {systemPrompt} {userPrompt}"
 editor      = "code -g {file}:{line}"
+editor_terminal = false
 ```
 
 ### Resolution chains
@@ -54,7 +57,13 @@ The editor chain places config **between** the Tour-specific env (`$TOUR_EDITOR`
 1. **Env beats config when the env is Tour-specific.** Matches the git convention (`GIT_EDITOR` overrides `core.editor`). A user who exports `TOUR_EDITOR=vim` for one terminal expects it to win over the persisted default — that's exactly what env vars are for.
 2. **Config beats env when the env is not Tour-specific.** `$VISUAL` / `$EDITOR` were set for git, `crontab`, `visudo`, anything. If the user explicitly told Tour "use Cursor" in `config.toml`, an ambient `$EDITOR=vim` from their shell rc should not silently win.
 
-Threading: `main.ts` calls `loadUserConfig(tourHome)` once before the verb switch; the result is passed into `resolveEditor(flag, env, configEditor)` (existing pure module from ADR 0032, signature extended by one optional arg) and inlined alongside `flag(flags, "reply-agent")` for the reply-agent surfaces (`tui.ts`, `serve.ts`).
+Threading: `main.ts` calls `loadUserConfig(tourHome)` with seeding enabled only inside explicit `tui` and `serve` branches. Bare `tour` keeps its smart-default behavior by reading an existing config with seeding disabled after it knows there is a Tour to open. The result is passed into `resolveEditor(flag, env, configEditor)` (existing pure module from ADR 0032, signature extended by one optional arg) and inlined alongside `flag(flags, "reply-agent")` for the reply-agent surfaces (`tui.ts`, `serve.ts`). `tour list`, `tour create`, `tour comment`, `tour show`, `tour close`, `tour delete`, `tour prune`, `tour pickup`, `tour --help`, `tour --version`, and `tour config show` do not trigger config auto-creation.
+
+### Auto-creation
+
+On explicit `tour tui` or `tour serve`, a missing config file is seeded with commented editor and reply-agent examples. The seed is written to a unique temp file under `$TOUR_HOME` and then renamed to `config.toml`, so concurrent first launches leave a complete file on disk. If two first launches race, the later rename overwrites the earlier seed with byte-identical contents. Existing `config.toml` files are read as-is and are never rewritten, preserving comments, blank lines, and key ordering.
+
+If seeding fails (permission denied, full disk, read-only `$TOUR_HOME`), Tour writes a stderr warning naming the path and underlying error, then proceeds with empty config. A first launch must not fail only because the optional defaults file could not be created.
 
 ### Loader strictness
 
@@ -78,26 +87,25 @@ editor       = "code -g {file}:{line}"     (from $TOUR_EDITOR)
 
 Sources per key: `config`, `$TOUR_EDITOR`, `$VISUAL`, `$EDITOR`, or `default` (null). `show` takes no flags — its job is "what would Tour pick with no flags?" not "simulate a hypothetical flag combination."
 
-`show` is the **one command that survives a malformed config file**: catches the load error and renders `Config file: <path> (UNREADABLE: <error>)`, then prints env-resolved values for keys whose chain doesn't depend on the broken file. Every other command still hard-fails per the loader strictness rule above. The asymmetry is honest — `show` exists to diagnose the resolver, so it makes sense for it to be more tolerant than commands that consume the resolver.
+`show` is the **diagnostic command that never seeds**: if the file is absent, it renders `Config file: <path> (does not exist)`. If the file is malformed, it catches the load error and renders `Config file: <path> (UNREADABLE: <error>)`, then prints env-resolved values for keys whose chain doesn't depend on the broken file. Commands that consume config (`tour tui`, `tour serve`) still hard-fail on malformed existing files per the loader strictness rule above.
 
 ### Discoverability
 
 - **`tour --help`:** add the `tour config show` line to USAGE and a short "Defaults:" block at the bottom that prints the precedence chain in plain English. Lands an existing gap too — the current USAGE doesn't document `$TOUR_EDITOR` either.
-- **First-run banner** (`firstRunBanner` in `src/main.ts`): one new line next to the existing "Tours live at" line — `Defaults at: ~/.tour/config.toml (optional; run \`tour config show\`)`.
-- **No auto-creation.** Tour does not write an empty `config.toml` on first run; the missing file is the documented happy path.
+- **First-run banner** (`firstRunBanner` in `src/main.ts`): one line next to the existing "Tours live at" line names the config path and says it is auto-created by explicit `tour tui` / `tour serve`.
 
 ## Consequences
 
 - **One typed identifier instead of two on every launch.** `tour serve` and `tour tui` start with the right agent and the right editor with no flags. The CLI flag still wins for one-off overrides.
 - **The `$TOUR_EDITOR` env-var users keep working unchanged.** Their existing setup beats the new config layer; no migration.
 - **Reply-agent gains a persistence story for the first time.** Before this ADR, every `tour serve` / `tour tui` invocation either typed the flag or got no reply-agent at all.
-- **Config-load is a new failure point in `main.ts`.** A malformed file fails *every* command (including `tour list`, `tour create`). The user fixes the file once; the alternative — silent ignore — costs more in support load than the brief inconvenience of a loud failure.
+- **Config-load is a launch-surface failure point only.** A malformed file fails `tour tui` / `tour serve`, and bare `tour` when it has an existing Tour to smart-open, where the values are consumed. Read-only / one-shot verbs do not load the file and keep their previous no-defaults behavior.
 - **`tour config show` is the diagnostic surface for the new resolution chain.** Without it, debugging "why is Tour picking vim?" means bisecting against the chain with `unset` / `mv` gestures. With it, one command answers the question.
 - **No round-trip writer means user-formatted files are safe.** Comments, blank lines, and ordering survive Tour-side reads. If `set` / `get` is ever added, that decision will need to take the comment-preservation question seriously.
 
 ## Small contracts pinned
 
-- **The file is optional.** Missing file → empty config → resolver behaves exactly as it did before this ADR. Users who only use CLI flags or env vars are unaffected.
+- **The file is optional until a launch surface seeds it.** Missing file → empty config → resolver behaves exactly as it did before this ADR; `tour tui` / `tour serve` also create the commented seed for user discovery. Users who only use CLI flags or env vars are unaffected.
 - **Schema is flat for now.** Adding a `[section]` header later requires reading both shapes; the migration cost is small and additive. Sectioning *now* would carry no benefit (two scalars).
 - **No `$TOUR_REPLY_AGENT`.** The asymmetry with `$TOUR_EDITOR` is deliberate (no shell-env convention to compose with). If field evidence ever shows users want it, the addition is three lines in the resolver — same easy reversibility as user → repo scope.
 - **Config provenance leaks into reply-agent template errors.** Without that breadcrumb, the user sees the same error whether the bad template came from `--reply-agent`, the config, or a future env var — three different files to inspect.

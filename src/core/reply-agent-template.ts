@@ -2,19 +2,13 @@ import {
   renderCommandTemplate,
   type CommandTemplateValidationError,
 } from "./command-template.js";
+import { USER_CONFIG_SEED } from "./user-config-seed.js";
 
 export const REPLY_AGENT_PLACEHOLDERS = [
   "systemPrompt",
   "userPrompt",
   "combinedPrompt",
 ] as const;
-
-const REPLY_AGENT_EXAMPLES = `Examples:
-reply_agent = "claude --print --allowedTools Read,Grep,Glob,Bash --system-prompt {systemPrompt} {userPrompt}"
-reply_agent = "codex exec --skip-git-repo-check {combinedPrompt}"
-reply_agent = "gemini --prompt {combinedPrompt}"
-reply_agent = "opencode run {combinedPrompt}"
-reply_agent = "pi --print --allowedTools Read,Grep,Glob,Bash --system-prompt {systemPrompt} {userPrompt}"`;
 
 function validPlaceholderLabels(): string[] {
   return REPLY_AGENT_PLACEHOLDERS.map((name) => `{${name}}`);
@@ -42,7 +36,7 @@ function formatMissingPlaceholderError(template: string, sourcePath?: string): s
 Reply-agent templates must include at least one Tour prompt placeholder.
 Placeholders: ${validPlaceholderLabels().join(", ")}
 
-${REPLY_AGENT_EXAMPLES}`;
+${USER_CONFIG_SEED}`;
 }
 
 export function validateReplyAgentTemplate(

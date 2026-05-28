@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { describe, expect, it, vi } from "vitest";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadUserConfig } from "../../src/core/user-config.js";
+import { USER_CONFIG_SEED } from "../../src/core/user-config-seed.js";
 
 async function tempTourHome(): Promise<string> {
   return mkdtemp(join(tmpdir(), "tour-user-config-"));
@@ -23,10 +24,55 @@ describe("loadUserConfig", () => {
     });
   });
 
-  it("returns an empty config when config.toml is missing", async () => {
+  it("writes the seed file and returns an empty config when config.toml is missing", async () => {
     const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
 
     await expect(loadUserConfig(tourHome)).resolves.toEqual({});
+    await expect(readFile(configPath, "utf8")).resolves.toBe(USER_CONFIG_SEED);
+  });
+
+  it("does not overwrite an existing config.toml", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+    const content =
+      '# my comments stay here\neditor = "code -g {file}:{line}"\n\nreply_agent = "codex exec {combinedPrompt}"\n';
+    await writeFile(configPath, content);
+
+    await expect(loadUserConfig(tourHome)).resolves.toEqual({
+      editor: "code -g {file}:{line}",
+      replyAgent: "codex exec {combinedPrompt}",
+    });
+    await expect(readFile(configPath, "utf8")).resolves.toBe(content);
+  });
+
+  it("warns and returns an empty config when the seed write fails", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    await chmod(tourHome, 0o500);
+
+    try {
+      await expect(loadUserConfig(tourHome)).resolves.toEqual({});
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`could not write ${configPath}`),
+      );
+      expect(warn.mock.calls[0]?.[0]).toContain("continuing with empty config");
+    } finally {
+      await chmod(tourHome, 0o700);
+      warn.mockRestore();
+    }
+  });
+
+  it("leaves a complete seed file after concurrent first loads", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+
+    await expect(Promise.all([loadUserConfig(tourHome), loadUserConfig(tourHome)])).resolves.toEqual([
+      {},
+      {},
+    ]);
+    await expect(readFile(configPath, "utf8")).resolves.toBe(USER_CONFIG_SEED);
   });
 
   it("returns an empty config for an empty config.toml", async () => {

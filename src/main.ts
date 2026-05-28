@@ -88,7 +88,7 @@ function firstRunBanner(tourStoreRoot: string, configPath: string): string {
 
   No tours found for this worktree.
   Tours live at: ${tourStoreRoot}
-  Defaults at: ${configPath} (optional; run \`tour config show\`)
+  Defaults at: ${configPath} (auto-created on \`tour tui\` / \`tour serve\`)
   Tours from other worktrees are hidden by default; run:
     tour list --all
 
@@ -142,7 +142,6 @@ async function main(): Promise<void> {
 
     const { repoRoot: cwd, tourStoreRoot, worktreeStamp } =
       await resolveTourLocation(process.cwd());
-    const userConfig = await loadUserConfig(tourHomePath);
     const configPath = join(tourHomePath, "config.toml");
 
     switch (command) {
@@ -235,7 +234,8 @@ async function main(): Promise<void> {
         break;
       }
 
-      case "tui":
+      case "tui": {
+        const userConfig = await loadUserConfig(tourHomePath);
         await tui({
           tourId: positional[0],
           cwd,
@@ -246,8 +246,10 @@ async function main(): Promise<void> {
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig, cwd),
         });
         break;
+      }
 
       case "serve": {
+        const userConfig = await loadUserConfig(tourHomePath);
         const portFlag = flag(flags, "port");
         await serve({
           port: portFlag !== undefined ? parseInt(portFlag, 10) : defaultPreferredPort(),
@@ -293,6 +295,7 @@ async function main(): Promise<void> {
               ? isOnPath("open")
               : isOnPath("xdg-open"),
         });
+        const userConfig = await loadUserConfig(tourHomePath, { autoCreate: false });
         const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig, cwd);
         const replyAgent = resolveReplyAgentTemplate(
           flag(flags, "reply-agent"),

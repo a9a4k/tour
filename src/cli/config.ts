@@ -52,7 +52,7 @@ export async function configShow(
   let fileStatus: string;
 
   try {
-    config = await loadUserConfig(tourHomePath);
+    config = await loadUserConfig(tourHomePath, { autoCreate: false });
     fileStatus = existsSync(configPath) ? "exists" : "does not exist";
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -434,18 +434,18 @@ describe("CLI integration", () => {
       expect(result.stdout).toContain("No tours found");
     });
 
-    it("fails when Tour config is malformed", async () => {
+    it("does not load Tour config for list", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude\n');
 
       const result = await run(["list"], repo, { tourHome });
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain(join(tourHome, "config.toml"));
-      expect(result.stderr).toContain("Malformed Tour config");
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("No tours found");
     });
 
-    it("validates reply_agent templates at config load", async () => {
+    it("does not validate reply_agent templates for verbs that do not consume config", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claud"\n');
 
@@ -454,10 +454,45 @@ describe("CLI integration", () => {
         tourHome,
       });
 
-      expect(listResult.exitCode).toBe(1);
-      expect(listResult.stderr).toContain("Invalid reply_agent");
-      expect(createResult.exitCode).toBe(1);
-      expect(createResult.stderr).toContain("Invalid reply_agent");
+      expect(listResult.exitCode).toBe(0);
+      expect(createResult.exitCode).toBe(0);
+      expect(JSON.parse(createResult.stdout).id).toMatch(/^\d{4}-\d{2}-\d{2}/);
+    });
+
+    it("does not auto-create config.toml for read-only and one-shot verbs", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      const configPath = join(tourHome, "config.toml");
+
+      const created = await run(["create", "--head", "HEAD", "--json"], repo, {
+        tourHome,
+      });
+      expect(created.exitCode).toBe(0);
+      expect(existsSync(configPath)).toBe(false);
+      const tour = JSON.parse(created.stdout);
+
+      const listResult = await run(["list", "--json"], repo, { tourHome });
+      const showResult = await run(["show", tour.id, "--json"], repo, { tourHome });
+      const commentResult = await run(
+        [
+          "comment", tour.id,
+          "--file", "hello.txt",
+          "--side", "additions",
+          "--line", "1",
+          "--body", "no config write",
+          "--json",
+        ],
+        repo,
+        { tourHome },
+      );
+      const closeResult = await run(["close", tour.id, "--json"], repo, {
+        tourHome,
+      });
+
+      expect(listResult.exitCode).toBe(0);
+      expect(showResult.exitCode).toBe(0);
+      expect(commentResult.exitCode).toBe(0);
+      expect(closeResult.exitCode).toBe(0);
+      expect(existsSync(configPath)).toBe(false);
     });
 
     it("supports --json", async () => {
@@ -516,6 +551,7 @@ describe("CLI integration", () => {
   describe("smart defaults", () => {
     it("bare tour prints the first-run banner when only another worktree has tours", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const configPath = join(tourHome, "config.toml");
       const linked = await createLinkedWorktree(repo);
       await run(
         ["create", "--head", "HEAD", "--title", "main worktree", "--json"],
@@ -528,13 +564,15 @@ describe("CLI integration", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("No tours found for this worktree");
       expect(result.stdout).toContain(
-        `Defaults at: ${join(tourHome, "config.toml")} (optional; run \`tour config show\`)`,
+        `Defaults at: ${join(tourHome, "config.toml")} (auto-created on \`tour tui\` / \`tour serve\`)`,
       );
       expect(result.stdout).toContain("tour list --all");
+      expect(existsSync(configPath)).toBe(false);
     });
 
     it("tour tui without an id ignores tours from another worktree", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-shared-home-"));
+      const configPath = join(tourHome, "config.toml");
       const linked = await createLinkedWorktree(repo);
       await run(
         ["create", "--head", "HEAD", "--title", "main worktree", "--json"],
@@ -546,12 +584,16 @@ describe("CLI integration", () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No open tours");
+      expect(await readFile(configPath, "utf8")).toContain(
+        '# reply_agent = "claude --print',
+      );
     });
   });
 
   describe("config show", () => {
     it("reports missing config and default values", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
+      const configPath = join(tourHome, "config.toml");
 
       const result = await run(["config", "show"], repo, {
         tourHome,
@@ -559,11 +601,12 @@ describe("CLI integration", () => {
       });
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (does not exist)
+      expect(result.stdout).toBe(`Config file: ${configPath} (does not exist)
 
 reply_agent = null (from default)
 editor      = null (from default)
 editor_terminal = false (from default)`);
+      expect(existsSync(configPath)).toBe(false);
     });
 
     it("reports both values from Tour config", async () => {

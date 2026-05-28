@@ -1,8 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseTOML } from "smol-toml";
 import { validateEditorTemplate } from "./editor-config.js";
 import { validateReplyAgentTemplate } from "./reply-agent-template.js";
+import { USER_CONFIG_SEED } from "./user-config-seed.js";
 
 export interface UserConfig {
   replyAgent?: string;
@@ -12,11 +14,34 @@ export interface UserConfig {
 
 const VALID_KEYS = ["reply_agent", "editor", "editor_terminal"] as const;
 
+interface LoadUserConfigOptions {
+  autoCreate?: boolean;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function loadUserConfig(tourHome: string): Promise<UserConfig> {
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+async function writeSeedConfig(configPath: string, tourHome: string): Promise<void> {
+  const tmpPath = join(tourHome, `.config.toml.${process.pid}.${randomUUID()}.tmp`);
+  await mkdir(tourHome, { recursive: true });
+  try {
+    await writeFile(tmpPath, USER_CONFIG_SEED, { flag: "w" });
+    await rename(tmpPath, configPath);
+  } catch (err) {
+    await rm(tmpPath, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+export async function loadUserConfig(
+  tourHome: string,
+  opts: LoadUserConfigOptions = {},
+): Promise<UserConfig> {
   const configPath = join(tourHome, "config.toml");
   let content: string;
   try {
@@ -28,6 +53,15 @@ export async function loadUserConfig(tourHome: string): Promise<UserConfig> {
       "code" in err &&
       err.code === "ENOENT"
     ) {
+      if (opts.autoCreate ?? true) {
+        try {
+          await writeSeedConfig(configPath, tourHome);
+        } catch (writeErr) {
+          console.error(
+            `could not write ${configPath} (${errorMessage(writeErr)}); continuing with empty config`,
+          );
+        }
+      }
       return {};
     }
     throw err;
@@ -36,7 +70,7 @@ export async function loadUserConfig(tourHome: string): Promise<UserConfig> {
   try {
     parsed = parseTOML(content);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     throw new Error(`Malformed Tour config at ${configPath}: ${message}`);
   }
   if (!isRecord(parsed)) {
