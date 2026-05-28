@@ -42,10 +42,14 @@ export function chooseFirstWithSource<Source extends string>(
 }
 
 const EDITOR_PLACEHOLDERS = ["file", "line", "workspace"] as const;
+const EDITOR_PLACEHOLDER_SET = new Set<string>(EDITOR_PLACEHOLDERS);
+
+function editorTemplateLocation(configPath?: string): string {
+  return configPath === undefined ? "Editor template" : `Editor template in ${configPath}`;
+}
 
 export function invalidEditorTemplateMessage(value: string, configPath?: string): string {
-  const location =
-    configPath === undefined ? "Editor template" : `Editor template in ${configPath}`;
+  const location = editorTemplateLocation(configPath);
   return `${location} must include {file}. Rejected value: ${JSON.stringify(value)}
 Placeholders: {file} required, {line} optional.
 Examples:
@@ -61,12 +65,9 @@ export function validateEditorTemplate(value: string, configPath?: string): void
   if (!placeholders.includes("file")) {
     throw new Error(invalidEditorTemplateMessage(value, configPath));
   }
-  const unknown = placeholders.find(
-    (name) => !(EDITOR_PLACEHOLDERS as readonly string[]).includes(name),
-  );
+  const unknown = placeholders.find((name) => !EDITOR_PLACEHOLDER_SET.has(name));
   if (unknown !== undefined) {
-    const location =
-      configPath === undefined ? "Editor template" : `Editor template in ${configPath}`;
+    const location = editorTemplateLocation(configPath);
     throw new Error(
       `${location} contains unknown placeholder "{${unknown}}". Valid placeholders: {file}, {line}, {workspace}`,
     );
@@ -108,14 +109,14 @@ export function resolveEditor(
   const tokens = raw.trim().split(/\s+/);
   if (tokens.length === 0 || tokens[0] === "") return null;
   const bin = tokens[0];
-  const rest = tokens.slice(1);
+  const argvTemplate = tokens.slice(1).join(" ");
 
   return {
     template: raw,
     bin,
     argv: (file, line) =>
       renderCommandTemplate(
-        rest.join(" "),
+        argvTemplate,
         {
           file,
           line: String(line),
