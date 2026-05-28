@@ -13,12 +13,13 @@ describe("loadUserConfig", () => {
     const tourHome = await tempTourHome();
     await writeFile(
       join(tourHome, "config.toml"),
-      'reply_agent = "claude"\neditor = "code -g {file}:{line}"\n',
+      'reply_agent = "claude"\neditor = "code -g {file}:{line}"\neditor_terminal = true\n',
     );
 
     await expect(loadUserConfig(tourHome)).resolves.toEqual({
       replyAgent: "claude",
       editor: "code -g {file}:{line}",
+      editorTerminal: true,
     });
   });
 
@@ -46,11 +47,24 @@ describe("loadUserConfig", () => {
 
   it("loads editor without reply_agent", async () => {
     const tourHome = await tempTourHome();
-    await writeFile(join(tourHome, "config.toml"), 'editor = "nvim"\n');
+    await writeFile(join(tourHome, "config.toml"), 'editor = "nvim {file}"\n');
 
     await expect(loadUserConfig(tourHome)).resolves.toEqual({
-      editor: "nvim",
+      editor: "nvim {file}",
     });
+  });
+
+  it("throws with the config path and examples when editor omits {file}", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+    await writeFile(configPath, 'editor = "code"\n');
+
+    await expect(loadUserConfig(tourHome)).rejects.toThrow(
+      new RegExp(
+        `Editor template in ${configPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*code.*\\{file\\} required.*code -g \\{file\\}:\\{line\\}.*cursor.*idea.*vim.*nvim`,
+        "s",
+      ),
+    );
   });
 
   it("throws with the config path for malformed TOML", async () => {
@@ -66,7 +80,7 @@ describe("loadUserConfig", () => {
     await writeFile(join(tourHome, "config.toml"), 'editorr = "code"\n');
 
     await expect(loadUserConfig(tourHome)).rejects.toThrow(
-      /Unknown Tour config key "editorr".*reply_agent, editor/,
+      /Unknown Tour config key "editorr".*reply_agent, editor, editor_terminal/,
     );
   });
 

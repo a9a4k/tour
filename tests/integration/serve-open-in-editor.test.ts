@@ -94,7 +94,7 @@ async function startServerWithEditor(
   tourHome?: string,
 ): Promise<ServerHandle> {
   const logPath = join(dir, "argv.log");
-  const editorArg = editorOverride ?? fakeBin;
+  const editorArg = editorOverride ?? `${fakeBin} {file}:{line}`;
   // Sentinel "<NONE>" disables --editor; the resolver then falls back
   // to environment, which we strip below.
   const editorFlag = editorArg === "<NONE>" ? [] : ["--editor", editorArg];
@@ -219,7 +219,7 @@ describe("tour serve — Tour config editor default", () => {
     const setup = await setupRepoAndTour(tourHome);
     await writeFile(
       join(tourHome, "config.toml"),
-      `editor = "${setup.fakeBin}"\n`,
+      `editor = "${setup.fakeBin} {file}:{line}"\n`,
     );
     handle = await startServerWithEditor(
       setup.dir,
@@ -360,17 +360,18 @@ describe("POST /api/tours/:id/open-in-editor — file not in tour diff", () => {
 describe("POST /api/tours/:id/open-in-editor — terminal editor refused (409)", () => {
   let handle: ServerHandle;
   beforeAll(async () => {
-    const setup = await setupRepoAndTour();
-    // `vim` resolves through the editor-config terminal-allowlist
-    // (basename match). The fake-bin path is not the configured
-    // editor here; only the configured binary matters because
-    // EditorConfig.terminal is set by the basename allowlist, not by
-    // a real binary lookup.
+    const tourHome = await mkdtemp(join(tmpdir(), "tour-open-editor-home-"));
+    const setup = await setupRepoAndTour(tourHome);
+    await writeFile(
+      join(tourHome, "config.toml"),
+      `editor = "${setup.fakeBin} {file}"\neditor_terminal = true\n`,
+    );
     handle = await startServerWithEditor(
       setup.dir,
       setup.tourId,
       setup.fakeBin,
-      "vim",
+      "<NONE>",
+      tourHome,
     );
   }, 30000);
   afterAll(async () => {
@@ -454,7 +455,7 @@ describe("POST /api/tours/:id/open-in-editor — ENOENT (500)", () => {
       setup.dir,
       setup.tourId,
       setup.fakeBin,
-      "/definitely/not/on/path/fake-editor-xyz",
+      "/definitely/not/on/path/fake-editor-xyz {file}",
     );
   }, 30000);
   afterAll(async () => {

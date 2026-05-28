@@ -252,7 +252,7 @@ async function main(): Promise<void> {
           worktreeStamp,
           ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           configPath,
-          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd),
+          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig, cwd),
         });
         break;
 
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
           worktreeStamp,
           ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           configPath,
-          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd),
+          editor: resolveEditor(flag(flags, "editor"), process.env, userConfig, cwd),
         });
         break;
       }
@@ -302,7 +302,7 @@ async function main(): Promise<void> {
               ? isOnPath("open")
               : isOnPath("xdg-open"),
         });
-        const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd);
+        const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig, cwd);
         const replyAgent = resolveReplyAgent(
           flag(flags, "reply-agent"),
           userConfig.replyAgent,

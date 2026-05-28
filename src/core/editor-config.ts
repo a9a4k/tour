@@ -1,22 +1,13 @@
-// Editor resolution (PRD #349 / ADR 0032 / issue #352). Pure module: a
-// single resolution chain shared by both surfaces evaluates `--editor`
-// flag → $TOUR_EDITOR → Tour config → $VISUAL → $EDITOR → null and returns an
+// Editor resolution (PRD #466 / issue #468). Pure module: a single
+// resolution chain shared by both surfaces evaluates `--editor` flag →
+// $TOUR_EDITOR → Tour config → $VISUAL → $EDITOR → null and returns an
 // EditorConfig that downstream code never re-parses.
-//
-// Template handling: if the configured value contains `{file}` and/or
-// `{line}`, substitute. `{workspace}` substitutes the current worktree
-// root when provided by the caller. Otherwise infer per binary basename
-// (code/cursor/codium → `-g {file}:{line}`; idea family → `--line
-// {line} {file}`; vim/nvim/nano/emacs/hx/vi/micro → `+{line} {file}`;
-// unknown → `{file}:{line}`). Spawn uses `execFile` with the parsed
-// argv (never `sh -c`) so paths with spaces or special characters are
-// injection-safe.
-//
-// Terminal-editor classification is a fixed allowlist by binary
-// basename: {vim, nvim, vi, nano, emacs, hx, micro}. Wrappers that
-// delegate to a terminal editor are not detected (out of scope).
+
+import { placeholdersIn, renderCommandTemplate } from "./command-template.js";
 
 export interface EditorConfig {
+  /** Raw command template selected by the resolution chain. */
+  template: string;
   /** The first token of the configured command. Carried as-is so a user
    *  who passes an absolute path keeps it; `spawn` accepts both. */
   bin: string;
@@ -24,9 +15,7 @@ export interface EditorConfig {
    *  element is the first arg passed to the binary; the binary itself
    *  is `bin`, not part of this list. */
   argv: (file: string, line: number) => string[];
-  /** True when the binary basename matches the terminal-editor
-   *  allowlist. The webapp refuses these; the TUI takes a different
-   *  spawn path (suspend / inherit / resume; lands in #355). */
+  /** True when `editor_terminal = true` is set in user config. */
   terminal: boolean;
 }
 
@@ -36,30 +25,9 @@ export interface EditorEnv {
   EDITOR?: string;
 }
 
-const TERMINAL_EDITORS = new Set([
-  "vim",
-  "nvim",
-  "vi",
-  "nano",
-  "emacs",
-  "hx",
-  "micro",
-]);
-
-const VSCODE_FAMILY = new Set(["code", "cursor", "codium"]);
-const JETBRAINS_FAMILY = new Set([
-  "idea",
-  "webstorm",
-  "pycharm",
-  "rubymine",
-  "clion",
-  "goland",
-  "phpstorm",
-]);
-
-function basename(p: string): string {
-  const slash = p.lastIndexOf("/");
-  return slash === -1 ? p : p.slice(slash + 1);
+export interface EditorConfigSource {
+  editor?: string;
+  editorTerminal?: boolean;
 }
 
 export function chooseFirstWithSource<Source extends string>(
@@ -73,20 +41,66 @@ export function chooseFirstWithSource<Source extends string>(
   return { value: null, source: "default" };
 }
 
+const EDITOR_PLACEHOLDERS = ["file", "line", "workspace"] as const;
+
+export function invalidEditorTemplateMessage(value: string, configPath?: string): string {
+  const location =
+    configPath === undefined ? "Editor template" : `Editor template in ${configPath}`;
+  return `${location} must include {file}. Rejected value: ${JSON.stringify(value)}
+Placeholders: {file} required, {line} optional.
+Examples:
+  code -g {file}:{line}
+  cursor -g {file}:{line}
+  idea --line {line} {file}
+  vim +{line} {file}
+  nvim +{line} {file}`;
+}
+
+export function validateEditorTemplate(value: string, configPath?: string): void {
+  const placeholders = placeholdersIn(value);
+  if (!placeholders.includes("file")) {
+    throw new Error(invalidEditorTemplateMessage(value, configPath));
+  }
+  const unknown = placeholders.find(
+    (name) => !(EDITOR_PLACEHOLDERS as readonly string[]).includes(name),
+  );
+  if (unknown !== undefined) {
+    const location =
+      configPath === undefined ? "Editor template" : `Editor template in ${configPath}`;
+    throw new Error(
+      `${location} contains unknown placeholder "{${unknown}}". Valid placeholders: {file}, {line}, {workspace}`,
+    );
+  }
+}
+
+function normalizeConfigSource(
+  config: string | EditorConfigSource | undefined,
+): { editor?: string; editorTerminal: boolean } {
+  if (typeof config === "string") {
+    return { editor: config, editorTerminal: false };
+  }
+  return {
+    editor: config?.editor,
+    editorTerminal: config?.editorTerminal ?? false,
+  };
+}
+
 export function resolveEditor(
   flag: string | undefined,
   env: EditorEnv,
-  configEditor?: string,
+  configEditor?: string | EditorConfigSource,
   repoRoot?: string,
 ): EditorConfig | null {
+  const config = normalizeConfigSource(configEditor);
   const { value: raw } = chooseFirstWithSource(
     { value: flag, source: "flag" },
     { value: env.TOUR_EDITOR, source: "$TOUR_EDITOR" },
-    { value: configEditor, source: "config" },
+    { value: config.editor, source: "config" },
     { value: env.VISUAL, source: "$VISUAL" },
     { value: env.EDITOR, source: "$EDITOR" },
   );
   if (raw === null) return null;
+  validateEditorTemplate(raw);
 
   // Split on whitespace into bin + args. Naive split is fine for the
   // common case; users with shell-quoted args in $EDITOR (`'code --wait'`)
@@ -95,41 +109,20 @@ export function resolveEditor(
   if (tokens.length === 0 || tokens[0] === "") return null;
   const bin = tokens[0];
   const rest = tokens.slice(1);
-  const base = basename(bin);
-  const terminal = TERMINAL_EDITORS.has(base);
-
-  const hasFile = rest.some((t) => t.includes("{file}"));
-  const hasLine = rest.some((t) => t.includes("{line}"));
-  const substituteWorkspace = (token: string): string =>
-    repoRoot === undefined
-      ? token
-      : token.replace(/\{workspace\}/g, repoRoot);
-  if (hasFile || hasLine) {
-    return {
-      bin,
-      argv: (file, line) =>
-        rest.map((t) =>
-          substituteWorkspace(t)
-            .replace(/\{file\}/g, file)
-            .replace(/\{line\}/g, String(line)),
-        ),
-      terminal,
-    };
-  }
-
-  const suffix = (file: string, line: number): string[] => {
-    if (VSCODE_FAMILY.has(base)) return ["-g", `${file}:${line}`];
-    if (JETBRAINS_FAMILY.has(base)) return ["--line", String(line), file];
-    if (TERMINAL_EDITORS.has(base)) return [`+${line}`, file];
-    return [`${file}:${line}`];
-  };
 
   return {
+    template: raw,
     bin,
-    argv: (file, line) => [
-      ...rest.map((t) => substituteWorkspace(t)),
-      ...suffix(file, line),
-    ],
-    terminal,
+    argv: (file, line) =>
+      renderCommandTemplate(
+        rest.join(" "),
+        {
+          file,
+          line: String(line),
+          workspace: repoRoot ?? "{workspace}",
+        },
+        EDITOR_PLACEHOLDERS,
+      ),
+    terminal: config.editorTerminal,
   };
 }

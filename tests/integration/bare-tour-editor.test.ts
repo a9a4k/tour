@@ -178,7 +178,7 @@ describe("bare `tour --editor` smart-default dispatch (issue #364)", () => {
     const logPath = join(setup.dir, "argv.log");
     const result = await spawnBareTour(
       bunPath,
-      ["--editor", setup.fakeBin],
+      ["--editor", `${setup.fakeBin} {file}:{line}`],
       setup.dir,
       {
         PATH: `${stubDir}:/usr/bin:/bin`,
@@ -238,7 +238,7 @@ describe("bare `tour --editor` smart-default dispatch (issue #364)", () => {
       {
         PATH: `${stubDir}:/usr/bin:/bin`,
         FAKE_EDITOR_LOG: logPath,
-        TOUR_EDITOR: setup.fakeBin,
+        TOUR_EDITOR: `${setup.fakeBin} {file}:{line}`,
       },
       10000,
     );
@@ -270,7 +270,7 @@ describe("bare `tour --editor` smart-default dispatch (issue #364)", () => {
     const setup = await createTempRepoWithTour(bunPath, tourHome);
     await writeFile(
       join(tourHome, "config.toml"),
-      `editor = "${setup.fakeBin}"\n`,
+      `editor = "${setup.fakeBin} {file}:{line}"\n`,
     );
     const stubDir = await makePathWithStubs(["xdg-open"]);
     const logPath = join(setup.dir, "argv.log");
