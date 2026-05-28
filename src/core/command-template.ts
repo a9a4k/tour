@@ -1,3 +1,9 @@
+const PLACEHOLDER_RE = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export function placeholdersIn(template: string): string[] {
+  return [...template.matchAll(PLACEHOLDER_RE)].map((m) => m[1]);
+}
+
 export type CommandTemplateValidationError =
   | {
       kind: "empty-template";

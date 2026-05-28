@@ -42,9 +42,9 @@ interface ServeArgs {
   worktreeStamp?: string;
   replyAgent?: string;
   configPath: string;
-  // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
-  // main.ts. Powers the POST /api/tours/<id>/open-in-editor handler;
-  // null when no editor was configured (the handler returns 412).
+  // PRD #466 / issue #468: resolved EditorConfig from main.ts. Powers
+  // the POST /api/tours/<id>/open-in-editor handler; null when no
+  // editor was configured (the handler returns 412).
   editor?: EditorConfig | null;
 }
 
@@ -461,8 +461,8 @@ export async function startServer(args: ServeArgs): Promise<void> {
 
         // PRD #349 / ADR 0032 / issue #353: webapp parity for `o`. The
         // server spawns the configured GUI editor on the browser's behalf
-        // via core/editor-spawn (shared with the TUI). Terminal-classified
-        // editors are refused with 409 — the server has no terminal to
+        // via core/editor-spawn (shared with the TUI). User-declared
+        // terminal editors are refused with 409 — the server has no terminal to
         // lend (physics, not policy). The tour-scoped path + the
         // file ∈ tour.diff.files check is the security boundary;
         // 127.0.0.1-only binding is the outer guard.

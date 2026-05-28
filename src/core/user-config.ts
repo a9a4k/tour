@@ -1,14 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseTOML } from "smol-toml";
+import { validateEditorTemplate } from "./editor-config.js";
 import { validateReplyAgentTemplate } from "./reply-agent-template.js";
 
 export interface UserConfig {
   replyAgent?: string;
   editor?: string;
+  editorTerminal?: boolean;
 }
 
-const VALID_KEYS = ["reply_agent", "editor"] as const;
+const VALID_KEYS = ["reply_agent", "editor", "editor_terminal"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -65,7 +67,16 @@ export async function loadUserConfig(tourHome: string): Promise<UserConfig> {
         `Invalid Tour config key "editor": expected string in ${configPath}`,
       );
     }
+    validateEditorTemplate(parsed.editor, configPath);
     config.editor = parsed.editor;
+  }
+  if (parsed.editor_terminal !== undefined) {
+    if (typeof parsed.editor_terminal !== "boolean") {
+      throw new Error(
+        `Invalid Tour config key "editor_terminal": expected boolean in ${configPath}`,
+      );
+    }
+    config.editorTerminal = parsed.editor_terminal;
   }
   return config;
 }

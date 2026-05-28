@@ -1,6 +1,6 @@
 # Open-in-editor — server-spawned, terminal editors refused over webapp
 
-> **Status:** Cross-surface. Adds a new `o` keybinding (lowercase, per ADR 0030) that opens the file under the cursor in the user's configured editor at the resolved line. The TUI spawns the editor in-process; the webapp routes through `POST /api/tours/<id>/open-in-editor` so the same `tour` server does the spawn. Terminal editors (`vim`, `nvim`, `nano`, `emacs`, `hx`, `vi`, `micro`) are honored from the TUI (suspend / inherit / resume, lazygit-style) and refused from the webapp with a footer message. Editor selection follows a single resolution chain shared by both surfaces: `--editor` flag → `$TOUR_EDITOR` → `$VISUAL` → `$EDITOR`. Complements ADR 0028 (footer parity) and ADR 0030 (key conventions).
+> **Status:** Cross-surface. Adds a new `o` keybinding (lowercase, per ADR 0030) that opens the file under the cursor in the user's configured editor at the resolved line. The TUI spawns the editor in-process; the webapp routes through `POST /api/tours/<id>/open-in-editor` so the same `tour` server does the spawn. Terminal editors are user-declared with `editor_terminal = true`: honored from the TUI (suspend / inherit / resume, lazygit-style) and refused from the webapp with a footer message. Editor selection follows a single resolution chain shared by both surfaces: `--editor` flag → `$TOUR_EDITOR` → `config.editor` → `$VISUAL` → `$EDITOR`. Complements ADR 0028 (footer parity) and ADR 0030 (key conventions).
 
 ## Why
 
@@ -32,16 +32,16 @@ The asymmetric handling of terminal editors falls out of physics, not policy: th
 A new pure module `src/core/editor-config.ts` resolves the editor at `main.ts` entry and threads the result into both `tui()` and `serve()`:
 
 ```
-flag(--editor) → env.TOUR_EDITOR → env.VISUAL → env.EDITOR → null
+flag(--editor) → env.TOUR_EDITOR → config.editor → env.VISUAL → env.EDITOR → null
 ```
 
 The TUI path spawns directly in-process. The webapp path posts to `POST /api/tours/<id>/open-in-editor` with body `{ file, line, side }`; the server validates that `file` is in the tour's diff (defense-in-depth against arbitrary spawn from a malicious local script) and spawns from the same resolved config.
 
-Argument syntax is **template with smart-default inference**: if the configured editor command contains `{file}`/`{line}` placeholders, substitute them; otherwise infer per binary name (`code|cursor|codium` → `-g {file}:{line}`; `idea|webstorm|…` → `--line {line} {file}`; `vim|nvim|nano|emacs|hx` → `+{line} {file}`; unknown → `{file}:{line}`). Spawn via `execFile` with parsed argv (never `sh -c`) so paths with spaces or special characters are injection-safe.
+Argument syntax is **template-only**: the configured editor command must contain `{file}` and may contain `{line}`. Tour substitutes placeholders and spawns via `execFile` with parsed argv (never `sh -c`) so paths with spaces or special characters are injection-safe. Tour does not infer argv suffixes from binary basenames; `editor = "code"` is invalid, while `editor = "code -g {file}:{line}"` is valid.
 
 ### Terminal editors honored in TUI, refused in webapp
 
-The set `{vim, nvim, vi, nano, emacs, hx, micro}` is classified as terminal-editor by binary basename. The two surfaces handle the set differently:
+`editor_terminal` is a boolean in Tour config, defaulting to `false`. The two surfaces handle `editor_terminal = true` differently:
 
 - **TUI + terminal editor**: pause the opentui renderer → `spawn(stdio: 'inherit')` → await exit → resume the renderer. Mirrors `git commit`'s editor dance. Exit code is not surfaced — `:q` vs `:cq` in vim has no semantic meaning for `o` (no follow-up step to abort).
 - **TUI + GUI editor**, **webapp + GUI editor**: `spawn(detached: true, stdio: 'ignore')` → `unref()` → race a 200ms timer against the `exit` / `error` events. ENOENT or non-zero exit inside the window → footer error; otherwise → footer "Opened foo.ts:42". The 200ms window also subsumes the terminal/GUI exit-handling distinction for GUI editors that exit cleanly: a real failure dies in <50ms; a healthy spawn doesn't exit at all in the window.
@@ -69,7 +69,7 @@ The resolution mirrors `y` (yank-file-path) and `e` (expand-file-all): row curso
 
 - **`o` is lowercase by ADR 0030 derivation, not judgment.** The action operates on the cursor's target (row / card / sidebar file). On a degenerate cursor it's a labelled no-op. That is structurally identical to `e` and `y`. Future "disruption" arguments do not promote it to `Shift+O`; the cut is scope, not magnitude.
 - **The lazygit/tig/k9s `e` convention is acknowledged and declined.** Tour's `e` is already `expand-file-all` (issue #297). Rebinding `e` would either churn shipped muscle memory or require co-opting `Shift+E`, which ADR 0030 reserves for a future *global* expand-all-files. `o` for "open" is the second-best mnemonic; one-time recalibration for lazygit-trained users is mitigated by the footer hint legend.
-- **Terminal-editor classification is by binary basename, not capability detection.** A fixed allowlist (`vim`, `nvim`, `vi`, `nano`, `emacs`, `hx`, `micro`) keeps the rule readable and easy to test. Wrappers (`vim-wrapper.sh`) that resolve to a terminal editor are not detected; users with such setups can specify a GUI alias or accept the GUI-path code path's failure mode.
+- **Terminal-editor classification is user-declared, not inferred.** Tour reads `editor_terminal = true` from config and otherwise assumes `false`. Wrappers (`vim-wrapper.sh`) and less common terminal editors work because the user declares the process class explicitly; Tour carries no basename allowlist.
 - **The 200ms early-failure window is a heuristic, not a guarantee.** Editors that fork-and-fail slower than 200ms will look like a successful launch from `o`'s perspective; the user discovers via the editor's own error reporting. Acceptable trade-off — tightening the window risks false negatives on slow disks.
 - **`side` is carried in the API body even though slice 1 ignores it.** Adding a future staleness warning that reasons over which side the line came from costs zero protocol churn.
 - **No new mouse affordance.** `o` is keyboard-only, mirroring `y`'s precedent. Footer-hint legends in both panes surface `o: open` next to `y` so mouse-only users can still discover it. A `↗` icon next to the file header's `↕` is the cheapest viable upgrade if feedback demands it.
@@ -86,7 +86,7 @@ The editor template language gains a third placeholder alongside `{file}` and `{
 
 - **Substitution timing: resolution-time, inside `resolveEditor`.** Add an optional fourth argument `repoRoot?: string` to `resolveEditor`; substitution happens once per Tour invocation when `EditorConfig` is built. The `argv(file, line)` closure signature is unchanged, so every downstream consumer (TUI editor-spawn, web `POST /api/tours/:id/open-in-editor`, integration tests) is unaffected. The spawn-time alternative — widening `argv` to `(file, line, workspace)` — was rejected as it propagates a context concern to every caller for a value they don't intrinsically care about.
 
-- **Substitution applies in both branches.** `{workspace}` is a per-token `.replace(...)` rule applied uniformly to `rest`, in both the template branch (fires on `{file}` / `{line}` presence) and the smart-default branch (fires when neither is present). Consequence: `editor = "code {workspace}"` is a valid, useful configuration — `{workspace}` substitutes inside `rest`, then the `code`-family smart-default suffix (`-g {file}:{line}`) is appended and itself substituted. The shortest path to "open my workspace at the right line" is one token.
+- **Substitution applies to explicit templates only.** `{workspace}` is a per-token substitution alongside `{file}` and `{line}`. Because editor resolution is template-only, `{workspace}` does not make `editor = "code {workspace}"` valid on its own; the template still needs `{file}`, for example `editor = "code {workspace} -g {file}:{line}"`.
 
 - **Optional arg with leave-literal fallback.** If `resolveEditor` is called without `repoRoot` and the configured value contains `{workspace}`, the token is left as the literal string `{workspace}`. Production never hits this case — `main.ts` only calls `resolveEditor` after `resolveTourLocation` succeeds (which requires a git working tree per ADR 0039). Tests that don't care about `{workspace}` can omit the arg without ceremony; tests that do exercise it pass `repoRoot` explicitly. A throw was considered and rejected as louder-than-warranted for a production-unreachable branch.
 
@@ -100,6 +100,4 @@ The editor template language gains a third placeholder alongside `{file}` and `{
 
 - The editor resolution chain (flag → `$TOUR_EDITOR` → Tour config → `$VISUAL` → `$EDITOR` → null) — unchanged.
 - The `execFile`-not-`sh-c` spawn posture — explicitly re-affirmed. `{workspace}` is substituted by Tour, not by a shell.
-- The smart-default-per-binary inference table (vscode-family, jetbrains-family, terminal-allowlist) — unchanged.
-- The terminal-editor classification — unchanged.
-- The `EditorConfig.argv(file, line)` signature — unchanged. The new `repoRoot` arg is captured in `resolveEditor`'s closure.
+- The `EditorConfig.argv(file, line)` signature — unchanged. The `repoRoot` arg is captured in `resolveEditor`'s closure.

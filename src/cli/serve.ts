@@ -11,8 +11,8 @@ interface ServeArgs {
   replyAgent?: string;
   replyAgentSourcePath?: string;
   configPath: string;
-  // PRD #349 / ADR 0032 / issue #353: resolved EditorConfig from
-  // main.ts (--editor → $TOUR_EDITOR → $VISUAL → $EDITOR → null).
+  // PRD #466 / issue #468: resolved EditorConfig from
+  // main.ts (--editor → $TOUR_EDITOR → config.editor → $VISUAL → $EDITOR → null).
   // Threads through to the POST /api/tours/<id>/open-in-editor handler.
   editor?: EditorConfig | null;
 }

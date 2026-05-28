@@ -1,69 +1,74 @@
 import { describe, it, expect } from "vitest";
 import { resolveEditor } from "../../src/core/editor-config.js";
 
-// Pure editor-config resolver (PRD #349 / ADR 0032 / issue #352).
+// Pure editor-config resolver (PRD #466 / issue #468).
 // Asserts the precedence chain (`--editor` > `$TOUR_EDITOR` > Tour config
-// > `$VISUAL` > `$EDITOR` > null), the template substitution semantics,
-// the smart-default inference table by binary basename, and the
-// terminal-editor classification. Pure-function input — caller passes
-// `env`, no process.env reads here.
+// > `$VISUAL` > `$EDITOR` > null), template-only argv rendering, and
+// user-declared terminal-editor classification.
 
 describe("resolveEditor — precedence", () => {
+  const flagTemplate = "code -g {file}:{line}";
+  const tourEditorTemplate = "cursor -g {file}:{line}";
+  const configTemplate = "idea --line {line} {file}";
+  const visualTemplate = "vim +{line} {file}";
+  const editorTemplate = "nvim +{line} {file}";
+
   it("flag wins over every env var", () => {
-    const cfg = resolveEditor("code -g", {
-      TOUR_EDITOR: "vim",
-      VISUAL: "emacs",
-      EDITOR: "nano",
+    const cfg = resolveEditor(flagTemplate, {
+      TOUR_EDITOR: tourEditorTemplate,
+      VISUAL: visualTemplate,
+      EDITOR: editorTemplate,
     });
     expect(cfg?.bin).toBe("code");
+    expect(cfg?.template).toBe(flagTemplate);
   });
 
   it("$TOUR_EDITOR wins over $VISUAL and $EDITOR when no flag", () => {
     const cfg = resolveEditor(undefined, {
-      TOUR_EDITOR: "code",
-      VISUAL: "vim",
-      EDITOR: "nano",
+      TOUR_EDITOR: tourEditorTemplate,
+      VISUAL: visualTemplate,
+      EDITOR: editorTemplate,
     });
-    expect(cfg?.bin).toBe("code");
+    expect(cfg?.bin).toBe("cursor");
   });
 
   it("$TOUR_EDITOR wins over config when no flag", () => {
     const cfg = resolveEditor(
       undefined,
-      { TOUR_EDITOR: "code" },
-      "vim",
+      { TOUR_EDITOR: tourEditorTemplate },
+      { editor: configTemplate },
     );
-    expect(cfg?.bin).toBe("code");
+    expect(cfg?.bin).toBe("cursor");
   });
 
   it("config wins over $VISUAL and $EDITOR when no flag and no TOUR_EDITOR", () => {
     const cfg = resolveEditor(
       undefined,
       {
-        VISUAL: "vim",
-        EDITOR: "nano",
+        VISUAL: visualTemplate,
+        EDITOR: editorTemplate,
       },
-      "code",
+      { editor: configTemplate },
     );
-    expect(cfg?.bin).toBe("code");
+    expect(cfg?.bin).toBe("idea");
   });
 
   it("flag wins over config", () => {
-    const cfg = resolveEditor("code", {}, "vim");
+    const cfg = resolveEditor(flagTemplate, {}, { editor: configTemplate });
     expect(cfg?.bin).toBe("code");
   });
 
   it("$VISUAL wins over $EDITOR when no flag and no TOUR_EDITOR", () => {
     const cfg = resolveEditor(undefined, {
-      VISUAL: "code",
-      EDITOR: "vim",
+      VISUAL: visualTemplate,
+      EDITOR: editorTemplate,
     });
-    expect(cfg?.bin).toBe("code");
+    expect(cfg?.bin).toBe("vim");
   });
 
   it("$EDITOR is the lowest-priority fallback", () => {
-    const cfg = resolveEditor(undefined, { EDITOR: "code" });
-    expect(cfg?.bin).toBe("code");
+    const cfg = resolveEditor(undefined, { EDITOR: editorTemplate });
+    expect(cfg?.bin).toBe("nvim");
   });
 
   it("returns null when no flag and no env vars are set", () => {
@@ -82,13 +87,19 @@ describe("resolveEditor — precedence", () => {
     const cfg = resolveEditor(undefined, {
       TOUR_EDITOR: "",
       VISUAL: "",
-      EDITOR: "code",
+      EDITOR: editorTemplate,
     });
-    expect(cfg?.bin).toBe("code");
+    expect(cfg?.bin).toBe("nvim");
   });
 });
 
 describe("resolveEditor — template substitution", () => {
+  it("rejects editor values that omit {file}", () => {
+    expect(() => resolveEditor("code", {})).toThrow(
+      /Editor template must include \{file\}/,
+    );
+  });
+
   it("substitutes {file} and {line} placeholders verbatim", () => {
     const cfg = resolveEditor("myedit --new-window {file}:{line}", {});
     expect(cfg).not.toBeNull();
@@ -110,20 +121,6 @@ describe("resolveEditor — template substitution", () => {
     ]);
   });
 
-  it("substitutes embedded {workspace} inside one argv token", () => {
-    const cfg = resolveEditor(
-      "code --folder={workspace} -g {file}:{line}",
-      {},
-      undefined,
-      "/repo/worktree",
-    );
-    expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
-      "--folder=/repo/worktree",
-      "-g",
-      "/repo/worktree/src/app.ts:42",
-    ]);
-  });
-
   it("leaves {workspace} literal when repoRoot is omitted", () => {
     const cfg = resolveEditor("code {workspace} -g {file}:{line}", {});
     expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
@@ -140,12 +137,25 @@ describe("resolveEditor — template substitution", () => {
       name: string;
       flag?: string;
       env: Parameters<typeof resolveEditor>[1];
-      config?: string;
+      config?: Parameters<typeof resolveEditor>[2];
     }> = [
-      { name: "flag", flag: raw, env: { TOUR_EDITOR: "vim" }, config: "nano" },
-      { name: "$TOUR_EDITOR", env: { TOUR_EDITOR: raw }, config: "nano" },
-      { name: "config", env: { VISUAL: "vim" }, config: raw },
-      { name: "$VISUAL", env: { VISUAL: raw, EDITOR: "vim" } },
+      {
+        name: "flag",
+        flag: raw,
+        env: { TOUR_EDITOR: "vim +{line} {file}" },
+        config: { editor: "nano {file}" },
+      },
+      {
+        name: "$TOUR_EDITOR",
+        env: { TOUR_EDITOR: raw },
+        config: { editor: "nano {file}" },
+      },
+      {
+        name: "config",
+        env: { VISUAL: "vim +{line} {file}" },
+        config: { editor: raw },
+      },
+      { name: "$VISUAL", env: { VISUAL: raw, EDITOR: "vim +{line} {file}" } },
       { name: "$EDITOR", env: { EDITOR: raw } },
     ];
 
@@ -164,124 +174,38 @@ describe("resolveEditor — template substitution", () => {
     expect(cfg!.argv("/p/x.ts", 7)).toEqual(["/p/x.ts"]);
   });
 
-  it("template with only {line} (no {file}) substitutes line only", () => {
-    const cfg = resolveEditor("myedit +{line}", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["+7"]);
-  });
-
   it("bin is the first word of the template", () => {
     const cfg = resolveEditor("myedit --new-window {file}:{line}", {});
     expect(cfg!.bin).toBe("myedit");
   });
 });
 
-describe("resolveEditor — smart-default inference by basename", () => {
-  it("code → -g {file}:{line}", () => {
-    const cfg = resolveEditor("code", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["-g", "/p/x.ts:7"]);
-  });
-
-  it("cursor → -g {file}:{line}", () => {
-    const cfg = resolveEditor("cursor", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["-g", "/p/x.ts:7"]);
-  });
-
-  it("codium → -g {file}:{line}", () => {
-    const cfg = resolveEditor("codium", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["-g", "/p/x.ts:7"]);
-  });
-
-  it("idea → --line {line} {file}", () => {
-    const cfg = resolveEditor("idea", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["--line", "7", "/p/x.ts"]);
-  });
-
-  it("webstorm → --line {line} {file}", () => {
-    const cfg = resolveEditor("webstorm", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["--line", "7", "/p/x.ts"]);
-  });
-
-  it("pycharm → --line {line} {file}", () => {
-    const cfg = resolveEditor("pycharm", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["--line", "7", "/p/x.ts"]);
-  });
-
-  it("rubymine / clion / goland / phpstorm → --line {line} {file}", () => {
-    for (const bin of ["rubymine", "clion", "goland", "phpstorm"]) {
-      const cfg = resolveEditor(bin, {});
-      expect(cfg!.argv("/p/x.ts", 7)).toEqual(["--line", "7", "/p/x.ts"]);
-    }
-  });
-
-  it("vim / nvim / nano / emacs / hx / vi / micro → +{line} {file}", () => {
-    for (const bin of ["vim", "nvim", "nano", "emacs", "hx", "vi", "micro"]) {
-      const cfg = resolveEditor(bin, {});
-      expect(cfg!.argv("/p/x.ts", 7)).toEqual(["+7", "/p/x.ts"]);
-    }
-  });
-
-  it("unknown binary → {file}:{line} (works for subl, gedit, kate)", () => {
-    const cfg = resolveEditor("subl", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["/p/x.ts:7"]);
-  });
-
-  it("smart-default uses the binary basename even with absolute paths", () => {
-    const cfg = resolveEditor("/usr/local/bin/code", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["-g", "/p/x.ts:7"]);
-    expect(cfg!.bin).toBe("/usr/local/bin/code");
-  });
-
-  it("flag with smart-default + extra args appends inferred suffix after the args", () => {
-    // A bare-binary form with no placeholders is the smart-default path —
-    // extra trailing args in the configured command are kept and the
-    // inferred (file, line) suffix is appended.
-    const cfg = resolveEditor("code --wait", {});
-    expect(cfg!.argv("/p/x.ts", 7)).toEqual(["--wait", "-g", "/p/x.ts:7"]);
-  });
-
-  it("substitutes {workspace} before appending code-family smart defaults", () => {
-    const cfg = resolveEditor("code {workspace}", {}, undefined, "/repo/worktree");
-    expect(cfg!.argv("/repo/worktree/src/app.ts", 42)).toEqual([
-      "/repo/worktree",
-      "-g",
-      "/repo/worktree/src/app.ts:42",
-    ]);
-  });
-});
-
 describe("resolveEditor — terminal-editor classification", () => {
-  it("classifies vim / nvim / vi / nano / emacs / hx / micro as terminal", () => {
-    for (const bin of ["vim", "nvim", "vi", "nano", "emacs", "hx", "micro"]) {
-      expect(resolveEditor(bin, {})!.terminal).toBe(true);
-    }
+  it("defaults to non-terminal", () => {
+    expect(resolveEditor("vim +{line} {file}", {})!.terminal).toBe(false);
   });
 
-  it("classifies code / cursor / codium / idea family / subl as GUI", () => {
-    for (const bin of [
-      "code",
-      "cursor",
-      "codium",
-      "idea",
-      "webstorm",
-      "pycharm",
-      "rubymine",
-      "clion",
-      "goland",
-      "phpstorm",
-      "subl",
-      "gedit",
-    ]) {
-      expect(resolveEditor(bin, {})!.terminal).toBe(false);
-    }
+  it("reads terminal classification from config.editor_terminal", () => {
+    const cfg = resolveEditor(undefined, {}, {
+      editor: "my-vim-wrapper.sh +{line} {file}",
+      editorTerminal: true,
+    });
+    expect(cfg!.terminal).toBe(true);
   });
 
-  it("terminal classification uses basename, not the absolute path", () => {
-    expect(resolveEditor("/usr/bin/vim", {})!.terminal).toBe(true);
-    expect(resolveEditor("/usr/local/bin/code", {})!.terminal).toBe(false);
+  it("does not infer terminal classification from the selected binary basename", () => {
+    expect(resolveEditor("vim +{line} {file}", {})!.terminal).toBe(false);
+    expect(resolveEditor("/usr/bin/vim +{line} {file}", {})!.terminal).toBe(
+      false,
+    );
   });
 
-  it("template-form retains classification of the first-word binary", () => {
-    expect(resolveEditor("vim +{line} {file}", {})!.terminal).toBe(true);
-    expect(resolveEditor("code -g {file}:{line}", {})!.terminal).toBe(false);
+  it("keeps editor_terminal config-sourced even when the editor template comes from a flag", () => {
+    const cfg = resolveEditor("code -g {file}:{line}", {}, {
+      editor: "vim +{line} {file}",
+      editorTerminal: true,
+    });
+    expect(cfg!.bin).toBe("code");
+    expect(cfg!.terminal).toBe(true);
   });
 });

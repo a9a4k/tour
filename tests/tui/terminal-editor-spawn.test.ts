@@ -47,6 +47,7 @@ afterAll(async () => {
 
 function cfg(bin: string): EditorConfig {
   return {
+    template: bin,
     bin,
     argv: (file, line) => [`+${line}`, file],
     terminal: true,

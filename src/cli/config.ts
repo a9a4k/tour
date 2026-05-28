@@ -36,6 +36,13 @@ function resolveEditor(config: UserConfig, env: ConfigEnv): ResolvedConfigValue 
   );
 }
 
+function resolveEditorTerminal(config: UserConfig): { value: boolean; source: "config" | "default" } {
+  if (config.editorTerminal !== undefined) {
+    return { value: config.editorTerminal, source: "config" };
+  }
+  return { value: false, source: "default" };
+}
+
 export async function configShow(
   tourHomePath: string,
   env: ConfigEnv = process.env,
@@ -54,9 +61,11 @@ export async function configShow(
 
   const replyAgent = resolveReplyAgent(config);
   const editor = resolveEditor(config, env);
+  const editorTerminal = resolveEditorTerminal(config);
 
   console.log(`Config file: ${configPath} (${fileStatus})
 
 reply_agent = ${renderValue(replyAgent.value)} (from ${replyAgent.source})
-editor      = ${renderValue(editor.value)} (from ${editor.source})`);
+editor      = ${renderValue(editor.value)} (from ${editor.source})
+editor_terminal = ${editorTerminal.value} (from ${editorTerminal.source})`);
 }

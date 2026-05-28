@@ -43,6 +43,7 @@ afterAll(async () => {
 
 function cfg(bin: string, opts: { argvTail?: (file: string, line: number) => string[] } = {}): EditorConfig {
   return {
+    template: bin,
     bin,
     argv:
       opts.argvTail ??

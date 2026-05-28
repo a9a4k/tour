@@ -562,14 +562,15 @@ describe("CLI integration", () => {
       expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (does not exist)
 
 reply_agent = null (from default)
-editor      = null (from default)`);
+editor      = null (from default)
+editor_terminal = false (from default)`);
     });
 
     it("reports both values from Tour config", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(
         join(tourHome, "config.toml"),
-        'reply_agent = "claude --print {userPrompt}"\neditor = "code -g {file}:{line}"\n',
+        'reply_agent = "claude --print {userPrompt}"\neditor = "code -g {file}:{line}"\neditor_terminal = true\n',
       );
 
       const result = await run(["config", "show"], repo, {
@@ -581,7 +582,8 @@ editor      = null (from default)`);
       expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
 
 reply_agent = "claude --print {userPrompt}" (from config)
-editor      = "code -g {file}:{line}" (from config)`);
+editor      = "code -g {file}:{line}" (from config)
+editor_terminal = true (from config)`);
     });
 
     it("reports {workspace} literally in editor from Tour config", async () => {
@@ -615,12 +617,13 @@ editor      = "code -g {file}:{line}" (from config)`);
       expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
 
 reply_agent = "claude --print {userPrompt}" (from config)
-editor      = null (from default)`);
+editor      = null (from default)
+editor_terminal = false (from default)`);
     });
 
     it("reports editor from config while reply_agent falls through to default", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
-      await writeFile(join(tourHome, "config.toml"), 'editor = "nvim"\n');
+      await writeFile(join(tourHome, "config.toml"), 'editor = "nvim {file}"\n');
 
       const result = await run(["config", "show"], repo, {
         tourHome,
@@ -631,12 +634,13 @@ editor      = null (from default)`);
       expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
 
 reply_agent = null (from default)
-editor      = "nvim" (from config)`);
+editor      = "nvim {file}" (from config)
+editor_terminal = false (from default)`);
     });
 
     it("$TOUR_EDITOR wins over editor from config", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
-      await writeFile(join(tourHome, "config.toml"), 'editor = "nvim"\n');
+      await writeFile(join(tourHome, "config.toml"), 'editor = "nvim {file}"\n');
 
       const result = await run(["config", "show"], repo, {
         tourHome,
@@ -686,13 +690,14 @@ editor      = "nvim" (from config)`);
       expect(result.stdout).toContain("Malformed Tour config");
       expect(result.stdout).toContain("reply_agent = null (from default)");
       expect(result.stdout).toContain('editor      = "code" (from $TOUR_EDITOR)');
+      expect(result.stdout).toContain("editor_terminal = false (from default)");
     });
 
     it("ignores config show flags", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(
         join(tourHome, "config.toml"),
-        'reply_agent = "claude --print {userPrompt}"\neditor = "code"\n',
+        'reply_agent = "claude --print {userPrompt}"\neditor = "code -g {file}:{line}"\n',
       );
 
       const result = await run(
@@ -703,7 +708,7 @@ editor      = "nvim" (from config)`);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('reply_agent = "claude --print {userPrompt}" (from config)');
-      expect(result.stdout).toContain('editor      = "code" (from config)');
+      expect(result.stdout).toContain('editor      = "code -g {file}:{line}" (from config)');
       expect(result.stdout).not.toContain("codex");
       expect(result.stdout).not.toContain('"vim"');
     });
