@@ -24,14 +24,14 @@ import type { Comment } from "./types.js";
 // Validates the comment, atomically acquires the per-tour reply lock,
 // and delegates to the shared `runDispatch` helper. The watcher's
 // auto-dispatch path was removed in issue #184 (ADR 0021); user action
-// — `s` in the TUI, "Send to {agent}" in the webapp — is the only path
+// — `s` in the TUI, "Request reply" in the webapp — is the only path
 // to a reply-agent spawn now.
 export interface RequestReplyOptions {
   cwd: string;
   tourStoreRoot?: string;
   tourId: string;
   commentId: string;
-  // The renderer-configured reply-agent name. Absent / empty means the
+  // The renderer-configured reply-agent template. Absent / empty means the
   // renderer was launched without `--reply-agent` and dispatch is refused
   // at the seam.
   agent?: string;

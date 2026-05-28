@@ -1266,6 +1266,16 @@ editor      = "nvim" (from config)`);
       expect(r.stdout).toContain("code {workspace} -g {file}:{line}");
     });
 
+    it("`tour --help` documents reply-agent template placeholders", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("Reply-agent template:");
+      expect(r.stdout).toContain("{systemPrompt}");
+      expect(r.stdout).toContain("{userPrompt}");
+      expect(r.stdout).toContain("{combinedPrompt}");
+      expect(r.stdout).toContain("claude --print --system-prompt {systemPrompt} {userPrompt}");
+    });
+
     it("`tour --help` documents config show", async () => {
       const r = await run(["--help"], repo);
       expect(r.exitCode).toBe(0);

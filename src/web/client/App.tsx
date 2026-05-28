@@ -136,10 +136,10 @@ function cssEscapeFile(value: string): string {
 
 interface AppProps {
   initialTourId: string | null;
-  // The renderer-configured reply-agent name (from `--reply-agent <name>`,
+  // The renderer-configured reply-agent template (from `--reply-agent`,
   // baked into the SPA via `__INITIAL_REPLY_AGENT__`). Null when the
   // server was launched without `--reply-agent`; the "Request reply"
-  // affordance and header chip both stay hidden in that case.
+  // affordance stays hidden in that case.
   replyAgent?: string | null;
   replyAgentConfigPath?: string | null;
 }
@@ -2541,9 +2541,9 @@ interface CommentCardProps {
   onCancelReply?: () => void;
   onCancelEdit?: () => void;
   replyLock?: ReplyLock | null;
-  // Reply-agent name from `--reply-agent <name>` (issue #184, PRD #181;
+  // Reply-agent template from `--reply-agent` (issue #184, PRD #181;
   // relabelled in issue #390 — the button now reads "Request reply",
-  // tooltip names the agent and clarifies the separate-session fact).
+  // tooltip names the configured template and clarifies the separate-session fact).
   // Null/undefined → the "Request reply" affordance is hidden.
   replyAgent?: string | null;
   replyAgentConfigPath?: string | null;

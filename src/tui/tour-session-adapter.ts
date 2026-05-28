@@ -65,7 +65,7 @@ export interface TuiTourSessionAdapterDeps {
    *  forces a re-render when the flag flips back to `false` so the probe
    *  re-runs against the settled scrollTop. */
   setScrollPending: (pending: boolean) => void;
-  // The renderer-configured reply-agent name (`--reply-agent`). Absent or
+  // The renderer-configured reply-agent template (`--reply-agent`). Absent or
   // empty means the renderer was launched without a reply-agent; the
   // `requestReply` adapter call no-ops, mirroring `core/reply-runner`'s
   // `no-reply-agent` seam.

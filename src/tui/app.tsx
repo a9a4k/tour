@@ -1275,7 +1275,7 @@ function App(props: AppProps) {
   // `s` is a no-op with a footer hint when:
   //  - no comment is focused (null cursor / row cursor),
   //  - the latest turn in the focused Thread is agent-authored,
-  //  - `--reply-agent` is unset,
+  //  - no reply-agent template is configured,
   //  - the lock is held by another in-flight dispatch on this tour.
   // The dispatch chain (Tour-session runtime → adapter → reply-runner) is
   // fire-and-forget — the watcher's lock + bundle events drive the in-
@@ -1285,7 +1285,7 @@ function App(props: AppProps) {
     // `s` is card-only (PRD #192 / ADR 0022). The keymap gates the
     // row case to a footer-hint no-op; this defends in depth.
     if (!cursorCardComment) {
-      flash("R: no comment under cursor — n/p to navigate");
+      flash("s: no comment under cursor — n/p to navigate");
       return;
     }
     if (!sendHintVerdict.enabled) {
@@ -1905,9 +1905,7 @@ function App(props: AppProps) {
         flash("r: no comment under cursor — n/p to navigate");
         return;
       case "noop-send-on-row":
-        // Issue #390 / ADR 0021 addendum: the request-reply verb is
-        // now `R` (shift-r). Status message follows.
-        flash("R: no comment under cursor — n/p to navigate");
+        flash("s: no comment under cursor — n/p to navigate");
         return;
       case "noop-comment-on-card":
         flash("c: on a card — j/k to land on a row first");

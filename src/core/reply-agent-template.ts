@@ -1,5 +1,4 @@
 import {
-  assertRenderedCommand,
   renderCommandTemplate,
   type CommandTemplateValidationError,
 } from "./command-template.js";
@@ -58,14 +57,8 @@ export function validateReplyAgentTemplate(
     substitutions,
     REPLY_AGENT_PLACEHOLDERS,
   );
-  try {
-    assertRenderedCommand(rendered);
-  } catch {
-    throw new Error(
-      Array.isArray(rendered)
-        ? "Invalid reply-agent template"
-        : formatValidationError(rendered),
-    );
+  if (!Array.isArray(rendered)) {
+    throw new Error(formatValidationError(rendered));
   }
   if (!hasKnownReplyAgentPlaceholder(template)) {
     throw new Error(formatMissingPlaceholderError(template, sourcePath));

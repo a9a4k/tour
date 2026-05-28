@@ -51,7 +51,7 @@ export interface CursorKeymapContext {
    *  on a human card with the lock held flashes a status instead of
    *  re-dispatching. */
   replyLockHeld: boolean;
-  /** `--reply-agent` configured agent name, if any. `s` is a hidden
+  /** `--reply-agent` configured template, if any. `s` is a hidden
    *  silent no-op when this is unset (the legend itself omits the
    *  `s: send to agent` hint per PRD #330 stories 7-8 / issue #390).
    *  When status is emitted for the lock-held branch, this is

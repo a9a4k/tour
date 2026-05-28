@@ -21,16 +21,18 @@ describe("spa shell html()", () => {
     expect(html()).toContain("window.__INITIAL_TOUR_ID__ = null");
   });
 
-  it("threads the configured reply-agent name into a window global (issue #184)", () => {
-    expect(html("abc123", "claude")).toContain(
-      'window.__INITIAL_REPLY_AGENT__ = "claude"',
+  it("threads the configured reply-agent template into a window global", () => {
+    expect(html("abc123", "claude --print {userPrompt}")).toContain(
+      'window.__INITIAL_REPLY_AGENT__ = "claude --print {userPrompt}"',
     );
     // Defaulting to null means "no --reply-agent" — both globals are nullable.
     expect(html()).toContain("window.__INITIAL_REPLY_AGENT__ = null");
   });
 
   it("threads the Tour config path into a window global", () => {
-    expect(html("abc123", "claude", "/tmp/tour-home/config.toml")).toContain(
+    expect(
+      html("abc123", "claude --print {userPrompt}", "/tmp/tour-home/config.toml"),
+    ).toContain(
       'window.__INITIAL_REPLY_AGENT_CONFIG_PATH__ = "/tmp/tour-home/config.toml"',
     );
     expect(html()).toContain("window.__INITIAL_REPLY_AGENT_CONFIG_PATH__ = null");

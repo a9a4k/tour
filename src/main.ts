@@ -51,8 +51,8 @@ const USAGE = `tour — local code walkthrough tool with AI comments
 
 Usage:
   tour                                  (open the best surface for your env: webapp on a desktop with a browser, TUI otherwise)
-  tour tui [<id>] [--reply-agent <name>] [--editor <cmd>]   (open TUI for a specific tour)
-  tour serve [--port 8687] [--open] [<id>] [--reply-agent <name>] [--editor <cmd>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
+  tour tui [<id>] [--reply-agent <template>] [--editor <cmd>]   (open TUI for a specific tour)
+  tour serve [--port 8687] [--open] [<id>] [--reply-agent <template>] [--editor <cmd>] (start webapp; 8687 = TOUR on T9, auto-falls-back if busy)
   tour create --head <ref> [--base <ref>] [--title <s>] [--force] [--json]
                                         (default --base: merge-base with HEAD's upstream when the branch is multi-commit; else HEAD^. Detached HEAD, no upstream, or single-commit branches fall back to HEAD^. --force overrides the duplicate-open-tour refusal.)
   tour comment <id> --file <f> --side <s> --line <n[-m]> --body <b> [--author <a>] [--as-agent|--as-human] [--json]
@@ -73,6 +73,10 @@ Usage:
 Defaults:
   --reply-agent uses: CLI flag, then $TOUR_HOME/config.toml, then none.
   --editor uses: CLI flag, then $TOUR_EDITOR, then $TOUR_HOME/config.toml, then $VISUAL, then $EDITOR, then none.
+
+Reply-agent template:
+  Whitespace-tokenized command with at least one of {systemPrompt}, {userPrompt}, {combinedPrompt}.
+  Example: reply_agent = "claude --print --system-prompt {systemPrompt} {userPrompt}"
 
 Editor template:
   {file} = absolute file path, {line} = line number, {workspace} = current worktree root.
