@@ -14,8 +14,7 @@ export interface KeymapContext {
    *  diff row Enter is a noop. */
   cursorOnInteractive: boolean;
   /** Whether the cursor sits on a Comment card (PRD #192 / ADR 0022).
-   *  Routes the row-kind-aware dispatch: `r` and `R` (issue #390:
-   *  shift-r, formerly `s`) fire only when this is true; `c` fires
+   *  Routes the row-kind-aware dispatch: `r` and `s` fire only when this is true; `c` fires
    *  only when this is false (and the cursor isn't on an interactive
    *  row either). On a card / row mismatch the action is a labelled
    *  no-op the App shell surfaces via the footer hint. */
@@ -140,12 +139,9 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   // bind cursor-target actions on the same axis (e.g. `c` for comment,
   // `t` is unbound).
   //
-  // Issue #390 / ADR 0021 addendum: `R` (shift-r) is the request-reply
-  // verb — same letter as bare `r: reply`, case-shifted to mark
-  // "different actor" (the configured reply-agent runs the dispatch in
-  // a separate session). Card-only; off-card / sidebar surfaces a
-  // labelled no-op via `noop-send-on-row`, mirroring the lowercase `r`
-  // route. The prior `s` binding is retired.
+  // `s` sends the focused human Comment to the configured reply-agent.
+  // Card-only; off-card / sidebar surfaces a labelled no-op via
+  // `noop-send-on-row`, mirroring the lowercase `r` route.
   if (!key.ctrl && key.shift && key.name === "l") {
     return { type: "toggle-layout" };
   }
@@ -158,14 +154,13 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
   if (!ctx.sidebarFocused && !key.ctrl && key.shift && key.name === "c") {
     return { type: "toggle-all-threads-collapse" };
   }
-  if (!key.ctrl && key.shift && key.name === "r") {
-    if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
-    return { type: "send-to-agent" };
-  }
-
   if (!key.ctrl && !key.shift) {
     if (key.name === "n") return { type: "next-comment" };
     if (key.name === "p") return { type: "prev-comment" };
+    if (key.name === "s") {
+      if (!ctx.cursorOnCard) return { type: "noop-send-on-row" };
+      return { type: "send-to-agent" };
+    }
     // Issue #297: `e` dispatches per-file Expand-all on the cursored
     // file. The keyboard path mirrors the file-header's `↕` mouse
     // affordance — both end on `expansion.expandFileAll(cursor.file)`.
@@ -215,7 +210,7 @@ export function dispatchKey(key: KeyInput, ctx: KeymapContext): KeyAction {
       return { type: "open-reply-composer" };
     }
     // Issue #390 / ADR 0021 addendum: the request-reply verb moved to
-    // shift-r above (capital-letter cluster). Bare `s` is now unbound.
+    // `s` is handled above with the other cursor-target actions.
     // ADR 0036 Slice D / issue #388. `d` is card-only — opens the delete-
     // confirm modal on the cursored Comment. Off-card presses surface a
     // labelled no-op in the footer, matching the existing

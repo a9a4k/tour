@@ -6,7 +6,6 @@ import {
   createReply,
   readComments,
 } from "../core/comments-store.js";
-import { assertShippedAgent } from "../agents/index.js";
 import { readReplyLock } from "../core/reply-lock.js";
 import { loadTourBundle } from "../core/tour-bundle.js";
 import type { EditorConfig } from "../core/editor-config.js";
@@ -32,13 +31,6 @@ export type { WriteCommentInput };
 
 export async function tui(args: TuiArgs): Promise<void> {
   const tourStoreRoot = args.tourStoreRoot ?? args.cwd;
-  // Hard-fail at startup if the requested reply-agent isn't shipped, with
-  // the list of available names — misconfiguration must surface up-front,
-  // not at first reply (PRD #73, ADR 0012). Shipped agents are bundled in
-  // the binary; there is no on-disk fallback.
-  if (args.replyAgent) {
-    assertShippedAgent(args.replyAgent, args.replyAgentSourcePath);
-  }
 
   let tourId: string;
 

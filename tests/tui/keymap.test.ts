@@ -614,36 +614,32 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("r", { ctrl: true }), diffPane).type).toBe("noop");
   });
 
-  // Issue #390 / ADR 0021 addendum: the request-reply verb moved from
-  // bare `s` to `R` (shift-r) — same letter as `r: reply`, case-shifted
-  // to mark "different actor" (the reply-agent runs the dispatch in a
-  // separate session). Action type stays `send-to-agent` so the
-  // reducer / runtime contracts are unchanged.
-  it("Shift+R returns send-to-agent when cursor is on a card (issue #390, PRD #181 + #192)", () => {
-    expect(dispatchKey(k("r", { shift: true }), sidebarOnCard).type).toBe(
+  // Issue #467: `s` sends the focused Comment to the configured
+  // reply-agent. Action type stays `send-to-agent` so the reducer /
+  // runtime contracts are unchanged.
+  it("s returns send-to-agent when cursor is on a card (PRD #181 + #192)", () => {
+    expect(dispatchKey(k("s"), sidebarOnCard).type).toBe(
       "send-to-agent",
     );
-    expect(dispatchKey(k("r", { shift: true }), diffPaneOnCard).type).toBe(
+    expect(dispatchKey(k("s"), diffPaneOnCard).type).toBe(
       "send-to-agent",
     );
   });
 
-  it("Shift+R on a row returns noop-send-on-row (PRD #192 — card-only action)", () => {
-    expect(dispatchKey(k("r", { shift: true }), sidebar).type).toBe(
+  it("s on a row returns noop-send-on-row (PRD #192 — card-only action)", () => {
+    expect(dispatchKey(k("s"), sidebar).type).toBe(
       "noop-send-on-row",
     );
-    expect(dispatchKey(k("r", { shift: true }), diffPane).type).toBe(
+    expect(dispatchKey(k("s"), diffPane).type).toBe(
       "noop-send-on-row",
     );
   });
 
-  // Issue #390: bare `s` is no longer bound to the request-reply verb.
-  // It falls through to the default noop so no surprise dispatch happens.
-  it("bare s is unbound (issue #390 — request-reply moved to Shift+R)", () => {
-    expect(dispatchKey(k("s"), sidebar).type).toBe("noop");
-    expect(dispatchKey(k("s"), sidebarOnCard).type).toBe("noop");
-    expect(dispatchKey(k("s"), diffPane).type).toBe("noop");
-    expect(dispatchKey(k("s"), diffPaneOnCard).type).toBe("noop");
+  it("Shift+R is unbound", () => {
+    expect(dispatchKey(k("r", { shift: true }), sidebar).type).toBe("noop");
+    expect(dispatchKey(k("r", { shift: true }), sidebarOnCard).type).toBe("noop");
+    expect(dispatchKey(k("r", { shift: true }), diffPane).type).toBe("noop");
+    expect(dispatchKey(k("r", { shift: true }), diffPaneOnCard).type).toBe("noop");
   });
 
   // ADR 0036 Slice D / issue #388: `d` opens the delete-confirm modal on
@@ -689,7 +685,7 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("c"), sidebarOnCard).type).toBe("noop");
   });
 
-  it("Ctrl+R / Ctrl+S / Shift+S do not fire send-to-agent (issue #390 — only Shift+R fires)", () => {
+  it("Ctrl+R / Ctrl+S / Shift+S do not fire send-to-agent", () => {
     // Ctrl-decorated Shift+R is not the request-reply gesture.
     expect(dispatchKey(k("r", { ctrl: true, shift: true }), diffPaneOnCard).type).toBe(
       "noop",
@@ -697,8 +693,7 @@ describe("dispatchKey", () => {
     expect(dispatchKey(k("r", { ctrl: true, shift: true }), sidebar).type).toBe(
       "noop",
     );
-    // Bare `s` and modifier-decorated `s` are all unbound for the
-    // request-reply action after the issue #390 rebind.
+    // Modifier-decorated `s` is unbound for the request-reply action.
     expect(dispatchKey(k("s", { ctrl: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("s", { shift: true }), sidebar).type).toBe("noop");
     expect(dispatchKey(k("s", { ctrl: true }), diffPane).type).toBe("noop");

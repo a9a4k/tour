@@ -877,7 +877,7 @@ export function App({
     return seeded;
   }, [store, view]);
 
-  // Auto-recall (PRD #192 / ADR 0022). When `r` or `R` fires and the cursor's
+  // Auto-recall (PRD #192 / ADR 0022). When `r` or `s` fires and the cursor's
   // card is not in the viewport, smooth-scroll it to centre BEFORE mounting
   // the composer / dispatching the agent. The pure logic lives in
   // `./auto-recall.ts` so it can be unit-tested without mounting <App />.
@@ -1504,11 +1504,11 @@ export function App({
           return;
         }
         case "send-on-card": {
-          // PRD #192 / ADR 0022. `R` (shift-r, post issue #390) on a card
+          // PRD #192 / ADR 0022. `s` on a card
           // dispatches the latest human leaf in that thread to the
           // configured reply-agent. The latest-human-leaf rule is consumed
           // from `view.nav.sendTarget` (PRD #242), shared with the TUI's
-          // `R` dispatch. Hidden / disabled
+          // `s` dispatch. Hidden / disabled
           // cases (agent-card, already-replied, lock-held, no agent
           // configured) are silently skipped — the verdict gate is the
           // existing per-card `canSendToAgent` predicate.
@@ -2551,7 +2551,7 @@ interface CommentCardProps {
   // Cursor-landing callback (PRD #192 / ADR 0022 slice 2; broadened by
   // issue #411 / ADR 0037 mouse-path parity). Fires when the user clicks
   // anywhere on the card so the cursor follows the click — a subsequent
-  // keyboard `r` / `R` then targets the same node. Receives the comment id
+  // keyboard `r` / `s` then targets the same node. Receives the comment id
   // under the click: the top-level comment id when the click lands on the
   // parent header / body or on the collapsed one-liner, or a Reply id when
   // the click lands inside a `.ann-reply` div (ADR 0037 broadened cursor

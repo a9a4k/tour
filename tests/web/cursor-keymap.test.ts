@@ -110,42 +110,41 @@ describe("dispatchCursorKey: comment-at-cursor", () => {
   });
 });
 
-describe("dispatchCursorKey: r / R gated by cursor row kind (PRD #192, issue #390)", () => {
-  // Issue #390 / ADR 0021 addendum: the request-reply verb is `R`
-  // (shift-r) — case-shifted partner of bare `r: reply`. The action
-  // type emitted by the dispatcher stays `send-on-card` so the App-
-  // side wiring is unchanged; only the input gesture moved.
+describe("dispatchCursorKey: r / s gated by cursor row kind (PRD #192)", () => {
+  // Issue #467: the request-reply verb is `s`. The action type emitted
+  // by the dispatcher stays `send-on-card` so the App-side wiring is
+  // unchanged.
   it("r on a card cursor → open-reply-on-card", () => {
     expect(dispatchCursorKey(key({ key: "r" }), cardCtx)).toEqual({
       type: "open-reply-on-card",
     });
   });
 
-  it("Shift+R on a human card with no lock and reply-agent configured → send-on-card", () => {
+  it("s on a human card with no lock and reply-agent configured → send-on-card", () => {
     expect(
-      dispatchCursorKey(key({ key: "R", shiftKey: true }), {
+      dispatchCursorKey(key({ key: "s" }), {
         ...cardCtx,
         replyAgent: "claude",
       }),
     ).toEqual({ type: "send-on-card" });
   });
 
-  it("Shift+R on a card cursor with no reply-agent configured → noop (hidden silent — legend hides the hint too)", () => {
+  it("s on a card cursor with no reply-agent configured → noop (hidden silent — legend hides the hint too)", () => {
     expect(
-      dispatchCursorKey(key({ key: "R", shiftKey: true }), cardCtx),
+      dispatchCursorKey(key({ key: "s" }), cardCtx),
     ).toEqual({ type: "noop" });
   });
 
-  it("bare s is unbound (issue #390 — request-reply moved to Shift+R)", () => {
+  it("Shift+R is unbound", () => {
     expect(
-      dispatchCursorKey(key({ key: "s" }), { ...cardCtx, replyAgent: "claude" }),
+      dispatchCursorKey(key({ key: "R", shiftKey: true }), { ...cardCtx, replyAgent: "claude" }),
     ).toEqual({ type: "noop" });
     expect(
-      dispatchCursorKey(key({ key: "s" }), { ...baseCtx, replyAgent: "claude" }),
+      dispatchCursorKey(key({ key: "R", shiftKey: true }), { ...baseCtx, replyAgent: "claude" }),
     ).toEqual({ type: "noop" });
   });
 
-  it("r / R still fire when composer is open (no card-aware suppression needed — composer route owns its own gate)", () => {
+  it("r / s still fire when composer is open (no card-aware suppression needed — composer route owns its own gate)", () => {
     // The keymap doesn't know whether a card composer is open; the App-side
     // handler is responsible for that. Here we simply confirm the dispatcher
     // doesn't treat composerOpen as a card-action suppressor (consistent
@@ -159,12 +158,12 @@ describe("dispatchCursorKey: r / R gated by cursor row kind (PRD #192, issue #39
       type: "open-reply-on-card",
     });
     expect(
-      dispatchCursorKey(key({ key: "R", shiftKey: true }), ctx),
+      dispatchCursorKey(key({ key: "s" }), ctx),
     ).toEqual({ type: "send-on-card" });
   });
 });
 
-describe("dispatchCursorKey: r / R miss reasons surface as status (PRD #330, issue #390)", () => {
+describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", () => {
   // ADR 0028 / PRD #330: cross-axis misses on the webapp footer flash a
   // reason via the transient status slot. The keymap emits the message; the
   // App-side handler routes it into useFlashFooter with a ~2s auto-dismiss.
@@ -182,9 +181,9 @@ describe("dispatchCursorKey: r / R miss reasons surface as status (PRD #330, iss
     });
   });
 
-  it("Shift+R on a diff-row cursor with reply-agent configured → status `Request-reply only works on comment cards.`", () => {
+  it("s on a diff-row cursor with reply-agent configured → status `Request-reply only works on comment cards.`", () => {
     expect(
-      dispatchCursorKey(key({ key: "R", shiftKey: true }), {
+      dispatchCursorKey(key({ key: "s" }), {
         ...baseCtx,
         replyAgent: "claude",
       }),
@@ -194,7 +193,7 @@ describe("dispatchCursorKey: r / R miss reasons surface as status (PRD #330, iss
     });
   });
 
-  it("Shift+R on a non-human (agent) card → status `Request-reply only works on human comments.`", () => {
+  it("s on a non-human (agent) card → status `Request-reply only works on human comments.`", () => {
     const agentCardCtx: CursorKeymapContext = {
       ...baseCtx,
       cursorOnCard: true,
@@ -202,21 +201,21 @@ describe("dispatchCursorKey: r / R miss reasons surface as status (PRD #330, iss
       replyAgent: "claude",
     };
     expect(
-      dispatchCursorKey(key({ key: "R", shiftKey: true }), agentCardCtx),
+      dispatchCursorKey(key({ key: "s" }), agentCardCtx),
     ).toEqual({
       type: "status",
       message: "Request-reply only works on human comments.",
     });
   });
 
-  it("Shift+R on a human card while the reply-lock is held → status `Reply agent (<name>) is already replying.`", () => {
+  it("s on a human card while the reply-lock is held → status `Reply agent (<name>) is already replying.`", () => {
     const lockedCtx: CursorKeymapContext = {
       ...cardCtx,
       replyAgent: "claude",
       replyLockHeld: true,
     };
     expect(
-      dispatchCursorKey(key({ key: "R", shiftKey: true }), lockedCtx),
+      dispatchCursorKey(key({ key: "s" }), lockedCtx),
     ).toEqual({
       type: "status",
       message: "Reply agent (claude) is already replying.",

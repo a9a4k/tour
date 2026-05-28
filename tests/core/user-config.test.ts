@@ -13,11 +13,11 @@ describe("loadUserConfig", () => {
     const tourHome = await tempTourHome();
     await writeFile(
       join(tourHome, "config.toml"),
-      'reply_agent = "claude"\neditor = "code -g {file}:{line}"\n',
+      'reply_agent = "claude --print {userPrompt}"\neditor = "code -g {file}:{line}"\n',
     );
 
     await expect(loadUserConfig(tourHome)).resolves.toEqual({
-      replyAgent: "claude",
+      replyAgent: "claude --print {userPrompt}",
       editor: "code -g {file}:{line}",
     });
   });
@@ -37,10 +37,10 @@ describe("loadUserConfig", () => {
 
   it("loads reply_agent without editor", async () => {
     const tourHome = await tempTourHome();
-    await writeFile(join(tourHome, "config.toml"), 'reply_agent = "codex"\n');
+    await writeFile(join(tourHome, "config.toml"), 'reply_agent = "codex exec {combinedPrompt}"\n');
 
     await expect(loadUserConfig(tourHome)).resolves.toEqual({
-      replyAgent: "codex",
+      replyAgent: "codex exec {combinedPrompt}",
     });
   });
 
@@ -77,6 +77,25 @@ describe("loadUserConfig", () => {
 
     await expect(loadUserConfig(tourHome)).rejects.toThrow(
       new RegExp(`reply_agent.*expected string.*${configPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+    );
+  });
+
+  it("throws with migration examples for bare-name reply_agent values", async () => {
+    const tourHome = await tempTourHome();
+    const configPath = join(tourHome, "config.toml");
+    await writeFile(configPath, 'reply_agent = "claude"\n');
+
+    await expect(loadUserConfig(tourHome)).rejects.toThrow(
+      /Invalid reply_agent.*claude[\s\S]*Placeholders: \{systemPrompt\}, \{userPrompt\}, \{combinedPrompt\}[\s\S]*reply_agent = "claude --print/,
+    );
+  });
+
+  it("throws with the unknown placeholder and valid placeholders for reply_agent typos", async () => {
+    const tourHome = await tempTourHome();
+    await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude --print {sytemPrompt}"\n');
+
+    await expect(loadUserConfig(tourHome)).rejects.toThrow(
+      /Unknown placeholder \{sytemPrompt\}.*\{systemPrompt\}.*\{userPrompt\}.*\{combinedPrompt\}/,
     );
   });
 });

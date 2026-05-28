@@ -14,7 +14,7 @@ import {
 import {
   buildEnvelope,
   spawnReplyAgent,
-  type ShippedAdapter,
+  type ReplyAgentSpawner,
 } from "./agent-adapter.js";
 import { replyAgentSystemPrompt } from "./system-prompt.js";
 import { createDispatchLogger } from "./dispatch-logger.js";
@@ -35,9 +35,8 @@ export interface RequestReplyOptions {
   // renderer was launched without `--reply-agent` and dispatch is refused
   // at the seam.
   agent?: string;
-  // Test-only override so callers can inject a fake adapter without
-  // touching the shipped registry.
-  adapter?: ShippedAdapter;
+  // Test-only override so callers can inject a fake process spawn.
+  spawnCli?: ReplyAgentSpawner;
 }
 
 export type RequestReplyResult =
@@ -99,7 +98,7 @@ export async function requestReply(
     tourStoreRoot,
     tourId: opts.tourId,
     agent: opts.agent,
-    adapter: opts.adapter,
+    spawnCli: opts.spawnCli,
     triggering,
     comments,
     startedAt,
@@ -126,7 +125,7 @@ interface RunDispatchOptions {
   tourStoreRoot: string;
   tourId: string;
   agent: string;
-  adapter?: ShippedAdapter;
+  spawnCli?: ReplyAgentSpawner;
   triggering: Comment;
   comments: Comment[];
   startedAt: string;
@@ -146,7 +145,7 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
       systemPrompt,
       cwd: opts.cwd,
       tourDir,
-      adapter: opts.adapter,
+      spawnCli: opts.spawnCli,
     });
     await writeReplyLock(opts.tourStoreRoot, opts.tourId, {
       agent: opts.agent,
@@ -225,7 +224,7 @@ async function persistReply(
   await createReply(cwd, tourId, {
     thread_id: triggering.thread_id ?? triggering.id,
     body,
-    author: agent,
+    author: "agent",
     author_kind: "agent",
   });
 }

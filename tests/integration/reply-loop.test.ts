@@ -9,7 +9,6 @@ import { readReplyLock } from "../../src/core/reply-lock.js";
 import { readComments } from "../../src/core/comments-store.js";
 import { resolveTourLocation } from "../../src/core/tour-location.js";
 import type {
-  ShippedAdapter,
   SpawnOpts,
   SpawnedAdapter,
 } from "../../src/core/agent-adapter.js";
@@ -70,12 +69,11 @@ async function makeRepoWithTour(): Promise<{ repo: string; tourId: string }> {
   return { repo, tourId: tour.id };
 }
 
-// In-process fake adapter: emits a canned reply on stdout, exits 0. Replaces
+// In-process fake spawner: emits a canned reply on stdout, exits 0. Replaces
 // the prior on-disk fixture.sh + tour-cli.sh shim machinery (issue #88).
 const FIXTURE_BODY = "fixture: heard you.";
 
-const fixtureAdapter: ShippedAdapter = {
-  spawn(_opts: SpawnOpts): SpawnedAdapter {
+const fixtureSpawn = (_cmd: string, _args: string[], _opts: SpawnOpts): SpawnedAdapter => {
     const stdoutListeners: Array<(s: string) => void> = [];
     const stderrListeners: Array<(s: string) => void> = [];
     let stdoutAttached!: () => void;
@@ -107,7 +105,6 @@ const fixtureAdapter: ShippedAdapter = {
       },
       exit,
     };
-  },
 };
 
 describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
@@ -148,8 +145,8 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
       tourStoreRoot: location.tourStoreRoot,
       tourId,
       commentId: created.id,
-      agent: "fixture",
-      adapter: fixtureAdapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: fixtureSpawn,
     });
     expect(result).toEqual({ kind: "dispatched" });
 
@@ -163,6 +160,6 @@ describe("end-to-end reply-agent loop (TS fixture adapter)", () => {
     );
     expect(reply).toBeDefined();
     expect(reply?.body).toBe(FIXTURE_BODY);
-    expect(reply?.author).toBe("fixture");
+    expect(reply?.author).toBe("agent");
   }, 30_000);
 });

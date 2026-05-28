@@ -3,6 +3,8 @@
 > **Status:** Cross-surface. Codifies the lowercase / capital letter distinction observed by `L`, `C`, `T` so future keybinding decisions have a non-arbitrary letter. Applies to both the TUI keymap (`src/tui/keymap.ts`) and the webapp keymap (`src/web/client/cursor-keymap.ts`). Symbols and universal terminal/vim conventions sit on an orthogonal third axis and are exempt.
 >
 > **Amended (2026-05-17):** see the [Addendum](#addendum-three-tier-framework-and-different-actor-sub-shape-2026-05-17) for the three-tier framework (bare / Shift / Ctrl + symbols), the "different actor" sub-shape that admits `R` (request reply) under Tier 2, and the `?` / `/` symbol reservations. The original two-bucket statement below is preserved for context; the addendum is the live rule.
+>
+> **Amended (2026-05-28):** ADR 0044 moves reply-agent dispatch back to lowercase `s: send to agent` as a cursor-target action. The 2026-05-17 `R` exception is historical context, not the live binding.
 
 Tour's keybindings split cleanly into two buckets by **scope of effect**, not by mnemonic or by frequency. Lowercase letters bind actions on the cursor's current target (row, card, file). Capital letters (Shift+letter) bind actions on Tour-wide state that operates regardless of cursor position. Symbol keys and universal conventions (`/`, `?`, `q`, `[`, `]`, `Enter`, `Space`, `Tab`, `Ctrl+C`) are orthogonal to this rule — they follow terminal heritage and aren't constrained by it.
 

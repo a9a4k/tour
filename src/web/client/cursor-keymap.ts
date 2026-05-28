@@ -4,13 +4,10 @@
  * editable focus suppression, picker-open inert, composer-open suppression
  * for cursor motion, and the lowercase `l → L` rebind for layout toggle.
  *
- * Action-key gating by cursor row kind (PRD #192): `r` / `R` dispatch only
+ * Action-key gating by cursor row kind (PRD #192): `r` / `s` dispatch only
  * when the cursor is on a Comment card; `c` dispatches only when the
  * cursor is on a row (or null — App-side `c` lazy-materializes to a row).
- * Issue #390 / ADR 0021 addendum: the request-reply verb moved from bare
- * `s` to `R` (shift-r) — same letter as `r: reply`, case-shifted to mark
- * "different actor" (reply-agent runs the dispatch in a separate session).
- * Bare `s` is unbound. The single `cursorOnCard` flag in `KeymapContext`
+ * Issue #467 keeps request-reply on `s`. The single `cursorOnCard` flag in `KeymapContext`
  * collapses the routing decision into the pure dispatcher so the action
  * contract is testable independent of React state plumbing.
  *
@@ -24,7 +21,7 @@
  * `j`/`k`/`ArrowDown`/`ArrowUp` for file motion, `l`/`ArrowRight` to
  * expand a folder, `h`/`ArrowLeft` to collapse a folder or jump to the
  * parent of a file, and `Enter` to activate the selected row (file →
- * select + flip to diff; folder → toggle fold). `c` / `r` / `R` are
+ * select + flip to diff; folder → toggle fold). `c` / `r` / `s` are
  * silent no-ops when paneFocus = sidebar (the user explicitly returns
  * to diff first; auto-flipping would lose track of where the resulting
  * Comment / reply / request lands).
@@ -42,22 +39,21 @@ export interface CursorKeymapContext {
   /** Focus is in an INPUT / TEXTAREA / contentEditable — never steal
    *  text input. */
   focusInEditable: boolean;
-  /** Cursor is on a Comment card (CardAnchor). Routes `r`/`R` to the
+  /** Cursor is on a Comment card (CardAnchor). Routes `r`/`s` to the
    *  card-targeting actions and `c` to a no-op (PRD #192 stories 6-11).
-   *  Issue #390: `R` is shift-r — case-shifted partner of bare `r` for
-   *  the request-reply action. */
+   *  `s` is the request-reply action. */
   cursorOnCard: boolean;
-  /** Cursor is on a *human*-authored Comment card. `R` only requests a
+  /** Cursor is on a *human*-authored Comment card. `s` only requests a
    *  reply from the configured agent on human cards; pressing it on an
    *  agent card surfaces the wrong-target footer status (PRD #330). */
   cursorOnHumanCard: boolean;
-  /** Tour-wide reply-lock is held — an agent reply is in flight. `R`
+  /** Tour-wide reply-lock is held — an agent reply is in flight. `s`
    *  on a human card with the lock held flashes a status instead of
    *  re-dispatching. */
   replyLockHeld: boolean;
-  /** `--reply-agent` configured agent name, if any. `R` is a hidden
+  /** `--reply-agent` configured agent name, if any. `s` is a hidden
    *  silent no-op when this is unset (the legend itself omits the
-   *  `R: request reply` hint per PRD #330 stories 7-8 / issue #390).
+   *  `s: send to agent` hint per PRD #330 stories 7-8 / issue #390).
    *  When status is emitted for the lock-held branch, this is
    *  interpolated into the message. */
   replyAgent?: string;
@@ -194,7 +190,7 @@ export function dispatchCursorKey(
   // the TUI's sidebar branch in src/tui/keymap.ts: j/k/ArrowDown/ArrowUp
   // for file motion, l/ArrowRight to expand a folder, h/ArrowLeft to
   // collapse a folder or jump to the parent for a file, Enter to
-  // activate the selected row. `c`/`r`/`R` are silent no-ops here
+  // activate the selected row. `c`/`r`/`s` are silent no-ops here
   // (the user must Esc back to diff first; auto-flipping would lose
   // track of where the resulting action lands).
   if (paneFocus === "sidebar" && e.shiftKey && e.key === "R") {
@@ -221,23 +217,19 @@ export function dispatchCursorKey(
     // paneFocus.setDiff alongside the navigation.
     if (e.key === "n") return { type: "nav-next-comment" };
     if (e.key === "p") return { type: "nav-prev-comment" };
-    // c / r / R gating: silent no-op in sidebar mode (PRD #343 US 21-22 /
-    // issue #390). Bare `s` is unbound after issue #390's rebind.
+    // c / r / s gating: silent no-op in sidebar mode (PRD #343 US 21-22).
     if (e.key === "c" || e.key === "r") return { type: "noop" };
     return { type: "noop" };
   }
 
   // Diff-mode (default): today's cursor + card action surface.
 
-  // Issue #390 / ADR 0021 addendum: `R` (shift-r) is the request-reply
-  // verb on the webapp. Same letter as bare `r: reply`, case-shifted to
-  // mark "different actor" — the configured reply-agent runs the
-  // dispatch in a separate session. Action type stays `send-on-card`
-  // so the App-side dispatcher / reducer wiring is unchanged. Bare
-  // `s` is unbound after this rebind.
-  if (e.shiftKey && e.key === "R") {
-    // `R` is a hidden silent no-op when reply-agent isn't configured —
-    // the legend hides the `R: request reply` hint in that case so a
+  // `s` sends the focused human Comment to the configured reply-agent.
+  // Action type stays `send-on-card` so the App-side dispatcher /
+  // reducer wiring is unchanged.
+  if (!e.shiftKey && e.key === "s") {
+    // `s` is a hidden silent no-op when reply-agent isn't configured —
+    // the legend hides the `s: send to agent` hint in that case so a
     // status flash would surprise the user.
     if (!ctx.replyAgent) return { type: "noop" };
     if (!ctx.cursorOnCard) {

@@ -445,7 +445,7 @@ describe("CLI integration", () => {
       expect(result.stderr).toContain("Malformed Tour config");
     });
 
-    it("does not validate reply_agent when commands do not consume it", async () => {
+    it("validates reply_agent templates at config load", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claud"\n');
 
@@ -454,10 +454,10 @@ describe("CLI integration", () => {
         tourHome,
       });
 
-      expect(listResult.exitCode).toBe(0);
-      expect(listResult.stdout).toContain("No tours found");
-      expect(createResult.exitCode).toBe(0);
-      expect(JSON.parse(createResult.stdout).id).toMatch(/^\d{4}-\d{2}-\d{2}/);
+      expect(listResult.exitCode).toBe(1);
+      expect(listResult.stderr).toContain("Invalid reply_agent");
+      expect(createResult.exitCode).toBe(1);
+      expect(createResult.stderr).toContain("Invalid reply_agent");
     });
 
     it("supports --json", async () => {
@@ -569,7 +569,7 @@ editor      = null (from default)`);
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(
         join(tourHome, "config.toml"),
-        'reply_agent = "claude"\neditor = "code -g {file}:{line}"\n',
+        'reply_agent = "claude --print {userPrompt}"\neditor = "code -g {file}:{line}"\n',
       );
 
       const result = await run(["config", "show"], repo, {
@@ -580,7 +580,7 @@ editor      = null (from default)`);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
 
-reply_agent = "claude" (from config)
+reply_agent = "claude --print {userPrompt}" (from config)
 editor      = "code -g {file}:{line}" (from config)`);
     });
 
@@ -604,7 +604,7 @@ editor      = "code -g {file}:{line}" (from config)`);
 
     it("reports reply_agent from config while editor falls through to default", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
-      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude"\n');
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude --print {userPrompt}"\n');
 
       const result = await run(["config", "show"], repo, {
         tourHome,
@@ -614,7 +614,7 @@ editor      = "code -g {file}:{line}" (from config)`);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe(`Config file: ${join(tourHome, "config.toml")} (exists)
 
-reply_agent = "claude" (from config)
+reply_agent = "claude --print {userPrompt}" (from config)
 editor      = null (from default)`);
     });
 
@@ -692,7 +692,7 @@ editor      = "nvim" (from config)`);
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       await writeFile(
         join(tourHome, "config.toml"),
-        'reply_agent = "claude"\neditor = "code"\n',
+        'reply_agent = "claude --print {userPrompt}"\neditor = "code"\n',
       );
 
       const result = await run(
@@ -702,7 +702,7 @@ editor      = "nvim" (from config)`);
       );
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('reply_agent = "claude" (from config)');
+      expect(result.stdout).toContain('reply_agent = "claude --print {userPrompt}" (from config)');
       expect(result.stdout).toContain('editor      = "code" (from config)');
       expect(result.stdout).not.toContain("codex");
       expect(result.stdout).not.toContain('"vim"');
@@ -1989,61 +1989,50 @@ editor      = "nvim" (from config)`);
       expect(ann.file).toBe("hello.txt");
     });
 
-    it("tui --reply-agent=cursor fails fast with the shipped-agent error", async () => {
-      // Mirrors the issue's repro recipe: an unknown reply-agent must
-      // hit `assertShippedAgent` and exit non-zero with the same error
-      // message the space form produces today.
+    it("tui --reply-agent=cursor fails fast with the template migration error", async () => {
       const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
       const result = await run(["tui", "--reply-agent=cursor", tour.id], repo);
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe(
-        'Error: Unknown reply-agent "cursor". Available agents: claude, codex, gemini, opencode, pi',
-      );
+      expect(result.stderr).toContain('Invalid --reply-agent template: "cursor"');
+      expect(result.stderr).toContain("{systemPrompt}");
+      expect(result.stderr).toContain("reply_agent = \"claude --print");
     });
 
     it("tui uses reply_agent from Tour config when --reply-agent is absent", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
       const configPath = join(tourHome, "config.toml");
-      await writeFile(configPath, 'reply_agent = "claud"\n');
-      const cr = await run(["create", "--head", "HEAD", "--json"], repo, {
-        tourHome,
-      });
+      const cr = await run(["create", "--head", "HEAD", "--json"], repo);
       const tour = JSON.parse(cr.stdout);
+      await writeFile(configPath, 'reply_agent = "claud"\n');
 
       const result = await run(["tui", tour.id], repo, { tourHome });
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe(
-        `Error: Unknown reply-agent "claud" (from ${configPath}). Available agents: claude, codex, gemini, opencode, pi`,
-      );
+      expect(result.stderr).toContain(`Invalid reply_agent in ${configPath}: "claud"`);
     });
 
-    it("tui --reply-agent wins over reply_agent from Tour config", async () => {
+    it("tui validates --reply-agent before using the config template", async () => {
       const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-config-home-"));
-      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude"\n');
+      await writeFile(join(tourHome, "config.toml"), 'reply_agent = "claude --print {userPrompt}"\n');
       const cr = await run(["create", "--head", "HEAD", "--json"], repo, {
         tourHome,
       });
       const tour = JSON.parse(cr.stdout);
 
-      const result = await run(["tui", "--reply-agent=cursor", tour.id], repo, {
+      const result = await run(["tui", "--reply-agent=cursor {sytemPrompt}", tour.id], repo, {
         tourHome,
       });
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe(
-        'Error: Unknown reply-agent "cursor". Available agents: claude, codex, gemini, opencode, pi',
-      );
+      expect(result.stderr).toContain("Unknown placeholder {sytemPrompt}");
     });
 
-    it("serve --reply-agent fails with the shipped-agent error and no provenance suffix", async () => {
+    it("serve --reply-agent fails with the template migration error and no provenance suffix", async () => {
       const result = await run(["serve", "--reply-agent=claud"], repo);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe(
-        'Error: Unknown reply-agent "claud". Available agents: claude, codex, gemini, opencode, pi',
-      );
+      expect(result.stderr).toContain('Invalid --reply-agent template: "claud"');
     });
 
     it("serve uses reply_agent provenance from Tour config when --reply-agent is absent", async () => {
@@ -2054,9 +2043,7 @@ editor      = "nvim" (from config)`);
       const result = await run(["serve"], repo, { tourHome });
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe(
-        `Error: Unknown reply-agent "claud" (from ${configPath}). Available agents: claude, codex, gemini, opencode, pi`,
-      );
+      expect(result.stderr).toContain(`Invalid reply_agent in ${configPath}: "claud"`);
     });
 
     it("--flag= (empty value) errors with a missing-value message", async () => {

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseTOML } from "smol-toml";
+import { validateReplyAgentTemplate } from "./reply-agent-template.js";
 
 export interface UserConfig {
   replyAgent?: string;
@@ -55,6 +56,7 @@ export async function loadUserConfig(tourHome: string): Promise<UserConfig> {
         `Invalid Tour config key "reply_agent": expected string in ${configPath}`,
       );
     }
+    validateReplyAgentTemplate(parsed.reply_agent, configPath);
     config.replyAgent = parsed.reply_agent;
   }
   if (parsed.editor !== undefined) {

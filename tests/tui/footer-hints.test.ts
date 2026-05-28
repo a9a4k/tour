@@ -65,8 +65,8 @@ describe("TUI_FOOTER_HINTS", () => {
     expect(TUI_FOOTER_HINTS).not.toContain("y: yank path");
   });
 
-  it("omits the `R: request reply` hint by default (no reply-agent configured)", () => {
-    expect(TUI_FOOTER_HINTS).not.toContain("R: request reply");
+  it("omits the `s: send to agent` hint by default (no reply-agent configured)", () => {
+    expect(TUI_FOOTER_HINTS).not.toContain("s: send to agent");
     expect(TUI_FOOTER_HINTS).not.toContain("send to");
   });
 
@@ -95,28 +95,27 @@ describe("TUI_FOOTER_HINTS", () => {
 });
 
 describe("composeFooterHints (issue #184 → relabelled in issue #390)", () => {
-  // Issue #390 / ADR 0021 addendum: the action label no longer carries
-  // the agent name and is bound to `R` (shift-r) rather than `s`. The
+  // Issue #467: the action label no longer carries
+  // the configured template and is bound to `s`. The
   // configured agent is surfaced via the button tooltip, the in-flight
   // pill, and the agent-reply byline — not the legend. (Pre-rollback
   // the header chip was the canonical home; ADR 0021 addendum amended
   // to record the chip retirement.)
-  it("emits `R: request reply` (no agent name interpolated) when showSendHint is true", () => {
+  it("emits `s: send to agent` (no agent name interpolated) when showSendHint is true", () => {
     const out = composeFooterHints({ replyAgent: "claude", showSendHint: true });
-    expect(out).toContain("R: request reply");
-    expect(out).not.toContain("R: request reply claude");
-    expect(out).not.toContain("send to");
+    expect(out).toContain("s: send to agent");
+    expect(out).not.toContain("s: send to agent claude");
   });
 
   it("omits the send hint when replyAgent is unset (even if showSendHint is true)", () => {
     const out = composeFooterHints({ showSendHint: true });
-    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("s: send to agent");
     expect(out).not.toContain("send to");
   });
 
   it("omits the send hint when showSendHint is false (e.g. focus is on an agent card)", () => {
     const out = composeFooterHints({ replyAgent: "claude", showSendHint: false });
-    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("s: send to agent");
     expect(out).not.toContain("send to");
   });
 
@@ -129,7 +128,7 @@ describe("composeFooterHints (issue #184 → relabelled in issue #390)", () => {
       enterHintCursor: "interactive",
     });
     const r = out.indexOf("r: reply");
-    const requestReply = out.indexOf("R: request reply");
+    const requestReply = out.indexOf("s: send to agent");
     const enter = out.indexOf("Enter: expand");
     expect(r).toBeGreaterThanOrEqual(0);
     expect(requestReply).toBeGreaterThan(r);

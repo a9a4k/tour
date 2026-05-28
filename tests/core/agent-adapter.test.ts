@@ -2,14 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   buildEnvelope,
   spawnReplyAgent,
-  type ShippedAdapter,
   type SpawnedAdapter,
+  type SpawnOpts,
 } from "../../src/core/agent-adapter.js";
-import {
-  SHIPPED_ADAPTERS,
-  assertShippedAgent,
-  availableShippedAgents,
-} from "../../src/agents/index.js";
 import type { Comment, Tour } from "../../src/core/types.js";
 
 function tour(over: Partial<Tour> = {}): Tour {
@@ -43,48 +38,6 @@ function ann(over: Partial<Comment> & { id: string }): Comment {
   };
 }
 
-describe("availableShippedAgents", () => {
-  it("returns the five shipped names sorted", () => {
-    expect(availableShippedAgents()).toEqual([
-      "claude",
-      "codex",
-      "gemini",
-      "opencode",
-      "pi",
-    ]);
-  });
-});
-
-describe("assertShippedAgent", () => {
-  it("is a no-op for known names", () => {
-    for (const name of availableShippedAgents()) {
-      expect(() => assertShippedAgent(name)).not.toThrow();
-    }
-  });
-
-  it("throws with the available-names list when the name is unknown", () => {
-    let caught: Error | undefined;
-    try {
-      assertShippedAgent("definitely-not-shipped");
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain("definitely-not-shipped");
-    for (const name of availableShippedAgents()) {
-      expect(caught?.message).toContain(name);
-    }
-  });
-});
-
-describe("SHIPPED_ADAPTERS registry", () => {
-  it("exposes a spawn() function for each shipped agent", () => {
-    for (const name of availableShippedAgents()) {
-      expect(typeof SHIPPED_ADAPTERS[name].spawn).toBe("function");
-    }
-  });
-});
-
 describe("buildEnvelope", () => {
   it("packs the full thread chain when triggering on a reply", () => {
     const root = ann({ id: "a1" });
@@ -114,53 +67,57 @@ describe("buildEnvelope", () => {
 });
 
 describe("spawnReplyAgent", () => {
-  it("uses the test-injected adapter when supplied (bypasses the registry)", async () => {
-    let receivedAgentName: string | null = null;
-    const fake: ShippedAdapter = {
-      spawn(opts): SpawnedAdapter {
-        receivedAgentName = opts.envelope.tour.id;
-        return {
-          pid: 4242,
-          onStdout: () => {},
-          onStderr: () => {},
-          exit: Promise.resolve({
-            code: 0,
-            signal: null,
-            stdout: "fake reply\n",
-          }),
-        };
-      },
+  it("renders the template and spawns the resolved argv", async () => {
+    let received: { cmd: string; args: string[]; opts: SpawnOpts } | null = null;
+    const fake = (cmd: string, args: string[], opts: SpawnOpts): SpawnedAdapter => {
+      received = { cmd, args, opts };
+      return {
+        pid: 4242,
+        onStdout: () => {},
+        onStderr: () => {},
+        exit: Promise.resolve({
+          code: 0,
+          signal: null,
+          stdout: "fake reply\n",
+        }),
+      };
     };
     const t = tour();
     const triggering = ann({ id: "a1", author_kind: "human" });
     const envelope = buildEnvelope(t, [triggering], triggering);
     const spawned = spawnReplyAgent({
-      agent: "definitely-not-shipped",
+      agent: "fake-cli --system {systemPrompt} {userPrompt} {combinedPrompt}",
       envelope,
       systemPrompt: "SYS",
       cwd: "/tmp",
       tourDir: "/tmp/.tour/x",
-      adapter: fake,
+      spawnCli: fake,
     });
     expect(spawned.pid).toBe(4242);
     const result = await spawned.exit;
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("fake reply\n");
-    expect(receivedAgentName).toBe(t.id);
+    expect(received?.cmd).toBe("fake-cli");
+    expect(received?.args[0]).toBe("--system");
+    expect(received?.args[1]).toBe("SYS");
+    expect(received?.args[2]).toContain("A human reviewer just left a note");
+    expect(received?.args[2]).toContain(t.id);
+    expect(received?.args[3]).toContain("<system>\nSYS\n</system>");
+    expect(received?.opts.envelope.tour.id).toBe(t.id);
   });
 
-  it("throws on an unknown name when no override is supplied", () => {
+  it("throws on an invalid template", () => {
     const t = tour();
     const triggering = ann({ id: "a1", author_kind: "human" });
     const envelope = buildEnvelope(t, [triggering], triggering);
     expect(() =>
       spawnReplyAgent({
-        agent: "definitely-not-shipped",
+        agent: "fake-cli {sytemPrompt}",
         envelope,
         systemPrompt: "SYS",
         cwd: "/tmp",
         tourDir: "/tmp/.tour/x",
       }),
-    ).toThrow(/Unknown reply-agent/);
+    ).toThrow(/Unknown placeholder \{sytemPrompt\}/);
   });
 });

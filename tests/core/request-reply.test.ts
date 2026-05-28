@@ -14,7 +14,6 @@ import {
   replyLockPath,
 } from "../../src/core/reply-lock.js";
 import type {
-  ShippedAdapter,
   SpawnOpts,
   SpawnedAdapter,
   SpawnResult,
@@ -88,8 +87,9 @@ async function seedComment(
   await appendFile(path, JSON.stringify(ev) + "\n");
 }
 
-interface FixtureAdapter extends ShippedAdapter {
+interface FixtureAdapter {
   invocations: SpawnOpts[];
+  spawn: (cmd: string, args: string[], opts: SpawnOpts) => SpawnedAdapter;
 }
 
 interface GatedFixtureAdapter extends FixtureAdapter {
@@ -111,7 +111,7 @@ function fixtureAdapter(
   const invocations: SpawnOpts[] = [];
   return {
     invocations,
-    spawn(opts: SpawnOpts): SpawnedAdapter {
+    spawn(_cmd: string, _args: string[], opts: SpawnOpts): SpawnedAdapter {
       invocations.push(opts);
       const stdoutListeners: Array<(s: string) => void> = [];
       const stderrListeners: Array<(s: string) => void> = [];
@@ -163,8 +163,8 @@ function gatedFixtureAdapter(
   // out from under the second call.
   const adapter = fixtureAdapter(result, gate);
   const baseSpawn = adapter.spawn;
-  adapter.spawn = (opts: SpawnOpts): SpawnedAdapter => {
-    const spawned = baseSpawn(opts);
+  adapter.spawn = (cmd: string, args: string[], opts: SpawnOpts): SpawnedAdapter => {
+    const spawned = baseSpawn(cmd, args, opts);
     return { ...spawned, pid: process.pid };
   };
   return Object.assign(adapter, { release });
@@ -237,8 +237,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
 
     expect(result).toEqual({ kind: "dispatched" });
@@ -249,7 +249,7 @@ describe("requestReply", () => {
     const reply = comments.find((a) => a.thread_id === "ann-1");
     expect(reply).toBeDefined();
     expect(reply?.body).toBe("fixture: heard you.");
-    expect(reply?.author).toBe("fixture");
+    expect(reply?.author).toBe("agent");
     expect(reply?.author_kind).toBe("agent");
 
     expect(await readReplyLock(dir, tourId)).toBeNull();
@@ -272,8 +272,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1-reply",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
 
     expect(result).toEqual({ kind: "dispatched" });
@@ -303,8 +303,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
 
     expect(result).toEqual({ kind: "busy" });
@@ -323,8 +323,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "missing",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
     expect(result).toEqual({ kind: "invalid-comment" });
     expect(adapter.invocations).toHaveLength(0);
@@ -342,8 +342,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
     expect(result).toEqual({ kind: "invalid-comment" });
     expect(adapter.invocations).toHaveLength(0);
@@ -366,8 +366,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
     expect(result).toEqual({ kind: "invalid-comment" });
     expect(adapter.invocations).toHaveLength(0);
@@ -399,8 +399,8 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1",
-      agent: "fixture",
-      adapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: adapter.spawn,
     });
     expect(result).toEqual({ kind: "dispatched" });
     expect(await readReplyLock(dir, tourId)).toBeNull();
@@ -442,16 +442,16 @@ describe("requestReply", () => {
       cwd: dir,
       tourId,
       commentId: "ann-1",
-      agent: "fixture",
-      adapter: slowAdapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: slowAdapter.spawn,
     });
     await waitForLockWritten(dir, tourId, 1000);
     const second = await requestReply({
       cwd: dir,
       tourId,
       commentId: "ann-2",
-      agent: "fixture",
-      adapter: fastAdapter,
+      agent: "fixture {userPrompt}",
+      spawnCli: fastAdapter.spawn,
     });
 
     expect(second).toEqual({ kind: "busy" });

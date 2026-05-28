@@ -1,5 +1,7 @@
 # Reply-agent dispatch is explicit, not implicit
 
+> **Amended 2026-05-28:** ADR 0044 keeps explicit dispatch but replaces shipped adapter names with reply-agent command templates. The footer/action label is now `s: send to agent`; no CLI name or template is interpolated into the affordance.
+
 Reply-agent dispatch flips from **implicit** (watcher fires on every new human-authored Annotation) to **explicit** (user presses `s` in the TUI or clicks "Send to {agent}" in the webapp). The watcher's role narrows to state observation only — `annotations.jsonl` changes drive bundle re-render; `.reply-lock.json` changes drive the in-flight pill and the disabled state of every Send affordance on the Tour. This reverses the auto-dispatch mechanism documented in [ADR 0010](./0010-bidirectional-review-via-reply-agent.md) (the watcher-as-trigger half). The rest of ADR 0010 — the reply-agent vs main-agent split, the pinned-SHA invariant, the no-MCP rejection, the no-resolution-status decision, the no-cross-Tour-Threads stance, and the in-tree TS adapter mechanics carried forward by ADR 0012 — stands unchanged.
 
 Field evidence: the user's last Tour under the implicit model dispatched a paid LLM call on a literal `"test"` Annotation, and on directive notes meant for the main-agent at `tour pickup` time. The implicit model failed in the direction that costs real money on every silent over-dispatch.
@@ -43,6 +45,8 @@ The user-facing verb and keybinding shifted. The dispatch model itself is unchan
 - **TUI keybinding.** `s` → `R` (shift-r). Same letter as the bare `r: reply` reply-composer key, case-shifted to mark "different actor" — lowercase `r` is "I'll reply," uppercase `R` is "ask the agent to reply." The legend now reads `r: reply  ·  R: request reply` when the action is available. Bare `s` is unbound.
 
 - **Web keybinding.** Mirror of the TUI rebind: `s` → `Shift+R`. Same legend treatment.
+
+> **2026-05-28 note:** ADR 0044 reverses only the keybinding/legend part of this addendum. The live binding is `s`, and the legend reads `s: send to agent`. The button-copy decision (`Request reply`) remains.
 
 - **Header chip.** Persistent indicator `Reply agent: <name> · separate session` rendered when `--reply-agent` is set. Surfaced on both surfaces (TopHeaderTui in the TUI, `.reply-agent-chip` in the webapp). Answers "which agent?" and "is it my session?" at a glance — the indicator is always visible, not gated on cursor position.
 

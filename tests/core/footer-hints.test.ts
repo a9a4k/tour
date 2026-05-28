@@ -38,7 +38,7 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
   });
 
   // Issue #390 / ADR 0021 addendum: the request-reply hint is now
-  // `R: request reply` (no agent name on the label), case-shifted from
+  // `s: send to agent` (no agent name on the label), case-shifted from
   // bare `r: reply` to mark "different actor" — same letter, same
   // verb-family, different actor. The agent name lives on the header
   // chip, not on the legend.
@@ -46,7 +46,7 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
   // Issue #406 / ADR 0038 amended: `Enter: expand` is now contextual
   // (interactive-row / card-collapsed only). Pass
   // `enterHintCursor: "interactive"` to assert the prior layout.
-  it("inserts `R: request reply` between `r: reply` and `Enter: expand` (no agent name on the label)", () => {
+  it("inserts `s: send to agent` between `r: reply` and `Enter: expand` (no agent name on the label)", () => {
     const out = composeFooterHints({
       surface: "tui",
       replyAgent: "codex",
@@ -54,14 +54,12 @@ describe("composeFooterHints (core, surface: tui) — byte-equality with the TUI
       enterHintCursor: "interactive",
     });
     const r = out.indexOf("r: reply");
-    const requestReply = out.indexOf("R: request reply");
+    const requestReply = out.indexOf("s: send to agent");
     const enter = out.indexOf("Enter: expand");
     expect(r).toBeGreaterThanOrEqual(0);
     expect(requestReply).toBeGreaterThan(r);
     expect(enter).toBeGreaterThan(requestReply);
-    expect(out).not.toContain("send to");
-    expect(out).not.toContain("s: send");
-    expect(out).not.toContain("R: request reply codex");
+    expect(out).not.toContain("s: send to agent codex");
   });
 
   // Issue #337 / ADR 0029 + ADR 0030: lock the new labels in the TUI
@@ -152,7 +150,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
   });
 
   // ADR 0036 Slice D / issue #388: `d: delete` slots into the lowercase-
-  // cursor cluster between `r: reply` and the conditional `R: request reply`
+  // cursor cluster between `r: reply` and the conditional `s: send to agent`
   // (issue #390 relabel + rebind) when present.
   it("`d: delete` slots after `r: reply` in the diff-mode TUI legend", () => {
     const out = composeFooterHints({ surface: "tui", paneFocus: "diff" });
@@ -190,16 +188,16 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(between).toBe("  ·  ");
   });
 
-  it("diff-mode legend inserts `R: request reply` when the send hint is visible (no agent name interpolated)", () => {
+  it("diff-mode legend inserts `s: send to agent` when the send hint is visible (no agent name interpolated)", () => {
     const out = composeFooterHints({
       surface: "tui",
       paneFocus: "diff",
       replyAgent: "claude",
       showSendHint: true,
     });
-    expect(out).toContain("R: request reply");
+    expect(out).toContain("s: send to agent");
     expect(out).not.toContain("send to claude");
-    expect(out).not.toContain("R: request reply claude");
+    expect(out).not.toContain("s: send to agent claude");
   });
 
   it("sidebar-mode legend emits the documented pane-relevant string", () => {
@@ -214,7 +212,7 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).not.toContain("n/p:");
     expect(out).not.toContain("c: comment");
     expect(out).not.toContain("r: reply");
-    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("s: send to agent");
     expect(out).not.toContain("C: collapse");
     expect(out).not.toContain("Enter: expand");
     expect(out).not.toContain("Tab:");
@@ -222,21 +220,21 @@ describe("composeFooterHints (core, surface: tui) — pane-aware legend (PRD #34
     expect(out).not.toContain("[/]: width");
   });
 
-  it("sidebar-mode legend gates the send-hint conditional off (R: request reply only appears in diff mode)", () => {
+  it("sidebar-mode legend gates the send-hint conditional off (s: send to agent only appears in diff mode)", () => {
     const sidebarWithSend = composeFooterHints({
       surface: "tui",
       paneFocus: "sidebar",
       replyAgent: "claude",
       showSendHint: true,
     });
-    expect(sidebarWithSend).not.toContain("R: request reply");
+    expect(sidebarWithSend).not.toContain("s: send to agent");
     const diffWithSend = composeFooterHints({
       surface: "tui",
       paneFocus: "diff",
       replyAgent: "claude",
       showSendHint: true,
     });
-    expect(diffWithSend).toContain("R: request reply");
+    expect(diffWithSend).toContain("s: send to agent");
   });
 
   it("sidebar-mode legend includes `Esc: diff` as the pane-toggle hint", () => {
@@ -276,20 +274,20 @@ describe("composeFooterHints (core, surface: web)", () => {
     expect(out).toContain("Esc: sidebar");
   });
 
-  it("inserts `R: request reply` after `r: reply` when reply-agent is configured (no agent name on the label)", () => {
+  it("inserts `s: send to agent` after `r: reply` when reply-agent is configured (no agent name on the label)", () => {
     const out = composeFooterHints({
       surface: "web",
       replyAgent: "claude",
       showSendHint: true,
     });
     expect(out).toBe(
-      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  R: request reply  ·  y: yank  ·  o: open  ·  C: collapse all  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
+      "j/k: move  ·  h/l: side  ·  n/p: nav  ·  c: comment  ·  r: reply  ·  s: send to agent  ·  y: yank  ·  o: open  ·  C: collapse all  ·  L: layout  ·  T: picker  ·  Esc: sidebar",
     );
   });
 
   it("omits the send hint when replyAgent is unset (even if showSendHint is true)", () => {
     const out = composeFooterHints({ surface: "web", showSendHint: true });
-    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("s: send to agent");
     expect(out).not.toContain("send to");
   });
 
@@ -299,7 +297,7 @@ describe("composeFooterHints (core, surface: web)", () => {
       replyAgent: "claude",
       showSendHint: false,
     });
-    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("s: send to agent");
     expect(out).not.toContain("send to");
   });
 
@@ -379,16 +377,16 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
     expect(out).toContain("T: picker");
   });
 
-  it("diff-mode web legend inserts `R: request reply` when the send hint is visible (no agent name interpolated)", () => {
+  it("diff-mode web legend inserts `s: send to agent` when the send hint is visible (no agent name interpolated)", () => {
     const out = composeFooterHints({
       surface: "web",
       paneFocus: "diff",
       replyAgent: "claude",
       showSendHint: true,
     });
-    expect(out).toContain("R: request reply");
+    expect(out).toContain("s: send to agent");
     expect(out).not.toContain("send to claude");
-    expect(out).not.toContain("R: request reply claude");
+    expect(out).not.toContain("s: send to agent claude");
   });
 
   it("sidebar-mode web legend emits the documented pane-relevant string", () => {
@@ -403,7 +401,7 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
     expect(out).not.toContain("n/p:");
     expect(out).not.toContain("c: comment");
     expect(out).not.toContain("r: reply");
-    expect(out).not.toContain("R: request reply");
+    expect(out).not.toContain("s: send to agent");
   });
 
   it("sidebar-mode web legend gates the send-hint conditional off", () => {
@@ -413,14 +411,14 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
       replyAgent: "claude",
       showSendHint: true,
     });
-    expect(sidebarWithSend).not.toContain("R: request reply");
+    expect(sidebarWithSend).not.toContain("s: send to agent");
     const diffWithSend = composeFooterHints({
       surface: "web",
       paneFocus: "diff",
       replyAgent: "claude",
       showSendHint: true,
     });
-    expect(diffWithSend).toContain("R: request reply");
+    expect(diffWithSend).toContain("s: send to agent");
   });
 
   it("sidebar-mode web legend includes `Esc: diff` as the pane-toggle hint", () => {
@@ -439,14 +437,14 @@ describe("composeFooterHints (core, surface: web) — pane-aware legend (PRD #34
     expect(y).toBeGreaterThan(r);
   });
 
-  it("diff-mode web legend places `y: yank` after `R: request reply` when the send hint is visible", () => {
+  it("diff-mode web legend places `y: yank` after `s: send to agent` when the send hint is visible", () => {
     const out = composeFooterHints({
       surface: "web",
       paneFocus: "diff",
       replyAgent: "claude",
       showSendHint: true,
     });
-    const requestReply = out.indexOf("R: request reply");
+    const requestReply = out.indexOf("s: send to agent");
     const y = out.indexOf("y: yank");
     expect(requestReply).toBeGreaterThanOrEqual(0);
     expect(y).toBeGreaterThan(requestReply);

@@ -1,6 +1,8 @@
 # User-scoped config file for `--reply-agent` and `--editor` defaults
 
 > **Status:** Accepted — 2026-05-22. Adds a single optional TOML file at `$TOUR_HOME/config.toml` holding persistent defaults for the `--reply-agent` and `--editor` flags. Read once at `main.ts` entry; values feed the existing resolution chains as one new layer. New read-only subcommand `tour config show` inspects the resolved values and their sources. No write surface — users hand-edit. Complements ADR 0032 (editor resolution chain) and ADR 0039 (storage in `$TOUR_HOME`).
+>
+> **Amended 2026-05-28:** ADR 0044 changes `reply_agent` from a shipped-agent name to a command template and validates it at config load. Bare names now fail with inline migration examples.
 
 ## Why
 
@@ -24,7 +26,7 @@ A file beats a second env var. A hypothetical `$TOUR_REPLY_AGENT` would solve th
 
 - **`tour config set/get` writers.** Rejected for slice 1. `smol-toml` doesn't preserve comments on round-trip, so a writer either silently strips user comments or ships a constrained writer that only knows the current key set. Two scalars hand-edit fine; a `set` verb is an additive future change if growth demands.
 
-- **Validate `reply_agent` at config load.** Rejected: would break unrelated commands (`tour create`, `tour list`) for a value those commands never read. The existing `assertShippedAgent` chokepoint in `tui.ts` / `serve.ts` already fires at the right moment; the config layer just feeds it.
+- **Validate shipped-agent names at config load.** Rejected in the original name-based design because unrelated commands did not consume the value. Superseded by ADR 0044: `reply_agent` is now a command template and is validated at config load so placeholder typos and bare-name migrations fail early.
 
 ## Decisions
 
@@ -58,7 +60,7 @@ Threading: `main.ts` calls `loadUserConfig(tourHome)` once before the verb switc
 
 - **Malformed TOML:** throw with the file path in the error. Every command fails until the file is fixed or removed. Silent ignore would make defaults "mysteriously stop working" with no diagnostic — strictly worse.
 - **Unknown keys:** throw with the bad key and the valid-keys list. The file has two known keys; an unknown key is virtually always a typo (`editorr`, `replyagent`). Liberal ignore turns a typo into a silent default and wastes the user's debugging time.
-- **Bad value** (e.g. `reply_agent = "made-up"`): pass through to the existing `assertShippedAgent` chokepoint in `tui.ts` / `serve.ts`. The error message there gains a `(from <config-path>)` suffix when the value originated in the config file.
+- **Bad value**: reply-agent template validation now rejects empty templates, unknown placeholders, and bare-name values with the config path and migration examples (ADR 0044).
 
 The asymmetry between "unknown key" (load-time fail) and "bad value" (chokepoint fail) is intentional: structural problems with the file are always wrong; semantic problems are only wrong when the value is actually consumed.
 
@@ -98,5 +100,5 @@ Sources per key: `config`, `$TOUR_EDITOR`, `$VISUAL`, `$EDITOR`, or `default` (n
 - **The file is optional.** Missing file → empty config → resolver behaves exactly as it did before this ADR. Users who only use CLI flags or env vars are unaffected.
 - **Schema is flat for now.** Adding a `[section]` header later requires reading both shapes; the migration cost is small and additive. Sectioning *now* would carry no benefit (two scalars).
 - **No `$TOUR_REPLY_AGENT`.** The asymmetry with `$TOUR_EDITOR` is deliberate (no shell-env convention to compose with). If field evidence ever shows users want it, the addition is three lines in the resolver — same easy reversibility as user → repo scope.
-- **Config provenance leaks into the bad-agent error message.** `assertShippedAgent` gains a `(from <path>)` suffix when the value came from the config file. Without that breadcrumb, the user sees the same error whether the bad name came from `--reply-agent`, the config, or a future env var — three different files to inspect.
+- **Config provenance leaks into reply-agent template errors.** Without that breadcrumb, the user sees the same error whether the bad template came from `--reply-agent`, the config, or a future env var — three different files to inspect.
 - **`tour config show` takes no flags.** No `--editor` / `--reply-agent` overrides at the inspector. The job is "what would Tour use given the current environment and file," not "simulate." This keeps the implementation small and the output unambiguous.

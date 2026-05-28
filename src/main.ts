@@ -21,6 +21,7 @@ import { tourHome } from "./core/tour-home.js";
 import { loadUserConfig } from "./core/user-config.js";
 import { parseArgs } from "./core/parse-args.js";
 import { isNotGitWorkingTreeError } from "./core/not-git-working-tree-error.js";
+import { resolveReplyAgentTemplate } from "./core/reply-agent-template.js";
 
 declare const __EMBEDDED_VERSION__: string;
 const VERSION =
@@ -33,20 +34,6 @@ function flag(flags: Record<string, string | boolean>, key: string): string | un
 
 function boolFlag(flags: Record<string, string | boolean>, key: string): boolean {
   return flags[key] === true;
-}
-
-function resolveReplyAgent(
-  flagValue: string | undefined,
-  configValue: string | undefined,
-  configPath: string,
-): { replyAgent?: string; replyAgentSourcePath?: string } {
-  if (flagValue !== undefined) {
-    return { replyAgent: flagValue };
-  }
-  if (configValue !== undefined && configValue !== "") {
-    return { replyAgent: configValue, replyAgentSourcePath: configPath };
-  }
-  return {};
 }
 
 // 8687 is the documented default; `TOURDIFF_BASE_PORT` lets the tests
@@ -250,7 +237,7 @@ async function main(): Promise<void> {
           cwd,
           tourStoreRoot,
           worktreeStamp,
-          ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
+          ...resolveReplyAgentTemplate(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           configPath,
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd),
         });
@@ -266,7 +253,7 @@ async function main(): Promise<void> {
           cwd,
           tourStoreRoot,
           worktreeStamp,
-          ...resolveReplyAgent(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
+          ...resolveReplyAgentTemplate(flag(flags, "reply-agent"), userConfig.replyAgent, configPath),
           configPath,
           editor: resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd),
         });
@@ -303,7 +290,7 @@ async function main(): Promise<void> {
               : isOnPath("xdg-open"),
         });
         const editor = resolveEditor(flag(flags, "editor"), process.env, userConfig.editor, cwd);
-        const replyAgent = resolveReplyAgent(
+        const replyAgent = resolveReplyAgentTemplate(
           flag(flags, "reply-agent"),
           userConfig.replyAgent,
           configPath,

@@ -1,4 +1,3 @@
-import { assertShippedAgent } from "../agents/index.js";
 import type { EditorConfig } from "../core/editor-config.js";
 
 interface ServeArgs {
@@ -19,12 +18,6 @@ interface ServeArgs {
 }
 
 export async function serve(args: ServeArgs): Promise<void> {
-  // Hard-fail at startup if the requested reply-agent isn't shipped, with
-  // the list of available names — misconfiguration must surface up-front,
-  // not at first reply (PRD #73, ADR 0012).
-  if (args.replyAgent) {
-    assertShippedAgent(args.replyAgent, args.replyAgentSourcePath);
-  }
   // Static-string specifier so Bun --compile embeds the web module; cast hides
   // the path from tsc since src/web is excluded (JSX).
   const { startServer } = (await import("../web/server.js" as string)) as {

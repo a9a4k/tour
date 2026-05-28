@@ -24,8 +24,8 @@ import type { Thread } from "./threads.js";
  * landing honours the user's last side preference (PRD US 18 / issue
  * #200 AC for preferredSide preservation).
  *
- * Action keys (`r`/`R`/`c`/`Enter`) dispatch by the cursor's row kind —
- * `r` and `R` are no-ops on a row, `c` is a no-op on a card (PRD #192
+ * Action keys (`r`/`s`/`c`/`Enter`) dispatch by the cursor's row kind —
+ * `r` and `s` are no-ops on a row, `c` is a no-op on a card (PRD #192
  * stories 6-12).
  */
 export interface RowAnchor {
@@ -78,7 +78,7 @@ function threadNodeLookup(threads: ReadonlyArray<Thread>): ThreadNodeLookup {
  *  Reply), and the node's position within `[root, ...replies]`. Used
  *  by the in-Card `j`/`k` walker (ADR 0037), the row-idx / validate
  *  mappers when the cursor sits on a Reply, and `sendTarget` (issue
- *  #395) so `R` dispatches Thread-scoped from a reply node. */
+ *  #395) so `s` dispatches Thread-scoped from a reply node. */
 export function findThreadByNode(
   commentId: string,
   threads: ReadonlyArray<Thread>,

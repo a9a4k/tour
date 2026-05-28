@@ -8,15 +8,15 @@ export interface SendTarget {
   leaf: Comment;
 }
 
-// The `R` dispatch target shared by both surfaces (issue #196, PRD #181).
+// The `s` dispatch target shared by both surfaces (issue #196, PRD #181).
 // The cursor identifies the focused Thread; the keystroke targets the
 // Thread's latest human leaf — mirrors the webapp's #190/#191 collapse
 // so once the conversation has started, the focused top-level being
-// `already-replied` doesn't dead-end the `R` keystroke.
+// `already-replied` doesn't dead-end the `s` keystroke.
 //
 // Thread-scoped resolution (issue #395). ADR 0037 introduced reply-level
 // cursor stops, so `cursor.commentId` may be a parent OR a Reply id. We
-// resolve through `findThreadByNode` so `R` dispatches Thread-scoped
+// resolve through `findThreadByNode` so `s` dispatches Thread-scoped
 // regardless of which node the cursor sits on — including the natural
 // post-Reply-submit landing on the freshly-created Reply.
 //

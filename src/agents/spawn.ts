@@ -7,8 +7,7 @@ import type {
 } from "../core/agent-adapter.js";
 
 // Shared spawn helper for shipped reply-agents. Launches the inner CLI with
-// stdin closed (the agent has zero tools and reads nothing from us at
-// runtime), stdout piped (Tour captures it as the Reply body — ADR 0012),
+// stdin closed, stdout piped (Tour captures it as the Reply body — ADR 0012),
 // and stderr piped (captured into the per-dispatch log file by the runner —
 // ADR 0014). Stderr was previously `inherit`-ed but that left
 // failure-mode diagnostics ephemeral and was a TUI framebuffer hazard for

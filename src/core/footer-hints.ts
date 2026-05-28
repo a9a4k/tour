@@ -1,7 +1,7 @@
 // Cross-surface keybinding legend composer for the footer hint strip.
 // Both the TUI and the webapp render a one-line muted legend at the
 // bottom of their viewport; this module owns the vocabulary so the
-// shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `R`, `L`, `T`, `Enter`,
+// shared keys (`j/k`, `h/l`, `n/p`, `c`, `r`, `s`, `L`, `T`, `Enter`,
 // `Shift+C`) cannot drift between surfaces.
 //
 // `surface: "tui"` emits the full key list. `surface: "web"` emits
@@ -9,15 +9,13 @@
 // webapp bindings later grows the web legend without touching the TUI
 // string.
 //
-// The `R: request reply` hint is surfaced conditionally on both
+// The `s: send to agent` hint is surfaced conditionally on both
 // surfaces — only when `--reply-agent` is configured AND the cursor is
 // on a human Comment card AND the reply-lock is free (caller passes
 // `showSendHint: true`). Issue #390 / ADR 0021 addendum: the verb was
 // "send to {agent}" on key `s` until that label kept reading as
 // "message my current Claude session" — agent name dropped from the
-// legend, role-framed verb, and `s → R` (shift-r) parallel with bare
-// `r: reply` (same letter, case-shifted = same action, different
-// actor).
+// legend and the role-framed verb is `s: send to agent`.
 //
 // Issues #337 (TUI) + #338 (webapp) / ADR 0029 + ADR 0030: both
 // legends now read `c: comment` / `T: picker`. The pre-cutover form
@@ -97,7 +95,7 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
     // Sidebar-mode legend (PRD #343 / ADR 0031 / issue #345). Shorter
     // than the diff-mode legend — only sidebar-navigable keys and the
     // pane-agnostic Tour-wide actions (e/y/o/L/T/q). The send-hint
-    // conditional is gated off here: `R` is a cursor-target action
+    // conditional is gated off here: `s` is a cursor-target action
     // that only fires when paneFocus = diff. PRD #349 / ADR 0032 /
     // issue #352: `o: open` slots next to `y` since both are
     // "side-effect on cursor's file."
@@ -118,12 +116,9 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       `j/k: file  ·  h/l: fold  ·  Enter: activate  ·  y: yank  ·  o: open  ·  L: layout${sidebarVisibilityFragment}  ·  T: picker  ·  Esc: diff`
     );
   }
-  // Issue #390: the agent name is intentionally NOT interpolated into the
-  // legend label. The header chip (webapp + TUI) carries the configured
-  // agent name; the legend just says what the action does. Same letter as
-  // bare `r: reply`, case-shifted to mark "different actor" (the
-  // configured reply-agent runs the request in a separate session).
-  const send = opts.showSendHint && opts.replyAgent ? `  ·  R: request reply` : "";
+  // Issue #467: the configured template is intentionally NOT interpolated
+  // into the legend label. The footer names the constant role instead.
+  const send = opts.showSendHint && opts.replyAgent ? `  ·  s: send to agent` : "";
   // Issue #406 / ADR 0038 amended. Contextual `Enter` verb. On
   // diff-pane: `Enter: expand` on an interactive row OR collapsed
   // Card; `Enter: collapse` on an expanded Card; omitted on a plain
@@ -156,9 +151,9 @@ export function composeFooterHints(opts: ComposeFooterHintsOptions): string {
       : "C: collapse all";
   if (opts.surface === "tui") {
     // ADR 0036 Slice D / issue #388: `d: delete` slots into the lowercase-
-    // cursor cluster between `r: reply` and `R: request reply`. Card-only
+    // cursor cluster between `r: reply` and `s: send to agent`. Card-only
     // gesture — the App-side handler routes `d` on a row to a labelled
-    // no-op (`noop-delete-on-row`), matching the existing `r`/`R`
+    // no-op (`noop-delete-on-row`), matching the existing `r`/`s`
     // pattern. The hint is unconditional in the legend (same convention
     // as `r: reply`); gating the verb on cursor context happens at the
     // dispatcher.

@@ -1,6 +1,9 @@
 import type { Comment, Tour } from "./types.js";
 import { buildThreads } from "./threads.js";
-import { SHIPPED_ADAPTERS, availableShippedAgents } from "../agents/index.js";
+import { combinedPrompt, userPrompt } from "../agents/prompt.js";
+import { spawnCli as spawnCliDefault } from "../agents/spawn.js";
+import { assertRenderedCommand, renderCommandTemplate } from "./command-template.js";
+import { REPLY_AGENT_PLACEHOLDERS } from "./reply-agent-template.js";
 
 // JSON envelope handed to a shipped reply-agent's argv-builder. Contains
 // everything an agent needs to compose a reply without re-reading the
@@ -57,31 +60,37 @@ export interface SpawnedAdapter {
   exit: Promise<SpawnResult>;
 }
 
-export interface ShippedAdapter {
-  spawn(opts: SpawnOpts): SpawnedAdapter;
-}
+export type ReplyAgentSpawner = (
+  cmd: string,
+  args: string[],
+  opts: SpawnOpts,
+) => SpawnedAdapter;
 
 export interface SpawnReplyAgentOptions {
+  // Command template configured through --reply-agent or reply_agent.
   agent: string;
   envelope: ReplyEnvelope;
   systemPrompt: string;
   cwd: string;
   tourDir: string;
-  // Test-only override that bypasses the registry. Replaces the prior
-  // shell-script `adapterPath` seam.
-  adapter?: ShippedAdapter;
+  // Test-only override for the process spawn seam.
+  spawnCli?: ReplyAgentSpawner;
 }
 
-// Resolves the named shipped adapter from the registry (or uses the
-// override) and spawns its inner CLI. Throws on unknown name.
+// Renders the configured command template and spawns its inner CLI.
 export function spawnReplyAgent(opts: SpawnReplyAgentOptions): SpawnedAdapter {
-  const adapter = opts.adapter ?? SHIPPED_ADAPTERS[opts.agent];
-  if (!adapter) {
-    throw new Error(
-      `Unknown reply-agent "${opts.agent}". Available agents: ${availableShippedAgents().join(", ")}`,
-    );
-  }
-  return adapter.spawn({
+  const substitutions = {
+    systemPrompt: opts.systemPrompt,
+    userPrompt: userPrompt(opts.envelope),
+    combinedPrompt: combinedPrompt(opts.envelope, opts.systemPrompt),
+  };
+  const argv = assertRenderedCommand(
+    renderCommandTemplate(opts.agent, substitutions, REPLY_AGENT_PLACEHOLDERS),
+  );
+  const [cmd, ...args] = argv;
+  if (!cmd) throw new Error("Reply-agent template rendered an empty command");
+  const spawnCli = opts.spawnCli ?? spawnCliDefault;
+  return spawnCli(cmd, args, {
     envelope: opts.envelope,
     systemPrompt: opts.systemPrompt,
     cwd: opts.cwd,

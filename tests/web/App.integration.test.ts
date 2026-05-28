@@ -1011,7 +1011,7 @@ function stubFetch(replyLock: unknown): typeof fetch {
 }
 
 describe("App footer dynamic send-hint (Issue #332)", () => {
-  it("renders `R: request reply` when reply-agent is configured and cursor is on a human card (issue #390 relabel)", async () => {
+  it("renders `s: send to agent` when reply-agent is configured and cursor is on a human card (issue #390 relabel)", async () => {
     globalThis.fetch = stubFetch(null);
     const container = document.getElementById("root")!;
     await act(async () => {
@@ -1027,11 +1027,11 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
 
     const footer = container.querySelector("footer.app-footer");
     expect(footer).not.toBeNull();
-    // Issue #390 / ADR 0021 addendum: the hint label is `R: request reply`
+    // Issue #390 / ADR 0021 addendum: the hint label is `s: send to agent`
     // (no agent name interpolated) — the agent name lives on the header
     // chip + button tooltip, not the legend.
-    expect(footer!.textContent).toContain("R: request reply");
-    expect(footer!.textContent).not.toContain("s: send to");
+    expect(footer!.textContent).toContain("s: send to agent");
+    expect(footer!.textContent).not.toContain("s: send to claude");
   });
 
   it("omits the send-hint segment when reply-agent is unset, even on a human card", async () => {
@@ -1047,7 +1047,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
 
     const footer = container.querySelector("footer.app-footer");
     expect(footer).not.toBeNull();
-    expect(footer!.textContent).not.toContain("R: request reply");
+    expect(footer!.textContent).not.toContain("s: send to agent");
     expect(footer!.textContent).not.toContain("send to");
   });
 
@@ -1072,7 +1072,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
 
     const footer = container.querySelector("footer.app-footer");
     expect(footer).not.toBeNull();
-    expect(footer!.textContent).not.toContain("R: request reply");
+    expect(footer!.textContent).not.toContain("s: send to agent");
   });
 
   it("omits the send-hint segment when the cursor moves to an agent card", async () => {
@@ -1091,7 +1091,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
 
     // URL-open seeding lands on the first top-level (human) — segment present.
     const footer = container.querySelector("footer.app-footer");
-    expect(footer!.textContent).toContain("R: request reply");
+    expect(footer!.textContent).toContain("s: send to agent");
 
     // `n` walks top-level forward — lands on the agent comment. Segment must drop.
     await act(async () => {
@@ -1101,7 +1101,7 @@ describe("App footer dynamic send-hint (Issue #332)", () => {
     });
     await flush();
 
-    expect(footer!.textContent).not.toContain("R: request reply");
+    expect(footer!.textContent).not.toContain("s: send to agent");
   });
 });
 

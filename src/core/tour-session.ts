@@ -152,7 +152,7 @@ export interface TourSessionState {
   // Per-Thread collapse (PRD #397 / ADR 0038). Holds the top-level
   // Comment ids of Threads the user has minimised to a one-liner. Mirrors
   // GitHub's "minimize comment" gesture. `Shift+C` toggles membership of
-  // the cursored Card; modifying action seams (`r`, `R`) pre-dispatch
+  // the cursored Card; modifying action seams (`r`, `s`) pre-dispatch
   // `thread.expand` before acting; destructive cascade actions (`d`)
   // refuse to act on a collapsed Thread. Watcher-delivered events never
   // auto-expand. Reset on tour switch (matches collapsedFolders);
@@ -271,7 +271,7 @@ export type ScrollCursorTarget =
 //   step motion and click (spatial gestures).
 //   `center`: always frame the target mid-viewport — used for `n`/`p`
 //   comment-walking and fresh landings (cursor materialize, URL `?ann=`
-//   restore, `r`/`R` auto-recall).
+//   restore, `r`/`s` auto-recall).
 //
 // Motion — *how* the frame gets there.
 //   `instant`: write the scroll position in one frame — used for fresh
@@ -1031,7 +1031,7 @@ export function reduce(state: TourSessionState, action: Action): ReduceResult {
     case "thread.expand": {
       // PRD #397 / ADR 0038. Remove the Thread's top-level id from the
       // set; no-op when absent. Action seams for modifying verbs (`r`,
-      // `R`) pre-dispatch this so the composer / in-flight pill never
+      // `s`) pre-dispatch this so the composer / in-flight pill never
       // mount under a hidden Card.
       if (!state.collapsedThreads.has(action.id)) return { state, intents: NO_INTENTS };
       const next = new Set(state.collapsedThreads);

@@ -19,10 +19,12 @@ describe("replyAgentSystemPrompt", () => {
     expect(prompt).toContain("Your stdout IS the reply");
   });
 
-  it("declares zero tools (no `tour annotate` invocation, no allow/deny)", () => {
+  it("frames tool access as template-controlled scope, not a Tour sandbox", () => {
     const prompt = replyAgentSystemPrompt();
-    expect(prompt).toContain("You have no tools");
-    expect(prompt).toContain("cannot edit code");
+    expect(prompt).toContain("Capabilities and scope");
+    expect(prompt).toContain("user's reply-agent command");
+    expect(prompt).toContain("Do not intentionally edit code");
+    expect(prompt).not.toContain("You have no tools");
     // The previous tool-call dispatch language is gone.
     expect(prompt).not.toContain("tour annotate --as-agent --reply-to");
   });

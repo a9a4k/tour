@@ -8,7 +8,7 @@
 // Empty `=` (e.g. `--reply-agent=`) throws at parse time. Without the
 // throw, `parseArgs` would silently store `flags["reply-agent"] = ""`
 // and `flag(flags, "reply-agent")` would return `""`, which downstream
-// validators (e.g. `assertShippedAgent("")`) report with confusing
+// validators (e.g. reply-agent template validation) report with confusing
 // messages. Failing here keeps the error close to the typo.
 
 export interface ParsedArgs {
