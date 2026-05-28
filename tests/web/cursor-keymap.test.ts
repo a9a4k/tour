@@ -169,7 +169,7 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
   // App-side handler routes it into useFlashFooter with a ~2s auto-dismiss.
   // PRD #335 / ADR 0029 flipped "annotation" → "comment" in these strings.
   // Issue #390 / ADR 0021 addendum: the "Send …" copy was reframed to
-  // "Request-reply …" and "Reply agent (<name>) is already replying."
+  // "Request-reply …" and "Reply agent is already replying."
   // so the visible role-name carries the same framing as the in-flight
   // pill and the agent-reply byline. (The header chip carried it pre-
   // rollback; ADR 0021 addendum amended to record the retirement.)
@@ -208,17 +208,17 @@ describe("dispatchCursorKey: r / s miss reasons surface as status (PRD #330)", (
     });
   });
 
-  it("s on a human card while the reply-lock is held → status `Reply agent (<name>) is already replying.`", () => {
+  it("s on a human card while the reply-lock is held → status `Reply agent is already replying.`", () => {
     const lockedCtx: CursorKeymapContext = {
       ...cardCtx,
-      replyAgent: "claude",
+      replyAgent: "claude --print {userPrompt}",
       replyLockHeld: true,
     };
     expect(
       dispatchCursorKey(key({ key: "s" }), lockedCtx),
     ).toEqual({
       type: "status",
-      message: "Reply agent (claude) is already replying.",
+      message: "Reply agent is already replying.",
     });
   });
 });

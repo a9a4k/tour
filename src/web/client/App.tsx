@@ -2612,18 +2612,14 @@ function ReplyPill({ lock }: { lock: ReplyLock }): React.JSX.Element {
     return (
       <div className="reply-pill stale" role="status">
         <span className="reply-pill-icon" aria-hidden="true">⚠️</span>
-        <span>
-          Reply agent (<strong>{lock.agent}</strong>) is taking unusually long…
-        </span>
+        <span>Reply agent is taking unusually long…</span>
       </div>
     );
   }
   return (
     <div className="reply-pill" role="status">
       <span className="reply-pill-icon" aria-hidden="true">✏️</span>
-      <span>
-        Reply agent (<strong>{lock.agent}</strong>) is replying… ({seconds}s)
-      </span>
+      <span>Reply agent is replying… ({seconds}s)</span>
     </div>
   );
 }
@@ -2686,7 +2682,7 @@ export function CommentCard({
   // worker role ("Reply agent (<name>) is replying — wait") so the
   // visible copy matches the header chip's framing.
   const lockedTooltip = replyLock
-    ? `Reply agent (${replyLock.agent}) is replying — wait`
+    ? `Reply agent is replying — wait`
     : undefined;
   // A Thread carries exactly one action row at the bottom (issue #191).
   // The Reply button targets the latest Comment in the Thread so a

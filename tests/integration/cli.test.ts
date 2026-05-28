@@ -580,7 +580,11 @@ describe("CLI integration", () => {
         { tourHome },
       );
 
-      const result = await run(["tui"], linked, { tourHome, timeoutMs: 2000 });
+      const result = await run(["tui"], linked, {
+        tourHome,
+        timeoutMs: 2000,
+        env: { TOUR_EDITOR: "", VISUAL: "", EDITOR: "" },
+      });
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No open tours");

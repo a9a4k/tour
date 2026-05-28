@@ -241,7 +241,7 @@ export function dispatchCursorKey(
     if (ctx.replyLockHeld) {
       return {
         type: "status",
-        message: `Reply agent (${ctx.replyAgent}) is already replying.`,
+        message: `Reply agent is already replying.`,
       };
     }
     return { type: "send-on-card" };

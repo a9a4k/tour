@@ -85,7 +85,7 @@ function ReplyPill({ lock, now }: PillProps) {
     return (
       <box marginTop={1} paddingLeft={2}>
         <text fg={theme.fg.attention}>
-          {`⚠️ Reply agent (${lock.agent}) is taking unusually long…`}
+          {`⚠️ Reply agent is taking unusually long…`}
         </text>
       </box>
     );
@@ -93,7 +93,7 @@ function ReplyPill({ lock, now }: PillProps) {
   return (
     <box marginTop={1} paddingLeft={2}>
       <text fg={theme.fg.muted}>
-        {`✏️ Reply agent (${lock.agent}) is replying… (${seconds}s)`}
+        {`✏️ Reply agent is replying… (${seconds}s)`}
       </text>
     </box>
   );

@@ -616,14 +616,14 @@ describe("CommentCard `Request reply` affordance (issue #184, PRD #181; relabell
     ) as HTMLButtonElement | null;
     expect(btn).not.toBeNull();
     expect(btn?.disabled).toBe(true);
-    // Issue #390: the lock-held tooltip names the worker role
-    // ("Reply agent (<name>) is replying — wait") so the cue carries
-    // the same role-naming framing as the in-flight pill and the
-    // agent-reply byline. (Pre-rollback the header chip was the
-    // canonical home; ADR 0021 addendum amended.)
+    // Issue #390 / PRD #466 review: the lock-held tooltip names the worker
+    // role ("Reply agent is replying — wait") so the cue carries the same
+    // role-naming framing as the in-flight pill and the agent-reply byline.
+    // The pre-template design interpolated the CLI's registry name
+    // ("claude"); the template design drops the parenthetical because
+    // interpolating the full command template would flood the tooltip.
     const tip = btn?.getAttribute("title") ?? "";
     expect(tip).toContain("Reply agent");
-    expect(tip).toContain("claude");
     expect(tip).toContain("is replying");
   });
 
@@ -1076,7 +1076,6 @@ describe("CommentCard single bottom action row (issue #191, PRD #181)", () => {
     expect(btn?.disabled).toBe(true);
     const tip2 = btn?.getAttribute("title") ?? "";
     expect(tip2).toContain("Reply agent");
-    expect(tip2).toContain("claude");
     expect(tip2).toContain("is replying");
     expect(container.querySelectorAll(".send-to-agent-button")).toHaveLength(1);
   });

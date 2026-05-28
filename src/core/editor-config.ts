@@ -8,7 +8,7 @@ import {
   placeholdersIn,
   renderCommandTemplate,
 } from "./command-template.js";
-import { USER_CONFIG_SEED } from "./user-config-seed.js";
+import { USER_CONFIG_EDITOR_BLOCK } from "./user-config-seed.js";
 
 export interface EditorConfig {
   /** Raw command template selected by the resolution chain. */
@@ -57,7 +57,8 @@ export function invalidEditorTemplateMessage(value: string, configPath?: string)
   const location = editorTemplateLocation(configPath);
   return `${location} must include {file}. Rejected value: ${JSON.stringify(value)}
 Placeholders: {file} required, {line} optional.
-${USER_CONFIG_SEED}`;
+
+${USER_CONFIG_EDITOR_BLOCK}`;
 }
 
 export function validateEditorTemplate(value: string, configPath?: string): void {

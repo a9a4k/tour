@@ -1,7 +1,13 @@
-export const USER_CONFIG_SEED = `# Tour configuration. Hand-edit; values feed --reply-agent and --editor defaults.
-# Run \`tour config show\` to see resolved values and their source.
+// The seed file content is composed from three exported pieces so the
+// auto-create writer ships the full document and the migration-error
+// builders embed just the relevant examples block (issue #467 review:
+// dumping the whole 39-line seed in a one-line typo error is verbose).
 
-# --- Editor ---
+const SEED_HEADER = `# Tour configuration. Hand-edit; values feed --reply-agent and --editor defaults.
+# Run \`tour config show\` to see resolved values and their source.
+`;
+
+export const USER_CONFIG_EDITOR_BLOCK = `# --- Editor ---
 # A command template with {file} (required) and {line} (optional) placeholders.
 # Set editor_terminal = true if your editor runs in the terminal (vim, helix, kak,
 # wrappers around them, etc.) — Tour refuses to spawn it from the webapp and uses
@@ -17,8 +23,9 @@ export const USER_CONFIG_SEED = `# Tour configuration. Hand-edit; values feed --
 # editor_terminal = true
 # editor = "nvim +{line} {file}"
 # editor_terminal = true
+`;
 
-# --- Reply agent ---
+export const USER_CONFIG_REPLY_AGENT_BLOCK = `# --- Reply agent ---
 # A command template Tour spawns to compose a Reply. Placeholders are substituted
 # as whole argv tokens (no shell interpolation):
 #   {systemPrompt}    Tour's canonical system prompt
@@ -37,3 +44,7 @@ export const USER_CONFIG_SEED = `# Tour configuration. Hand-edit; values feed --
 # reply_agent = "opencode run {combinedPrompt}"
 # reply_agent = "pi --print --allowedTools Read,Grep,Glob,Bash --system-prompt {systemPrompt} {userPrompt}"
 `;
+
+export const USER_CONFIG_SEED = `${SEED_HEADER}
+${USER_CONFIG_EDITOR_BLOCK}
+${USER_CONFIG_REPLY_AGENT_BLOCK}`;

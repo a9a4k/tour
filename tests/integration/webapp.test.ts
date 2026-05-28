@@ -591,7 +591,16 @@ describe("Webapp worktree-scoped tour list", () => {
     const setup = await createRepoWithCrossWorktreeTours();
     serverProcess = exec(`${BUN} ${CLI} serve --port ${port}`, {
       cwd: setup.dir,
-      env: { ...process.env, TOUR_HOME: setup.tourHome },
+      // Isolate from the developer's inherited $EDITOR / $VISUAL so the
+      // post-#468 strict editor template validation doesn't reject
+      // bare-name fallbacks during `serve` startup.
+      env: {
+        ...process.env,
+        TOUR_HOME: setup.tourHome,
+        TOUR_EDITOR: "",
+        VISUAL: "",
+        EDITOR: "",
+      },
     });
     await waitForServer(`${baseUrl}/api/tours`);
 

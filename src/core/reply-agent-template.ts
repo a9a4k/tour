@@ -2,7 +2,7 @@ import {
   renderCommandTemplate,
   type CommandTemplateValidationError,
 } from "./command-template.js";
-import { USER_CONFIG_SEED } from "./user-config-seed.js";
+import { USER_CONFIG_REPLY_AGENT_BLOCK } from "./user-config-seed.js";
 
 export const REPLY_AGENT_PLACEHOLDERS = [
   "systemPrompt",
@@ -36,7 +36,7 @@ function formatMissingPlaceholderError(template: string, sourcePath?: string): s
 Reply-agent templates must include at least one Tour prompt placeholder.
 Placeholders: ${validPlaceholderLabels().join(", ")}
 
-${USER_CONFIG_SEED}`;
+${USER_CONFIG_REPLY_AGENT_BLOCK}`;
 }
 
 export function validateReplyAgentTemplate(

@@ -1290,7 +1290,7 @@ function App(props: AppProps) {
     }
     if (!sendHintVerdict.enabled) {
       if (sendHintVerdict.reason === "lock-held") {
-        flash(`${replyLock?.agent ?? props.replyAgent} is replying — wait`);
+        flash(`Reply agent is replying — wait`);
       }
       // sendTarget === null (latest turn is agent) falls out of the
       // visible set (footer hint hidden), so pressing `s` is a silent

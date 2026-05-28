@@ -85,8 +85,13 @@ export async function requestReply(
   }
 
   const startedAt = new Date().toISOString();
+  // PRD #466 review: the renderers no longer interpolate this field into
+  // the pill text — the resolved template is multi-line and floods any
+  // glanceable surface. Stored as the constant role label so the schema
+  // stays closed; forensic CLI identification is recoverable from the
+  // per-dispatch log (ADR 0014).
   const acquired = await tryAcquireReplyLock(tourStoreRoot, opts.tourId, {
-    agent: opts.agent,
+    agent: "agent",
     responding_to: opts.commentId,
     started_at: startedAt,
     pid: 0,
@@ -148,7 +153,7 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
       spawnCli: opts.spawnCli,
     });
     await writeReplyLock(opts.tourStoreRoot, opts.tourId, {
-      agent: opts.agent,
+      agent: "agent",
       responding_to: opts.triggering.id,
       started_at: opts.startedAt,
       pid: spawned.pid,
@@ -177,7 +182,7 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
       durationMs: Date.now() - Date.parse(opts.startedAt),
       error: result.error,
     });
-    await persistReply(opts.tourStoreRoot, opts.tourId, opts.agent, opts.triggering, result, logPath);
+    await persistReply(opts.tourStoreRoot, opts.tourId, opts.triggering, result, logPath);
   } finally {
     await deleteReplyLock(opts.tourStoreRoot, opts.tourId);
   }
@@ -191,20 +196,19 @@ async function runDispatch(opts: RunDispatchOptions): Promise<void> {
 async function persistReply(
   cwd: string,
   tourId: string,
-  agent: string,
   triggering: Comment,
   result: { code: number | null; stdout: string; error?: Error },
   logPath: string,
 ): Promise<void> {
   if (result.error) {
     process.stderr.write(
-      `reply-agent ${agent}: spawn failed: ${result.error.message}; see ${logPath}\n`,
+      `reply-agent: spawn failed: ${result.error.message}; see ${logPath}\n`,
     );
     return;
   }
   if (result.code !== 0) {
     process.stderr.write(
-      `reply-agent ${agent}: exited with code ${result.code} — no reply written; see ${logPath}\n`,
+      `reply-agent: exited with code ${result.code} — no reply written; see ${logPath}\n`,
     );
     return;
   }
@@ -213,11 +217,11 @@ async function persistReply(
     // Empty stdout is a normal dispatch completion (ADR 0015) — the seam
     // would reject the empty body anyway (PRD #140 rule 1/5), so we
     // short-circuit, record a rejection entry in the dispatch log (header
-    // already carries agent + triggering id), and skip the write. The
+    // already carries the triggering id), and skip the write. The
     // lock clears via the caller's finally.
     await appendFile(logPath, "=== rejected: empty body — no reply written\n");
     process.stderr.write(
-      `reply-agent ${agent}: produced no output — no reply written; see ${logPath}\n`,
+      `reply-agent: produced no output — no reply written; see ${logPath}\n`,
     );
     return;
   }
