@@ -1,8 +1,8 @@
 # tour
 
-Local code walkthroughs for the code your AI agent wrote.
+Local code review at AI speed.
 
-When your agent finishes, its last step is to leave a tour — a walkthrough of its own diff. You step through the comments in a TUI or your browser. No GitHub round-trip.
+Your AI ships faster than you can read. Tour is the local surface where review keeps up — the agent narrates its diff, you push back on the lines you doubt, the agent answers. All local. No GitHub round-trip.
 
 ## Install
 
