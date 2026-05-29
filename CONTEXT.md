@@ -1,6 +1,6 @@
 # Tour
 
-A code-walkthrough tool that pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI comments. Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
+A local code-review tool for AI-generated diffs. Pairs an ephemeral, GitHub-style diff (split or unified) with persisted AI comments and an opt-in reply loop (ADR 0021). Drives the same data from a TUI and a webapp, both consuming local files written by agents through a CLI.
 
 ## Language
 
