@@ -10,7 +10,9 @@ Your AI writes faster than you can review. Tour lets your AI leave a walkthrough
 
 [Watch the full demo →](./.github/assets/demo.mp4)
 
-## Install
+## Setup
+
+### 1. Install the CLI
 
 Homebrew (macOS, Linux):
 
@@ -32,6 +34,49 @@ Verify:
 tour --version
 ```
 
+### 2. Install the agent skill
+
+Teach your AI agent (Claude Code, Codex, Cursor, Gemini CLI, OpenCode, …) how to leave Tours when you ask for a review:
+
+```sh
+npx skills add a9a4k/tour -g
+```
+
+Now asking your agent to *"review this branch"* or *"walk me through this diff"* produces a Tour — line-anchored comments, opened in your browser at a clickable URL — instead of a wall of chat. Works across the [skills.sh](https://skills.sh) ecosystem.
+
+### 3. Seed the config
+
+Run `tour serve` once to have Tour write a commented template to `~/.tour/config.toml` (or `$TOUR_HOME/config.toml`):
+
+```sh
+tour serve   # Ctrl+C after it prints "Tour server running at …"
+```
+
+### 4. Configure your reply-agent and editor
+
+Edit `~/.tour/config.toml` and set:
+
+```toml
+# Spawned when you press `s` on a comment — the AI that replies.
+reply_agent = "claude --print --allowedTools Read,Grep,Glob,Bash --system-prompt {systemPrompt} {userPrompt}"
+
+# Spawned when you press `o` on a line — your editor.
+editor = "code -g {file}:{line}"        # VSCode
+# editor = "cursor -g {file}:{line}"    # Cursor
+# editor = "idea --line {line} {file}"  # JetBrains
+# editor = "vim +{line} {file}"         # vim
+```
+
+`{systemPrompt}` / `{userPrompt}` are placeholders Tour fills in at spawn time. `{file}` and `{line}` come from the focused comment's anchor.
+
+Verify:
+
+```sh
+tour config show
+```
+
+Should print both fields with `(from config)` as the source.
+
 ## Quickstart
 
 ```sh
@@ -43,24 +88,16 @@ tour serve --open                     # force webapp + auto-open the browser
 
 Tours live in `$TOUR_HOME/<repo-key>/<id>/` (default `~/.tour/`, out of your repo per ADR 0039 — coding agents with auto-commit can't sweep Tour internals into your commits). Each holds a `tour.toml` and an append-only `tour-events.jsonl` (event log per ADR 0036).
 
-## For agents
+## For agents (without a global install)
 
-Teach your AI agent to leave a Tour every time you ask for a review:
-
-```sh
-npx skills add a9a4k/tour -g
-```
-
-Works across Claude Code, Codex, Cursor, Gemini CLI, OpenCode, and other agents in the [skills.sh](https://skills.sh) ecosystem. Once installed, asking your agent to "review my branch" or "walk me through this diff" produces a Tour rather than a wall of chat: comments anchored to specific lines, written so a teammate with no context can follow along, opened in your browser at a clickable URL.
-
-For direct CLI use without the skill — e.g., in foreign repos with no global install:
+In foreign repos where you don't want to install Tour globally — or for ad-hoc CLI use from a script — call it via `bunx` / `npx`:
 
 ```sh
 bunx tourdiff create --head HEAD --json
 bunx tourdiff comment <id> --file src/foo.ts --side additions --line 12 --body "..."
 ```
 
-Or via npm:
+Or:
 
 ```sh
 npx -y tourdiff create --head HEAD --json
