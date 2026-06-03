@@ -1,8 +1,12 @@
 # tour
 
+[![npm](https://img.shields.io/npm/v/tourdiff.svg)](https://www.npmjs.com/package/tourdiff) [![license](https://img.shields.io/github/license/a9a4k/tour.svg)](./LICENSE)
+
 Local code review at AI speed.
 
-Your AI ships faster than you can read. Tour is the local surface where review keeps up — the agent narrates its diff, you push back on the lines you doubt, the agent answers. All local. No GitHub round-trip.
+Your AI writes faster than you can review. Tour is where your AI walks through the diff — read it, comment, discuss, and jump to your editor in one keystroke.
+
+<!-- demo: ./.github/assets/demo.gif (6s inline loop) + ./.github/assets/demo.mp4 (45s linked) — added in Step 4 of the marketing campaign -->
 
 ## Install
 
@@ -35,7 +39,7 @@ tour                                  # open the tour (webapp on a desktop, TUI 
 tour serve --open                     # force webapp + auto-open the browser
 ```
 
-Tours live in `.tour/<id>/` (auto-gitignored on first create). Each holds a `tour.toml` and an append-only `tour-events.jsonl` (event log per ADR 0036).
+Tours live in `$TOUR_HOME/<repo-key>/<id>/` (default `~/.tour/`, out of your repo per ADR 0039 — coding agents with auto-commit can't sweep Tour internals into your commits). Each holds a `tour.toml` and an append-only `tour-events.jsonl` (event log per ADR 0036).
 
 ## For agents
 
