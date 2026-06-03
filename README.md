@@ -54,10 +54,10 @@ tour init
 
 ### 4. Configure your reply-agent and editor
 
-Edit `~/.tour/config.toml` and set:
+Uncomment your agent and editor in `~/.tour/config.toml`:
 
 ```toml
-# Spawned when you press `s` on a comment — the AI that replies.
+# Spawned when you "Request Reply" on a comment — the AI that replies.
 reply_agent = "claude --print --allowedTools Read,Grep,Glob,Bash --system-prompt {systemPrompt} {userPrompt}"
 
 # Spawned when you press `o` on a line — your editor.
@@ -77,14 +77,21 @@ tour config show
 
 Should print both fields with `(from config)` as the source.
 
-## Quickstart
+## Usage
 
-```sh
-cd your-repo
-tour create --head HEAD              # tour the latest commit
-tour                                  # open the tour (webapp on a desktop, TUI otherwise)
-tour serve --open                     # force webapp + auto-open the browser
-```
+Talk to your AI agent in plain English. Three patterns that produce good tours:
+
+> *"Create a tour for my uncommitted changes."*
+
+Snapshots the working tree as a synthetic pinned commit and walks you through it. No `git commit` needed first.
+
+> *"Create a tour for this PR."*
+
+Tours the diff between your branch and its merge base. Works on any branch — no PR needs to exist on GitHub yet.
+
+> *"For each subtask, leave its own tour. Keep the diff isolated to one subtask."*
+
+A convention to set up front in multi-step sessions. One tour per logical change beats one fat tour at the end — comments stay anchored to the diff they're reasoning about, and the reply loop has less to wade through.
 
 Tours live in `$TOUR_HOME/<repo-key>/<id>/` (default `~/.tour/`, out of your repo per ADR 0039 — coding agents with auto-commit can't sweep Tour internals into your commits). Each holds a `tour.toml` and an append-only `tour-events.jsonl` (event log per ADR 0036).
 
