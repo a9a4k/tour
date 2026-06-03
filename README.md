@@ -4,7 +4,7 @@
 
 Local code review at AI speed.
 
-Your AI writes faster than you can review. Tour is where your AI walks through the diff — read it, comment, discuss, and jump to your editor in one keystroke.
+Tour lets your AI leave a walkthrough on its diff as PR-style comments. Reply to the agent's comments, add your own, and jump to your editor in one keystroke.
 
 <!-- demo: ./.github/assets/demo.gif (6s inline loop) + ./.github/assets/demo.mp4 (45s linked) — added in Step 4 of the marketing campaign -->
 

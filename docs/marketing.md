@@ -1,6 +1,6 @@
 # Tour — marketing language
 
-Source of truth for the four locked layers of public copy. When drafting a Show HN post, demo script, blog lead, or any external-facing artifact, copy from here — don't re-derive.
+Source of truth for the three locked layers of public copy. When drafting a Show HN post, demo script, blog lead, or any external-facing artifact, copy from here — don't re-derive.
 
 ## Tagline
 
@@ -12,23 +12,17 @@ Surfaces: README H1 sub-line, `package.json` description, GitHub repo descriptio
 
 ## Sub-line
 
-> Your AI writes faster than you can review. Tour is where your AI walks through the diff — read it, comment, discuss, and jump to your editor in one keystroke.
-
-First sentence names the asymmetry (the productivity paradox documented in LinearB's 2026 analysis: PR review time up 91%; AI-generated code waits 4.6× longer for review than human-written code). Second sentence gives the four reader actions in workflow order: read → comment → discuss → jump.
-
-Surfaces: README, under the tagline.
-
-## Hero use case
-
 > Tour lets your AI leave a walkthrough on its diff as PR-style comments. Reply to the agent's comments, add your own, and jump to your editor in one keystroke.
 
-The single-sentence story Tour tells.
+Two sentences.
 
 - *Tour lets your AI…* — Tour grants the capability; the agent acts. Not "Tour does X." Critical not to oversell agent reliability.
 - *Walkthrough as artifact, PR-style comments as form* — honors ADR 0004 (Tour, not Review) while anchoring to the GitHub PR mental model every developer already has.
 - *Reply* leads the reader actions because it's the differentiator against difit (which has comments but no AI conversation). Followed by *add your own* (additive authoring) and *jump* (the bridge to action).
 
-Surfaces: demo video opener, Show HN body, blog lead. Optional README "the moment" paragraph (deferred until the Step 3 README rewrite).
+Trade-off accepted on 2026-05-29: an earlier draft of this sub-line opened with the asymmetry hook (*"Your AI writes faster than you can review"*) carrying the LinearB review-bottleneck data. We swapped to this Tour-as-enabler version because it's more concrete (names the artifact form and the differentiator) — at the cost of the explicit pain hook. The Show HN campaign line still carries the pain framing.
+
+Surfaces: README, under the tagline. Also useful as the demo video opener, Show HN body lede, and blog lead — since we don't maintain a separate scenario-shaped hero.
 
 ## HN campaign line
 
