@@ -46,10 +46,10 @@ Now asking your agent to *"review this branch"* or *"walk me through this diff"*
 
 ### 3. Seed the config
 
-Run `tour serve` once to have Tour write a commented template to `~/.tour/config.toml` (or `$TOUR_HOME/config.toml`):
+Run `tour init` to have Tour write a commented template to `~/.tour/config.toml` (or `$TOUR_HOME/config.toml`):
 
 ```sh
-tour serve   # Ctrl+C after it prints "Tour server running at …"
+tour init
 ```
 
 ### 4. Configure your reply-agent and editor

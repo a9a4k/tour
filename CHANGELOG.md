@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CLI: `tour init` seeds `$TOUR_HOME/config.toml` explicitly (issue #471).**
+  The command writes the canonical commented config template with the
+  same atomic temp-file + rename path used by first-launch `tour tui` /
+  `tour serve`, prints the config path, and never overwrites an
+  existing file.
+
 ### Changed
 
 - **Webapp: composer now submits on `Enter`; `Shift+Enter` inserts a

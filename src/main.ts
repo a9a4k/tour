@@ -18,7 +18,7 @@ import { isOnPath } from "./core/is-on-path.js";
 import { resolveEditor } from "./core/editor-config.js";
 import { resolveTourLocation } from "./core/tour-location.js";
 import { tourHome } from "./core/tour-home.js";
-import { loadUserConfig } from "./core/user-config.js";
+import { loadUserConfig, seedUserConfig } from "./core/user-config.js";
 import { parseArgs } from "./core/parse-args.js";
 import { isNotGitWorkingTreeError } from "./core/not-git-working-tree-error.js";
 import { resolveReplyAgentTemplate } from "./core/reply-agent-template.js";
@@ -66,6 +66,7 @@ Usage:
   tour delete <id> [--json]
   tour prune --older-than <duration> [--json]
   tour pickup <id> [--json]
+  tour init
   tour config show
   tour --version
   tour --help
@@ -130,6 +131,20 @@ async function main(): Promise<void> {
     }
 
     const tourHomePath = tourHome(process.env);
+    if (command === "init") {
+      if (positional.length > 0) {
+        console.error("Usage: tour init");
+        process.exitCode = 1;
+        return;
+      }
+      const result = await seedUserConfig(tourHomePath);
+      console.log(result.configPath);
+      if (result.status === "exists") {
+        console.error(`${result.configPath} already seeded`);
+      }
+      return;
+    }
+
     if (command === "config") {
       if (positional[0] !== "show") {
         console.error("Usage: tour config show");

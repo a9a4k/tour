@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { resolveTourLocation } from "../../src/core/tour-location.js";
 import { NOT_GIT_WORKING_TREE_MESSAGE } from "../../src/core/not-git-working-tree-error.js";
+import { USER_CONFIG_SEED } from "../../src/core/user-config-seed.js";
 
 const exec = promisify(execFile);
 
@@ -769,6 +770,61 @@ editor_terminal = false (from default)`);
     });
   });
 
+  describe("init", () => {
+    it("writes the seed config and prints its absolute path", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-init-home-"));
+      const configPath = join(tourHome, "config.toml");
+
+      const result = await run(["init"], repo, { tourHome });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(configPath);
+      expect(result.stderr).toBe("");
+      await expect(readFile(configPath, "utf8")).resolves.toBe(USER_CONFIG_SEED);
+    });
+
+    it("does not overwrite an existing config", async () => {
+      const tourHome = await mkdtemp(join(tmpdir(), "tour-cli-init-home-"));
+      const configPath = join(tourHome, "config.toml");
+      await writeFile(configPath, 'editor = "nvim {file}"\n');
+
+      const result = await run(["init"], repo, { tourHome });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(configPath);
+      expect(result.stderr).toBe(`${configPath} already seeded`);
+      await expect(readFile(configPath, "utf8")).resolves.toBe(
+        'editor = "nvim {file}"\n',
+      );
+    });
+
+    it("creates a missing TOUR_HOME directory before seeding", async () => {
+      const root = await mkdtemp(join(tmpdir(), "tour-cli-init-root-"));
+      const tourHome = join(root, "missing", "tour-home");
+      const configPath = join(tourHome, "config.toml");
+
+      const result = await run(["init"], repo, { tourHome });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(configPath);
+      expect(result.stderr).toBe("");
+      await expect(readFile(configPath, "utf8")).resolves.toBe(USER_CONFIG_SEED);
+    });
+
+    it("exits non-zero and reports write failures", async () => {
+      const root = await mkdtemp(join(tmpdir(), "tour-cli-init-root-"));
+      const tourHome = join(root, "not-a-directory");
+      const configPath = join(tourHome, "config.toml");
+      await writeFile(tourHome, "file blocks directory creation\n");
+
+      const result = await run(["init"], repo, { tourHome });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(configPath);
+    });
+  });
+
   describe("show", () => {
     it("displays tour details", async () => {
       const cr = await run(["create", "--head", "HEAD", "--title", "Show Test", "--json"], repo);
@@ -1332,6 +1388,12 @@ editor_terminal = false (from default)`);
       const r = await run(["--help"], repo);
       expect(r.exitCode).toBe(0);
       expect(r.stdout).toContain("tour config show");
+    });
+
+    it("`tour --help` documents init", async () => {
+      const r = await run(["--help"], repo);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("tour init");
     });
   });
 

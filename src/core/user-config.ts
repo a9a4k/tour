@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseTOML } from "smol-toml";
 import { validateEditorTemplate } from "./editor-config.js";
@@ -17,6 +17,10 @@ const VALID_KEYS = ["reply_agent", "editor", "editor_terminal"] as const;
 interface LoadUserConfigOptions {
   autoCreate?: boolean;
 }
+
+export type SeedUserConfigResult =
+  | { status: "created"; configPath: string }
+  | { status: "exists"; configPath: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38,6 +42,26 @@ async function writeSeedConfig(configPath: string, tourHome: string): Promise<vo
   }
 }
 
+export async function seedUserConfig(tourHome: string): Promise<SeedUserConfigResult> {
+  const configPath = join(tourHome, "config.toml");
+  try {
+    await stat(configPath);
+    return { status: "exists", configPath };
+  } catch (err) {
+    if (
+      typeof err !== "object" ||
+      err === null ||
+      !("code" in err) ||
+      err.code !== "ENOENT"
+    ) {
+      throw err;
+    }
+  }
+
+  await writeSeedConfig(configPath, tourHome);
+  return { status: "created", configPath };
+}
+
 export async function loadUserConfig(
   tourHome: string,
   opts: LoadUserConfigOptions = {},
@@ -55,7 +79,7 @@ export async function loadUserConfig(
     ) {
       if (opts.autoCreate ?? true) {
         try {
-          await writeSeedConfig(configPath, tourHome);
+          await seedUserConfig(tourHome);
         } catch (writeErr) {
           console.error(
             `could not write ${configPath} (${errorMessage(writeErr)}); continuing with empty config`,
