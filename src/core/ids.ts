@@ -5,10 +5,9 @@ export function generateId(opts?: { seed?: number; now?: Date }): string {
   const mm = String(now.getUTCMinutes()).padStart(2, "0");
   const ss = String(now.getUTCSeconds()).padStart(2, "0");
   const time = `${hh}${mm}${ss}`;
+  const prefix = `${date}-${time}`;
   const suffix =
-    opts?.seed !== undefined
-      ? seededRandom(opts.seed)
-      : randomSuffix();
+    opts?.seed !== undefined ? seededRandom(opts.seed) : uniqueRandomSuffix(prefix);
   return `${date}-${time}-${suffix}`;
 }
 
@@ -27,6 +26,7 @@ export function parseIdTimestamp(id: string): Date {
 }
 
 const SUFFIX_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+const issuedRandomIds = new Set<string>();
 
 function randomSuffix(): string {
   let result = "";
@@ -34,6 +34,18 @@ function randomSuffix(): string {
     result += SUFFIX_CHARS[Math.floor(Math.random() * SUFFIX_CHARS.length)];
   }
   return result;
+}
+
+function uniqueRandomSuffix(prefix: string): string {
+  for (let attempts = 0; attempts < 100; attempts++) {
+    const suffix = randomSuffix();
+    const id = `${prefix}-${suffix}`;
+    if (!issuedRandomIds.has(id)) {
+      issuedRandomIds.add(id);
+      return suffix;
+    }
+  }
+  throw new Error(`Could not generate a unique id for ${prefix}`);
 }
 
 function seededRandom(seed: number): string {

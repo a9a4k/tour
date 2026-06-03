@@ -94,7 +94,7 @@ export function resolveEditor(
   repoRoot?: string,
 ): EditorConfig | null {
   const config = normalizeConfigSource(configEditor);
-  const { value: raw } = chooseFirstWithSource(
+  const { value: raw, source } = chooseFirstWithSource(
     { value: flag, source: "flag" },
     { value: env.TOUR_EDITOR, source: "$TOUR_EDITOR" },
     { value: config.editor, source: "config" },
@@ -102,7 +102,11 @@ export function resolveEditor(
     { value: env.EDITOR, source: "$EDITOR" },
   );
   if (raw === null) return null;
-  validateEditorTemplate(raw);
+  const isAmbientEditor = source === "$VISUAL" || source === "$EDITOR";
+  const placeholders = placeholdersIn(raw);
+  if (!isAmbientEditor || placeholders.length > 0) {
+    validateEditorTemplate(raw);
+  }
 
   // Split on whitespace into bin + args. Naive split is fine for the
   // common case; users with shell-quoted args in $EDITOR (`'code --wait'`)
@@ -110,7 +114,10 @@ export function resolveEditor(
   const tokens = raw.trim().split(/\s+/);
   if (tokens.length === 0 || tokens[0] === "") return null;
   const bin = tokens[0];
-  const argvTemplate = tokens.slice(1).join(" ");
+  const argvTemplate = [
+    ...tokens.slice(1),
+    ...(isAmbientEditor && placeholders.length === 0 ? ["{file}"] : []),
+  ].join(" ");
 
   return {
     template: raw,

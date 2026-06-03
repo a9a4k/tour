@@ -71,6 +71,18 @@ describe("resolveEditor — precedence", () => {
     expect(cfg?.bin).toBe("nvim");
   });
 
+  it("accepts a plain $VISUAL command and appends the file path", () => {
+    const cfg = resolveEditor(undefined, { VISUAL: "vim" });
+    expect(cfg?.bin).toBe("vim");
+    expect(cfg?.argv("/p/x.ts", 7)).toEqual(["/p/x.ts"]);
+  });
+
+  it("accepts a plain $EDITOR command and appends the file path", () => {
+    const cfg = resolveEditor(undefined, { EDITOR: "vi" });
+    expect(cfg?.bin).toBe("vi");
+    expect(cfg?.argv("/p/x.ts", 7)).toEqual(["/p/x.ts"]);
+  });
+
   it("returns null when no flag and no env vars are set", () => {
     expect(resolveEditor(undefined, {})).toBeNull();
   });
