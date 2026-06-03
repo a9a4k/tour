@@ -93,22 +93,9 @@ Tours the diff between your branch and its merge base. Works on any branch — n
 
 A convention to set up front in multi-step sessions. One tour per logical change beats one fat tour at the end — comments stay anchored to the diff they're reasoning about, and the reply loop has less to wade through.
 
-Tours live in `$TOUR_HOME/<repo-key>/<id>/` (default `~/.tour/`, out of your repo per ADR 0039 — coding agents with auto-commit can't sweep Tour internals into your commits). Each holds a `tour.toml` and an append-only `tour-events.jsonl` (event log per ADR 0036).
+> *"Pick up the tour comments and let's discuss."*
 
-## For agents (without a global install)
-
-In foreign repos where you don't want to install Tour globally — or for ad-hoc CLI use from a script — call it via `bunx` / `npx`:
-
-```sh
-bunx tourdiff create --head HEAD --json
-bunx tourdiff comment <id> --file src/foo.ts --side additions --line 12 --body "..."
-```
-
-Or:
-
-```sh
-npx -y tourdiff create --head HEAD --json
-```
+Brings the agent's walkthrough plus any replies you left back into your current session. Useful for continuing a review thread that started yesterday, or carrying tour-side decisions back into code edits.
 
 ## Commands
 
