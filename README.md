@@ -106,19 +106,29 @@ npx -y tourdiff create --head HEAD --json
 ## Commands
 
 ```
-tour create --head <ref> [--base <ref>] [--title <s>] [--json]
-tour comment <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--author <a>] [--json]
-tour comment <id> --batch -                          # read JSONL comments from stdin   (alias: annotate)
-tour list [--status open|closed|all] [--json]
+tour init                                             # seed ~/.tour/config.toml
+tour config show                                      # show resolved config + sources
+
+tour create --head <ref> [--base <ref>] [--title <s>] [--force] [--json]
+tour comment <id> --file <f> --side additions|deletions --line <n[-m]> --body <b> [--json]
+tour comment <id> --reply-to <comment-id> --body <b> [--json]        # reply on a thread
+tour comment <id> --edit <comment-id> --body <b> [--as-human] [--json]  # edit (humans only)
+tour comment <id> --delete <comment-id> [--json]                     # delete a comment
+tour comment <id> --batch -                                          # read JSONL from stdin  (alias: annotate)
+tour list [--all] [--status open|closed|all] [--json]
 tour show <id> [--json]
+tour pickup <id> [--json]                             # agent consumes human replies on this tour
+
+tour                                                  # open the best surface for the env
+tour tui [<id>] [--reply-agent <template>] [--editor <cmd>]
+tour serve [--port 8687] [--open] [<id>] [--reply-agent <template>] [--editor <cmd>]
+
 tour close <id>                                       # mark closed; keeps files
 tour delete <id>                                      # remove the tour
-tour prune --older-than 30d                           # bulk-delete by age
-tour tui [<id>]                                       # explicit TUI launch
-tour serve [--port 8687] [--open] [<id>]              # webapp (8687 = TOUR on T9, auto-falls-back on collision)
+tour prune --older-than <duration>                    # bulk-delete by age
 ```
 
-`--head WIP` snapshots uncommitted work to a synthetic commit so the diff stays pinned.
+`--head WIP` snapshots uncommitted work to a synthetic commit so the diff stays pinned. Full reference: `tour --help`.
 
 ## License
 
