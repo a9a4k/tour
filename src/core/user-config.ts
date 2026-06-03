@@ -30,6 +30,15 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function hasErrorCode(err: unknown, code: string): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    err.code === code
+  );
+}
+
 async function writeSeedConfig(configPath: string, tourHome: string): Promise<void> {
   const tmpPath = join(tourHome, `.config.toml.${process.pid}.${randomUUID()}.tmp`);
   await mkdir(tourHome, { recursive: true });
@@ -48,12 +57,7 @@ export async function seedUserConfig(tourHome: string): Promise<SeedUserConfigRe
     await stat(configPath);
     return { status: "exists", configPath };
   } catch (err) {
-    if (
-      typeof err !== "object" ||
-      err === null ||
-      !("code" in err) ||
-      err.code !== "ENOENT"
-    ) {
+    if (!hasErrorCode(err, "ENOENT")) {
       throw err;
     }
   }
@@ -71,12 +75,7 @@ export async function loadUserConfig(
   try {
     content = await readFile(configPath, "utf8");
   } catch (err) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      err.code === "ENOENT"
-    ) {
+    if (hasErrorCode(err, "ENOENT")) {
       if (opts.autoCreate ?? true) {
         try {
           await seedUserConfig(tourHome);
