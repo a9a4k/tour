@@ -23,7 +23,7 @@ If every merge fast-forwarded cleanly and there were no fixes, do NOT create an 
 
 # CLOSE ISSUES
 
-For each branch that was merged, close its child issue. Do NOT close parent issues (PRDs) — leave them open even if all their child issues are now closed. PRD closure is a human decision, not a merger task.
+For each branch that was merged, close its issue. If closing that issue would complete a parent PRD (all of its child issues are now closed), close the PRD too.
 
 Here are all the issues:
 
