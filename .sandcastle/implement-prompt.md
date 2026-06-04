@@ -6,7 +6,7 @@ Pull in the issue using `gh issue view {{ISSUE_NUMBER}} --json number,title,body
 
 Only work on the issue specified.
 
-Work on branch {{BRANCH}}. Make commits, run tests, and close the issue when done.
+Work on branch {{BRANCH}}. Make commits and run tests. The merger closes the issue later — do not close it yourself.
 
 # CONTEXT
 
