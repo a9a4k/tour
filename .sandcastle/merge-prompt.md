@@ -21,11 +21,9 @@ For each branch:
 
 If every merge fast-forwarded cleanly and there were no fixes, do NOT create an empty summary commit. Only commit if the merge produced a real merge commit or you applied fixes.
 
-Do not touch parent PRD issues — leave them open.
-
 # CLOSE ISSUES
 
-For each branch that was merged, close its issue. If there are any parent issues (such as PRD's) which closing the issue would complete, close those too.
+For each branch that was merged, close its child issue. Do NOT close parent issues (PRDs) — leave them open even if all their child issues are now closed. PRD closure is a human decision, not a merger task.
 
 Here are all the issues:
 
