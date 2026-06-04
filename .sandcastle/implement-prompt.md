@@ -2,7 +2,7 @@
 
 Fix issue #{{ISSUE_NUMBER}}: {{ISSUE_TITLE}}
 
-Pull in the issue using `gh issue view`, with comments. If it has a parent PRD, pull that in too.
+Pull in the issue using `gh issue view {{ISSUE_NUMBER}} --json number,title,body,comments,labels,state,url` (plain `gh issue view` prints nothing in this sandbox — always use `--json`). If it has a parent PRD, pull that in too with the same `--json` flags.
 
 Only work on the issue specified.
 
@@ -54,6 +54,8 @@ Keep it concise.
 If the task is not complete, leave a comment on the GitHub issue with what was done.
 
 Do not close the issue - this will be done later.
+
+Do NOT `git push` the branch — sandcastle syncs commits to the host automatically.
 
 Once complete, output <promise>COMPLETE</promise>.
 

@@ -1,3 +1,5 @@
 .env
 logs/
 worktrees/
+.codex/
+.gitconfig

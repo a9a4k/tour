@@ -16,7 +16,7 @@ Here are the last 10 commits:
 
 <issue>
 
-!`gh issue view {{ISSUE_NUMBER}}`
+!`gh issue view {{ISSUE_NUMBER}} --json number,title,body,comments,labels,state,url`
 
 </issue>
 
@@ -58,6 +58,6 @@ If you find improvements to make:
 2. Run `bun run typecheck` and `bun run test` to ensure nothing is broken
 3. Commit with a message starting with `RALPH: Review -` describing the refinements
 
-If the code is already clean and well-structured, do nothing.
+If the code is already clean and well-structured, do nothing. Do NOT invent trivial whitespace-only commits to satisfy this step — no-op reviews are valid and preferred over noise.
 
 Once complete, output <promise>COMPLETE</promise>.

@@ -1,0 +1,6 @@
+model = "gpt-5.5"
+model_reasoning_effort = "high"
+personality = "pragmatic"
+
+[projects."/home/agent/workspace"]
+trust_level = "trusted"
