@@ -30,9 +30,11 @@ const MAX_PARALLEL = 4;
 const IDLE_TIMEOUT_SECONDS = 1800;
 const BUN_CACHE_DIR = "~/.bun/install/cache";
 const HOST_CODEX_AUTH_FILE = "~/.codex/auth.json";
+const HOST_CODEX_AGENTS_FILE = "~/.codex/AGENTS.md";
 // Sandcastle-owned codex home — pre-populated with just auth + minimal config
-// before each run, so the container codex inherits NONE of the host's MCP
-// servers, hooks, shell snapshots, sqlite state, etc.
+// (+ global AGENTS.md so behavioural guidelines apply in-container) before
+// each run, so the container codex inherits NONE of the host's MCP servers,
+// hooks, shell snapshots, sqlite state, etc.
 const SANDBOX_CODEX_DIR = ".sandcastle/.codex";
 const SANDBOX_CODEX_CONFIG_SRC = ".sandcastle/codex-container.toml";
 // Sandcastle calls `git config --global --add safe.directory <path>` for
@@ -60,6 +62,14 @@ await copyFile(
   `${SANDBOX_CODEX_DIR}/auth.json`,
 );
 await copyFile(SANDBOX_CODEX_CONFIG_SRC, `${SANDBOX_CODEX_DIR}/config.toml`);
+try {
+  await copyFile(
+    expandHome(HOST_CODEX_AGENTS_FILE),
+    `${SANDBOX_CODEX_DIR}/AGENTS.md`,
+  );
+} catch {
+  // No global AGENTS.md on host — skip; container falls back to project AGENTS.md only.
+}
 
 await writeFile(SANDBOX_GITCONFIG, "[include]\n\tpath = ~/.gitconfig\n");
 process.env.GIT_CONFIG_GLOBAL = resolve(SANDBOX_GITCONFIG);
@@ -151,7 +161,13 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
           hooks: {
             sandbox: {
-              onSandboxReady: [{ command: "bun install --prefer-offline" }],
+              // Use `--frozen-lockfile` (not `--prefer-offline`) so the boot
+              // hook can't silently rewrite `bun.lock` based on the container's
+              // platform (linux) vs the host's (macOS). Mutation here forces
+              // the merger to repair the lockfile every iteration.
+              onSandboxReady: [
+                { command: "bun install --frozen-lockfile" },
+              ],
             },
           },
         });
