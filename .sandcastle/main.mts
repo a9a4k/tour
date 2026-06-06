@@ -15,7 +15,7 @@
 //   bun .sandcastle/main.mts
 
 import { execFile as execFileCb } from "node:child_process";
-import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -31,12 +31,14 @@ const IDLE_TIMEOUT_SECONDS = 1800;
 const BUN_CACHE_DIR = "~/.bun/install/cache";
 const HOST_CODEX_AUTH_FILE = "~/.codex/auth.json";
 const HOST_CODEX_AGENTS_FILE = "~/.codex/AGENTS.md";
-// Sandcastle-owned codex home — pre-populated with just auth + minimal config
-// (+ global AGENTS.md so behavioural guidelines apply in-container) before
-// each run, so the container codex inherits NONE of the host's MCP servers,
-// hooks, shell snapshots, sqlite state, etc.
-const SANDBOX_CODEX_DIR = ".sandcastle/.codex";
-const SANDBOX_CODEX_CONFIG_SRC = ".sandcastle/codex-container.toml";
+// Container codex home is assembled from three file mounts (auth, config,
+// optional global AGENTS.md). The parent /home/agent/.codex dir is
+// auto-created by the sandcastle docker provider (≥0.7.0) and owned by the
+// agent user, so codex can still write its own state/sessions/sqlite inside
+// the container — that state is ephemeral and dies with the container,
+// which is exactly what we want for isolation. Nothing from the host's
+// real ~/.codex (MCP servers, hooks, shell snapshots, sqlite, …) leaks in.
+const SANDBOX_CODEX_CONFIG = ".sandcastle/codex-container.toml";
 // Sandcastle calls `git config --global --add safe.directory <path>` for
 // every host-side worktree. Without redirection that pollutes ~/.gitconfig
 // with one stale entry per run. We point GIT_CONFIG_GLOBAL at a throwaway
@@ -54,22 +56,8 @@ try {
     `Codex auth not found at ${HOST_CODEX_AUTH_FILE}. Run "codex login" on the host before starting Sandcastle.`,
   );
 }
-// Reset sandbox codex dir each run so stale state can't leak.
-await rm(SANDBOX_CODEX_DIR, { recursive: true, force: true });
-await mkdir(SANDBOX_CODEX_DIR, { recursive: true });
-await copyFile(
-  expandHome(HOST_CODEX_AUTH_FILE),
-  `${SANDBOX_CODEX_DIR}/auth.json`,
-);
-await copyFile(SANDBOX_CODEX_CONFIG_SRC, `${SANDBOX_CODEX_DIR}/config.toml`);
-try {
-  await copyFile(
-    expandHome(HOST_CODEX_AGENTS_FILE),
-    `${SANDBOX_CODEX_DIR}/AGENTS.md`,
-  );
-} catch {
-  // No global AGENTS.md on host — skip; container falls back to project AGENTS.md only.
-}
+const hasHostCodexAgents = await access(expandHome(HOST_CODEX_AGENTS_FILE))
+  .then(() => true, () => false);
 
 await writeFile(SANDBOX_GITCONFIG, "[include]\n\tpath = ~/.gitconfig\n");
 process.env.GIT_CONFIG_GLOBAL = resolve(SANDBOX_GITCONFIG);
@@ -77,7 +65,22 @@ process.env.GIT_CONFIG_GLOBAL = resolve(SANDBOX_GITCONFIG);
 const dockerSandbox = docker({
   mounts: [
     { hostPath: BUN_CACHE_DIR, sandboxPath: BUN_CACHE_DIR },
-    { hostPath: SANDBOX_CODEX_DIR, sandboxPath: "/home/agent/.codex" },
+    {
+      hostPath: HOST_CODEX_AUTH_FILE,
+      sandboxPath: "/home/agent/.codex/auth.json",
+    },
+    {
+      hostPath: SANDBOX_CODEX_CONFIG,
+      sandboxPath: "/home/agent/.codex/config.toml",
+    },
+    ...(hasHostCodexAgents
+      ? [
+          {
+            hostPath: HOST_CODEX_AGENTS_FILE,
+            sandboxPath: "/home/agent/.codex/AGENTS.md",
+          },
+        ]
+      : []),
   ],
 });
 
