@@ -60,7 +60,7 @@
     "shiki": "^3.23.0"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "^0.5.10",
+    "@ai-hero/sandcastle": "^0.7.0",
     "@opentui/react": "^0.2.5",
     "@primer/octicons-react": "^19.25.0",
     "@types/node": "^22.0.0",

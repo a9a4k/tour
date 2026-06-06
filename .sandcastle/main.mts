@@ -158,7 +158,6 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         await using sandbox = await sandcastle.createSandbox({
           sandbox: dockerSandbox,
           branch: issue.branch,
-          idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
           hooks: {
             sandbox: {
               // Use `--frozen-lockfile` (not `--prefer-offline`) so the boot
