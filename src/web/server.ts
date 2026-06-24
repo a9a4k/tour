@@ -602,7 +602,7 @@ export async function startServer(args: ServeArgs): Promise<void> {
     function cleanup() {
       for (const w of watchers.values()) w.stop();
       watchers.clear();
-      server.stop();
+      server.stop(true);
       resolve();
     }
     process.on("SIGINT", cleanup);
